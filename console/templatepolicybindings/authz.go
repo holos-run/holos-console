@@ -9,7 +9,6 @@ import (
 
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
-	"github.com/holos-run/holos-console/console/scopeshim"
 )
 
 // OrgGrantResolver resolves organization-level grants for access checks. The
@@ -30,13 +29,13 @@ type FolderGrantResolver interface {
 // cascade table exists only at org/folder, so any attempt to check a
 // project-scope binding here is a programming error that earlier handler
 // validation should have caught.
-func (h *Handler) checkAccess(ctx context.Context, claims *rpc.Claims, scope scopeshim.Scope, scopeName string, perm rbac.Permission) error {
+func (h *Handler) checkAccess(ctx context.Context, claims *rpc.Claims, scope scopeKind, scopeName string, perm rbac.Permission) error {
 	switch scope {
-	case scopeshim.ScopeOrganization:
+	case scopeKindOrganization:
 		return h.checkOrgAccess(ctx, claims, scopeName, perm)
-	case scopeshim.ScopeFolder:
+	case scopeKindFolder:
 		return h.checkFolderAccess(ctx, claims, scopeName, perm)
-	case scopeshim.ScopeProject:
+	case scopeKindProject:
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template policy bindings cannot be scoped to a project; use an organization or folder scope"))
 	default:
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unknown scope %v", scope))

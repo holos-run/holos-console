@@ -61,8 +61,7 @@ func bindingCRD(
 // orgPolicyRefCRD builds an organization-scoped CRD policy_ref.
 func orgPolicyRefCRD(policyName string) templatesv1alpha1.LinkedTemplatePolicyRef {
 	return templatesv1alpha1.LinkedTemplatePolicyRef{
-		Scope:     v1alpha2.TemplateScopeOrganization,
-		ScopeName: "acme",
+		Namespace: "holos-org-acme",
 		Name:      policyName,
 	}
 }
@@ -70,8 +69,7 @@ func orgPolicyRefCRD(policyName string) templatesv1alpha1.LinkedTemplatePolicyRe
 // folderPolicyRefCRD builds a folder-scoped CRD policy_ref.
 func folderPolicyRefCRD(folder, policyName string) templatesv1alpha1.LinkedTemplatePolicyRef {
 	return templatesv1alpha1.LinkedTemplatePolicyRef{
-		Scope:     v1alpha2.TemplateScopeFolder,
-		ScopeName: folder,
+		Namespace: "holos-fld-" + folder,
 		Name:      policyName,
 	}
 }

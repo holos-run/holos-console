@@ -9,7 +9,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -55,10 +54,10 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 		HasAppliedState: true,
 		Drift:           false,
 		AppliedSet: []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ""),
+			&consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: "httproute"},
 		},
 		CurrentSet: []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ""),
+			&consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: "httproute"},
 		},
 	}
 
@@ -86,7 +85,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			desc: "non-project namespace is rejected",
 			ctx:  ownerCtx,
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
-				Namespace: scopeshim.DefaultResolver().OrgNamespace("acme"),
+				Namespace: testResolver.OrgNamespace("acme"),
 				Name:      tmplName,
 			},
 			wantCode: connect.CodeInvalidArgument,

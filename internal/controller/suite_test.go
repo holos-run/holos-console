@@ -381,7 +381,7 @@ func TestTemplatePolicy_AcceptedConditionSurface(t *testing.T) {
 			Rules: []v1alpha1.TemplatePolicyRule{{
 				Kind: v1alpha1.TemplatePolicyKindRequire,
 				Template: v1alpha1.LinkedTemplateRef{
-					Scope: "organization", ScopeName: "acme", Name: "istio",
+					Namespace: "org-acme", Name: "istio",
 				},
 			}},
 		},
@@ -432,8 +432,7 @@ func TestTemplatePolicyBinding_ResolvedRefs_TransitionsOnTemplateCreate(t *testi
 			Rules: []v1alpha1.TemplatePolicyRule{{
 				Kind: v1alpha1.TemplatePolicyKindRequire,
 				Template: v1alpha1.LinkedTemplateRef{
-					Scope:     "organization",
-					ScopeName: "transition-acme",
+					Namespace: "org-transition-acme",
 					Name:      "the-template",
 				},
 			}},
@@ -448,7 +447,7 @@ func TestTemplatePolicyBinding_ResolvedRefs_TransitionsOnTemplateCreate(t *testi
 		Spec: v1alpha1.TemplatePolicyBindingSpec{
 			DisplayName: "Bind",
 			PolicyRef: v1alpha1.LinkedTemplatePolicyRef{
-				Scope: "organization", ScopeName: "transition-acme", Name: "require-one",
+				Namespace: "org-transition-acme", Name: "require-one",
 			},
 			TargetRefs: []v1alpha1.TemplatePolicyBindingTargetRef{{
 				Kind:        v1alpha1.TemplatePolicyBindingTargetKindProjectTemplate,
@@ -530,7 +529,7 @@ func TestTemplatePolicyBinding_ResolvedRefs_PolicyNotFound(t *testing.T) {
 		Spec: v1alpha1.TemplatePolicyBindingSpec{
 			DisplayName: "Bind-with-missing-policy",
 			PolicyRef: v1alpha1.LinkedTemplatePolicyRef{
-				Scope: "organization", ScopeName: "acme", Name: "not-here-yet",
+				Namespace: "org-acme", Name: "not-here-yet",
 			},
 			TargetRefs: []v1alpha1.TemplatePolicyBindingTargetRef{{
 				Kind:        v1alpha1.TemplatePolicyBindingTargetKindProjectTemplate,
@@ -561,8 +560,7 @@ func TestTemplatePolicyBinding_ResolvedRefs_PolicyNotFound(t *testing.T) {
 			Rules: []v1alpha1.TemplatePolicyRule{{
 				Kind: v1alpha1.TemplatePolicyKindRequire,
 				Template: v1alpha1.LinkedTemplateRef{
-					Scope:     "organization",
-					ScopeName: "acme",
+					Namespace: "org-acme",
 					Name:      "the-template",
 				},
 			}},
@@ -606,7 +604,7 @@ func TestTemplatePolicyBinding_ResolvedRefs_OutOfChainPolicyRejected(t *testing.
 			Rules: []v1alpha1.TemplatePolicyRule{{
 				Kind: v1alpha1.TemplatePolicyKindRequire,
 				Template: v1alpha1.LinkedTemplateRef{
-					Scope: "organization", ScopeName: "beta", Name: "ignored",
+					Namespace: "org-beta", Name: "ignored",
 				},
 			}},
 		},
@@ -633,7 +631,7 @@ func TestTemplatePolicyBinding_ResolvedRefs_OutOfChainPolicyRejected(t *testing.
 		Spec: v1alpha1.TemplatePolicyBindingSpec{
 			DisplayName: "cross-tree",
 			PolicyRef: v1alpha1.LinkedTemplatePolicyRef{
-				Scope: "organization", ScopeName: "beta", Name: "beta-only",
+				Namespace: "org-beta", Name: "beta-only",
 			},
 			TargetRefs: []v1alpha1.TemplatePolicyBindingTargetRef{{
 				Kind:        v1alpha1.TemplatePolicyBindingTargetKindProjectTemplate,

@@ -13,7 +13,6 @@ import (
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
-	"github.com/holos-run/holos-console/console/scopeshim"
 )
 
 // policyGetterStub satisfies PolicyExistsGetter for the PolicyExistsAdapter
@@ -66,7 +65,7 @@ func TestPolicyExistsAdapter(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a := NewPolicyExistsAdapter(tt.getter, newTestResolver())
-			got, err := a.PolicyExists(context.Background(), scopeshim.ScopeFolder, "payments", "policy")
+			got, err := a.PolicyExists(context.Background(), "holos-fld-payments", "policy")
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -181,7 +180,7 @@ func TestProjectExistsAdapter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := a.ProjectExists(context.Background(), scopeshim.ScopeFolder, "payments", tt.project)
+			got, err := a.ProjectExists(context.Background(), "holos-fld-payments", tt.project)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

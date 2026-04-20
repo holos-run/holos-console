@@ -18,11 +18,11 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -31,6 +31,72 @@ const auditResourceType = "template"
 
 // dnsLabelRe validates template names as DNS labels.
 var dnsLabelRe = regexp.MustCompile(`^[a-z][a-z0-9-]*[a-z0-9]$`)
+
+// scopeKind is a local discriminator for RBAC routing. Every handler
+// classifies an incoming namespace into one of these three values via
+// the resolver; the namespace remains authoritative for storage.
+type scopeKind int
+
+const (
+	scopeKindUnspecified scopeKind = iota
+	scopeKindOrganization
+	scopeKindFolder
+	scopeKindProject
+)
+
+// String returns a short lowercase label for audit logs and error messages.
+func (s scopeKind) String() string {
+	switch s {
+	case scopeKindOrganization:
+		return v1alpha2.ResourceTypeOrganization
+	case scopeKindFolder:
+		return v1alpha2.ResourceTypeFolder
+	case scopeKindProject:
+		return v1alpha2.ResourceTypeProject
+	default:
+		return "unspecified"
+	}
+}
+
+// scopeNamespace returns the Kubernetes namespace owning a (kind, name)
+// pair. Unspecified inputs produce an empty string so the caller can treat
+// the result as "no namespace."
+func scopeNamespace(r *resolver.Resolver, kind scopeKind, name string) string {
+	if r == nil {
+		return ""
+	}
+	switch kind {
+	case scopeKindOrganization:
+		return r.OrgNamespace(name)
+	case scopeKindFolder:
+		return r.FolderNamespace(name)
+	case scopeKindProject:
+		return r.ProjectNamespace(name)
+	default:
+		return ""
+	}
+}
+
+// classifyNamespace returns the scopeKind and logical name (org/folder/project
+// slug) for a Kubernetes namespace via the resolver's prefix scheme.
+func classifyNamespace(r *resolver.Resolver, ns string) (scopeKind, string) {
+	if r == nil {
+		return scopeKindUnspecified, ""
+	}
+	kind, name, err := r.ResourceTypeFromNamespace(ns)
+	if err != nil {
+		return scopeKindUnspecified, ""
+	}
+	switch kind {
+	case v1alpha2.ResourceTypeOrganization:
+		return scopeKindOrganization, name
+	case v1alpha2.ResourceTypeFolder:
+		return scopeKindFolder, name
+	case v1alpha2.ResourceTypeProject:
+		return scopeKindProject, name
+	}
+	return scopeKindUnspecified, ""
+}
 
 // OrgGrantResolver resolves organization-level grants.
 type OrgGrantResolver interface {
@@ -186,10 +252,7 @@ func (h *Handler) ListTemplates(
 		return nil, err
 	}
 
-	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
-	if nsErr != nil {
-		return nil, nsErr
-	}
+	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	crds, err := h.k8s.ListTemplates(ctx, ns)
 	if err != nil {
 		return nil, mapK8sError(err)
@@ -197,7 +260,7 @@ func (h *Handler) ListTemplates(
 
 	templates := make([]*consolev1.Template, 0, len(crds))
 	for i := range crds {
-		templates = append(templates, templateCRDToProto(&crds[i], scope))
+		templates = append(templates, templateCRDToProto(&crds[i], scope == scopeKindProject))
 	}
 
 	slog.InfoContext(ctx, "templates listed",
@@ -258,8 +321,8 @@ func (h *Handler) SearchTemplates(
 		// short-circuiting on access denial; if the caller cannot see the
 		// scope, the result is an empty list (visible-to-caller contract).
 		ns := nsFilter
-		scope, scopeName, classifyErr := scopeshim.FromNamespace(h.k8s.Resolver, ns)
-		if classifyErr != nil || scope == scopeshim.ScopeUnspecified {
+		scope, scopeName := classifyNamespace(h.k8s.Resolver, ns)
+		if scope == scopeKindUnspecified {
 			// Unclassifiable namespace — return empty rather than error so
 			// the search RPC stays consistent with cross-scope behavior.
 			return connect.NewResponse(&consolev1.SearchTemplatesResponse{}), nil
@@ -297,8 +360,8 @@ func (h *Handler) SearchTemplates(
 		if cached, ok := nsAccess[ns]; ok {
 			return cached
 		}
-		scope, scopeName, classifyErr := scopeshim.FromNamespace(h.k8s.Resolver, ns)
-		if classifyErr != nil || scope == scopeshim.ScopeUnspecified {
+		scope, scopeName := classifyNamespace(h.k8s.Resolver, ns)
+		if scope == scopeKindUnspecified {
 			nsAccess[ns] = false
 			return false
 		}
@@ -333,11 +396,8 @@ func (h *Handler) SearchTemplates(
 		if !allows(tmpl.Namespace) {
 			continue
 		}
-		scope, _, classifyErr := scopeshim.FromNamespace(h.k8s.Resolver, tmpl.Namespace)
-		if classifyErr != nil {
-			scope = scopeshim.ScopeUnspecified
-		}
-		templates = append(templates, templateCRDToProto(tmpl, scope))
+		scope, _ := classifyNamespace(h.k8s.Resolver, tmpl.Namespace)
+		templates = append(templates, templateCRDToProto(tmpl, scope == scopeKindProject))
 	}
 
 	slog.InfoContext(ctx, "templates searched",
@@ -368,8 +428,8 @@ func (h *Handler) SearchTemplates(
 // Lookups are intentionally per-call here — SearchTemplates wraps the
 // allows() check in a per-namespace cache so each unique namespace sees at
 // most one Get-namespace round-trip per request.
-func (h *Handler) namespaceBelongsToOrg(ctx context.Context, scope scopeshim.Scope, scopeName, ns, org string) bool {
-	if scope == scopeshim.ScopeOrganization {
+func (h *Handler) namespaceBelongsToOrg(ctx context.Context, scope scopeKind, scopeName, ns, org string) bool {
+	if scope == scopeKindOrganization {
 		return scopeName == org
 	}
 	got, err := h.k8s.GetNamespaceOrg(ctx, ns)
@@ -407,10 +467,7 @@ func (h *Handler) GetTemplate(
 		return nil, err
 	}
 
-	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
-	if nsErr != nil {
-		return nil, nsErr
-	}
+	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	tmpl, err := h.k8s.GetTemplate(ctx, ns, name)
 	if err != nil {
 		return nil, mapK8sError(err)
@@ -426,7 +483,7 @@ func (h *Handler) GetTemplate(
 	)
 
 	return connect.NewResponse(&consolev1.GetTemplateResponse{
-		Template: templateCRDToProto(tmpl, scope),
+		Template: templateCRDToProto(tmpl, scope == scopeKindProject),
 	}), nil
 }
 
@@ -468,16 +525,13 @@ func (h *Handler) GetTemplateDefaults(
 	// Defaults are a project-scope concept (ADR 027). For org/folder scopes,
 	// return an empty TemplateDefaults so the UI can call uniformly without
 	// special-casing scope.
-	if scope != scopeshim.ScopeProject {
+	if scope != scopeKindProject {
 		return connect.NewResponse(&consolev1.GetTemplateDefaultsResponse{
 			Defaults: &consolev1.TemplateDefaults{},
 		}), nil
 	}
 
-	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
-	if nsErr != nil {
-		return nil, nsErr
-	}
+	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	tmpl, err := h.k8s.GetTemplate(ctx, ns, name)
 	if err != nil {
 		return nil, mapK8sError(err)
@@ -554,10 +608,7 @@ func (h *Handler) CreateTemplate(
 	// The `mandatory` annotation and its Go/proto projections were removed in
 	// HOL-565. Ancestor templates that must always apply to every project now
 	// come in via TemplatePolicy REQUIRE rules (HOL-567).
-	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
-	if nsErr != nil {
-		return nil, nsErr
-	}
+	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	_, err = h.k8s.CreateTemplate(ctx, ns, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, tmpl.Enabled, tmpl.LinkedTemplates)
 	if err != nil {
 		return nil, mapK8sError(err)
@@ -638,10 +689,7 @@ func (h *Handler) UpdateTemplate(
 	var linkedTemplates []*consolev1.LinkedTemplateRef
 	var explicitRefsForRecord []*consolev1.LinkedTemplateRef
 	skipRecordPreservedLinks := false
-	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
-	if nsErr != nil {
-		return nil, nsErr
-	}
+	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	if req.Msg.GetUpdateLinkedTemplates() {
 		// Caller wants to modify links. Check permissions based on both old
 		// (being removed) and new (being added) linked template scopes.
@@ -682,7 +730,7 @@ func (h *Handler) UpdateTemplate(
 		// an empty applied set even though the ConfigMap kept its
 		// original links, producing false drift on the next policy-state
 		// read (review findings P2 from codex round 1).
-		if scope == scopeshim.ScopeProject && h.projectTemplateDriftChecker != nil {
+		if scope == scopeKindProject && h.projectTemplateDriftChecker != nil {
 			existing, getErr := h.k8s.GetTemplate(ctx, ns, name)
 			if getErr != nil {
 				slog.WarnContext(ctx, "failed to read existing template for applied-set write-through, skipping record",
@@ -750,11 +798,11 @@ func (h *Handler) UpdateTemplate(
 // on the next preview.
 func (h *Handler) recordProjectTemplateApplied(
 	ctx context.Context,
-	scope scopeshim.Scope,
+	scope scopeKind,
 	scopeName, name string,
 	explicitRefs []*consolev1.LinkedTemplateRef,
 ) {
-	if scope != scopeshim.ScopeProject {
+	if scope != scopeKindProject {
 		return
 	}
 	if h.projectTemplateDriftChecker == nil {
@@ -806,10 +854,7 @@ func (h *Handler) DeleteTemplate(
 		return nil, err
 	}
 
-	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
-	if nsErr != nil {
-		return nil, nsErr
-	}
+	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	if err := h.k8s.DeleteTemplate(ctx, ns, name); err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -854,10 +899,7 @@ func (h *Handler) CloneTemplate(
 		return nil, err
 	}
 
-	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
-	if nsErr != nil {
-		return nil, nsErr
-	}
+	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	_, err = h.k8s.CloneTemplate(ctx, ns, sourceName, newName, req.Msg.DisplayName)
 	if err != nil {
 		return nil, mapK8sError(err)
@@ -948,52 +990,39 @@ func (h *Handler) RenderTemplate(
 // deployments handler does.
 func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.RenderTemplateRequest) (*GroupedRenderResources, error) {
 	var templateSources []string
-	// HOL-619 replaced the request's TemplateScopeRef with a Kubernetes
-	// namespace. Classify it through the shim so the downstream storage
-	// layer (still scope-keyed until HOL-621) keeps working.
+	// HOL-619/HOL-723 made the request's namespace the authoritative
+	// identifier. Classify it for the preview-target-kind discriminator
+	// only; storage works directly against the namespace.
 	if h.k8s != nil && h.walker != nil && msg.GetNamespace() != "" {
-		msgScope, msgScopeName, classifyErr := scopeshim.FromNamespace(h.k8s.Resolver, msg.GetNamespace())
-		if classifyErr != nil {
+		startNs := msg.GetNamespace()
+		msgKind, msgName := classifyNamespace(h.k8s.Resolver, startNs)
+		if msgKind == scopeKindUnspecified {
 			slog.WarnContext(ctx, "failed to classify namespace for render, falling back to plain render",
-				slog.String("namespace", msg.GetNamespace()),
-				slog.Any("error", classifyErr),
+				slog.String("namespace", startNs),
 			)
 		} else {
-			startNs, nsErr := h.k8s.namespaceForScope(msgScope, msgScopeName)
-			if nsErr != nil {
-				// Falling through to the plain-render path below. Logging the
-				// namespace resolution failure here makes the "why didn't my
-				// linked template apply" debug path discoverable instead of
-				// silently producing a templateless render.
-				slog.WarnContext(ctx, "failed to resolve namespace for scope, falling back to plain render",
-					slog.String("scope", msgScope.String()),
-					slog.String("scopeName", msgScopeName),
-					slog.Any("error", nsErr),
+			// ListEffectiveTemplateSources currently swallows walker errors
+			// internally and returns (nil, nil) on walker failure (see
+			// k8s.go: "failed to walk ancestor chain for render, returning
+			// empty sources"). The walkErr branch below is therefore
+			// unreachable today but kept as belt-and-suspenders so a future
+			// edit that starts propagating walker errors out of the helper
+			// still degrades to the plain-render fallback here.
+			sources, _, walkErr := h.k8s.ListEffectiveTemplateSources(
+				ctx,
+				startNs,
+				previewTargetKindForScope(msgKind),
+				msgName,
+				msg.LinkedTemplates,
+				h.walker,
+				h.policyResolver,
+			)
+			if walkErr != nil {
+				slog.WarnContext(ctx, "ancestor template resolution failed, falling back to plain render",
+					slog.Any("error", walkErr),
 				)
 			} else {
-				// ListEffectiveTemplateSources currently swallows walker errors
-				// internally and returns (nil, nil) on walker failure (see
-				// k8s.go: "failed to walk ancestor chain for render, returning
-				// empty sources"). The walkErr branch below is therefore
-				// unreachable today but kept as belt-and-suspenders so a future
-				// edit that starts propagating walker errors out of the helper
-				// still degrades to the plain-render fallback here.
-				sources, _, walkErr := h.k8s.ListEffectiveTemplateSources(
-					ctx,
-					startNs,
-					previewTargetKindForScope(msgScope),
-					msgScopeName,
-					msg.LinkedTemplates,
-					h.walker,
-					h.policyResolver,
-				)
-				if walkErr != nil {
-					slog.WarnContext(ctx, "ancestor template resolution failed, falling back to plain render",
-						slog.Any("error", walkErr),
-					)
-				} else {
-					templateSources = sources
-				}
+				templateSources = sources
 			}
 		}
 	}
@@ -1029,8 +1058,8 @@ func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.Rend
 // is intentionally ignored today; the parameter exists so Phase 5 can add
 // preview-path-specific TargetKind discrimination (e.g., different kinds for
 // project-vs-folder preview) without changing the call site signature.
-func previewTargetKindForScope(scope scopeshim.Scope) TargetKind {
-	_ = scope
+func previewTargetKindForScope(kind scopeKind) TargetKind {
+	_ = kind
 	return TargetKindProjectTemplate
 }
 
@@ -1064,10 +1093,7 @@ func (h *Handler) ListLinkableTemplates(
 	}
 
 	// Walk ancestors of the given scope's namespace.
-	startNs, nsErr := h.k8s.namespaceForScope(scope, scopeName)
-	if nsErr != nil {
-		return nil, connect.NewError(connect.CodeInternal, nsErr)
-	}
+	startNs := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 
 	ancestors, walkErr := h.walker.WalkAncestors(ctx, startNs)
 	if walkErr != nil {
@@ -1090,8 +1116,8 @@ func (h *Handler) ListLinkableTemplates(
 		if i == 0 && !includeSelfScope {
 			continue // skip the scope itself unless explicitly requested
 		}
-		entryScope, _ := scopeAndNameFromNs(h.resolver, ns.Name)
-		if entryScope == scopeshim.ScopeUnspecified {
+		entryKind, _ := classifyNamespace(h.resolver, ns.Name)
+		if entryKind == scopeKindUnspecified {
 			continue
 		}
 		infos, err := h.k8s.ListLinkableTemplateInfos(ctx, ns.Name)
@@ -1191,15 +1217,12 @@ func (h *Handler) ListAncestorTemplates(
 // in folder/organization namespaces precisely because project owners can
 // write to their project namespace and would otherwise be able to tamper
 // with the constraints the platform is enforcing.
-func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeshim.Scope, scopeName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]*consolev1.Template, error) {
+func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeKind, scopeName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]*consolev1.Template, error) {
 	if h.walker == nil {
 		return nil, nil
 	}
 
-	startNs, err := h.k8s.namespaceForScope(scope, scopeName)
-	if err != nil {
-		return nil, err
-	}
+	startNs := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 
 	ancestors, err := h.walker.WalkAncestors(ctx, startNs)
 	if err != nil {
@@ -1219,8 +1242,8 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeshim.
 	var result []*consolev1.Template
 	for i := len(ancestors) - 1; i >= 0; i-- {
 		ns := ancestors[i]
-		ancestorScope, ancestorName := scopeAndNameFromNs(h.resolver, ns.Name)
-		if ancestorScope == scopeshim.ScopeUnspecified {
+		ancestorKind, _ := classifyNamespace(h.resolver, ns.Name)
+		if ancestorKind == scopeKindUnspecified {
 			continue
 		}
 
@@ -1239,14 +1262,13 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeshim.
 				continue
 			}
 			ref := linkedRef{
-				scope:     scopeLabelValue(ancestorScope),
-				scopeName: ancestorName,
+				namespace: ns.Name,
 				name:      crd.Name,
 			}
 			if !linkedSet[ref] {
 				continue
 			}
-			result = append(result, templateCRDToProto(crd, ancestorScope))
+			result = append(result, templateCRDToProto(crd, ancestorKind == scopeKindProject))
 		}
 	}
 
@@ -1258,17 +1280,18 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeshim.
 // org-scope template, PermissionTemplatesLinkOrgWrite is checked. If any ref
 // targets a folder-scope template, PermissionTemplatesLinkFolderWrite is checked.
 // Both checks are performed at the template's owning scope.
-func (h *Handler) checkLinkPermissions(ctx context.Context, claims *rpc.Claims, scope scopeshim.Scope, scopeName string, linkedTemplates []*consolev1.LinkedTemplateRef) error {
+func (h *Handler) checkLinkPermissions(ctx context.Context, claims *rpc.Claims, scope scopeKind, scopeName string, linkedTemplates []*consolev1.LinkedTemplateRef) error {
 	hasOrg := false
 	hasFolder := false
 	for _, ref := range linkedTemplates {
 		if ref == nil {
 			continue
 		}
-		switch scopeshim.RefScope(ref) {
-		case scopeshim.ScopeOrganization:
+		refKind, _ := classifyNamespace(h.resolver, ref.GetNamespace())
+		switch refKind {
+		case scopeKindOrganization:
 			hasOrg = true
-		case scopeshim.ScopeFolder:
+		case scopeKindFolder:
 			hasFolder = true
 		}
 	}
@@ -1288,13 +1311,13 @@ func (h *Handler) checkLinkPermissions(ctx context.Context, claims *rpc.Claims, 
 // checkAccess verifies the caller has the given permission for the requested scope.
 // All scope levels (org, folder, project) use the unified TemplateCascadePerms
 // table per ADR 021 Decision 2.
-func (h *Handler) checkAccess(ctx context.Context, claims *rpc.Claims, scope scopeshim.Scope, scopeName string, perm rbac.Permission) error {
+func (h *Handler) checkAccess(ctx context.Context, claims *rpc.Claims, scope scopeKind, scopeName string, perm rbac.Permission) error {
 	switch scope {
-	case scopeshim.ScopeOrganization:
+	case scopeKindOrganization:
 		return h.checkOrgAccess(ctx, claims, scopeName, perm)
-	case scopeshim.ScopeFolder:
+	case scopeKindFolder:
 		return h.checkFolderAccess(ctx, claims, scopeName, perm)
-	case scopeshim.ScopeProject:
+	case scopeKindProject:
 		return h.checkProjectAccess(ctx, claims, scopeName, perm)
 	default:
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unknown scope %v", scope))
@@ -1532,10 +1555,7 @@ func (h *Handler) CheckUpdates(
 
 	// Collect templates to check. If template_name is specified, check only
 	// that template's linked refs. Otherwise check all templates in scope.
-	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
-	if nsErr != nil {
-		return nil, nsErr
-	}
+	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	var templates []templatesv1alpha1.Template
 	if req.Msg.TemplateName != "" {
 		tmpl, getErr := h.k8s.GetTemplate(ctx, ns, req.Msg.TemplateName)
@@ -1591,18 +1611,12 @@ func (h *Handler) CheckUpdates(
 // with resolved version information even if the template is already at the
 // latest compatible version.
 func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTemplateRef, includeCurrent bool) (*consolev1.TemplateUpdate, error) {
-	refScope := scopeshim.RefScope(ref)
-	refScopeName := scopeshim.RefScopeName(ref)
+	refNamespace := ref.GetNamespace()
 	refName := ref.Name
 	constraintStr := ref.VersionConstraint
 
-	refNs, nsErr := h.mustNamespaceFor(refScope, refScopeName)
-	if nsErr != nil {
-		return nil, nsErr
-	}
-
 	// List all release versions for the linked template.
-	versions, err := h.k8s.ListReleaseVersions(ctx, refNs, refName)
+	versions, err := h.k8s.ListReleaseVersions(ctx, refNamespace, refName)
 	if err != nil {
 		return nil, err
 	}
@@ -1667,47 +1681,40 @@ func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTe
 	return update, nil
 }
 
-// extractScope converts an incoming namespace to the (scope, scopeName)
-// pair the handler uses for RBAC checks and slog attributes. Returns
-// InvalidArgument when the namespace is empty or cannot be classified.
-func (h *Handler) extractScope(namespace string) (scopeshim.Scope, string, error) {
+// mustNamespaceFor returns the Kubernetes namespace owning the given
+// (scope, scopeName) pair. Returns connect.CodeInternal when the resolver is
+// unwired or the kind is unspecified. Callers that already validated the
+// scope via extractScope use this to reduce boilerplate when they need to
+// route writes back to the canonical namespace.
+func (h *Handler) mustNamespaceFor(scope scopeKind, scopeName string) (string, error) {
+	if h.k8s == nil || h.k8s.Resolver == nil {
+		return "", connect.NewError(connect.CodeInternal, fmt.Errorf("namespace resolver not wired"))
+	}
+	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
+	if ns == "" {
+		return "", connect.NewError(connect.CodeInternal, fmt.Errorf("cannot derive namespace for scope %s/%s", scope, scopeName))
+	}
+	return ns, nil
+}
+
+// extractScope classifies an incoming namespace into a scopeKind and logical
+// scope name. Returns InvalidArgument when the namespace is empty or cannot
+// be classified. The namespace itself remains authoritative for storage —
+// the derived (kind, name) pair is only used for RBAC cascade routing and
+// slog attributes.
+func (h *Handler) extractScope(namespace string) (scopeKind, string, error) {
 	if namespace == "" {
-		return scopeshim.ScopeUnspecified, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace is required"))
+		return scopeKindUnspecified, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace is required"))
 	}
 	if h.k8s == nil || h.k8s.Resolver == nil {
-		return scopeshim.ScopeUnspecified, "", connect.NewError(connect.CodeInternal, fmt.Errorf("namespace resolver not wired"))
+		return scopeKindUnspecified, "", connect.NewError(connect.CodeInternal, fmt.Errorf("namespace resolver not wired"))
 	}
-	scope, scopeName, err := scopeshim.FromNamespace(h.k8s.Resolver, namespace)
-	if err != nil {
-		return scopeshim.ScopeUnspecified, "", connect.NewError(connect.CodeInvalidArgument, err)
+	kind, name := classifyNamespace(h.k8s.Resolver, namespace)
+	if kind == scopeKindUnspecified {
+		return scopeKindUnspecified, "", connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("namespace %q does not match any known prefix", namespace))
 	}
-	return scope, scopeName, nil
-}
-
-// namespaceFor is the inverse of extractScope. The handler owns both
-// directions now that K8sClient works in namespace-terms; extractScope
-// serves the incoming-request path and namespaceFor serves the outgoing
-// storage path.
-func (h *Handler) namespaceFor(scope scopeshim.Scope, scopeName string) (string, error) {
-	if h.k8s == nil || h.k8s.Resolver == nil {
-		return "", fmt.Errorf("namespace resolver not wired")
-	}
-	ns, err := scopeshim.NamespaceFor(h.k8s.Resolver, scope, scopeName)
-	if err != nil {
-		return "", err
-	}
-	return ns, nil
-}
-
-// mustNamespaceFor is a convenience wrapper that maps an unclassifiable
-// (scope, scopeName) pair to connect.CodeInternal. Callers that already
-// validated the scope via extractScope use this to reduce boilerplate.
-func (h *Handler) mustNamespaceFor(scope scopeshim.Scope, scopeName string) (string, error) {
-	ns, err := h.namespaceFor(scope, scopeName)
-	if err != nil {
-		return "", connect.NewError(connect.CodeInternal, err)
-	}
-	return ns, nil
+	return kind, name, nil
 }
 
 // validateTemplateName checks that the name is a valid DNS label.
@@ -1805,7 +1812,7 @@ func (h *Handler) GetProjectTemplatePolicyState(
 	if err != nil {
 		return nil, err
 	}
-	if scope != scopeshim.ScopeProject {
+	if scope != scopeKindProject {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("namespace must classify as a project namespace for project-template policy state"))
 	}
@@ -1818,17 +1825,14 @@ func (h *Handler) GetProjectTemplatePolicyState(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkAccess(ctx, claims, scopeshim.ScopeProject, project, rbac.PermissionTemplatesRead); err != nil {
+	if err := h.checkAccess(ctx, claims, scopeKindProject, project, rbac.PermissionTemplatesRead); err != nil {
 		return nil, err
 	}
 
 	// Read the template so we can pass its owner-linked refs to the
 	// resolver. The caller must have read access to the owning project for
 	// this to succeed.
-	projectNs, nsErr := h.mustNamespaceFor(scopeshim.ScopeProject, project)
-	if nsErr != nil {
-		return nil, nsErr
-	}
+	projectNs := scopeNamespace(h.k8s.Resolver, scopeKindProject, project)
 	tmpl, err := h.k8s.GetTemplate(ctx, projectNs, name)
 	if err != nil {
 		return nil, mapK8sError(err)

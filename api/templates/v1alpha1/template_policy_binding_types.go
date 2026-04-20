@@ -20,21 +20,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// LinkedTemplatePolicyRef is a scope-qualified reference to a TemplatePolicy
-// carried by a TemplatePolicyBinding. Mirrors the existing proto
-// LinkedTemplatePolicyRef message. A binding references exactly one policy;
-// the referenced policy must live in a scope the binding's own scope can
-// reach (ancestor chain or same scope).
+// LinkedTemplatePolicyRef is a (namespace, name) reference to a
+// TemplatePolicy carried by a TemplatePolicyBinding. Mirrors the existing
+// proto LinkedTemplatePolicyRef message. A binding references exactly one
+// policy; the referenced policy must live in a namespace the binding's own
+// namespace can reach (ancestor chain or same namespace). Project
+// namespaces are rejected by the ValidatingAdmissionPolicy that ships
+// alongside TemplatePolicy.
 type LinkedTemplatePolicyRef struct {
-	// Scope identifies the hierarchy level owning the referenced policy.
-	// Only "organization" and "folder" are valid — TemplatePolicy cannot
-	// live at project scope.
-	// +kubebuilder:validation:Enum=organization;folder
-	Scope string `json:"scope"`
-	// ScopeName is the organization or folder name owning the referenced
-	// policy.
+	// Namespace is the Kubernetes namespace that owns the referenced
+	// TemplatePolicy. Must be an organization or folder namespace —
+	// TemplatePolicy cannot live in a project namespace.
 	// +kubebuilder:validation:MinLength=1
-	ScopeName string `json:"scopeName"`
+	Namespace string `json:"namespace"`
 	// Name is the referenced TemplatePolicy's DNS label slug.
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`

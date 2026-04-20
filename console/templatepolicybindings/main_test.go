@@ -1,9 +1,10 @@
-// main_test.go wires a package-level scopeshim.DefaultResolver for the
-// tests in this package. HOL-619 replaced the proto-level TemplateScopeRef
-// with a namespace field; test helpers call
-// DefaultResolver().*Namespace directly, which panics when no resolver
-// has been installed. Registering the same resolver the fake K8sClient
-// uses keeps namespace strings and the shim's classification in sync.
+// main_test.go wraps m.Run through crdmgrtesting.RunTestsWithSharedEnv so
+// the process-singleton envtest Environment is Stop()'d after the last
+// test in this package runs.
+//
+// Post-HOL-723 the package no longer installs a package-global
+// scopeshim.DefaultResolver; tests pass a newTestResolver() explicitly
+// wherever a resolver is required (see k8s_test.go).
 package templatepolicybindings
 
 import (
@@ -11,13 +12,8 @@ import (
 	"testing"
 
 	crdmgrtesting "github.com/holos-run/holos-console/console/crdmgr/testing"
-	"github.com/holos-run/holos-console/console/scopeshim"
 )
 
 func TestMain(m *testing.M) {
-	scopeshim.SetDefaultResolver(newTestResolver())
-	// Wrap m.Run through crdmgrtesting.RunTestsWithSharedEnv so the
-	// process-singleton envtest Environment is Stop()'d after the last
-	// test in this package runs.
 	os.Exit(crdmgrtesting.RunTestsWithSharedEnv(m))
 }

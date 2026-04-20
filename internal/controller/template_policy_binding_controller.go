@@ -243,29 +243,12 @@ func bindingAcceptedCondition(binding *v1alpha1.TemplatePolicyBinding) metav1.Co
 		}
 		seen[key] = struct{}{}
 	}
-	if binding.Spec.PolicyRef.Name == "" || binding.Spec.PolicyRef.ScopeName == "" {
+	if binding.Spec.PolicyRef.Name == "" || binding.Spec.PolicyRef.Namespace == "" {
 		return metav1.Condition{
 			Type:    v1alpha1.TemplatePolicyBindingConditionAccepted,
 			Status:  metav1.ConditionFalse,
 			Reason:  v1alpha1.TemplatePolicyBindingReasonInvalidSpec,
-			Message: "spec.policyRef must set both name and scopeName",
-		}
-	}
-	// Scope must name a hierarchy level owning a TemplatePolicy. The CRD
-	// enum pins this to {organization, folder}, but objects created through
-	// paths that bypass CRD validation (tests, direct apiserver writes,
-	// legacy imports) can still surface invalid scopes. Fail Accepted here
-	// so the object does not fall through to ResolvedRefs=True on a
-	// malformed spec.
-	switch strings.ToLower(binding.Spec.PolicyRef.Scope) {
-	case "organization", "folder":
-		// OK
-	default:
-		return metav1.Condition{
-			Type:    v1alpha1.TemplatePolicyBindingConditionAccepted,
-			Status:  metav1.ConditionFalse,
-			Reason:  v1alpha1.TemplatePolicyBindingReasonInvalidSpec,
-			Message: fmt.Sprintf("spec.policyRef.scope %q is not a valid scope (expected organization or folder)", binding.Spec.PolicyRef.Scope),
+			Message: "spec.policyRef must set both name and namespace",
 		}
 	}
 	return metav1.Condition{
@@ -321,15 +304,13 @@ func (r *TemplatePolicyBindingReconciler) bindingResolvedRefsCondition(ctx conte
 	}
 
 	// spec.policyRef: the referenced TemplatePolicy must exist in the
-	// namespace implied by PolicyRef.Scope + PolicyRef.ScopeName AND live
-	// in a namespace reachable from the binding's own namespace via the
-	// console.holos.run/parent ancestor chain. bindingAcceptedCondition
-	// has already screened out bad scope discriminators; policyRefNamespace
-	// returning ok=false here would mean we raced with an Accepted=False
-	// surface, so we only walk the chain when we can compute a target
-	// namespace.
-	policyNs, ok := r.policyRefNamespace(binding.Spec.PolicyRef)
-	if ok {
+	// namespace named by PolicyRef.Namespace AND live in a namespace
+	// reachable from the binding's own namespace via the
+	// console.holos.run/parent ancestor chain. This mirrors the RPC
+	// handler's AncestorChainResolver gate so the reconciler does not
+	// report Ready=True on objects the write path rejects.
+	policyNs := binding.Spec.PolicyRef.Namespace
+	if policyNs != "" {
 		var policy v1alpha1.TemplatePolicy
 		err := r.Get(ctx, types.NamespacedName{Namespace: policyNs, Name: binding.Spec.PolicyRef.Name}, &policy)
 		if err != nil {
@@ -338,19 +319,13 @@ func (r *TemplatePolicyBindingReconciler) bindingResolvedRefsCondition(ctx conte
 					Type:   v1alpha1.TemplatePolicyBindingConditionResolvedRefs,
 					Status: metav1.ConditionFalse,
 					Reason: v1alpha1.TemplatePolicyBindingReasonPolicyNotFound,
-					Message: fmt.Sprintf("TemplatePolicy %s/%s (scope=%s) not found",
-						policyNs, binding.Spec.PolicyRef.Name, binding.Spec.PolicyRef.Scope),
+					Message: fmt.Sprintf("TemplatePolicy %s/%s not found",
+						policyNs, binding.Spec.PolicyRef.Name),
 				}, nil
 			}
 			return metav1.Condition{}, fmt.Errorf("get TemplatePolicy %s/%s: %w", policyNs, binding.Spec.PolicyRef.Name, err)
 		}
 
-		// Reachability: walk the binding's ancestor chain and require
-		// that policyNs appears in it. A folder binding can name its
-		// own folder or any ancestor organization; an organization
-		// binding can only name its own organization. This mirrors the
-		// RPC handler's AncestorChainResolver gate so the reconciler
-		// does not report Ready=True on objects the write path rejects.
 		reachable, err := r.policyNamespaceInAncestorChain(ctx, binding.Namespace, policyNs)
 		if err != nil {
 			return metav1.Condition{}, fmt.Errorf("walking ancestor chain from %q: %w", binding.Namespace, err)
@@ -360,8 +335,8 @@ func (r *TemplatePolicyBindingReconciler) bindingResolvedRefsCondition(ctx conte
 				Type:   v1alpha1.TemplatePolicyBindingConditionResolvedRefs,
 				Status: metav1.ConditionFalse,
 				Reason: v1alpha1.TemplatePolicyBindingReasonPolicyNotFound,
-				Message: fmt.Sprintf("TemplatePolicy %s/%s (scope=%s) is not reachable from binding namespace %q via the ancestor chain",
-					policyNs, binding.Spec.PolicyRef.Name, binding.Spec.PolicyRef.Scope, binding.Namespace),
+				Message: fmt.Sprintf("TemplatePolicy %s/%s is not reachable from binding namespace %q via the ancestor chain",
+					policyNs, binding.Spec.PolicyRef.Name, binding.Namespace),
 			}, nil
 		}
 	}
@@ -372,22 +347,6 @@ func (r *TemplatePolicyBindingReconciler) bindingResolvedRefsCondition(ctx conte
 		Reason:  v1alpha1.TemplatePolicyBindingReasonResolvedRefs,
 		Message: "every target_ref and policyRef resolves to an existing object",
 	}, nil
-}
-
-// policyRefNamespace maps a LinkedTemplatePolicyRef to the namespace the
-// referenced TemplatePolicy must live in. Returns ok=false for scope values
-// that do not map to a namespace — callers leave ResolvedRefs to fall through
-// to the policy-independent "refs ok" branch because scope validity is an
-// Accepted-level concern, not a ResolvedRefs-level concern.
-func (r *TemplatePolicyBindingReconciler) policyRefNamespace(ref v1alpha1.LinkedTemplatePolicyRef) (string, bool) {
-	switch strings.ToLower(ref.Scope) {
-	case "organization":
-		return r.NamespacePrefix + r.OrganizationPrefix + ref.ScopeName, true
-	case "folder":
-		return r.NamespacePrefix + r.FolderPrefix + ref.ScopeName, true
-	default:
-		return "", false
-	}
 }
 
 // policyNamespaceInAncestorChain walks the console.holos.run/parent label
@@ -519,11 +478,7 @@ func (r *TemplatePolicyBindingReconciler) bindingsForTemplatePolicy(ctx context.
 	}
 	var out []reconcile.Request
 	for _, b := range list.Items {
-		ns, ok := r.policyRefNamespace(b.Spec.PolicyRef)
-		if !ok {
-			continue
-		}
-		if ns != policy.Namespace || b.Spec.PolicyRef.Name != policy.Name {
+		if b.Spec.PolicyRef.Namespace != policy.Namespace || b.Spec.PolicyRef.Name != policy.Name {
 			continue
 		}
 		out = append(out, reconcile.Request{

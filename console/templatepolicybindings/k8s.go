@@ -31,7 +31,6 @@ import (
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -236,16 +235,14 @@ func (k *K8sClient) DeleteBinding(ctx context.Context, namespace, name string) e
 }
 
 // protoPolicyRefToCRD converts the proto LinkedTemplatePolicyRef into the
-// CRD's structured equivalent. The CRD enum is lowercase
-// "organization"/"folder" — the same wire strings HOL-619 settled on for
-// scope discrimination.
+// CRD's structured equivalent. Both sides carry the flat (namespace, name)
+// pair post-HOL-723.
 func protoPolicyRefToCRD(ref *consolev1.LinkedTemplatePolicyRef) templatesv1alpha1.LinkedTemplatePolicyRef {
 	if ref == nil {
 		return templatesv1alpha1.LinkedTemplatePolicyRef{}
 	}
 	return templatesv1alpha1.LinkedTemplatePolicyRef{
-		Scope:     policyRefScopeToCRD(scopeshim.PolicyRefScope(ref)),
-		ScopeName: scopeshim.PolicyRefScopeName(ref),
+		Namespace: ref.GetNamespace(),
 		Name:      ref.GetName(),
 	}
 }
@@ -253,35 +250,12 @@ func protoPolicyRefToCRD(ref *consolev1.LinkedTemplatePolicyRef) templatesv1alph
 // CRDPolicyRefToProto is the inverse of protoPolicyRefToCRD. Exported for
 // policyresolver and the handler's CRD → proto conversion path.
 func CRDPolicyRefToProto(ref templatesv1alpha1.LinkedTemplatePolicyRef) *consolev1.LinkedTemplatePolicyRef {
-	if ref.Name == "" && ref.ScopeName == "" && ref.Scope == "" {
+	if ref.Name == "" && ref.Namespace == "" {
 		return nil
 	}
-	return scopeshim.NewLinkedTemplatePolicyRef(
-		scopeFromPolicyRefLabel(ref.Scope),
-		ref.ScopeName,
-		ref.Name,
-	)
-}
-
-func policyRefScopeToCRD(scope scopeshim.Scope) string {
-	switch scope {
-	case scopeshim.ScopeOrganization:
-		return "organization"
-	case scopeshim.ScopeFolder:
-		return "folder"
-	default:
-		return ""
-	}
-}
-
-func scopeFromPolicyRefLabel(label string) scopeshim.Scope {
-	switch label {
-	case "organization":
-		return scopeshim.ScopeOrganization
-	case "folder":
-		return scopeshim.ScopeFolder
-	default:
-		return scopeshim.ScopeUnspecified
+	return &consolev1.LinkedTemplatePolicyRef{
+		Namespace: ref.Namespace,
+		Name:      ref.Name,
 	}
 }
 

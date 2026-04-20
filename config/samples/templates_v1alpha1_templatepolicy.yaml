@@ -11,6 +11,5 @@ spec:
   rules:
   - kind: Require
     template:
-      scope: organization
-      scopeName: acme
+      namespace: holos-org-acme
       name: istio-gateway

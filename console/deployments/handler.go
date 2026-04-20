@@ -20,7 +20,6 @@ import (
 	"github.com/holos-run/holos-console/console/deployments/statuscache"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -1663,9 +1662,12 @@ func linkedTemplateRefsFromAnnotation(cm *corev1.ConfigMap) []*consolev1.LinkedT
 	if !ok || raw == "" {
 		return nil
 	}
+	// Post-HOL-723 the wire shape is {namespace, name, version_constraint}
+	// (mirrors applied_state.go storedLinkedRef). The legacy
+	// {scope, scope_name} shape was retired along with the scopeshim
+	// compatibility layer.
 	var refs []struct {
-		Scope             string `json:"scope"`
-		ScopeName         string `json:"scope_name"`
+		Namespace         string `json:"namespace"`
 		Name              string `json:"name"`
 		VersionConstraint string `json:"version_constraint,omitempty"`
 	}
@@ -1679,14 +1681,14 @@ func linkedTemplateRefsFromAnnotation(cm *corev1.ConfigMap) []*consolev1.LinkedT
 	}
 	result := make([]*consolev1.LinkedTemplateRef, 0, len(refs))
 	for _, ref := range refs {
-		if ref.Name != "" {
-			result = append(result, scopeshim.NewLinkedTemplateRef(
-				scopeFromLabel(ref.Scope),
-				ref.ScopeName,
-				ref.Name,
-				ref.VersionConstraint,
-			))
+		if ref.Name == "" {
+			continue
 		}
+		result = append(result, &consolev1.LinkedTemplateRef{
+			Namespace:         ref.Namespace,
+			Name:              ref.Name,
+			VersionConstraint: ref.VersionConstraint,
+		})
 	}
 	return result
 }
@@ -1702,20 +1704,6 @@ func stringSliceFromConfigMap(cm *corev1.ConfigMap, key string) []string {
 		return nil
 	}
 	return result
-}
-
-// scopeFromLabel converts a label string back to a TemplateScope enum value.
-func scopeFromLabel(label string) scopeshim.Scope {
-	switch label {
-	case v1alpha2.TemplateScopeOrganization:
-		return scopeshim.ScopeOrganization
-	case v1alpha2.TemplateScopeFolder:
-		return scopeshim.ScopeFolder
-	case v1alpha2.TemplateScopeProject:
-		return scopeshim.ScopeProject
-	default:
-		return scopeshim.ScopeUnspecified
-	}
 }
 
 // mapK8sError converts Kubernetes API errors to ConnectRPC errors.

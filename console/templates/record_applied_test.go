@@ -14,7 +14,6 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -118,20 +117,19 @@ func existingProjectTemplateWithLinks(project, name string, refs []*consolev1.Li
 }
 
 // marshalLinkedTemplatesForTest serializes linked refs using the same JSON
-// shape the production helper emits. Re-implementing the shape here avoids
-// taking a dependency on an unexported helper.
+// shape the production helper emits (flat {namespace, name,
+// version_constraint}). Re-implementing the shape here avoids taking a
+// dependency on an unexported helper.
 func marshalLinkedTemplatesForTest(refs []*consolev1.LinkedTemplateRef) (string, error) {
 	type storedRef struct {
-		Scope             string `json:"scope"`
-		ScopeName         string `json:"scope_name"`
+		Namespace         string `json:"namespace"`
 		Name              string `json:"name"`
 		VersionConstraint string `json:"version_constraint,omitempty"`
 	}
 	stored := make([]storedRef, 0, len(refs))
 	for _, r := range refs {
 		stored = append(stored, storedRef{
-			Scope:             scopeLabelValue(scopeshim.RefScope(r)),
-			ScopeName:         scopeshim.RefScopeName(r),
+			Namespace:         r.GetNamespace(),
 			Name:              r.GetName(),
 			VersionConstraint: r.GetVersionConstraint(),
 		})
@@ -236,7 +234,7 @@ func TestHandler_CreateTemplate_NoRecordAtOrgOrFolderScope(t *testing.T) {
 
 	h.recordProjectTemplateApplied(
 		context.Background(),
-		scopeshim.ScopeOrganization,
+		scopeKindOrganization,
 		"acme",
 		"httproute",
 		nil,
@@ -247,7 +245,7 @@ func TestHandler_CreateTemplate_NoRecordAtOrgOrFolderScope(t *testing.T) {
 
 	h.recordProjectTemplateApplied(
 		context.Background(),
-		scopeshim.ScopeFolder,
+		scopeKindFolder,
 		"payments",
 		"audit",
 		nil,

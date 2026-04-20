@@ -17,7 +17,6 @@ import (
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -88,7 +87,7 @@ func TestConfigMapToTemplate(t *testing.T) {
 				CueTemplateKey: validCue,
 			},
 		}
-		tmpl := configMapToTemplate(cm, scopeshim.ScopeProject, "my-project")
+		tmpl := configMapToTemplate(cm, scopeKindProject, "my-project")
 		if tmpl.Name != "web-app" {
 			t.Errorf("expected name 'web-app', got %q", tmpl.Name)
 		}
@@ -126,7 +125,7 @@ func TestConfigMapToTemplate(t *testing.T) {
 			},
 			Data: map[string]string{},
 		}
-		tmpl := configMapToTemplate(cm, scopeshim.ScopeOrganization, "acme")
+		tmpl := configMapToTemplate(cm, scopeKindOrganization, "acme")
 		if !tmpl.Enabled {
 			t.Error("expected enabled=true")
 		}
@@ -157,19 +156,20 @@ func TestConfigMapToTemplate(t *testing.T) {
 			},
 			Data: map[string]string{},
 		}
-		tmpl := configMapToTemplate(cm, scopeshim.ScopeProject, "my-project")
+		tmpl := configMapToTemplate(cm, scopeKindProject, "my-project")
 		if len(tmpl.LinkedTemplates) != 2 {
 			t.Fatalf("expected 2 linked templates, got %d", len(tmpl.LinkedTemplates))
 		}
 		if tmpl.LinkedTemplates[0].Name != "httproute" {
 			t.Errorf("expected 'httproute', got %q", tmpl.LinkedTemplates[0].Name)
 		}
-		// HOL-619: LinkedTemplateRef.Scope was replaced by .Namespace.
-		if got := scopeshim.RefScope(tmpl.LinkedTemplates[0]); got != scopeshim.ScopeOrganization {
-			t.Errorf("expected org scope from namespace %q, got %v", tmpl.LinkedTemplates[0].GetNamespace(), got)
+		// Post-HOL-723 namespace is authoritative; classify via the test
+		// resolver to assert the expected scope.
+		if kind, _ := classifyNamespace(testResolver, tmpl.LinkedTemplates[0].GetNamespace()); kind != scopeKindOrganization {
+			t.Errorf("expected org scope from namespace %q, got %v", tmpl.LinkedTemplates[0].GetNamespace(), kind)
 		}
-		if got := scopeshim.RefScope(tmpl.LinkedTemplates[1]); got != scopeshim.ScopeFolder {
-			t.Errorf("expected folder scope from namespace %q, got %v", tmpl.LinkedTemplates[1].GetNamespace(), got)
+		if kind, _ := classifyNamespace(testResolver, tmpl.LinkedTemplates[1].GetNamespace()); kind != scopeKindFolder {
+			t.Errorf("expected folder scope from namespace %q, got %v", tmpl.LinkedTemplates[1].GetNamespace(), kind)
 		}
 	})
 
@@ -184,7 +184,7 @@ func TestConfigMapToTemplate(t *testing.T) {
 				DefaultsKey: defaultsJSON,
 			},
 		}
-		tmpl := configMapToTemplate(cm, scopeshim.ScopeProject, "my-project")
+		tmpl := configMapToTemplate(cm, scopeKindProject, "my-project")
 		if tmpl.Defaults == nil {
 			t.Fatal("expected non-nil defaults from annotation fallback")
 		}
@@ -206,7 +206,7 @@ func TestConfigMapToTemplate(t *testing.T) {
 				CueTemplateKey: validCue,
 			},
 		}
-		tmpl := configMapToTemplate(cm, scopeshim.ScopeOrganization, "acme")
+		tmpl := configMapToTemplate(cm, scopeKindOrganization, "acme")
 		if tmpl.Defaults != nil {
 			t.Errorf("expected nil defaults for org-scope template, got %+v", tmpl.Defaults)
 		}
@@ -222,7 +222,7 @@ func TestConfigMapToTemplate(t *testing.T) {
 				CueTemplateKey: validCue,
 			},
 		}
-		tmpl := configMapToTemplate(cm, scopeshim.ScopeProject, "my-project")
+		tmpl := configMapToTemplate(cm, scopeKindProject, "my-project")
 		if tmpl.Defaults != nil {
 			t.Errorf("expected nil defaults when neither CUE defaults nor annotation present, got %+v", tmpl.Defaults)
 		}
@@ -271,7 +271,7 @@ func newTestHandler(t *testing.T, fakeClient *fake.Clientset, shareUsers map[str
 // is observable from within the test.
 func newTestHandlerAndK8s(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string, extra ...ctrlclient.Object) (*Handler, *K8sClient) {
 	t.Helper()
-	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
+	r := testResolver
 	k8s := newTestK8sClient(t, fakeClient, r, extra...)
 	handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 	handler.WithProjectGrantResolver(&stubProjectGrantResolver{users: shareUsers})
@@ -280,19 +280,19 @@ func newTestHandlerAndK8s(t *testing.T, fakeClient *fake.Clientset, shareUsers m
 
 // orgLinkedRef returns a LinkedTemplateRef pointing at an org-scope template.
 func orgLinkedRef(org, name string) *consolev1.LinkedTemplateRef {
-	return scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, name, "")
+	return &consolev1.LinkedTemplateRef{Namespace: testResolver.OrgNamespace(org), Name: name}
 }
 
 // folderLinkedRef returns a LinkedTemplateRef pointing at a folder-scope template.
 func folderLinkedRef(folder, name string) *consolev1.LinkedTemplateRef {
-	return scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, folder, name, "")
+	return &consolev1.LinkedTemplateRef{Namespace: testResolver.FolderNamespace(folder), Name: name}
 }
 
 // projectScopeRef returns the Kubernetes namespace string for the named
 // project scope. HOL-619 collapsed TemplateScopeRef; the handler now keys
 // project-scope requests by namespace alone.
 func projectScopeRef(project string) string {
-	return scopeshim.DefaultResolver().ProjectNamespace(project)
+	return testResolver.ProjectNamespace(project)
 }
 
 // TestCreateTemplateLinkPermissions verifies that CreateTemplate enforces scoped
@@ -556,7 +556,7 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 					t.Fatal("expected linked templates to be preserved, but spec.linkedTemplates is empty")
 				}
 				got := updated.Spec.LinkedTemplates[0]
-				if got.Scope != "organization" || got.ScopeName != "acme" || got.Name != "httproute" {
+				if got.Namespace != testResolver.OrgNamespace("acme") || got.Name != "httproute" {
 					t.Errorf("expected preserved org/acme/httproute link, got %+v", got)
 				}
 			}

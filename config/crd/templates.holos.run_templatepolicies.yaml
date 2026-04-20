@@ -92,19 +92,9 @@ spec:
                           description: Name is the linked template's DNS label slug.
                           minLength: 1
                           type: string
-                        scope:
-                          description: |-
-                            Scope identifies the hierarchy level of the linked template.
-                            Valid values: "organization", "folder", "project".
-                          enum:
-                          - organization
-                          - folder
-                          - project
-                          type: string
-                        scopeName:
-                          description: |-
-                            ScopeName is the organization, folder, or project name owning the
-                            linked template.
+                        namespace:
+                          description: Namespace is the Kubernetes namespace that
+                            owns the linked template.
                           minLength: 1
                           type: string
                         versionConstraint:
@@ -116,8 +106,7 @@ spec:
                           type: string
                       required:
                       - name
-                      - scope
-                      - scopeName
+                      - namespace
                       type: object
                   required:
                   - kind

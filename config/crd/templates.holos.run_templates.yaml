@@ -145,31 +145,18 @@ spec:
                   of this list.
                 items:
                   description: |-
-                    LinkedTemplateRef is a scope-qualified reference to another Template used
-                    in the explicit linking list. The `scope` / `scopeName` pair is retained
-                    on the stored CRD shape for compatibility with persisted data and with
-                    the Go storage adapters; the proto wire shape is already namespace-only
-                    (HOL-619). A future migration collapses this to a single (namespace,
-                    name) pair in lockstep with rewriting the storage adapters that still
-                    read and write the discriminator.
+                    LinkedTemplateRef is a (namespace, name) reference to another Template
+                    used in the explicit linking list. The namespace's
+                    `console.holos.run/resource-type` label classifies the linked template's
+                    hierarchy kind at render time — callers supply the namespace only.
                   properties:
                     name:
                       description: Name is the linked template's DNS label slug.
                       minLength: 1
                       type: string
-                    scope:
-                      description: |-
-                        Scope identifies the hierarchy level of the linked template.
-                        Valid values: "organization", "folder", "project".
-                      enum:
-                      - organization
-                      - folder
-                      - project
-                      type: string
-                    scopeName:
-                      description: |-
-                        ScopeName is the organization, folder, or project name owning the
-                        linked template.
+                    namespace:
+                      description: Namespace is the Kubernetes namespace that owns
+                        the linked template.
                       minLength: 1
                       type: string
                     versionConstraint:
@@ -181,8 +168,7 @@ spec:
                       type: string
                   required:
                   - name
-                  - scope
-                  - scopeName
+                  - namespace
                   type: object
                 type: array
                 x-kubernetes-list-type: atomic

@@ -30,7 +30,6 @@ import (
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -109,14 +108,19 @@ func configMapToTemplateCRD(cm *corev1.ConfigMap) *templatesv1alpha1.Template {
 	return tmpl
 }
 
-// parseLinkedAnnotation decodes the legacy v1alpha2 linked-templates JSON
-// annotation into proto LinkedTemplateRefs so ConfigMap test fixtures that
-// still express linked refs through the annotation continue to work after
-// HOL-661 moved production storage into Template.Spec.LinkedTemplates.
+// parseLinkedAnnotation decodes a linked-templates JSON annotation into
+// proto LinkedTemplateRefs so ConfigMap test fixtures that still express
+// linked refs through the annotation continue to work after HOL-661 moved
+// production storage into Template.Spec.LinkedTemplates. Post-HOL-723 the
+// annotation carries a flat {namespace, name, version_constraint} shape;
+// this helper still understands the legacy {scope, scope_name, ...}
+// variant by classifying through the package-level testResolver so stale
+// fixtures keep round-tripping.
 func parseLinkedAnnotation(raw string) []*consolev1.LinkedTemplateRef {
 	type storedRef struct {
-		Scope             string `json:"scope"`
-		ScopeName         string `json:"scope_name"`
+		Namespace         string `json:"namespace,omitempty"`
+		Scope             string `json:"scope,omitempty"`
+		ScopeName         string `json:"scope_name,omitempty"`
 		Name              string `json:"name"`
 		VersionConstraint string `json:"version_constraint,omitempty"`
 	}
@@ -126,18 +130,24 @@ func parseLinkedAnnotation(raw string) []*consolev1.LinkedTemplateRef {
 	}
 	out := make([]*consolev1.LinkedTemplateRef, 0, len(stored))
 	for _, r := range stored {
-		var scope scopeshim.Scope
-		switch r.Scope {
-		case "organization":
-			scope = scopeshim.ScopeOrganization
-		case "folder":
-			scope = scopeshim.ScopeFolder
-		case "project":
-			scope = scopeshim.ScopeProject
-		default:
-			continue
+		ns := r.Namespace
+		if ns == "" {
+			switch r.Scope {
+			case "organization":
+				ns = testResolver.OrgNamespace(r.ScopeName)
+			case "folder":
+				ns = testResolver.FolderNamespace(r.ScopeName)
+			case "project":
+				ns = testResolver.ProjectNamespace(r.ScopeName)
+			default:
+				continue
+			}
 		}
-		out = append(out, scopeshim.NewLinkedTemplateRef(scope, r.ScopeName, r.Name, r.VersionConstraint))
+		out = append(out, &consolev1.LinkedTemplateRef{
+			Namespace:         ns,
+			Name:              r.Name,
+			VersionConstraint: r.VersionConstraint,
+		})
 	}
 	return out
 }
@@ -267,8 +277,8 @@ func makeReleaseCRDWithData(ns, templateName, version, cue, defaults string) *te
 // test. The (scope, scopeName) parameters are retained because
 // templateCRDToProto still takes a scope (for CUE extraction gating — only
 // project-scope templates pull defaults out of their CUE).
-func configMapToTemplate(cm *corev1.ConfigMap, scope scopeshim.Scope, _ string) *consolev1.Template {
-	return templateCRDToProto(configMapToTemplateCRD(cm), scope)
+func configMapToTemplate(cm *corev1.ConfigMap, scope scopeKind, _ string) *consolev1.Template {
+	return templateCRDToProto(configMapToTemplateCRD(cm), scope == scopeKindProject)
 }
 
 // ensure apierrors import stays used even if no other test helper touches it

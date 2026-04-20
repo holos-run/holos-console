@@ -12,11 +12,11 @@
 // argument dropped off NewK8sClient at the same time — no non-Namespace call
 // through it remained. Namespace reads still flow through the Resolver.
 //
-// Signature shape: every Template method takes a Kubernetes namespace and
-// a resource name. The namespace is the authoritative identifier per
-// HOL-619; callers that still think in terms of (scope, scopeName) compute
-// the namespace through the package-level namespaceForScope helper or the
-// resolver directly.
+// Signature shape: every Template and Release method takes a Kubernetes
+// namespace and a resource name. The namespace is the authoritative
+// identifier per HOL-619 and HOL-723. Handlers classify incoming namespaces
+// through the resolver on their own; K8sClient no longer accepts a
+// (scope, scopeName) pair.
 package templates
 
 import (
@@ -37,7 +37,6 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -57,9 +56,9 @@ type K8sClient struct {
 	// client is the cache-backed controller-runtime client for Template
 	// and TemplateRelease CRDs.
 	client ctrlclient.Client
-	// Resolver maps scope pairs to namespaces and back. Exported so
-	// handlers can reuse the same resolver instance when they still think
-	// in (scope, scopeName) terms.
+	// Resolver maps logical names (org, folder, project) to Kubernetes
+	// namespaces. Exported so handlers can reuse the same resolver
+	// instance.
 	Resolver *resolver.Resolver
 }
 
@@ -67,39 +66,6 @@ type K8sClient struct {
 // Template and TemplateRelease CRDs alongside the namespace resolver.
 func NewK8sClient(cl ctrlclient.Client, r *resolver.Resolver) *K8sClient {
 	return &K8sClient{client: cl, Resolver: r}
-}
-
-// namespaceForScope returns the Kubernetes namespace for the given scope and
-// name. Retained as a method so callers that still hold a (scope, scopeName)
-// pair (notably handler.go during the HOL-619/HOL-621 transition) can ask the
-// K8sClient to resolve through its own resolver.
-func (k *K8sClient) namespaceForScope(scope scopeshim.Scope, scopeName string) (string, error) {
-	switch scope {
-	case scopeshim.ScopeOrganization:
-		return k.Resolver.OrgNamespace(scopeName), nil
-	case scopeshim.ScopeFolder:
-		return k.Resolver.FolderNamespace(scopeName), nil
-	case scopeshim.ScopeProject:
-		return k.Resolver.ProjectNamespace(scopeName), nil
-	default:
-		return "", fmt.Errorf("unknown template scope %v", scope)
-	}
-}
-
-// scopeLabelValue returns the label string for a TemplateScope enum value.
-// Used when rebuilding a linkedRef key from a namespace+label pair that
-// still classifies through the resolver.
-func scopeLabelValue(scope scopeshim.Scope) string {
-	switch scope {
-	case scopeshim.ScopeOrganization:
-		return v1alpha2.TemplateScopeOrganization
-	case scopeshim.ScopeFolder:
-		return v1alpha2.TemplateScopeFolder
-	case scopeshim.ScopeProject:
-		return v1alpha2.TemplateScopeProject
-	default:
-		return ""
-	}
 }
 
 // ListTemplates returns every Template in the given namespace.
@@ -452,7 +418,7 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 		return nil, nil, nil
 	}
 
-	// Build a lookup from (scope, scopeName, name) -> linked ref so linked
+	// Build a lookup from (namespace, name) -> linked ref so linked
 	// templates with version constraints resolve their release source.
 	linkedByKey := make(map[linkedRef]*consolev1.LinkedTemplateRef, len(effectiveRefs))
 	for _, ref := range effectiveRefs {
@@ -475,18 +441,12 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 			continue
 		}
 
-		scope, scopeName := scopeAndNameFromNs(k.Resolver, ns.Name)
-		if scope == scopeshim.ScopeUnspecified {
-			continue
-		}
-		scopeLabel := scopeLabelValue(scope)
-
 		for i := range tmpls {
 			tmpl := &tmpls[i]
 			if !tmpl.Spec.Enabled {
 				continue
 			}
-			key := linkedRef{scope: scopeLabel, scopeName: scopeName, name: tmpl.Name}
+			key := linkedRef{namespace: ns.Name, name: tmpl.Name}
 			protoRef, isLinked := linkedByKey[key]
 
 			if !isLinked {
@@ -826,7 +786,12 @@ const (
 // project-scope templates (ADR 018/ADR 025); non-project scopes return the
 // CRD's structured defaults directly so the legacy ConfigMap-JSON fallback
 // is no longer in play.
-func templateCRDToProto(tmpl *templatesv1alpha1.Template, scope scopeshim.Scope) *consolev1.Template {
+//
+// `isProject` indicates whether this template lives in a project namespace.
+// Callers classify via the resolver (e.g. ResourceTypeFromNamespace) before
+// calling; passing false for org/folder templates disables the CUE-defaults
+// extraction branch that is project-scope only.
+func templateCRDToProto(tmpl *templatesv1alpha1.Template, isProject bool) *consolev1.Template {
 	out := &consolev1.Template{
 		Name:            tmpl.Name,
 		Namespace:       tmpl.Namespace,
@@ -840,7 +805,7 @@ func templateCRDToProto(tmpl *templatesv1alpha1.Template, scope scopeshim.Scope)
 
 	// Priority 1: CUE extraction for project-scope templates (ADR 018 design,
 	// ADR 025 per-field extraction).
-	if scope == scopeshim.ScopeProject && tmpl.Spec.CueTemplate != "" {
+	if isProject && tmpl.Spec.CueTemplate != "" {
 		extracted, err := ExtractDefaults(tmpl.Spec.CueTemplate)
 		if err != nil {
 			slog.Warn("failed to extract defaults from CUE template; falling back to spec defaults",
@@ -862,32 +827,28 @@ func templateCRDToProto(tmpl *templatesv1alpha1.Template, scope scopeshim.Scope)
 }
 
 // linkedRef is a deduplicated key for a cross-level template reference.
+// Post-HOL-723 the key is just (namespace, name).
 type linkedRef struct {
-	scope     string // e.g. "organization", "folder", "project"
-	scopeName string
+	namespace string
 	name      string
 }
 
 // linkedRefFromProto converts a proto LinkedTemplateRef to a linkedRef key.
-// The proto carries a namespace today (HOL-619); classify it through the
-// shim so the internal storage key stays stable until the shim itself is
-// retired alongside the transitional fields.
 func linkedRefFromProto(ref *consolev1.LinkedTemplateRef) linkedRef {
 	return linkedRef{
-		scope:     scopeLabelValue(scopeshim.RefScope(ref)),
-		scopeName: scopeshim.RefScopeName(ref),
-		name:      ref.Name,
+		namespace: ref.GetNamespace(),
+		name:      ref.GetName(),
 	}
 }
 
 // marshalLinkedTemplates serializes LinkedTemplateRef slice to JSON. Used
 // only by the ProjectScopedResolver compatibility adapter that synthesises
 // a ConfigMap for the deployments package; once that package is rewritten
-// against the CRD this helper disappears with it.
+// against the CRD this helper disappears with it. The stored shape matches
+// the applied-render-set shape in console/policyresolver/applied_state.go.
 func marshalLinkedTemplates(refs []*consolev1.LinkedTemplateRef) ([]byte, error) {
 	type storedRef struct {
-		Scope             string `json:"scope"`
-		ScopeName         string `json:"scope_name"`
+		Namespace         string `json:"namespace"`
 		Name              string `json:"name"`
 		VersionConstraint string `json:"version_constraint,omitempty"`
 	}
@@ -897,10 +858,9 @@ func marshalLinkedTemplates(refs []*consolev1.LinkedTemplateRef) ([]byte, error)
 			continue
 		}
 		stored = append(stored, storedRef{
-			Scope:             scopeLabelValue(scopeshim.RefScope(r)),
-			ScopeName:         scopeshim.RefScopeName(r),
-			Name:              r.Name,
-			VersionConstraint: r.VersionConstraint,
+			Namespace:         r.GetNamespace(),
+			Name:              r.GetName(),
+			VersionConstraint: r.GetVersionConstraint(),
 		})
 	}
 	b, err := json.Marshal(stored)
@@ -924,10 +884,9 @@ func protoLinkedToCRD(refs []*consolev1.LinkedTemplateRef) []templatesv1alpha1.L
 			continue
 		}
 		out = append(out, templatesv1alpha1.LinkedTemplateRef{
-			Scope:             scopeLabelValue(scopeshim.RefScope(ref)),
-			ScopeName:         scopeshim.RefScopeName(ref),
-			Name:              ref.Name,
-			VersionConstraint: ref.VersionConstraint,
+			Namespace:         ref.GetNamespace(),
+			Name:              ref.GetName(),
+			VersionConstraint: ref.GetVersionConstraint(),
 		})
 	}
 	if len(out) == 0 {
@@ -937,22 +896,19 @@ func protoLinkedToCRD(refs []*consolev1.LinkedTemplateRef) []templatesv1alpha1.L
 }
 
 // crdLinkedToProto translates the CRD's structured linked-template slice into
-// the wire shape. The proto LinkedTemplateRef carries a namespace (HOL-619);
-// scopeshim.NewLinkedTemplateRef builds one from the legacy
-// (scope, scopeName) pair and returns a ref whose namespace matches what
-// the handler computes elsewhere.
+// the wire shape. Both sides are namespace-native post-HOL-723, so the
+// conversion is a 1:1 field copy.
 func crdLinkedToProto(refs []templatesv1alpha1.LinkedTemplateRef) []*consolev1.LinkedTemplateRef {
 	if len(refs) == 0 {
 		return nil
 	}
 	out := make([]*consolev1.LinkedTemplateRef, 0, len(refs))
 	for _, ref := range refs {
-		out = append(out, scopeshim.NewLinkedTemplateRef(
-			scopeFromLabel(ref.Scope),
-			ref.ScopeName,
-			ref.Name,
-			ref.VersionConstraint,
-		))
+		out = append(out, &consolev1.LinkedTemplateRef{
+			Namespace:         ref.Namespace,
+			Name:              ref.Name,
+			VersionConstraint: ref.VersionConstraint,
+		})
 	}
 	return out
 }
@@ -1012,35 +968,6 @@ func crdDefaultsToProto(in *templatesv1alpha1.TemplateDefaults) *consolev1.Templ
 		}
 	}
 	return out
-}
-
-// scopeFromLabel converts a label string back to a TemplateScope enum value.
-func scopeFromLabel(label string) scopeshim.Scope {
-	switch label {
-	case v1alpha2.TemplateScopeOrganization:
-		return scopeshim.ScopeOrganization
-	case v1alpha2.TemplateScopeFolder:
-		return scopeshim.ScopeFolder
-	case v1alpha2.TemplateScopeProject:
-		return scopeshim.ScopeProject
-	default:
-		return scopeshim.ScopeUnspecified
-	}
-}
-
-// scopeAndNameFromNs infers the scope and logical name from a Kubernetes
-// namespace.
-func scopeAndNameFromNs(r *resolver.Resolver, ns string) (scopeshim.Scope, string) {
-	if name, err := r.OrgFromNamespace(ns); err == nil {
-		return scopeshim.ScopeOrganization, name
-	}
-	if name, err := r.FolderFromNamespace(ns); err == nil {
-		return scopeshim.ScopeFolder, name
-	}
-	if name, err := r.ProjectFromNamespace(ns); err == nil {
-		return scopeshim.ScopeProject, name
-	}
-	return scopeshim.ScopeUnspecified, ""
 }
 
 // AncestorTemplateResolver adapts K8sClient + a walker + a PolicyResolver

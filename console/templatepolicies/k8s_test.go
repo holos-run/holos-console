@@ -29,13 +29,13 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	crdmgrtesting "github.com/holos-run/holos-console/console/crdmgr/testing"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
 // newTestResolver is the canonical resolver used by every test in this
 // package. Namespace prefixes match the defaults production wires so
-// namespace strings round-trip through scopeshim.FromNamespace in tests.
+// namespace strings round-trip through resolver.ResourceTypeFromNamespace
+// in tests.
 func newTestResolver() *resolver.Resolver {
 	return &resolver.Resolver{
 		NamespacePrefix:    "holos-",
@@ -51,7 +51,7 @@ func newTestResolver() *resolver.Resolver {
 func sampleRule() *consolev1.TemplatePolicyRule {
 	return &consolev1.TemplatePolicyRule{
 		Kind:     consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE,
-		Template: scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "reference-grant", ""),
+		Template: &consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: "reference-grant"},
 	}
 }
 
@@ -202,7 +202,7 @@ func TestListPolicies(t *testing.T) {
 							{
 								Kind: templatesv1alpha1.TemplatePolicyKindRequire,
 								Template: templatesv1alpha1.LinkedTemplateRef{
-									Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "httproute",
+									Namespace: "holos-org-acme", Name: "httproute",
 								},
 							},
 						},
@@ -217,7 +217,7 @@ func TestListPolicies(t *testing.T) {
 							{
 								Kind: templatesv1alpha1.TemplatePolicyKindRequire,
 								Template: templatesv1alpha1.LinkedTemplateRef{
-									Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "other-template",
+									Namespace: "holos-org-acme", Name: "other-template",
 								},
 							},
 						},
@@ -269,7 +269,7 @@ func TestGetPolicy(t *testing.T) {
 				{
 					Kind: templatesv1alpha1.TemplatePolicyKindRequire,
 					Template: templatesv1alpha1.LinkedTemplateRef{
-						Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "httproute",
+						Namespace: "holos-org-acme", Name: "httproute",
 					},
 				},
 			},
@@ -343,7 +343,7 @@ func TestCreatePolicy(t *testing.T) {
 			rules: []*consolev1.TemplatePolicyRule{
 				{
 					Kind:     consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE,
-					Template: scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "legacy-httproute", ""),
+					Template: &consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: "legacy-httproute"},
 				},
 			},
 		},
@@ -397,7 +397,7 @@ func TestUpdatePolicy(t *testing.T) {
 				{
 					Kind: templatesv1alpha1.TemplatePolicyKindRequire,
 					Template: templatesv1alpha1.LinkedTemplateRef{
-						Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "reference-grant",
+						Namespace: "holos-org-acme", Name: "reference-grant",
 					},
 				},
 			},
@@ -433,7 +433,7 @@ func TestUpdatePolicy(t *testing.T) {
 	newRules := []*consolev1.TemplatePolicyRule{
 		{
 			Kind:     consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE,
-			Template: scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "legacy", ""),
+			Template: &consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: "legacy"},
 		},
 	}
 	got2, err := k.UpdatePolicy(context.Background(), ns, "pol", nil, nil, newRules, true)
@@ -465,7 +465,7 @@ func TestDeletePolicy(t *testing.T) {
 				{
 					Kind: templatesv1alpha1.TemplatePolicyKindRequire,
 					Template: templatesv1alpha1.LinkedTemplateRef{
-						Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "acme", Name: "t",
+						Namespace: "holos-org-acme", Name: "t",
 					},
 				},
 			},
