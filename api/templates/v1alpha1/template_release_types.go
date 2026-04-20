@@ -32,8 +32,15 @@ type TemplateReleaseSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	TemplateName string `json:"templateName"`
 	// Version is the semver string (for example "1.2.3") identifying
-	// this release.
+	// this release. Restricted to strict major.minor.patch tuples: the
+	// handler already rejects prerelease and build-metadata strings at
+	// publish time (ParseVersion), and the resolver/object-name paths
+	// assume three numeric components. Encoding the same rule in the
+	// CRD schema prevents a direct `kubectl apply` from smuggling in
+	// values like `latest` or `1.0.0-beta` that the rest of the code
+	// would silently skip.
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$`
 	Version string `json:"version"`
 	// CueTemplate is the CUE source snapshot the render path evaluates
 	// when resolving a versioned reference to this release.
@@ -83,12 +90,20 @@ type TemplateReleaseStatus struct {
 // payload in place would silently break downstream template references that
 // resolved against an earlier snapshot.
 //
+// The object-name CEL rule pins `metadata.name` to the canonical
+// `{templateName}--v{maj}-{min}-{patch}` format console/templates.ReleaseObjectName
+// emits. Without it, a direct `kubectl apply` could create a release under an
+// arbitrary name; `ListReleases` would then surface that object while
+// `GetRelease` and duplicate-publish detection (both of which address the
+// canonical name) would miss it.
+//
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced,shortName=tmplrel,categories=holos
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Template",type=string,JSONPath=`.spec.templateName`
 // +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.spec.version`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+// +kubebuilder:validation:XValidation:rule="self.metadata.name == self.spec.templateName + '--v' + self.spec.version.replace('.', '-')",message="TemplateRelease metadata.name must equal spec.templateName + '--v' + spec.version (with '.' replaced by '-')"
 type TemplateRelease struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

@@ -43,6 +43,13 @@ spec:
           offered: published releases are a version pin, so rewriting their CUE
           payload in place would silently break downstream template references that
           resolved against an earlier snapshot.
+
+          The object-name CEL rule pins `metadata.name` to the canonical
+          `{templateName}--v{maj}-{min}-{patch}` format console/templates.ReleaseObjectName
+          emits. Without it, a direct `kubectl apply` could create a release under an
+          arbitrary name; `ListReleases` would then surface that object while
+          `GetRelease` and duplicate-publish detection (both of which address the
+          canonical name) would miss it.
         properties:
           apiVersion:
             description: |-
@@ -106,8 +113,15 @@ spec:
               version:
                 description: |-
                   Version is the semver string (for example "1.2.3") identifying
-                  this release.
+                  this release. Restricted to strict major.minor.patch tuples: the
+                  handler already rejects prerelease and build-metadata strings at
+                  publish time (ParseVersion), and the resolver/object-name paths
+                  assume three numeric components. Encoding the same rule in the
+                  CRD schema prevents a direct `kubectl apply` from smuggling in
+                  values like `latest` or `1.0.0-beta` that the rest of the code
+                  would silently skip.
                 minLength: 1
+                pattern: ^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$
                 type: string
             required:
             - templateName
@@ -191,6 +205,11 @@ spec:
                 type: integer
             type: object
         type: object
+        x-kubernetes-validations:
+        - message: TemplateRelease metadata.name must equal spec.templateName + '--v'
+            + spec.version (with '.' replaced by '-')
+          rule: self.metadata.name == self.spec.templateName + '--v' + self.spec.version.replace('.',
+            '-')
     served: true
     storage: true
     subresources:
