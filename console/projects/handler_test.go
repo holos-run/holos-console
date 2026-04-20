@@ -1321,10 +1321,8 @@ func makeOrgNamespace(org string) *corev1.Namespace {
 // seedOrgRequirePolicy returns a TemplatePolicy-labeled ConfigMap placeholder
 // used by the HOL-582 regression guard. CreateProject intentionally ignores
 // policy contents at project-creation time (it never renders templates),
-// so this fixture only needs to exist — its rule body was previously
-// stashed on the legacy AnnotationTemplatePolicyRules annotation
-// (removed in HOL-663). TemplatePolicy data is now authoritatively
-// carried by the templates.holos.run TemplatePolicy CRD.
+// so this fixture only needs to exist. TemplatePolicy rule data is
+// authoritatively carried by the templates.holos.run TemplatePolicy CRD.
 func seedOrgRequirePolicy(t *testing.T, org, templateName, _ string) *corev1.ConfigMap {
 	t.Helper()
 	return &corev1.ConfigMap{

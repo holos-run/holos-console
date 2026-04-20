@@ -22,10 +22,9 @@ const (
 )
 
 // LinkedTemplateRef is a (namespace, name) reference to a template used in
-// the explicit linking list (ADR 021 Decision 5). Replaces the flat string
-// list from v1alpha1's console.holos.run/linked-org-templates annotation.
-//
-// Fields were renumbered in HOL-619 when the scope discriminator was dropped.
+// the explicit linking list (ADR 021 Decision 5). The resolver classifies
+// the namespace into its hierarchy kind (organization, folder, project) at
+// render time; callers supply the namespace only.
 type LinkedTemplateRef struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// namespace is the Kubernetes namespace that owns the linked template. The

@@ -1,24 +1,25 @@
 // Package scopeshim carries a Go-only compatibility shim for the
 // TemplateScope / TemplateScopeRef enum that was removed from proto in
-// HOL-619 (parent: HOL-615). Without this patch the Go tree could not
+// HOL-619 (parent: HOL-615). Without this patch the Go tree would not
 // compile once proto was rewritten to key Template / TemplatePolicy /
 // TemplatePolicyBinding resources by `(namespace, name)` alone, because
 // the resolver layer (console/policyresolver), the deployments handler,
-// the templates handlers, and CLI migration tools all rely on a scope
-// discriminator to route reads and writes to organization, folder, and
-// project namespaces.
+// and the templates handlers still serialize the scope discriminator
+// onto stored CRD fields and labels.
 //
-// This package is temporary. Phase 5 (HOL-624) removes every call site
-// and deletes this package when the storage layer has been fully
-// rewritten to operate on namespaces directly (HOL-621 / HOL-622).
+// This package is intentionally minimal. The remaining call sites live
+// on the CRD-storage translation seam where the stored resources still
+// carry a `(scope, scopeName)` pair on their spec (see
+// api/templates/v1alpha1.LinkedTemplateRef). A future migration that
+// rewrites those CRD fields to pure namespace/name addressing will
+// retire the last callers and delete this package.
 //
 // Root-cause note: the pre-HOL-619 proto carried two sources of truth
 // for "which namespace owns this template" — the resolver prefix map
 // and the TemplateScope enum. The parent ticket decided the namespace
 // is authoritative. This shim is the minimal Go translation that keeps
-// the tree compiling during the intermediate phases where proto is
-// namespace-only but storage, resolver, drift-state serialization, and
-// migration tooling still think in `(scope, scopeName)` pairs.
+// the tree compiling while the CRD storage surfaces still think in
+// `(scope, scopeName)` pairs.
 package scopeshim
 
 import (
@@ -137,85 +138,6 @@ func FromNamespace(r NamespaceResolver, ns string) (Scope, string, error) {
 	default:
 		return ScopeUnspecified, "", fmt.Errorf("namespace %q classified as unknown resource type %q", ns, kind)
 	}
-}
-
-// LabelValue returns the v1alpha2 label string for the scope. Empty for
-// ScopeUnspecified so callers can treat an absent label uniformly.
-func LabelValue(scope Scope) string {
-	switch scope {
-	case ScopeOrganization:
-		return v1alpha2.TemplateScopeOrganization
-	case ScopeFolder:
-		return v1alpha2.TemplateScopeFolder
-	case ScopeProject:
-		return v1alpha2.TemplateScopeProject
-	default:
-		return ""
-	}
-}
-
-// ScopeFromLabel reverses LabelValue so code reading persisted
-// ConfigMap labels can reconstruct the scope enum.
-func ScopeFromLabel(label string) Scope {
-	switch label {
-	case v1alpha2.TemplateScopeOrganization:
-		return ScopeOrganization
-	case v1alpha2.TemplateScopeFolder:
-		return ScopeFolder
-	case v1alpha2.TemplateScopeProject:
-		return ScopeProject
-	default:
-		return ScopeUnspecified
-	}
-}
-
-// LinkedRef mirrors the pre-HOL-619 LinkedTemplateRef shape with its
-// scope discriminator. Go code that still needs to reason about scope
-// carries this struct alongside the proto LinkedTemplateRef so render
-// paths, drift evaluation, and migration helpers keep compiling. The
-// proto message itself now carries only `(namespace, name,
-// version_constraint)`; this struct is the one-stop translator.
-type LinkedRef struct {
-	Scope             Scope
-	ScopeName         string
-	Name              string
-	VersionConstraint string
-}
-
-// LinkedRefFromProto converts a proto LinkedTemplateRef to the Go shim
-// form, classifying the carried namespace into (Scope, scopeName).
-// Returns an error when the namespace does not match any known prefix.
-func LinkedRefFromProto(r NamespaceResolver, ref *consolev1.LinkedTemplateRef) (*LinkedRef, error) {
-	if ref == nil {
-		return nil, nil
-	}
-	scope, scopeName, err := FromNamespace(r, ref.GetNamespace())
-	if err != nil {
-		return nil, err
-	}
-	return &LinkedRef{
-		Scope:             scope,
-		ScopeName:         scopeName,
-		Name:              ref.GetName(),
-		VersionConstraint: ref.GetVersionConstraint(),
-	}, nil
-}
-
-// LinkedRefToProto rebuilds a proto LinkedTemplateRef from a shim
-// LinkedRef, resolving the scope back to a Kubernetes namespace.
-func LinkedRefToProto(r NamespaceResolver, ref *LinkedRef) (*consolev1.LinkedTemplateRef, error) {
-	if ref == nil {
-		return nil, nil
-	}
-	ns, err := NamespaceFor(r, ref.Scope, ref.ScopeName)
-	if err != nil {
-		return nil, err
-	}
-	return &consolev1.LinkedTemplateRef{
-		Namespace:         ns,
-		Name:              ref.Name,
-		VersionConstraint: ref.VersionConstraint,
-	}, nil
 }
 
 // RefScope classifies a proto LinkedTemplateRef via the

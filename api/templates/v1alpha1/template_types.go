@@ -61,9 +61,11 @@ type TemplateDefaults struct {
 
 // LinkedTemplateRef is a scope-qualified reference to another Template used
 // in the explicit linking list. The `scope` / `scopeName` pair is retained
-// for compatibility with the existing proto wire shape — later plan phases
-// (HOL-619) collapse this to a single (namespace, name) pair once the
-// TemplateScope enum is removed.
+// on the stored CRD shape for compatibility with persisted data and with
+// the Go storage adapters; the proto wire shape is already namespace-only
+// (HOL-619). A future migration collapses this to a single (namespace,
+// name) pair in lockstep with rewriting the storage adapters that still
+// read and write the discriminator.
 type LinkedTemplateRef struct {
 	// Scope identifies the hierarchy level of the linked template.
 	// Valid values: "organization", "folder", "project".

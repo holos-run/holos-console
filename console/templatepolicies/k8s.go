@@ -11,10 +11,10 @@
 // that still think in terms of (scope, scopeName) compute the namespace via
 // the package-level resolver shim in the handler.
 //
-// ProjectNamespaceError is gone — the CEL ValidatingAdmissionPolicy shipped
-// alongside the CRDs (HOL-618) rejects creation in a project-labelled
-// namespace at admission time, so the handler's extractPolicyScope is the
-// only defense-in-depth guard the client-side code needs to keep.
+// The CEL ValidatingAdmissionPolicy shipped alongside the CRDs (HOL-618)
+// rejects TemplatePolicy creation in a project-labelled namespace at
+// admission time, so the handler's extractPolicyScope is the only
+// defense-in-depth guard the client-side code needs to keep.
 package templatepolicies
 
 import (

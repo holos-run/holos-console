@@ -772,8 +772,7 @@ func targetKindString(k consolev1.TemplatePolicyBindingTargetKind) string {
 	}
 }
 
-// mapK8sError converts Kubernetes API errors to ConnectRPC errors. HOL-662
-// removed the ProjectNamespaceError type-switch — the CEL
+// mapK8sError converts Kubernetes API errors to ConnectRPC errors. The CEL
 // ValidatingAdmissionPolicy shipped in HOL-618 rejects project-namespace
 // creates at admission time, so the handler only needs the generic
 // k8serrors taxonomy here (plus extractBindingScope as defense-in-depth).

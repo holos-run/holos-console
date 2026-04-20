@@ -1650,79 +1650,45 @@ func (h *Handler) buildPlatformInput(ctx context.Context, project, namespace str
 }
 
 // linkedTemplateRefsFromAnnotation reads the linked template refs from a
-// deployment template ConfigMap. It prefers the v1alpha2
+// deployment template ConfigMap. Decodes the
 // console.holos.run/linked-templates annotation (JSON array of
-// {scope, scope_name, name, version_constraint} objects) and falls back to the
-// legacy console.holos.run/linked-org-templates annotation (JSON array of bare
-// name strings, converted to org-scope refs with no version constraint).
-// Returns nil if no annotation is present or if parsing fails.
+// {scope, scope_name, name, version_constraint} objects). Returns nil if the
+// annotation is absent or fails to parse.
 func linkedTemplateRefsFromAnnotation(cm *corev1.ConfigMap) []*consolev1.LinkedTemplateRef {
 	if cm == nil || cm.Annotations == nil {
 		return nil
 	}
 
-	// v1alpha2: console.holos.run/linked-templates — JSON array of {scope, scope_name, name, version_constraint}
-	if raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
-		var refs []struct {
-			Scope             string `json:"scope"`
-			ScopeName         string `json:"scope_name"`
-			Name              string `json:"name"`
-			VersionConstraint string `json:"version_constraint,omitempty"`
-		}
-		if err := json.Unmarshal([]byte(raw), &refs); err != nil {
-			slog.Warn("failed to parse linked-templates annotation",
-				slog.String("name", cm.Name),
-				slog.String("namespace", cm.Namespace),
-				slog.Any("error", err),
-			)
-		} else {
-			result := make([]*consolev1.LinkedTemplateRef, 0, len(refs))
-			for _, ref := range refs {
-				if ref.Name != "" {
-					result = append(result, scopeshim.NewLinkedTemplateRef(
-						scopeFromLabel(ref.Scope),
-						ref.ScopeName,
-						ref.Name,
-						ref.VersionConstraint,
-					))
-				}
-			}
-			return result
-		}
+	raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedTemplates]
+	if !ok || raw == "" {
+		return nil
 	}
-
-	// Legacy v1alpha2: console.holos.run/linked-org-templates — JSON array of strings.
-	// Convert to LinkedTemplateRef with organization scope and no version constraint.
-	if raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedOrgTemplates]; ok && raw != "" {
-		var names []string
-		if err := json.Unmarshal([]byte(raw), &names); err != nil {
-			slog.Warn("failed to parse linked-org-templates annotation",
-				slog.String("name", cm.Name),
-				slog.String("namespace", cm.Namespace),
-				slog.Any("error", err),
-			)
-			return nil
-		}
-		result := make([]*consolev1.LinkedTemplateRef, 0, len(names))
-		for _, n := range names {
-			// Legacy v1alpha2 refs lived at the unique organization scope;
-			// the deployment's project slug is the scope_name anchor, but
-			// the scope_name ("org name") was implicit in the ConfigMap
-			// namespace. Passing an empty scopeName lets the shim fall
-			// back to the caller's default resolver, which — combined
-			// with the deployment's own ancestor chain — converges on the
-			// correct org namespace at render time.
+	var refs []struct {
+		Scope             string `json:"scope"`
+		ScopeName         string `json:"scope_name"`
+		Name              string `json:"name"`
+		VersionConstraint string `json:"version_constraint,omitempty"`
+	}
+	if err := json.Unmarshal([]byte(raw), &refs); err != nil {
+		slog.Warn("failed to parse linked-templates annotation",
+			slog.String("name", cm.Name),
+			slog.String("namespace", cm.Namespace),
+			slog.Any("error", err),
+		)
+		return nil
+	}
+	result := make([]*consolev1.LinkedTemplateRef, 0, len(refs))
+	for _, ref := range refs {
+		if ref.Name != "" {
 			result = append(result, scopeshim.NewLinkedTemplateRef(
-				scopeshim.ScopeOrganization,
-				"",
-				n,
-				"",
+				scopeFromLabel(ref.Scope),
+				ref.ScopeName,
+				ref.Name,
+				ref.VersionConstraint,
 			))
 		}
-		return result
 	}
-
-	return nil
+	return result
 }
 
 // stringSliceFromConfigMap decodes a JSON string slice from the given ConfigMap data key.
