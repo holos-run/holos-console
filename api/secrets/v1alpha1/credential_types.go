@@ -201,12 +201,17 @@ type CredentialStatus struct {
 
 	// CredentialID is the opaque identifier the issuer returned when this
 	// Credential was created. It is a KSUID (27 characters of base62)
-	// carrying no sensitive entropy.
+	// carrying no sensitive entropy. The CRD schema enforces the KSUID
+	// shape so a buggy reconciler or a direct status patch cannot
+	// persist an arbitrary string in this field.
 	//
 	// MUST NOT be or contain the plaintext, a prefix, a last-4, or any
 	// substring of the plaintext. See the package doc.go invariant.
 	//
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=27
+	// +kubebuilder:validation:MaxLength=27
+	// +kubebuilder:validation:Pattern=`^[0-9A-Za-z]{27}$`
 	CredentialID string `json:"credentialID,omitempty"`
 
 	// HashSecretRef names the sibling v1.Secret (same namespace) that

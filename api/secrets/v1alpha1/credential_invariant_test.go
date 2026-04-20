@@ -110,9 +110,11 @@ func TestCredential_FieldNames(t *testing.T) {
 		{substring: "Pepper", allow: []string{"PepperVersion"}},
 	}
 
-	// Cover the top-level CR types AND every nested struct introduced by
-	// HOL-699. A future Token/Secret/Hash field added under one of these
-	// sub-structs must fail the invariant, not slip past it.
+	// Cover the top-level CR types, every nested struct introduced by
+	// HOL-699, AND the shared secret-ref structs reachable from
+	// Spec.UpstreamSecretRef and Status.HashSecretRef. A future
+	// Token/Secret/Hash field added anywhere under Credential — including
+	// the shared ref types — must fail the invariant, not slip past it.
 	types := []reflect.Type{
 		reflect.TypeOf(v1alpha1.Credential{}),
 		reflect.TypeOf(v1alpha1.CredentialSpec{}),
@@ -122,6 +124,8 @@ func TestCredential_FieldNames(t *testing.T) {
 		reflect.TypeOf(v1alpha1.Rotation{}),
 		reflect.TypeOf(v1alpha1.Selector{}),
 		reflect.TypeOf(v1alpha1.TargetReference{}),
+		reflect.TypeOf(v1alpha1.SecretKeyReference{}),
+		reflect.TypeOf(v1alpha1.NamespacedSecretKeyReference{}),
 	}
 	for _, rt := range types {
 		for i := 0; i < rt.NumField(); i++ {
