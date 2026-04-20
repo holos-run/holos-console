@@ -1,0 +1,6 @@
+# Placeholder so `config/secret-injector/rbac/` exists before the
+# holos-secret-injector reconcilers ship under M1. `make manifests` emits a
+# ClusterRole named `holos-secret-injector` here via controller-gen's
+# `output:rbac:artifacts:config` directive once +kubebuilder:rbac markers land
+# under internal/secretinjector/controller/... in M1. Remove this .gitkeep
+# once real RBAC lands.
