@@ -41,6 +41,7 @@ import (
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/projects"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/resources"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/scopeshim"
 	"github.com/holos-run/holos-console/console/secrets"
@@ -478,6 +479,19 @@ func (s *Server) Serve(ctx context.Context) error {
 		projectsHandler := projects.NewHandler(projectsK8s, orgGrantResolver)
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
+
+		// ResourceService — cross-kind listing of folders + projects with
+		// each entry's root→leaf ancestor path. Powers the Linear-style
+		// navigation (HOL-553); wired in HOL-602. Composes the existing
+		// folders / projects / organizations K8s clients so RBAC and label
+		// semantics stay defined in exactly one place per kind.
+		resourcesHandler := resources.NewHandler(
+			resources.NewK8sClient(foldersK8s, projectsK8s, orgsK8s),
+			nsResolver,
+			nsWalker,
+		)
+		resourcesPath, resourcesHTTPHandler := consolev1connect.NewResourceServiceHandler(resourcesHandler, protectedInterceptors)
+		mux.Handle(resourcesPath, resourcesHTTPHandler)
 
 		// Secrets service with project grant fallback and ancestor default-share cascade.
 		secretsK8s := secrets.NewK8sClient(k8sClientset, nsResolver)
