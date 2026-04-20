@@ -93,7 +93,7 @@ vi.mock('@/components/ui/sidebar', () => ({
 
 // Flatten Collapsible so CollapsibleContent is always rendered. The primitive
 // open/close state is Radix-driven and covered separately by the integration
-// test in -app-sidebar.hover.test.tsx.
+// test in -app-sidebar.tree.test.tsx.
 vi.mock('@/components/ui/collapsible', () => ({
   Collapsible: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   CollapsibleTrigger: ({
@@ -290,8 +290,9 @@ describe('AppSidebar — org selected', () => {
 //
 // This suite flattens the Collapsible / Tooltip primitives so content-level
 // assertions (order, routing, active state, tooltip contents) are direct.
-// The real hover + expand/collapse behavior is covered by
-// -app-sidebar.hover.test.tsx which renders with the unmocked primitives.
+// The real click-toggle behavior over the asChild prop-merging chain is
+// covered by -app-sidebar.tree.test.tsx which renders with the unmocked
+// primitives.
 describe('AppSidebar — Project tree (HOL-604)', () => {
   function setupProjectSelected() {
     ;(useOrg as Mock).mockReturnValue({

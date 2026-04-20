@@ -98,12 +98,13 @@ describe('AppSidebar — Project tree toggle (real Collapsible + Tooltip primiti
 
     await user.click(screen.getByTestId('project-tree-trigger'))
 
-    // After collapse, Radix hides the content via data-state=closed. jsdom
-    // doesn't apply the `hidden until found` / CSS rules, but Radix sets the
-    // `hidden` attribute and removes the content from the tree when closed.
-    // Assert via queryByRole with { hidden: false } to exclude hidden nodes.
+    // After collapse, Radix sets the `hidden` attribute on CollapsibleContent
+    // and its descendants. Testing Library's queryByRole excludes elements
+    // that are inaccessible (hidden) by default, so the Secrets link
+    // disappears from the accessible tree even though the DOM node still
+    // exists with `hidden` set.
     expect(
-      screen.queryByRole('link', { name: /^secrets$/i, hidden: false }),
+      screen.queryByRole('link', { name: /^secrets$/i }),
     ).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('project-tree-trigger'))
