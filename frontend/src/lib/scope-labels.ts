@@ -3,29 +3,20 @@
 //
 // Per HOL-619 the Template / TemplatePolicy / TemplatePolicyBinding proto API
 // is keyed by `(namespace, name)` only; the legacy `TemplateScope` enum and
-// `(scope, scopeName)` pairs were removed from the wire protocol. This module
-// replaces the temporary `scope-shim.ts` introduced while the UI still
-// reasoned in `(scope, scopeName)` pairs. HOL-623 unifies the editor routes
-// and swaps query hooks onto `namespace: string`.
+// `(scope, scopeName)` pairs were removed from the wire protocol. HOL-623
+// unified the editor routes and swapped query hooks onto `namespace: string`.
 //
-// ## Annotation key contract
-//
-// `scopeLabelFromNamespace` is a pure prefix-based derivation: it does NOT
-// require a NamespaceMetadata lookup. The server assigns namespace prefixes
-// deterministically when an Organization/Folder/Project resource is created:
-//
-//   * Organization → `holos-org-<orgName>`
-//   * Folder       → `holos-fld-<folderName>`
-//   * Project      → `holos-prj-<projectName>`
-//
-// These prefixes are stable identifiers that the console relies on to derive
-// the *scope label* ("Organization" / "Folder" / "Project") without a second
-// round-trip. The equivalent annotation key the backend stamps on each
-// namespace — `holos.run/scope` set to `org`/`folder`/`project` — is still
-// the authoritative source should a future rename ever decouple the prefix
-// from the scope. Until then the prefix is cheaper and correct. If/when the
-// bootstrap config endpoint exposes the prefix values for non-default
-// deployments, read them here.
+// Namespaces encode the scope via the prefix layout
+// `{NamespacePrefix}{ResourcePrefix}{name}`. The four prefix values are
+// configurable on the server (CLI flags `--namespace-prefix`,
+// `--organization-prefix`, `--folder-prefix`, `--project-prefix`; see
+// `console/console.go` Config). Per HOL-722 this module reads the live
+// prefixes from `window.__CONSOLE_CONFIG__` via `getConsoleConfig()` so the
+// UI stays aligned with deployments that customize the namespace layout.
+// `getConsoleConfig()` is a synchronous read of a value injected once into
+// `index.html` by the server, so there is no per-render network cost.
+
+import { getConsoleConfig } from './console-config'
 
 /**
  * Scope label values returned by `scopeLabelFromNamespace`.
@@ -48,43 +39,48 @@ export const TemplateScope = {
 } as const
 export type TemplateScope = (typeof TemplateScope)[keyof typeof TemplateScope]
 
-const NAMESPACE_PREFIX = 'holos-'
-const ORG_SUFFIX = 'org-'
-const FOLDER_SUFFIX = 'fld-'
-const PROJECT_SUFFIX = 'prj-'
+interface ScopePrefixes {
+  org: string
+  folder: string
+  project: string
+}
 
-const FULL_ORG_PREFIX = NAMESPACE_PREFIX + ORG_SUFFIX
-const FULL_FOLDER_PREFIX = NAMESPACE_PREFIX + FOLDER_SUFFIX
-const FULL_PROJECT_PREFIX = NAMESPACE_PREFIX + PROJECT_SUFFIX
+function scopePrefixes(): ScopePrefixes {
+  const cfg = getConsoleConfig()
+  return {
+    org: cfg.namespacePrefix + cfg.organizationPrefix,
+    folder: cfg.namespacePrefix + cfg.folderPrefix,
+    project: cfg.namespacePrefix + cfg.projectPrefix,
+  }
+}
 
 /** Build the namespace string for an organization-scoped resource. */
 export function namespaceForOrg(orgName: string): string {
-  return orgName ? FULL_ORG_PREFIX + orgName : ''
+  return orgName ? scopePrefixes().org + orgName : ''
 }
 
 /** Build the namespace string for a folder-scoped resource. */
 export function namespaceForFolder(folderName: string): string {
-  return folderName ? FULL_FOLDER_PREFIX + folderName : ''
+  return folderName ? scopePrefixes().folder + folderName : ''
 }
 
 /** Build the namespace string for a project-scoped resource. */
 export function namespaceForProject(projectName: string): string {
-  return projectName ? FULL_PROJECT_PREFIX + projectName : ''
+  return projectName ? scopePrefixes().project + projectName : ''
 }
 
 /**
- * Return the scope label for a namespace, derived from the namespace prefix.
- *
- * See the module-level "Annotation key contract" comment for the prefix
- * meanings and a note on the equivalent `holos.run/scope` annotation.
+ * Return the scope label for a namespace, derived from the server-configured
+ * namespace prefixes.
  */
 export function scopeLabelFromNamespace(
   ns: string | undefined | null,
 ): ScopeLabel | undefined {
   if (!ns) return undefined
-  if (ns.startsWith(FULL_ORG_PREFIX)) return 'org'
-  if (ns.startsWith(FULL_FOLDER_PREFIX)) return 'folder'
-  if (ns.startsWith(FULL_PROJECT_PREFIX)) return 'project'
+  const p = scopePrefixes()
+  if (ns.startsWith(p.org)) return 'org'
+  if (ns.startsWith(p.folder)) return 'folder'
+  if (ns.startsWith(p.project)) return 'project'
   return undefined
 }
 
@@ -95,9 +91,10 @@ export function scopeLabelFromNamespace(
  */
 export function scopeNameFromNamespace(ns: string | undefined | null): string {
   if (!ns) return ''
-  if (ns.startsWith(FULL_ORG_PREFIX)) return ns.slice(FULL_ORG_PREFIX.length)
-  if (ns.startsWith(FULL_FOLDER_PREFIX)) return ns.slice(FULL_FOLDER_PREFIX.length)
-  if (ns.startsWith(FULL_PROJECT_PREFIX)) return ns.slice(FULL_PROJECT_PREFIX.length)
+  const p = scopePrefixes()
+  if (ns.startsWith(p.org)) return ns.slice(p.org.length)
+  if (ns.startsWith(p.folder)) return ns.slice(p.folder.length)
+  if (ns.startsWith(p.project)) return ns.slice(p.project.length)
   return ''
 }
 

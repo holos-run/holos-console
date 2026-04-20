@@ -152,8 +152,18 @@ type OIDCConfig struct {
 
 // ConsoleConfig is the console configuration injected into the frontend
 // via window.__CONSOLE_CONFIG__.
+//
+// The four prefix fields mirror the Config fields of the same name so the
+// frontend can translate between logical resource names and Kubernetes
+// namespace names using the same layout the backend resolver uses (see
+// `console/resolver`). Per HOL-722 these are exposed unconditionally so
+// deployments that override the default prefixes see the UI match the server.
 type ConsoleConfig struct {
-	DevToolsEnabled bool `json:"devToolsEnabled"`
+	DevToolsEnabled    bool   `json:"devToolsEnabled"`
+	NamespacePrefix    string `json:"namespacePrefix"`
+	OrganizationPrefix string `json:"organizationPrefix"`
+	FolderPrefix       string `json:"folderPrefix"`
+	ProjectPrefix      string `json:"projectPrefix"`
 }
 
 // deriveRedirectURI derives the OIDC redirect URI from the console origin.
@@ -682,10 +692,17 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 	}
 
-	// Create console config for frontend injection
-	var consoleConfig *ConsoleConfig
-	if s.cfg.EnableDevTools {
-		consoleConfig = &ConsoleConfig{DevToolsEnabled: true}
+	// Create console config for frontend injection.
+	// The namespace prefixes are always injected so the frontend's
+	// scope-label helpers (see `frontend/src/lib/scope-labels.ts`) stay
+	// aligned with the server resolver even when an operator overrides the
+	// defaults (HOL-722). DevTools remains off by default.
+	consoleConfig := &ConsoleConfig{
+		DevToolsEnabled:    s.cfg.EnableDevTools,
+		NamespacePrefix:    s.cfg.NamespacePrefix,
+		OrganizationPrefix: s.cfg.OrganizationPrefix,
+		FolderPrefix:       s.cfg.FolderPrefix,
+		ProjectPrefix:      s.cfg.ProjectPrefix,
 	}
 
 	uiHandler := newUIHandler(uiContent, oidcConfig, consoleConfig)
