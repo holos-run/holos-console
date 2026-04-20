@@ -1,6 +1,7 @@
 import type React from 'react'
 import { Link, useRouter } from '@tanstack/react-router'
 import {
+  ChevronRight,
   KeyRound,
   Folder,
   FolderKanban,
@@ -19,8 +20,22 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarSeparator,
 } from '@/components/ui/sidebar'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
 import { useVersion } from '@/queries/version'
@@ -100,6 +115,13 @@ export function AppSidebar() {
 
   const deploymentsEnabled = projectSettings?.deploymentsEnabled ?? false
 
+  // HOL-604 restructures the project nav into a single collapsible "Project"
+  // tree. Children order is canonical: Secrets, Deployments, Templates,
+  // Settings. Deployments and Templates remain gated on
+  // projectSettings.deploymentsEnabled to preserve the pre-existing feature
+  // flag behavior (covered by the "Templates nav item conditional
+  // visibility" suite). The Project tree itself is rendered only when a
+  // project is selected.
   const projectNavItems: Array<{
     label: string
     to: string
@@ -130,7 +152,7 @@ export function AppSidebar() {
             ]
           : []),
         {
-          label: 'Project Settings',
+          label: 'Settings',
           to: '/projects/$projectName/settings/' as const,
           params: { projectName: selectedProject },
           icon: Settings,
@@ -182,24 +204,60 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         )}
-        {projectNavItems.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel>{projectDisplayName}</SidebarGroupLabel>
+        {selectedProject && projectNavItems.length > 0 && (
+          <SidebarGroup data-testid="project-tree">
             <SidebarGroupContent>
               <SidebarMenu>
-                {projectNavItems.map((item) => {
-                  const activePath = `/projects/${item.params.projectName}`
-                  return (
-                    <SidebarMenuItem key={item.label}>
-                      <SidebarMenuButton asChild isActive={pathname.startsWith(activePath)}>
-                        <Link to={item.to} params={item.params}>
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )
-                })}
+                <Collapsible defaultOpen asChild className="group/collapsible">
+                  <SidebarMenuItem>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <CollapsibleTrigger asChild>
+                          <TooltipTrigger asChild>
+                            <SidebarMenuButton
+                              data-testid="project-tree-trigger"
+                              isActive={pathname.startsWith('/projects/')}
+                            >
+                              <FolderKanban className="h-4 w-4" />
+                              <span>Project</span>
+                              <ChevronRight className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                            </SidebarMenuButton>
+                          </TooltipTrigger>
+                        </CollapsibleTrigger>
+                        <TooltipContent
+                          side="right"
+                          align="start"
+                          data-testid="project-tree-tooltip"
+                        >
+                          <div>{projectDisplayName}</div>
+                          <div>{selectedProject}</div>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <CollapsibleContent data-testid="project-tree-content">
+                      <SidebarMenuSub>
+                        {projectNavItems.map((item) => {
+                          const activePath = (item.to as string)
+                            .replace('$projectName', item.params.projectName)
+                            .replace(/\/$/, '')
+                          return (
+                            <SidebarMenuSubItem key={item.label}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={pathname === activePath || pathname.startsWith(`${activePath}/`)}
+                              >
+                                <Link to={item.to} params={item.params}>
+                                  <item.icon className="h-4 w-4" />
+                                  <span>{item.label}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          )
+                        })}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
