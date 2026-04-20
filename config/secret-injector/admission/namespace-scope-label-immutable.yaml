@@ -4,23 +4,26 @@
 # credential-shaped CRs, and so on. Mutating the label after creation
 # would let an attacker with namespace-edit (but not namespace-create)
 # rights reclassify a namespace and slip cross-tenant objects past the
-# other nine policies. HOL-703 closes this by freezing the label value
-# on UPDATE: once set, the value MUST NOT change.
+# other nine policies. HOL-703 closes this by freezing the label
+# value on UPDATE: the value MUST NOT change between old and new,
+# and that includes setting it for the first time on a previously
+# unlabeled namespace (unset → set is also a reclassification).
 #
 # Platform-controller exemption. The holos-console platform controller
-# writes the label during namespace reconciliation and may need to set
-# it from unset to a classified value. `matchConditions` skip this
-# validation when the requesting user is the platform controller
-# ServiceAccount. Sites that deploy holos-console under a different SA
-# name MUST patch the `excluded-platform-controller` matchCondition
-# below; envtest (HOL-711) asserts the default SA name stays in sync
-# with the deployment manifests.
+# writes the label during namespace reconciliation — including the
+# initial unset → set transition when a namespace is first classified.
+# `matchConditions` skip this validation when the requesting user is
+# the platform controller ServiceAccount. Sites that deploy
+# holos-console under a different SA name MUST patch the
+# `excluded-platform-controller` matchCondition below; envtest
+# (HOL-711) asserts the default SA name stays in sync with the
+# deployment manifests.
 #
 # Semantics. The validation triggers only on UPDATE (where oldObject
-# exists). A CREATE that writes the label is allowed; a namespace
-# created unlabeled can still gain a label later from the platform
-# controller; but once the label is set by anybody, no non-controller
-# user may change or remove its value.
+# exists). A CREATE that writes the label is allowed (the initial
+# classification happens at namespace creation, typically by the
+# platform controller). Past creation, only the platform controller
+# may transition the label at all — including from unset.
 #
 # Failure mode. `failurePolicy: Fail` — a silent-pass on a mislabel
 # attempt would defeat every other policy in this directory.
@@ -40,20 +43,25 @@ spec:
   - name: excluded-platform-controller
     expression: >-
       request.userInfo.username != "system:serviceaccount:holos-system:platform-controller"
+  variables:
+  - name: oldLabel
+    expression: >-
+      has(oldObject.metadata.labels)
+      && "console.holos.run/resource-type" in oldObject.metadata.labels
+      ? oldObject.metadata.labels["console.holos.run/resource-type"]
+      : ""
+  - name: newLabel
+    expression: >-
+      has(object.metadata.labels)
+      && "console.holos.run/resource-type" in object.metadata.labels
+      ? object.metadata.labels["console.holos.run/resource-type"]
+      : ""
   validations:
-  - expression: >-
-      !has(oldObject.metadata.labels)
-      || !("console.holos.run/resource-type" in oldObject.metadata.labels)
-      || (
-        has(object.metadata.labels)
-        && "console.holos.run/resource-type" in object.metadata.labels
-        && object.metadata.labels["console.holos.run/resource-type"]
-           == oldObject.metadata.labels["console.holos.run/resource-type"]
-      )
+  - expression: variables.oldLabel == variables.newLabel
     messageExpression: >-
       "Namespace " + object.metadata.name +
-      " label `console.holos.run/resource-type` cannot be changed after it is set " +
-      "(was `" + oldObject.metadata.labels["console.holos.run/resource-type"] + "`); see HOL-703."
+      " label `console.holos.run/resource-type` cannot change after creation " +
+      "(was `" + variables.oldLabel + "`, now `" + variables.newLabel + "`); see HOL-703."
     reason: Forbidden
 ---
 apiVersion: admissionregistration.k8s.io/v1
