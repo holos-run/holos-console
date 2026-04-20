@@ -97,14 +97,7 @@ func (h *Handler) ListResources(
 			if !h.callerCanListFolder(claims, ns, now) {
 				continue
 			}
-			res, err := h.buildResource(ctx, ns, consolev1.ResourceType_RESOURCE_TYPE_FOLDER, cachedWalker, orgDisplayCache)
-			if err != nil {
-				slog.WarnContext(ctx, "skipping folder with unresolvable ancestor chain",
-					slog.String("namespace", ns.Name),
-					slog.Any("error", err),
-				)
-				continue
-			}
+			res := h.buildResource(ctx, ns, consolev1.ResourceType_RESOURCE_TYPE_FOLDER, cachedWalker, orgDisplayCache)
 			resources = append(resources, res)
 		}
 	}
@@ -118,14 +111,7 @@ func (h *Handler) ListResources(
 			if !h.callerCanListProject(claims, ns, now) {
 				continue
 			}
-			res, err := h.buildResource(ctx, ns, consolev1.ResourceType_RESOURCE_TYPE_PROJECT, cachedWalker, orgDisplayCache)
-			if err != nil {
-				slog.WarnContext(ctx, "skipping project with unresolvable ancestor chain",
-					slog.String("namespace", ns.Name),
-					slog.Any("error", err),
-				)
-				continue
-			}
+			res := h.buildResource(ctx, ns, consolev1.ResourceType_RESOURCE_TYPE_PROJECT, cachedWalker, orgDisplayCache)
 			resources = append(resources, res)
 		}
 	}
@@ -195,19 +181,42 @@ func (h *Handler) callerCanListProject(claims *rpc.Claims, ns *corev1.Namespace,
 // produced by walking the namespace hierarchy via the cached walker,
 // dropping the leaf (which is the entry itself), and reversing the
 // child→parent walk into the root→leaf order required by the proto.
+//
+// Resilience: a folder/project the caller is allowed to see MUST appear in
+// the response even when its ancestor chain is partially unresolvable
+// (transient apiserver hiccup, an ancestor namespace that was just deleted
+// or reparented, an ancestor of an unexpected kind). In those cases the
+// path is truncated at the deepest resolvable hop and the failure is
+// recorded as a structured warning so an operator can investigate without
+// the missing entry vanishing from navigation. This matches the behavior
+// of ListFolders / ListProjects — they too return the entry itself even
+// when its parent chain cannot be fully classified.
 func (h *Handler) buildResource(
 	ctx context.Context,
 	ns *corev1.Namespace,
 	entryType consolev1.ResourceType,
 	cachedWalker *resolver.CachedWalker,
 	orgDisplayCache map[string]string,
-) (*consolev1.Resource, error) {
+) *consolev1.Resource {
+	res := &consolev1.Resource{
+		Type:        entryType,
+		DisplayName: displayName(ns),
+		Name:        leafName(h.resolver, ns),
+	}
+
 	chain, err := cachedWalker.WalkAncestors(ctx, ns.Name)
 	if err != nil {
-		return nil, fmt.Errorf("walking ancestors of %q: %w", ns.Name, err)
+		slog.WarnContext(ctx, "ancestor walk failed; returning resource with empty path",
+			slog.String("namespace", ns.Name),
+			slog.Any("error", err),
+		)
+		return res
 	}
 	if len(chain) == 0 {
-		return nil, fmt.Errorf("walker returned empty chain for %q", ns.Name)
+		slog.WarnContext(ctx, "ancestor walk returned empty chain; returning resource with empty path",
+			slog.String("namespace", ns.Name),
+		)
+		return res
 	}
 
 	// The walker returns child→parent (entry first, org last). Drop the
@@ -218,17 +227,18 @@ func (h *Handler) buildResource(
 		ancestor := ancestors[i]
 		element, err := h.pathElementFromNamespace(ctx, ancestor, orgDisplayCache)
 		if err != nil {
-			return nil, fmt.Errorf("building path element for %q: %w", ancestor.Name, err)
+			slog.WarnContext(ctx, "skipping unclassifiable ancestor; truncating path",
+				slog.String("namespace", ns.Name),
+				slog.String("ancestor", ancestor.Name),
+				slog.Any("error", err),
+			)
+			break
 		}
 		path = append(path, element)
 	}
+	res.Path = path
 
-	return &consolev1.Resource{
-		Type:        entryType,
-		Path:        path,
-		DisplayName: displayName(ns),
-		Name:        leafName(h.resolver, ns),
-	}, nil
+	return res
 }
 
 // pathElementFromNamespace produces a single PathElement from an ancestor

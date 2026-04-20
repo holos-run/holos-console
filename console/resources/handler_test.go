@@ -430,6 +430,43 @@ func TestListResources_RBACFilters(t *testing.T) {
 	})
 }
 
+// TestListResources_BrokenAncestorChainStillReturnsEntry asserts the
+// resilience contract: a folder/project the caller can see MUST appear in
+// the response even when its ancestor walk fails (e.g. a parent namespace
+// was just deleted). The entry is returned with a truncated/empty path
+// instead of being silently dropped, matching ListFolders / ListProjects
+// behavior. Without this guarantee the navigation tree would lose visible
+// nodes during transient hierarchy churn.
+func TestListResources_BrokenAncestorChainStillReturnsEntry(t *testing.T) {
+	owner := `[{"principal":"owner@example.com","role":"owner"}]`
+
+	// Project's parent label points at a namespace that does not exist in
+	// the cluster, so WalkAncestors returns an error after fetching the
+	// project itself. The entry must still appear in the response.
+	prj := projectNS("orphan", "", "acme", "holos-fld-deleted-parent", owner)
+
+	handler := newTestHandler(t, prj)
+	ctx := contextWithClaims("owner@example.com")
+	resp, err := handler.ListResources(ctx, connect.NewRequest(&consolev1.ListResourcesRequest{}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	resources := resp.Msg.GetResources()
+	if len(resources) != 1 {
+		t.Fatalf("expected 1 resource, got %d (%v)", len(resources), sortedResourceKeys(resources))
+	}
+	got := resources[0]
+	if got.GetType() != consolev1.ResourceType_RESOURCE_TYPE_PROJECT {
+		t.Errorf("expected RESOURCE_TYPE_PROJECT, got %v", got.GetType())
+	}
+	if got.GetName() != "orphan" {
+		t.Errorf("expected name=%q, got %q", "orphan", got.GetName())
+	}
+	if len(got.GetPath()) != 0 {
+		t.Errorf("expected empty path on broken hierarchy, got %d elements", len(got.GetPath()))
+	}
+}
+
 // equalStrings reports element-wise equality of two string slices.
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
