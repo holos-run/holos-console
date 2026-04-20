@@ -120,8 +120,26 @@ fmt: ## Format code.
 vet: ## Vet Go code.
 	go vet ./...
 
+.PHONY: check-imports
+# check-imports enforces ADR 031's disjoint-tree invariant: the holos-console
+# tree (internal/controller/...) and the holos-secret-injector tree
+# (internal/secretinjector/...) must never import each other. A violation
+# would reunify the two binaries through a shared dependency and defeat the
+# whole point of the split. The grep checks only real Go import lines
+# (double-quoted module paths) so doc-comment references like "internal/
+# controller/... and vice versa" do not trip the check.
+check-imports: ## Enforce ADR 031's disjoint-tree invariant across internal/controller and internal/secretinjector.
+	@if grep -rn '"github.com/holos-run/holos-console/internal/controller' internal/secretinjector/ 2>/dev/null; then \
+		echo "check-imports: internal/secretinjector imports internal/controller (ADR 031 violation)" >&2; \
+		exit 1; \
+	fi
+	@if grep -rn '"github.com/holos-run/holos-console/internal/secretinjector' internal/controller/ 2>/dev/null; then \
+		echo "check-imports: internal/controller imports internal/secretinjector (ADR 031 violation)" >&2; \
+		exit 1; \
+	fi
+
 .PHONY: lint
-lint: vet ## Run linters.
+lint: vet check-imports ## Run linters.
 	golangci-lint run
 
 .PHONY: tidy
