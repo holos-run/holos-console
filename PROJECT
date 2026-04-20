@@ -56,9 +56,9 @@ resources:
 # M1 types will enforce. Placeholder kinds: Secret and SecretBinding (per
 # HOL-687 acceptance criteria). Printer columns and the precise scope
 # follow the HOL-615 conventions (Ready/Generation/Age, plus ResolvedRefs
-# for kinds with cross-object references) once M1 lands. HOL-697 adds the
-# first real kind (UpstreamSecret); the remaining placeholders will be
-# retired as HOL-699 and HOL-701 land the remaining M1 kinds.
+# for kinds with cross-object references) once M1 lands. HOL-697 added
+# UpstreamSecret, HOL-699 adds Credential; the remaining placeholders will
+# be retired as HOL-701 lands the remaining M1 kinds.
 - api:
     crdVersion: v1
     namespaced: true
@@ -66,6 +66,15 @@ resources:
   domain: holos.run
   group: secrets
   kind: UpstreamSecret
+  path: github.com/holos-run/holos-console/api/secrets/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: holos.run
+  group: secrets
+  kind: Credential
   path: github.com/holos-run/holos-console/api/secrets/v1alpha1
   version: v1alpha1
 - api:
