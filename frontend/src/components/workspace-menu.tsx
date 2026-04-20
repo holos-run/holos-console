@@ -20,8 +20,9 @@ import { getConsoleConfig } from '@/lib/console-config'
  *
  * Dev Tools is only visible when the server gates it on via `--enable-dev-tools`
  * (mirrored to the frontend via `getConsoleConfig().devToolsEnabled`). The
- * `Settings` item routes to org settings when an org is selected and is hidden
- * otherwise, since there is no global settings route.
+ * `Settings` item routes to org settings when an org is selected; when no org
+ * is selected it is rendered disabled (there is no global settings route) so
+ * the canonical item order stays visible in every state.
  */
 export function WorkspaceMenu() {
   const { selectedOrg, organizations } = useOrg()
@@ -81,7 +82,12 @@ export function WorkspaceMenu() {
                 <span>Settings</span>
               </Link>
             </DropdownMenuItem>
-          ) : null}
+          ) : (
+            <DropdownMenuItem disabled data-testid="workspace-menu-item-settings">
+              <Settings className="h-4 w-4" />
+              <span>Settings</span>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem asChild>
             <Link to="/organizations" data-testid="workspace-menu-item-switch-organization">
               <ArrowRightLeft className="h-4 w-4" />

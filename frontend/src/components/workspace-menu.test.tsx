@@ -38,10 +38,20 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuItem: ({
     children,
     asChild,
+    disabled,
+    ...rest
   }: {
     children: React.ReactNode
     asChild?: boolean
-  }) => (asChild ? <>{children}</> : <div>{children}</div>),
+    disabled?: boolean
+  } & React.HTMLAttributes<HTMLDivElement>) =>
+    asChild ? (
+      <>{children}</>
+    ) : (
+      <div aria-disabled={disabled ? 'true' : undefined} {...rest}>
+        {children}
+      </div>
+    ),
   DropdownMenuSeparator: () => <hr />,
   DropdownMenuTrigger: ({
     children,
@@ -156,9 +166,12 @@ describe('WorkspaceMenu — items', () => {
     expect(link.getAttribute('href')).toBe('/profile')
   })
 
-  it('hides Settings when no org is selected (no global settings route exists)', () => {
+  it('renders Settings disabled (not a link) when no org is selected', () => {
     render(<WorkspaceMenu />)
-    expect(screen.queryByTestId('workspace-menu-item-settings')).toBeNull()
+    const settings = screen.getByTestId('workspace-menu-item-settings')
+    expect(settings.tagName).toBe('DIV')
+    expect(settings.getAttribute('aria-disabled')).toBe('true')
+    expect(settings.textContent).toContain('Settings')
   })
 
   it('renders Settings → /orgs/$orgName/settings when an org is selected', () => {
@@ -197,7 +210,25 @@ describe('WorkspaceMenu — items', () => {
 
     const content = screen.getByTestId('workspace-menu-content')
     const labels = Array.from(
-      content.querySelectorAll('a[data-testid^="workspace-menu-item-"]'),
+      content.querySelectorAll('[data-testid^="workspace-menu-item-"]'),
+    ).map((el) => el.getAttribute('data-testid'))
+
+    expect(labels).toEqual([
+      'workspace-menu-item-about',
+      'workspace-menu-item-settings',
+      'workspace-menu-item-switch-organization',
+      'workspace-menu-item-profile',
+      'workspace-menu-item-dev-tools',
+    ])
+  })
+
+  it('keeps the canonical order when no org is selected (Settings is disabled but present)', () => {
+    ;(getConsoleConfig as Mock).mockReturnValue({ devToolsEnabled: true })
+    render(<WorkspaceMenu />)
+
+    const content = screen.getByTestId('workspace-menu-content')
+    const labels = Array.from(
+      content.querySelectorAll('[data-testid^="workspace-menu-item-"]'),
     ).map((el) => el.getAttribute('data-testid'))
 
     expect(labels).toEqual([
