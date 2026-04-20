@@ -14,13 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package v1alpha1 contains API Schema definitions for the secrets.holos.run
-// v1alpha1 API group. See docs/adrs/031-secret-injection-service.md for the
-// architectural decisions behind this package — the group and version are
-// locked by ADR 031 §1 and mirror the api/templates/v1alpha1 layout.
-//
-// +kubebuilder:object:generate=true
-// +groupName=secrets.holos.run
 package v1alpha1
 
 import (

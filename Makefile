@@ -185,14 +185,12 @@ coverage: test ## Test coverage profile.
 	go tool cover -html=coverage.out
 
 .PHONY: manifests
-# manifests invokes controller-gen twice so each binary's API group lands in a
-# separate config/ tree. Per ADR 031, the templates group (owned by
-# holos-console) keeps config/{crd,rbac}/, and the secrets group (owned by
-# holos-secret-injector) lands under config/secret-injector/{crd,rbac}/. The
-# second invocation emits an empty config/secret-injector/crd/ during M0
-# because no kinds exist yet — M1 adds SecretRequest et al. without any
-# Makefile change.
-manifests: ## Generate CRD, RBAC, and deepcopy sources from +kubebuilder markers.
+# manifests generates the templates group CRDs, RBAC, and deepcopy sources.
+# Per ADR 031, each binary's API group lands in a separate config/ tree:
+# holos-console owns config/{crd,rbac}/ for templates.holos.run, while
+# holos-secret-injector owns config/secret-injector/{crd,rbac}/ for
+# secrets.holos.run (see the manifests-secrets target below).
+manifests: ## Generate CRD, RBAC, and deepcopy sources for the templates group from +kubebuilder markers.
 	controller-gen \
 		crd \
 		rbac:roleName=holos-console-templates \
@@ -201,6 +199,13 @@ manifests: ## Generate CRD, RBAC, and deepcopy sources from +kubebuilder markers
 		paths="./internal/controller/..." \
 		output:crd:artifacts:config=config/crd \
 		output:rbac:artifacts:config=config/rbac
+
+.PHONY: manifests-secrets
+# manifests-secrets generates the secrets group CRDs, RBAC, and deepcopy
+# sources. Scaffolded in HOL-696 with zero registered kinds; subsequent M1
+# phases (HOL-697/699/701) populate the group and the generated CRD
+# manifests under config/secret-injector/crd/.
+manifests-secrets: ## Generate CRD, RBAC, and deepcopy sources for the secrets group from +kubebuilder markers.
 	controller-gen \
 		crd \
 		rbac:roleName=holos-secret-injector \
@@ -211,7 +216,7 @@ manifests: ## Generate CRD, RBAC, and deepcopy sources from +kubebuilder markers
 		output:rbac:artifacts:config=config/secret-injector/rbac
 
 .PHONY: generate
-generate: manifests ## Generate protobuf code, CRD manifests, and build frontend.
+generate: manifests manifests-secrets ## Generate protobuf code, CRD manifests, and build frontend.
 	go generate ./...
 	cd frontend && npm run build
 
