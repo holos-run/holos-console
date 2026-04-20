@@ -87,9 +87,9 @@ export interface FanOutAggregate<T> {
 // - `data` is the concatenated list whenever any query has resolved. It is
 //   only `undefined` while the aggregate is still pending with nothing
 //   materialized yet.
-export function aggregateFanOut(
-  queries: FanOutQueryState<TemplatePolicy[]>[],
-): FanOutAggregate<TemplatePolicy> {
+export function aggregateFanOut<T>(
+  queries: FanOutQueryState<T[]>[],
+): FanOutAggregate<T> {
   const firstLoadPending = queries.some(
     (q) => q.isPending && q.fetchStatus !== 'idle' && q.data === undefined,
   )
@@ -106,12 +106,16 @@ export function aggregateFanOut(
     return { data: undefined, isPending: true, error }
   }
 
-  const data: TemplatePolicy[] = []
+  const data: T[] = []
   for (const q of queries) {
     if (q.data) data.push(...q.data)
   }
   return { data, isPending: false, error }
 }
+
+// Module-level sentinel so the `folders` useMemo fallback preserves reference
+// identity across renders when the folders list is still pending or empty.
+const EMPTY_FOLDERS: readonly { name: string }[] = []
 
 // useAllTemplatePoliciesForOrg fans a ListTemplatePolicies call across every
 // namespace reachable from an organization root — the org namespace plus one
@@ -133,7 +137,10 @@ export function useAllTemplatePoliciesForOrg(
   )
   const orgNamespace = namespaceForOrg(orgName)
   const foldersQuery = useListFolders(orgName)
-  const folders = foldersQuery.data ?? []
+  const folders = useMemo(
+    () => foldersQuery.data ?? EMPTY_FOLDERS,
+    [foldersQuery.data],
+  )
 
   const folderQueries = useQueries({
     queries: folders.map((folder) => ({
@@ -159,22 +166,22 @@ export function useAllTemplatePoliciesForOrg(
     enabled: isAuthenticated && !!orgNamespace,
   })
 
-  // Pre-empt the folders-still-loading case: if we never get a folder list
-  // we cannot know whether folder policies exist. Propagate pending in that
-  // specific case to avoid showing an empty grid that is actually partial.
-  if (foldersQuery.isPending && foldersQuery.fetchStatus !== 'idle') {
-    return {
-      data: undefined,
-      isPending: true,
-      error:
-        foldersQuery.error instanceof Error ? foldersQuery.error : null,
-    }
-  }
-  if (foldersQuery.error instanceof Error) {
-    return { data: undefined, isPending: false, error: foldersQuery.error }
+  // Model the folders-list query as one more input to aggregateFanOut.
+  // When folders are still loading we want the aggregate to report pending
+  // (nothing has materialized yet). When the folders-list errored we want
+  // the caller to see the error alongside any org-scoped policies that did
+  // resolve, rather than blanking the whole grid on a structural failure.
+  // Wrapping the folders query in a FanOutQueryState<TemplatePolicy[]>
+  // (with data always [] on success) gives us both behaviors for free.
+  const foldersAsQuery: FanOutQueryState<TemplatePolicy[]> = {
+    data: foldersQuery.data === undefined ? undefined : [],
+    error: foldersQuery.error,
+    isPending: foldersQuery.isPending,
+    fetchStatus: foldersQuery.fetchStatus,
   }
 
   return aggregateFanOut<TemplatePolicy>([
+    foldersAsQuery,
     {
       data: orgQuery.data,
       error: orgQuery.error,
