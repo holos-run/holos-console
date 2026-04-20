@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
@@ -233,7 +233,11 @@ describe('AppSidebar', () => {
   })
 })
 
-describe('AppSidebar — org selected', () => {
+// HOL-605: the per-item "Folders", "Projects", and "Org Settings" sidebar
+// entries are gone. Folders + Projects are superseded by Resources under the
+// new Organization tree; Org Settings moved to the workspace menu (HOL-603).
+// This suite guards against reintroducing them at the sidebar level.
+describe('AppSidebar — legacy org nav entries removed (HOL-605)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPathname = '/'
@@ -246,40 +250,28 @@ describe('AppSidebar — org selected', () => {
     })
   })
 
-  it('renders org Settings link labeled "Org Settings" with correct href', () => {
+  it('does not render a Folders link in the sidebar', () => {
     render(<AppSidebar />)
-    const link = screen.getByRole('link', { name: /org settings/i })
-    expect(link.getAttribute('href')).toBe('/orgs/my-org/settings/')
+    expect(screen.queryByRole('link', { name: /^folders$/i })).toBeNull()
   })
 
-  it('renders org Projects link with correct href', () => {
+  it('does not render a standalone Projects link in the sidebar', () => {
     render(<AppSidebar />)
-    const link = screen.getByRole('link', { name: /projects/i })
-    expect(link.getAttribute('href')).toBe('/orgs/my-org/projects')
+    expect(screen.queryByRole('link', { name: /^projects$/i })).toBeNull()
   })
 
-  it('renders org display name as group label', () => {
+  it('does not render an Org Settings link in the sidebar (moved to workspace menu)', () => {
     render(<AppSidebar />)
-    const labels = screen.getAllByTestId('sidebar-group-label')
-    const labelTexts = labels.map((l) => l.textContent)
-    expect(labelTexts).toContain('My Org')
+    expect(screen.queryByRole('link', { name: /^org settings$/i })).toBeNull()
   })
 
-  it('shows "Org Settings" label instead of "Settings" in org nav', () => {
+  it('does not route any sidebar link to /orgs/:orgName/settings/', () => {
     render(<AppSidebar />)
-    expect(screen.queryByRole('link', { name: /^org settings$/i })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /^settings$/i })).toBeNull()
-  })
-
-  it('hides org nav group when selectedOrg is null', () => {
-    ;(useOrg as Mock).mockReturnValue({
-      organizations: [],
-      selectedOrg: null,
-      setSelectedOrg: vi.fn(),
-      isLoading: false,
-    })
-    render(<AppSidebar />)
-    expect(screen.queryByTestId('sidebar-group-label')).toBeNull()
+    const links = screen.queryAllByRole('link')
+    const hrefs = links.map((l) => l.getAttribute('href'))
+    expect(hrefs).not.toContain('/orgs/my-org/settings/')
+    expect(hrefs).not.toContain('/orgs/my-org/folders')
+    expect(hrefs).not.toContain('/orgs/my-org/projects')
   })
 })
 
@@ -360,7 +352,10 @@ describe('AppSidebar — Project tree (HOL-604)', () => {
   it('renders only Secrets and Settings (no Deployments/Templates) when deploymentsEnabled is false', () => {
     ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: false }, isPending: false })
     render(<AppSidebar />)
-    const sub = screen.getByTestId('sidebar-menu-sub')
+    // HOL-605: two SidebarMenuSub lists coexist (Project + Organization); scope
+    // this assertion to the Project tree container.
+    const tree = screen.getByTestId('project-tree')
+    const sub = within(tree).getByTestId('sidebar-menu-sub')
     const labels = Array.from(sub.querySelectorAll('li')).map((li) => li.textContent?.trim())
     expect(labels).toEqual(['Secrets', 'Settings'])
   })
@@ -368,7 +363,8 @@ describe('AppSidebar — Project tree (HOL-604)', () => {
   it('renders children in canonical order Secrets, Deployments, Templates, Settings when deploymentsEnabled', () => {
     ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: true }, isPending: false })
     render(<AppSidebar />)
-    const sub = screen.getByTestId('sidebar-menu-sub')
+    const tree = screen.getByTestId('project-tree')
+    const sub = within(tree).getByTestId('sidebar-menu-sub')
     const labels = Array.from(sub.querySelectorAll('li')).map((li) => li.textContent?.trim())
     expect(labels).toEqual(['Secrets', 'Deployments', 'Templates', 'Settings'])
   })
@@ -376,27 +372,34 @@ describe('AppSidebar — Project tree (HOL-604)', () => {
   it('routes each child link to the existing /projects/$projectName/... URL', () => {
     ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: true }, isPending: false })
     render(<AppSidebar />)
-    expect(screen.getByRole('link', { name: /^secrets$/i }).getAttribute('href')).toBe(
+    const tree = screen.getByTestId('project-tree')
+    expect(within(tree).getByRole('link', { name: /^secrets$/i }).getAttribute('href')).toBe(
       '/projects/my-project/secrets',
     )
-    expect(screen.getByRole('link', { name: /^deployments$/i }).getAttribute('href')).toBe(
+    expect(within(tree).getByRole('link', { name: /^deployments$/i }).getAttribute('href')).toBe(
       '/projects/my-project/deployments',
     )
-    expect(screen.getByRole('link', { name: /^templates$/i }).getAttribute('href')).toBe(
+    // HOL-605: "Templates" now appears under both trees; scope to the Project
+    // tree to assert the project-scope route.
+    expect(within(tree).getByRole('link', { name: /^templates$/i }).getAttribute('href')).toBe(
       '/projects/my-project/templates',
     )
-    // The child Settings link routes to the project-scope settings route;
-    // the org nav still exposes a separate Org Settings link.
+    // Only the project-scope Settings child exists in the sidebar (Org
+    // Settings was moved to the workspace menu in HOL-603).
     const settingsLinks = screen.getAllByRole('link', { name: /^settings$/i })
     expect(settingsLinks).toHaveLength(1)
     expect(settingsLinks[0].getAttribute('href')).toBe('/projects/my-project/settings/')
   })
 
-  it('the org nav Org Settings link continues to render alongside the Project Settings child', () => {
+  it('renders the Project Settings child alongside the Organization tree', () => {
     ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: true }, isPending: false })
     render(<AppSidebar />)
-    expect(screen.getByRole('link', { name: /^org settings$/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /^settings$/i })).toBeInTheDocument()
+    // HOL-605: Org Settings is gone from the sidebar; the Organization tree
+    // stands alongside the Project tree when both scopes are selected.
+    expect(screen.getByTestId('organization-tree')).toBeInTheDocument()
+    const settingsLinks = screen.getAllByRole('link', { name: /^settings$/i })
+    expect(settingsLinks).toHaveLength(1)
+    expect(settingsLinks[0].getAttribute('href')).toBe('/projects/my-project/settings/')
   })
 
   it('does not render the Project tree when selectedProject is cleared', () => {
@@ -413,13 +416,18 @@ describe('AppSidebar — Project tree (HOL-604)', () => {
   // Active-state highlighting: the `isActive` prop on each child is surfaced
   // on the wrapping <span data-active="..."> by the mock so we can assert
   // the route-based gate without caring about the internal primitive.
+  //
+  // HOL-605 introduces an Organization tree child named "Templates" that
+  // coexists with the Project tree child "Templates"; scope lookups to the
+  // Project tree container to keep these assertions unambiguous.
   describe('active-state highlighting', () => {
     beforeEach(() => {
       ;(useGetProjectSettings as Mock).mockReturnValue({ data: { deploymentsEnabled: true }, isPending: false })
     })
 
-    function activeOf(linkName: RegExp) {
-      const link = screen.getByRole('link', { name: linkName })
+    function activeOfProjectChild(linkName: RegExp) {
+      const projectTree = screen.getByTestId('project-tree')
+      const link = within(projectTree).getByRole('link', { name: linkName })
       // The mock wraps the <a> in a <span data-active="..."> when asChild
       // is used (SidebarMenuSubButton asChild -> Link).
       return link.parentElement?.getAttribute('data-active')
@@ -428,16 +436,16 @@ describe('AppSidebar — Project tree (HOL-604)', () => {
     it('marks the Secrets child active when the pathname is /projects/<name>/secrets', () => {
       mockPathname = '/projects/my-project/secrets'
       render(<AppSidebar />)
-      expect(activeOf(/^secrets$/i)).toBe('true')
-      expect(activeOf(/^deployments$/i)).toBe('false')
-      expect(activeOf(/^settings$/i)).toBe('false')
+      expect(activeOfProjectChild(/^secrets$/i)).toBe('true')
+      expect(activeOfProjectChild(/^deployments$/i)).toBe('false')
+      expect(activeOfProjectChild(/^settings$/i)).toBe('false')
     })
 
     it('marks the Settings child active when the pathname is /projects/<name>/settings (trailing slash stripped)', () => {
       mockPathname = '/projects/my-project/settings'
       render(<AppSidebar />)
-      expect(activeOf(/^settings$/i)).toBe('true')
-      expect(activeOf(/^secrets$/i)).toBe('false')
+      expect(activeOfProjectChild(/^settings$/i)).toBe('true')
+      expect(activeOfProjectChild(/^secrets$/i)).toBe('false')
     })
 
     it('marks only the matching child active when the pathname is a deeper sub-route', () => {
@@ -445,10 +453,155 @@ describe('AppSidebar — Project tree (HOL-604)', () => {
       // Secrets child should be active, not the other children.
       mockPathname = '/projects/my-project/secrets/api-key'
       render(<AppSidebar />)
-      expect(activeOf(/^secrets$/i)).toBe('true')
-      expect(activeOf(/^deployments$/i)).toBe('false')
-      expect(activeOf(/^templates$/i)).toBe('false')
-      expect(activeOf(/^settings$/i)).toBe('false')
+      expect(activeOfProjectChild(/^secrets$/i)).toBe('true')
+      expect(activeOfProjectChild(/^deployments$/i)).toBe('false')
+      expect(activeOfProjectChild(/^templates$/i)).toBe('false')
+      expect(activeOfProjectChild(/^settings$/i)).toBe('false')
+    })
+  })
+})
+
+// HOL-605: the org section becomes a collapsible tree labeled "Organization"
+// with a tooltip surfacing the display name + slug. Children render inside a
+// SidebarMenuSub in the canonical order: Resources, Templates, Template
+// Policies. The tree is hidden when no organization is selected.
+//
+// This suite flattens the Collapsible / Tooltip primitives so content-level
+// assertions (order, routing, active state, tooltip contents) are direct.
+describe('AppSidebar — Organization tree (HOL-605)', () => {
+  function setupOrgSelected() {
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [{ name: 'my-org', displayName: 'My Org' }],
+      selectedOrg: 'my-org',
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPathname = '/'
+    setDefaults()
+    setupOrgSelected()
+  })
+
+  it('renders the Organization tree when an org is selected', () => {
+    render(<AppSidebar />)
+    expect(screen.getByTestId('organization-tree')).toBeInTheDocument()
+    expect(screen.getByTestId('organization-tree-trigger')).toBeInTheDocument()
+  })
+
+  it('does not render the Organization tree when no org is selected', () => {
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [],
+      selectedOrg: null,
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+    render(<AppSidebar />)
+    expect(screen.queryByTestId('organization-tree')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('organization-tree-trigger')).not.toBeInTheDocument()
+  })
+
+  it('uses a static "Organization" label instead of the org display name', () => {
+    render(<AppSidebar />)
+    const trigger = screen.getByTestId('organization-tree-trigger')
+    expect(trigger.textContent).toContain('Organization')
+    // Display name belongs in the tooltip, not the label itself.
+    expect(trigger.textContent).not.toContain('My Org')
+  })
+
+  it('renders a tooltip whose first line is the display name and second is the slug', () => {
+    render(<AppSidebar />)
+    const tooltip = screen.getByTestId('organization-tree-tooltip')
+    const lineDivs = Array.from(tooltip.children).filter(
+      (el): el is HTMLElement => el.tagName === 'DIV',
+    )
+    expect(lineDivs.map((el) => el.textContent)).toEqual(['My Org', 'my-org'])
+  })
+
+  it('falls back to the slug for the display-name line when displayName is empty', () => {
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [{ name: 'my-org', displayName: '' }],
+      selectedOrg: 'my-org',
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+    render(<AppSidebar />)
+    const tooltip = screen.getByTestId('organization-tree-tooltip')
+    const lineDivs = Array.from(tooltip.children).filter(
+      (el): el is HTMLElement => el.tagName === 'DIV',
+    )
+    expect(lineDivs.map((el) => el.textContent)).toEqual(['my-org', 'my-org'])
+  })
+
+  it('renders children in canonical order Resources, Templates, Template Policies', () => {
+    render(<AppSidebar />)
+    const tree = screen.getByTestId('organization-tree')
+    const sub = within(tree).getByTestId('sidebar-menu-sub')
+    const labels = Array.from(sub.querySelectorAll('li')).map((li) => li.textContent?.trim())
+    expect(labels).toEqual(['Resources', 'Templates', 'Template Policies'])
+  })
+
+  it('routes each child link to the correct /orgs/$orgName/... URL', () => {
+    render(<AppSidebar />)
+    const tree = screen.getByTestId('organization-tree')
+    expect(
+      within(tree).getByRole('link', { name: /^resources$/i }).getAttribute('href'),
+    ).toBe('/orgs/my-org/resources')
+    expect(
+      within(tree).getByRole('link', { name: /^templates$/i }).getAttribute('href'),
+    ).toBe('/orgs/my-org/templates')
+    expect(
+      within(tree).getByRole('link', { name: /^template policies$/i }).getAttribute('href'),
+    ).toBe('/orgs/my-org/template-policies')
+  })
+
+  it('is positioned after the Project tree in the sidebar DOM order', () => {
+    ;(useProject as Mock).mockReturnValue({
+      projects: [{ name: 'my-project', displayName: 'My Project' }],
+      selectedProject: 'my-project',
+      setSelectedProject: vi.fn(),
+      isLoading: false,
+    })
+    render(<AppSidebar />)
+    const projectTree = screen.getByTestId('project-tree')
+    const orgTree = screen.getByTestId('organization-tree')
+    // Node.DOCUMENT_POSITION_FOLLOWING (4): orgTree follows projectTree.
+    expect(projectTree.compareDocumentPosition(orgTree) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  // Active-state highlighting scoped to the Organization tree, mirroring the
+  // Project tree suite. The Organization child "Templates" must not collide
+  // with the Project child of the same name.
+  describe('active-state highlighting', () => {
+    function activeOfOrgChild(linkName: RegExp) {
+      const tree = screen.getByTestId('organization-tree')
+      const link = within(tree).getByRole('link', { name: linkName })
+      return link.parentElement?.getAttribute('data-active')
+    }
+
+    it('marks the Resources child active on /orgs/<name>/resources', () => {
+      mockPathname = '/orgs/my-org/resources'
+      render(<AppSidebar />)
+      expect(activeOfOrgChild(/^resources$/i)).toBe('true')
+      expect(activeOfOrgChild(/^templates$/i)).toBe('false')
+      expect(activeOfOrgChild(/^template policies$/i)).toBe('false')
+    })
+
+    it('marks the Templates child active on /orgs/<name>/templates', () => {
+      mockPathname = '/orgs/my-org/templates'
+      render(<AppSidebar />)
+      expect(activeOfOrgChild(/^templates$/i)).toBe('true')
+      expect(activeOfOrgChild(/^resources$/i)).toBe('false')
+    })
+
+    it('marks the Template Policies child active on /orgs/<name>/template-policies/<detail>', () => {
+      mockPathname = '/orgs/my-org/template-policies/my-policy'
+      render(<AppSidebar />)
+      expect(activeOfOrgChild(/^template policies$/i)).toBe('true')
+      expect(activeOfOrgChild(/^templates$/i)).toBe('false')
+      expect(activeOfOrgChild(/^resources$/i)).toBe('false')
     })
   })
 })
