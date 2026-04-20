@@ -386,20 +386,14 @@ func (s *Server) Serve(ctx context.Context) error {
 		// HOL-621 / HOL-661: Template CRUD routes through the embedded
 		// controller-runtime manager's cache-backed client.Client — reads
 		// observe the shared informer cache, writes fall through to the
-		// apiserver. The same manager block above guarantees that a
-		// non-nil k8sClientset implies a non-nil controllerMgr, but we
-		// keep the defensive nil-check so a future refactor that
-		// decouples those paths doesn't silently panic.
-		//
-		// The k8sClientset handle is still needed here because Release
-		// CRUD reads and writes ConfigMaps via client-go — HOL-615 Phase 6
-		// will migrate Releases to a CRD, at which point the
-		// kubernetes.Interface parameter drops out entirely.
+		// apiserver. HOL-693 (ADR 032) migrated Release CRUD to the same
+		// TemplateRelease CRD path, so the client-go kubernetes.Interface
+		// parameter dropped off the constructor.
 		var templateCtrlClient ctrlclient.Client
 		if s.controllerMgr != nil {
 			templateCtrlClient = s.controllerMgr.GetClient()
 		}
-		templatesK8s := templates.NewK8sClient(k8sClientset, templateCtrlClient, nsResolver)
+		templatesK8s := templates.NewK8sClient(templateCtrlClient, nsResolver)
 
 		// TemplatePolicy resolution seam (HOL-566 Phase 4, wired in HOL-567
 		// Phase 5). The real folderResolver is threaded through every render

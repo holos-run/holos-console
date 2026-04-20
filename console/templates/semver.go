@@ -58,9 +58,10 @@ func SortVersionsDesc(versions []*semver.Version) {
 	})
 }
 
-// ReleaseConfigMapName returns the DNS-label-safe ConfigMap name for a release:
-// {template-name}--v{major}-{minor}-{patch}
-func ReleaseConfigMapName(templateName string, version *semver.Version) string {
+// ReleaseObjectName returns the DNS-label-safe object name for a
+// TemplateRelease CRD: {template-name}--v{major}-{minor}-{patch}. The same
+// shape predates HOL-693 when releases were stored as ConfigMaps.
+func ReleaseObjectName(templateName string, version *semver.Version) string {
 	return fmt.Sprintf("%s--v%d-%d-%d", templateName, version.Major(), version.Minor(), version.Patch())
 }
 

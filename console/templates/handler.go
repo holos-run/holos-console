@@ -1090,7 +1090,7 @@ func (h *Handler) ListLinkableTemplates(
 		if i == 0 && !includeSelfScope {
 			continue // skip the scope itself unless explicitly requested
 		}
-		entryScope, entryName := scopeAndNameFromNs(h.resolver, ns.Name)
+		entryScope, _ := scopeAndNameFromNs(h.resolver, ns.Name)
 		if entryScope == scopeshim.ScopeUnspecified {
 			continue
 		}
@@ -1105,7 +1105,7 @@ func (h *Handler) ListLinkableTemplates(
 		// Fetch releases for each linkable template and populate the Releases
 		// field, stripping cue_template and defaults to keep the payload small.
 		for _, lt := range infos {
-			cms, relErr := h.k8s.ListReleases(ctx, entryScope, entryName, lt.Name)
+			rels, relErr := h.k8s.ListReleases(ctx, ns.Name, lt.Name)
 			if relErr != nil {
 				slog.WarnContext(ctx, "failed to list releases for linkable template",
 					slog.String("template", lt.Name),
@@ -1113,9 +1113,9 @@ func (h *Handler) ListLinkableTemplates(
 				)
 				continue
 			}
-			releases := make([]*consolev1.Release, 0, len(cms))
-			for _, cm := range cms {
-				r := configMapToRelease(&cm, entryScope, entryName)
+			releases := make([]*consolev1.Release, 0, len(rels))
+			for i := range rels {
+				r := releaseCRDToProto(&rels[i])
 				// Strip heavy fields the linking UI does not need.
 				r.CueTemplate = ""
 				r.Defaults = nil
@@ -1372,9 +1372,15 @@ func (h *Handler) CreateRelease(
 		return nil, err
 	}
 
-	// Create the release ConfigMap. K8s returns AlreadyExists if the version
-	// is duplicated (ConfigMap name is deterministic from template+version).
-	cm, err := h.k8s.CreateRelease(ctx, scope, scopeName, templateName, version, release.CueTemplate, release.Defaults, release.Changelog, release.UpgradeAdvice)
+	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
+	if nsErr != nil {
+		return nil, nsErr
+	}
+
+	// Create the TemplateRelease CRD. The apiserver returns AlreadyExists if
+	// the version is duplicated (object name is deterministic from
+	// template+version).
+	rel, err := h.k8s.CreateRelease(ctx, ns, templateName, version, release.CueTemplate, release.Defaults, release.Changelog, release.UpgradeAdvice)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -1391,7 +1397,7 @@ func (h *Handler) CreateRelease(
 	)
 
 	return connect.NewResponse(&consolev1.CreateReleaseResponse{
-		Release: configMapToRelease(cm, scope, scopeName),
+		Release: releaseCRDToProto(rel),
 	}), nil
 }
 
@@ -1418,14 +1424,19 @@ func (h *Handler) ListReleases(
 		return nil, err
 	}
 
-	cms, err := h.k8s.ListReleases(ctx, scope, scopeName, templateName)
+	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
+	if nsErr != nil {
+		return nil, nsErr
+	}
+
+	rels, err := h.k8s.ListReleases(ctx, ns, templateName)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
 
-	releases := make([]*consolev1.Release, 0, len(cms))
-	for _, cm := range cms {
-		releases = append(releases, configMapToRelease(&cm, scope, scopeName))
+	releases := make([]*consolev1.Release, 0, len(rels))
+	for i := range rels {
+		releases = append(releases, releaseCRDToProto(&rels[i]))
 	}
 
 	slog.InfoContext(ctx, "releases listed",
@@ -1474,7 +1485,12 @@ func (h *Handler) GetRelease(
 		return nil, err
 	}
 
-	cm, err := h.k8s.GetRelease(ctx, scope, scopeName, templateName, version)
+	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
+	if nsErr != nil {
+		return nil, nsErr
+	}
+
+	rel, err := h.k8s.GetRelease(ctx, ns, templateName, version)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -1490,7 +1506,7 @@ func (h *Handler) GetRelease(
 	)
 
 	return connect.NewResponse(&consolev1.GetReleaseResponse{
-		Release: configMapToRelease(cm, scope, scopeName),
+		Release: releaseCRDToProto(rel),
 	}), nil
 }
 
@@ -1580,8 +1596,13 @@ func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTe
 	refName := ref.Name
 	constraintStr := ref.VersionConstraint
 
+	refNs, nsErr := h.mustNamespaceFor(refScope, refScopeName)
+	if nsErr != nil {
+		return nil, nsErr
+	}
+
 	// List all release versions for the linked template.
-	versions, err := h.k8s.ListReleaseVersions(ctx, refScope, refScopeName, refName)
+	versions, err := h.k8s.ListReleaseVersions(ctx, refNs, refName)
 	if err != nil {
 		return nil, err
 	}

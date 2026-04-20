@@ -7,12 +7,10 @@
 // observes them on the next watch event, so read-your-own-write semantics
 // no longer depend on a local CoreV1 ConfigMap cache.
 //
-// The Release path (Create/Get/List/ListReleaseVersions/ResolveVersionedSource)
-// still reads and writes ConfigMaps through the kubernetes.Interface
-// (client-go) because the Release CRD lands in HOL-615 Phase 6. Carrying
-// both clients here keeps the blast radius of the Template rewrite inside
-// this package — once Phase 6 ships the Release CRD the kubernetes.Interface
-// field and every Release method can be deleted in a follow-up.
+// HOL-693 extended the same pattern to Release storage: releases are now
+// TemplateRelease CRDs in the same group. The kubernetes.Interface (client-go)
+// argument dropped off NewK8sClient at the same time — no non-Namespace call
+// through it remained. Namespace reads still flow through the Resolver.
 //
 // Signature shape: every Template method takes a Kubernetes namespace and
 // a resource name. The namespace is the authoritative identifier per
@@ -28,11 +26,11 @@ import (
 	"log/slog"
 
 	"github.com/Masterminds/semver/v3"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
@@ -45,47 +43,30 @@ import (
 
 const (
 	CueTemplateKey = "template.cue"
-	// DefaultsKey is the ConfigMap data key that stores TemplateDefaults as JSON.
-	// Retained for the Release ConfigMap path; Template CRDs carry defaults as
-	// structured spec fields.
-	DefaultsKey = "defaults.json"
 
 	// DefaultReferenceGrantName is the name of the seeded built-in platform template.
 	DefaultReferenceGrantName = "reference-grant"
 )
 
-// K8sClient performs Template CRUD against the templates.holos.run/v1alpha1
-// Template CRD via a controller-runtime client.Client while keeping the
-// Release read/write path on a kubernetes.Interface until the Release CRD
-// lands (HOL-615 Phase 6). Both clients are kept non-nil by production
-// wiring; tests may construct one or the other depending on which surface
-// they exercise.
+// K8sClient performs Template and TemplateRelease CRUD against the
+// templates.holos.run/v1alpha1 CRDs via a controller-runtime client.Client.
+// Reads hit the informer cache populated by the embedded controller manager;
+// writes fall through to the API server and the cache observes them on the
+// next watch event.
 type K8sClient struct {
 	// client is the cache-backed controller-runtime client for Template
-	// CRDs. Reads consult the informer cache populated by the embedded
-	// controller manager; writes fall through to the API server and the
-	// cache sees them on the next watch event.
+	// and TemplateRelease CRDs.
 	client ctrlclient.Client
-	// coreClient is the client-go kubernetes.Interface the Release path
-	// still uses. Release storage migrates to a CRD in HOL-615 Phase 6;
-	// once that lands this field and every Release method in this file
-	// go away with it.
-	coreClient kubernetes.Interface
 	// Resolver maps scope pairs to namespaces and back. Exported so
 	// handlers can reuse the same resolver instance when they still think
 	// in (scope, scopeName) terms.
 	Resolver *resolver.Resolver
 }
 
-// NewK8sClient wires the Template CRD client.Client alongside the legacy
-// client-go kubernetes.Interface used for Release ConfigMaps. Callers MUST
-// provide both clients in production — the typed client covers Templates
-// and the core client covers Releases. Tests that only exercise one of
-// the two surfaces may pass nil for the other; the methods that use the
-// nil client will panic, which is intentional so we catch wiring mistakes
-// loudly rather than silently no-op.
-func NewK8sClient(coreClient kubernetes.Interface, cl ctrlclient.Client, r *resolver.Resolver) *K8sClient {
-	return &K8sClient{client: cl, coreClient: coreClient, Resolver: r}
+// NewK8sClient wires the controller-runtime client.Client used for
+// Template and TemplateRelease CRDs alongside the namespace resolver.
+func NewK8sClient(cl ctrlclient.Client, r *resolver.Resolver) *K8sClient {
+	return &K8sClient{client: cl, Resolver: r}
 }
 
 // namespaceForScope returns the Kubernetes namespace for the given scope and
@@ -169,8 +150,8 @@ func (k *K8sClient) ListAllTemplates(ctx context.Context) ([]templatesv1alpha1.T
 // it is enough to attribute the namespace to its root organization without
 // a Walker round-trip per namespace.
 func (k *K8sClient) GetNamespaceOrg(ctx context.Context, ns string) (string, error) {
-	got, err := k.coreClient.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
-	if err != nil {
+	var got corev1.Namespace
+	if err := k.client.Get(ctx, types.NamespacedName{Name: ns}, &got); err != nil {
 		return "", err
 	}
 	if got.Labels == nil {
@@ -516,7 +497,7 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 			}
 			seen[key] = true
 
-			src, resolveErr := k.ResolveVersionedSource(ctx, scope, scopeName, tmpl.Name, protoRef.GetVersionConstraint())
+			src, resolveErr := k.ResolveVersionedSource(ctx, ns.Name, tmpl.Name, protoRef.GetVersionConstraint())
 			if resolveErr != nil {
 				slog.WarnContext(ctx, "failed to resolve versioned source for ancestor template, falling back to live",
 					slog.String("template", tmpl.Name),
@@ -600,120 +581,109 @@ func (k *K8sClient) SeedProjectTemplate(ctx context.Context, project string) err
 	return err
 }
 
-// CreateRelease creates an immutable Release ConfigMap for a template at a
-// specific semver version. The Release path still uses ConfigMaps until
-// HOL-615 Phase 6 migrates it to a CRD; consult that ticket before rewriting
-// anything below this line.
-func (k *K8sClient) CreateRelease(ctx context.Context, scope scopeshim.Scope, scopeName, templateName string, version *semver.Version, cueTemplate string, defaults *consolev1.TemplateDefaults, changelog, upgradeAdvice string) (*corev1.ConfigMap, error) {
-	ns, err := k.namespaceForScope(scope, scopeName)
-	if err != nil {
-		return nil, err
-	}
-	cmName := ReleaseConfigMapName(templateName, version)
+// CreateRelease creates an immutable TemplateRelease CRD for a template at a
+// specific semver version. The object name is a deterministic function of
+// templateName and version (ReleaseObjectName), so a duplicate publish
+// returns AlreadyExists from the apiserver; callers map that to a domain
+// error.
+func (k *K8sClient) CreateRelease(ctx context.Context, namespace, templateName string, version *semver.Version, cueTemplate string, defaults *consolev1.TemplateDefaults, changelog, upgradeAdvice string) (*templatesv1alpha1.TemplateRelease, error) {
+	name := ReleaseObjectName(templateName, version)
 	slog.DebugContext(ctx, "creating release in kubernetes",
-		slog.String("scope", scope.String()),
-		slog.String("scopeName", scopeName),
-		slog.String("namespace", ns),
+		slog.String("namespace", namespace),
 		slog.String("templateName", templateName),
 		slog.String("version", version.String()),
-		slog.String("configMapName", cmName),
+		slog.String("name", name),
 	)
 
-	data := map[string]string{
-		CueTemplateKey:            cueTemplate,
-		v1alpha2.ChangelogKey:     changelog,
-		v1alpha2.UpgradeAdviceKey: upgradeAdvice,
-	}
-	if defaults != nil {
-		b, err := json.Marshal(defaults)
-		if err != nil {
-			return nil, fmt.Errorf("serializing release defaults: %w", err)
-		}
-		data[DefaultsKey] = string(b)
+	defaultsJSON, err := marshalProtoDefaults(defaults)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling release defaults: %w", err)
 	}
 
-	immutable := true
-	cm := &corev1.ConfigMap{
+	rel := &templatesv1alpha1.TemplateRelease{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      cmName,
-			Namespace: ns,
+			Name:      name,
+			Namespace: namespace,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplateRelease,
-				v1alpha2.LabelReleaseOf:     templateName,
-				v1alpha2.LabelTemplateScope: scopeLabelValue(scope),
-			},
-			Annotations: map[string]string{
-				v1alpha2.AnnotationTemplateVersion: version.String(),
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: releaseResourceTypeLabelValue,
+				releaseOfLabelKey:          templateName,
 			},
 		},
-		Immutable: &immutable,
-		Data:      data,
+		Spec: templatesv1alpha1.TemplateReleaseSpec{
+			TemplateName:  templateName,
+			Version:       version.String(),
+			CueTemplate:   cueTemplate,
+			DefaultsJSON:  defaultsJSON,
+			Changelog:     changelog,
+			UpgradeAdvice: upgradeAdvice,
+		},
 	}
-	return k.coreClient.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{})
-}
-
-// ListReleases returns all release ConfigMaps for a template, sorted by version
-// descending (newest first). HOL-615 Phase 6 replaces this with a CRD list.
-func (k *K8sClient) ListReleases(ctx context.Context, scope scopeshim.Scope, scopeName, templateName string) ([]corev1.ConfigMap, error) {
-	ns, err := k.namespaceForScope(scope, scopeName)
-	if err != nil {
+	if err := k.client.Create(ctx, rel); err != nil {
 		return nil, err
 	}
-	labelSelector := fmt.Sprintf("%s=%s,%s=%s",
-		v1alpha2.LabelResourceType, v1alpha2.ResourceTypeTemplateRelease,
-		v1alpha2.LabelReleaseOf, templateName,
-	)
+	return rel, nil
+}
+
+// ListReleases returns all TemplateRelease CRDs for a template, sorted by
+// version descending (newest first). Releases whose spec.version fails to
+// parse as semver sort to the end.
+//
+// Filtering is done on `spec.templateName` rather than the
+// `console.holos.run/release-of` label so a TemplateRelease that omits the
+// convenience labels (say, one authored directly via `kubectl apply` or a
+// migration tool) is still visible to the resolver and duplicate-publish
+// detection. Labels remain on CreateRelease-produced objects as cache-side
+// indexing hints for tooling like kubectl; they are not authoritative for
+// visibility.
+func (k *K8sClient) ListReleases(ctx context.Context, namespace, templateName string) ([]templatesv1alpha1.TemplateRelease, error) {
 	slog.DebugContext(ctx, "listing releases from kubernetes",
-		slog.String("namespace", ns),
+		slog.String("namespace", namespace),
 		slog.String("templateName", templateName),
-		slog.String("labelSelector", labelSelector),
 	)
-	list, err := k.coreClient.CoreV1().ConfigMaps(ns).List(ctx, metav1.ListOptions{
-		LabelSelector: labelSelector,
-	})
-	if err != nil {
+	var list templatesv1alpha1.TemplateReleaseList
+	if err := k.client.List(ctx, &list, ctrlclient.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("listing releases: %w", err)
 	}
-
-	items := list.Items
-	sortReleaseConfigMapsDesc(items)
+	items := list.Items[:0]
+	for _, rel := range list.Items {
+		if rel.Spec.TemplateName == templateName {
+			items = append(items, rel)
+		}
+	}
+	sortReleasesDesc(items)
 	return items, nil
 }
 
-// GetRelease retrieves a specific release ConfigMap by template name and
-// version. HOL-615 Phase 6 replaces this with a CRD get.
-func (k *K8sClient) GetRelease(ctx context.Context, scope scopeshim.Scope, scopeName, templateName string, version *semver.Version) (*corev1.ConfigMap, error) {
-	ns, err := k.namespaceForScope(scope, scopeName)
-	if err != nil {
-		return nil, err
-	}
-	cmName := ReleaseConfigMapName(templateName, version)
+// GetRelease retrieves a specific TemplateRelease by template name and
+// version from the given namespace.
+func (k *K8sClient) GetRelease(ctx context.Context, namespace, templateName string, version *semver.Version) (*templatesv1alpha1.TemplateRelease, error) {
+	name := ReleaseObjectName(templateName, version)
 	slog.DebugContext(ctx, "getting release from kubernetes",
-		slog.String("namespace", ns),
+		slog.String("namespace", namespace),
 		slog.String("templateName", templateName),
 		slog.String("version", version.String()),
-		slog.String("configMapName", cmName),
+		slog.String("name", name),
 	)
-	return k.coreClient.CoreV1().ConfigMaps(ns).Get(ctx, cmName, metav1.GetOptions{})
+	var rel templatesv1alpha1.TemplateRelease
+	if err := k.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &rel); err != nil {
+		return nil, err
+	}
+	return &rel, nil
 }
 
-// sortReleaseConfigMapsDesc sorts release ConfigMaps by their version
-// annotation in descending order (newest first). ConfigMaps with invalid or
-// missing version annotations sort to the end.
-func sortReleaseConfigMapsDesc(items []corev1.ConfigMap) {
+// sortReleasesDesc sorts TemplateRelease CRDs by spec.version in descending
+// order (newest first). Items with invalid or missing version strings sort
+// to the end.
+func sortReleasesDesc(items []templatesv1alpha1.TemplateRelease) {
 	type versioned struct {
-		idx int
 		ver *semver.Version
 	}
 	entries := make([]versioned, len(items))
-	for i, cm := range items {
-		raw := cm.Annotations[v1alpha2.AnnotationTemplateVersion]
-		v, _ := ParseVersion(raw)
-		entries[i] = versioned{idx: i, ver: v}
+	for i, r := range items {
+		v, _ := ParseVersion(r.Spec.Version)
+		entries[i] = versioned{ver: v}
 	}
-	sorted := make([]corev1.ConfigMap, len(items))
-	copy(sorted, items)
 	for i := 0; i < len(entries); i++ {
 		for j := i + 1; j < len(entries); j++ {
 			vi, vj := entries[i].ver, entries[j].ver
@@ -725,52 +695,79 @@ func sortReleaseConfigMapsDesc(items []corev1.ConfigMap) {
 			}
 			if swap {
 				entries[i], entries[j] = entries[j], entries[i]
-				sorted[i], sorted[j] = sorted[j], sorted[i]
+				items[i], items[j] = items[j], items[i]
 			}
 		}
 	}
-	copy(items, sorted)
 }
 
-// configMapToRelease converts a Kubernetes ConfigMap to a Release protobuf
+// releaseCRDToProto converts a TemplateRelease CRD to the Release protobuf
 // message. HOL-619 moved Release to namespace-keyed identity — the returned
-// proto carries cm.Namespace directly. The caller's (scope, scopeName) pair
-// is accepted for signature parity with the pre-HOL-619 call sites and is
-// intentionally unused by this function.
-func configMapToRelease(cm *corev1.ConfigMap, scope scopeshim.Scope, scopeName string) *consolev1.Release {
-	_ = scope
-	_ = scopeName
-	release := &consolev1.Release{
-		TemplateName:  cm.Labels[v1alpha2.LabelReleaseOf],
-		Namespace:     cm.Namespace,
-		Version:       cm.Annotations[v1alpha2.AnnotationTemplateVersion],
-		Changelog:     cm.Data[v1alpha2.ChangelogKey],
-		UpgradeAdvice: cm.Data[v1alpha2.UpgradeAdviceKey],
-		CueTemplate:   cm.Data[CueTemplateKey],
-		CreatedAt:     timestamppb.New(cm.CreationTimestamp.Time),
+// proto carries rel.Namespace directly.
+func releaseCRDToProto(rel *templatesv1alpha1.TemplateRelease) *consolev1.Release {
+	out := &consolev1.Release{
+		TemplateName:  rel.Spec.TemplateName,
+		Namespace:     rel.Namespace,
+		Version:       rel.Spec.Version,
+		Changelog:     rel.Spec.Changelog,
+		UpgradeAdvice: rel.Spec.UpgradeAdvice,
+		CueTemplate:   rel.Spec.CueTemplate,
+		CreatedAt:     timestamppb.New(rel.CreationTimestamp.Time),
 	}
-
-	if rawJSON, ok := cm.Data[DefaultsKey]; ok && rawJSON != "" {
-		var defaults consolev1.TemplateDefaults
-		if err := json.Unmarshal([]byte(rawJSON), &defaults); err == nil {
-			release.Defaults = &defaults
-		}
+	if defaults := unmarshalProtoDefaults(rel.Spec.DefaultsJSON); defaults != nil {
+		out.Defaults = defaults
 	}
+	return out
+}
 
-	return release
+// marshalProtoDefaults serializes a proto TemplateDefaults for opaque
+// storage in TemplateRelease.Spec.DefaultsJSON. Returns the empty string
+// for nil or fully-empty input so releases without defaults land a
+// missing field rather than an empty JSON object. Using proto JSON
+// preserves fidelity for env-var variants (secret_key_ref,
+// config_map_key_ref) that the structured CRD TemplateDefaults does not
+// model.
+func marshalProtoDefaults(defaults *consolev1.TemplateDefaults) (string, error) {
+	if defaults == nil {
+		return "", nil
+	}
+	b, err := protojson.Marshal(defaults)
+	if err != nil {
+		return "", err
+	}
+	// Treat the proto zero-value as "no defaults" to keep the CRD spec
+	// clean for releases that carry nothing to record.
+	if string(b) == "{}" {
+		return "", nil
+	}
+	return string(b), nil
+}
+
+// unmarshalProtoDefaults deserializes a TemplateRelease.Spec.DefaultsJSON
+// blob back into a proto TemplateDefaults. Returns nil for an empty
+// string or an unmarshalable payload; callers rely on a nil return as
+// "no defaults recorded on this release".
+func unmarshalProtoDefaults(raw string) *consolev1.TemplateDefaults {
+	if raw == "" {
+		return nil
+	}
+	var out consolev1.TemplateDefaults
+	if err := protojson.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return &out
 }
 
 // ListReleaseVersions returns all parsed semver versions for a template's
-// releases. Releases with invalid version annotations are skipped.
-func (k *K8sClient) ListReleaseVersions(ctx context.Context, scope scopeshim.Scope, scopeName, templateName string) ([]*semver.Version, error) {
-	cms, err := k.ListReleases(ctx, scope, scopeName, templateName)
+// releases. Releases with invalid spec.version strings are skipped.
+func (k *K8sClient) ListReleaseVersions(ctx context.Context, namespace, templateName string) ([]*semver.Version, error) {
+	rels, err := k.ListReleases(ctx, namespace, templateName)
 	if err != nil {
 		return nil, err
 	}
 	var versions []*semver.Version
-	for _, cm := range cms {
-		raw := cm.Annotations[v1alpha2.AnnotationTemplateVersion]
-		v, err := ParseVersion(raw)
+	for _, r := range rels {
+		v, err := ParseVersion(r.Spec.Version)
 		if err != nil {
 			continue
 		}
@@ -784,18 +781,14 @@ func (k *K8sClient) ListReleaseVersions(ctx context.Context, scope scopeshim.Sco
 // source from the latest matching release. If no releases exist (pre-
 // versioning backwards compatibility), it falls back to the live template's
 // CUE source read from the Template CRD.
-func (k *K8sClient) ResolveVersionedSource(ctx context.Context, scope scopeshim.Scope, scopeName, templateName, versionConstraint string) (string, error) {
-	versions, err := k.ListReleaseVersions(ctx, scope, scopeName, templateName)
+func (k *K8sClient) ResolveVersionedSource(ctx context.Context, namespace, templateName, versionConstraint string) (string, error) {
+	versions, err := k.ListReleaseVersions(ctx, namespace, templateName)
 	if err != nil {
 		return "", fmt.Errorf("listing release versions for %s: %w", templateName, err)
 	}
 
 	if len(versions) == 0 {
-		ns, nsErr := k.namespaceForScope(scope, scopeName)
-		if nsErr != nil {
-			return "", nsErr
-		}
-		tmpl, err := k.GetTemplate(ctx, ns, templateName)
+		tmpl, err := k.GetTemplate(ctx, namespace, templateName)
 		if err != nil {
 			return "", fmt.Errorf("getting live template %s: %w", templateName, err)
 		}
@@ -812,13 +805,21 @@ func (k *K8sClient) ResolveVersionedSource(ctx context.Context, scope scopeshim.
 		return "", fmt.Errorf("no release of %q matches constraint %q", templateName, versionConstraint)
 	}
 
-	cm, err := k.GetRelease(ctx, scope, scopeName, templateName, best)
+	rel, err := k.GetRelease(ctx, namespace, templateName, best)
 	if err != nil {
 		return "", fmt.Errorf("getting release %s@%s: %w", templateName, best.String(), err)
 	}
-
-	return cm.Data[CueTemplateKey], nil
+	return rel.Spec.CueTemplate, nil
 }
+
+// releaseResourceTypeLabelValue and releaseOfLabelKey are the label values
+// identifying TemplateRelease CRDs. They replace the retired
+// v1alpha2.ResourceTypeTemplateRelease and v1alpha2.LabelReleaseOf constants
+// (HOL-693 / ADR 032).
+const (
+	releaseResourceTypeLabelValue = "template-release"
+	releaseOfLabelKey             = "console.holos.run/release-of"
+)
 
 // templateCRDToProto converts a Template CRD to the consolev1.Template wire
 // shape. The CUE source drives the deployment-defaults extraction path for

@@ -31,6 +31,7 @@ review boundary matches the `CODEOWNERS` boundary in this repository.
 | ADR | Title | Status | Binary |
 |-----|-------|--------|--------|
 | [031](031-secret-injection-service.md) | Secret Injection Service — Architecture Pre-Decisions (HOL-674) | Accepted | `holos-secret-injector` |
+| [032](032-template-release-crd.md) | TemplateRelease as a sibling CRD (HOL-693) | Accepted | `holos-console` |
 
 ## Why colocate?
 

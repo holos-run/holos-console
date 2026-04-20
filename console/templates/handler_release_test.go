@@ -5,11 +5,9 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
-	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/scopeshim"
@@ -17,11 +15,13 @@ import (
 )
 
 // newOrgTestHandler builds a Handler wired to a fake K8s client with org grant
-// resolver for release tests. The grant resolver maps emails to roles.
-func newOrgTestHandler(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string) *Handler {
+// resolver for release tests. The grant resolver maps emails to roles. Extra
+// CRD seed objects (typically TemplateRelease fixtures after HOL-693) flow into
+// the fake controller-runtime client that backs the release CRUD path.
+func newOrgTestHandler(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string, extra ...ctrlclient.Object) *Handler {
 	t.Helper()
 	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-	k8s := newTestK8sClient(t, fakeClient, r)
+	k8s := newTestK8sClient(t, fakeClient, r, extra...)
 	handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 	handler.WithOrgGrantResolver(&stubOrgGrantResolver{users: shareUsers})
 	return handler
@@ -91,24 +91,6 @@ func TestCreateRelease(t *testing.T) {
 		if resp.Msg.Release.Changelog != "Initial release" {
 			t.Errorf("expected changelog 'Initial release', got %q", resp.Msg.Release.Changelog)
 		}
-
-		// Verify ConfigMap was persisted with correct labels.
-		cm, err := fakeClient.CoreV1().ConfigMaps("org-"+org).Get(context.Background(), "my-template--v1-0-0", metav1.GetOptions{})
-		if err != nil {
-			t.Fatalf("expected release ConfigMap to exist, got %v", err)
-		}
-		if cm.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeTemplateRelease {
-			t.Errorf("expected resource-type %q, got %q", v1alpha2.ResourceTypeTemplateRelease, cm.Labels[v1alpha2.LabelResourceType])
-		}
-		if cm.Labels[v1alpha2.LabelReleaseOf] != templateName {
-			t.Errorf("expected release-of %q, got %q", templateName, cm.Labels[v1alpha2.LabelReleaseOf])
-		}
-		if cm.Annotations[v1alpha2.AnnotationTemplateVersion] != "1.0.0" {
-			t.Errorf("expected version annotation 1.0.0, got %q", cm.Annotations[v1alpha2.AnnotationTemplateVersion])
-		}
-		if cm.Immutable == nil || !*cm.Immutable {
-			t.Error("expected ConfigMap to be immutable")
-		}
 	})
 
 	t.Run("rejects prerelease version", func(t *testing.T) {
@@ -161,27 +143,12 @@ func TestCreateRelease(t *testing.T) {
 
 	t.Run("rejects duplicate version", func(t *testing.T) {
 		ns := orgNS(org)
-		// Pre-seed a release ConfigMap.
-		existingRelease := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-template--v1-0-0",
-				Namespace: "org-" + org,
-				Labels: map[string]string{
-					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplateRelease,
-					v1alpha2.LabelReleaseOf:     templateName,
-					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
-				},
-				Annotations: map[string]string{
-					v1alpha2.AnnotationTemplateVersion: "1.0.0",
-				},
-			},
-			Data: map[string]string{
-				CueTemplateKey: validCue,
-			},
-		}
-		fakeClient := fake.NewClientset(ns, existingRelease)
-		handler := newOrgTestHandler(t, fakeClient, shareUsers)
+		fakeClient := fake.NewClientset(ns)
+		// Pre-seed a TemplateRelease CRD; CreateRelease should surface
+		// AlreadyExists from the apiserver when the deterministic object
+		// name collides.
+		existing := makeReleaseCRD("org-"+org, templateName, "1.0.0")
+		handler := newOrgTestHandler(t, fakeClient, shareUsers, existing)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CreateReleaseRequest{
@@ -333,6 +300,71 @@ func TestCreateRelease(t *testing.T) {
 		}
 	})
 
+	t.Run("preserves env secret_key_ref and config_map_key_ref through round-trip", func(t *testing.T) {
+		// Regression guard for HOL-693: the retired release ConfigMap
+		// stored the proto TemplateDefaults as JSON verbatim. The CRD
+		// replacement must preserve the same fidelity; a literal-only
+		// round-trip would silently drop env entries that select a
+		// SecretKeyRef or ConfigMapKeyRef.
+		ns := orgNS(org)
+		fakeClient := fake.NewClientset(ns)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
+
+		ctx := authedCtx(ownerEmail, nil)
+		defaults := &consolev1.TemplateDefaults{
+			Image: "ghcr.io/example/app",
+			Env: []*consolev1.EnvVar{
+				{
+					Name:   "PLAIN",
+					Source: &consolev1.EnvVar_Value{Value: "literal"},
+				},
+				{
+					Name: "DB_PASSWORD",
+					Source: &consolev1.EnvVar_SecretKeyRef{
+						SecretKeyRef: &consolev1.SecretKeyRef{
+							Name: "db-credentials",
+							Key:  "password",
+						},
+					},
+				},
+				{
+					Name: "FEATURE_FLAGS",
+					Source: &consolev1.EnvVar_ConfigMapKeyRef{
+						ConfigMapKeyRef: &consolev1.ConfigMapKeyRef{
+							Name: "feature-flags",
+							Key:  "json",
+						},
+					},
+				},
+			},
+		}
+
+		createReq := connect.NewRequest(&consolev1.CreateReleaseRequest{
+			Namespace: orgScopeRef(org),
+			Release: &consolev1.Release{
+				TemplateName: templateName,
+				Version:      "1.2.3",
+				CueTemplate:  validCue,
+				Defaults:     defaults,
+			},
+		})
+		createResp, err := handler.CreateRelease(ctx, createReq)
+		if err != nil {
+			t.Fatalf("CreateRelease returned unexpected error: %v", err)
+		}
+		assertEnvRoundTripped(t, createResp.Msg.Release.GetDefaults())
+
+		getResp, err := handler.GetRelease(ctx, connect.NewRequest(&consolev1.GetReleaseRequest{
+			Namespace:    orgScopeRef(org),
+			TemplateName: templateName,
+			Version:      "1.2.3",
+		}))
+		if err != nil {
+			t.Fatalf("GetRelease returned unexpected error: %v", err)
+		}
+		assertEnvRoundTripped(t, getResp.Msg.Release.GetDefaults())
+	})
+
 	t.Run("unauthenticated request rejected", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
@@ -365,39 +397,17 @@ func TestListReleases(t *testing.T) {
 
 	shareUsers := map[string]string{ownerEmail: "owner"}
 
-	makeReleaseCM := func(version string) *corev1.ConfigMap {
-		v, _ := ParseVersion(version)
-		return &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      ReleaseConfigMapName(templateName, v),
-				Namespace: "org-" + org,
-				Labels: map[string]string{
-					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplateRelease,
-					v1alpha2.LabelReleaseOf:     templateName,
-					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
-				},
-				Annotations: map[string]string{
-					v1alpha2.AnnotationTemplateVersion: version,
-				},
-			},
-			Data: map[string]string{
-				CueTemplateKey: validCue,
-			},
-		}
-	}
-
 	t.Run("returns releases sorted by version descending", func(t *testing.T) {
 		ns := orgNS(org)
-		r1 := makeReleaseCM("1.0.0")
-		r2 := makeReleaseCM("2.0.0")
-		r3 := makeReleaseCM("1.5.0")
-		fakeClient := fake.NewClientset(ns, r1, r2, r3)
-		handler := newOrgTestHandler(t, fakeClient, shareUsers)
+		r1 := makeReleaseCRD("org-"+org, templateName, "1.0.0")
+		r2 := makeReleaseCRD("org-"+org, templateName, "2.0.0")
+		r3 := makeReleaseCRD("org-"+org, templateName, "1.5.0")
+		fakeClient := fake.NewClientset(ns)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers, r1, r2, r3)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListReleasesRequest{
-			Namespace:        orgScopeRef(org),
+			Namespace:    orgScopeRef(org),
 			TemplateName: templateName,
 		})
 
@@ -425,7 +435,7 @@ func TestListReleases(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.ListReleasesRequest{
-			Namespace:        orgScopeRef(org),
+			Namespace:    orgScopeRef(org),
 			TemplateName: templateName,
 		})
 
@@ -467,32 +477,18 @@ func TestGetRelease(t *testing.T) {
 
 	t.Run("returns existing release", func(t *testing.T) {
 		ns := orgNS(org)
-		release := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "my-template--v1-2-3",
-				Namespace: "org-" + org,
-				Labels: map[string]string{
-					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplateRelease,
-					v1alpha2.LabelReleaseOf:     templateName,
-					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
-				},
-				Annotations: map[string]string{
-					v1alpha2.AnnotationTemplateVersion: "1.2.3",
-				},
-			},
-			Data: map[string]string{
-				CueTemplateKey:            validCue,
-				v1alpha2.ChangelogKey:     "Bug fixes",
-				v1alpha2.UpgradeAdviceKey: "No breaking changes",
-			},
-		}
-		fakeClient := fake.NewClientset(ns, release)
-		handler := newOrgTestHandler(t, fakeClient, shareUsers)
+		// Seed a TemplateRelease CRD with changelog / upgrade advice so we
+		// can assert the proto conversion propagates spec.changelog and
+		// spec.upgradeAdvice.
+		rel := makeReleaseCRD("org-"+org, templateName, "1.2.3")
+		rel.Spec.Changelog = "Bug fixes"
+		rel.Spec.UpgradeAdvice = "No breaking changes"
+		fakeClient := fake.NewClientset(ns)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers, rel)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.GetReleaseRequest{
-			Namespace:        orgScopeRef(org),
+			Namespace:    orgScopeRef(org),
 			TemplateName: templateName,
 			Version:      "1.2.3",
 		})
@@ -526,7 +522,7 @@ func TestGetRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.GetReleaseRequest{
-			Namespace:        orgScopeRef(org),
+			Namespace:    orgScopeRef(org),
 			TemplateName: templateName,
 			Version:      "9.9.9",
 		})
@@ -547,7 +543,7 @@ func TestGetRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.GetReleaseRequest{
-			Namespace:        orgScopeRef(org),
+			Namespace:    orgScopeRef(org),
 			TemplateName: templateName,
 			Version:      "bad",
 		})
@@ -568,7 +564,7 @@ func TestGetRelease(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.GetReleaseRequest{
-			Namespace:        orgScopeRef(org),
+			Namespace:    orgScopeRef(org),
 			TemplateName: templateName,
 		})
 
@@ -580,4 +576,35 @@ func TestGetRelease(t *testing.T) {
 			t.Errorf("expected code InvalidArgument, got %v", connect.CodeOf(err))
 		}
 	})
+}
+
+// assertEnvRoundTripped verifies the TemplateDefaults produced by
+// CreateRelease / GetRelease preserved the three env-var variants used by
+// the HOL-693 regression guard: a literal value, a SecretKeyRef, and a
+// ConfigMapKeyRef.
+func assertEnvRoundTripped(t *testing.T, got *consolev1.TemplateDefaults) {
+	t.Helper()
+	if got == nil {
+		t.Fatal("expected non-nil defaults in response")
+	}
+	if len(got.GetEnv()) != 3 {
+		t.Fatalf("expected 3 env entries, got %d", len(got.GetEnv()))
+	}
+	if v := got.GetEnv()[0].GetValue(); v != "literal" {
+		t.Errorf("PLAIN: expected literal %q, got %q", "literal", v)
+	}
+	secretRef := got.GetEnv()[1].GetSecretKeyRef()
+	if secretRef == nil {
+		t.Fatal("DB_PASSWORD: expected SecretKeyRef source, got nil (regression: env ref dropped)")
+	}
+	if secretRef.GetName() != "db-credentials" || secretRef.GetKey() != "password" {
+		t.Errorf("DB_PASSWORD: unexpected SecretKeyRef: %+v", secretRef)
+	}
+	cmRef := got.GetEnv()[2].GetConfigMapKeyRef()
+	if cmRef == nil {
+		t.Fatal("FEATURE_FLAGS: expected ConfigMapKeyRef source, got nil (regression: env ref dropped)")
+	}
+	if cmRef.GetName() != "feature-flags" || cmRef.GetKey() != "json" {
+		t.Errorf("FEATURE_FLAGS: unexpected ConfigMapKeyRef: %+v", cmRef)
+	}
 }

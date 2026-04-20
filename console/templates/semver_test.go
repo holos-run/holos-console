@@ -137,7 +137,7 @@ func TestSortVersionsDesc(t *testing.T) {
 	}
 }
 
-func TestReleaseConfigMapName(t *testing.T) {
+func TestReleaseObjectName(t *testing.T) {
 	tests := []struct {
 		name         string
 		templateName string
@@ -152,9 +152,9 @@ func TestReleaseConfigMapName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			v, _ := ParseVersion(tt.version)
-			got := ReleaseConfigMapName(tt.templateName, v)
+			got := ReleaseObjectName(tt.templateName, v)
 			if got != tt.want {
-				t.Errorf("ReleaseConfigMapName(%q, %q) = %q, want %q", tt.templateName, tt.version, got, tt.want)
+				t.Errorf("ReleaseObjectName(%q, %q) = %q, want %q", tt.templateName, tt.version, got, tt.want)
 			}
 		})
 	}

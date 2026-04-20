@@ -14,29 +14,6 @@ import (
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
-// makeReleaseCMInNS creates a release ConfigMap in the given namespace.
-func makeReleaseCMInNS(ns, templateName, version string) *corev1.ConfigMap {
-	v, _ := ParseVersion(version)
-	return &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      ReleaseConfigMapName(templateName, v),
-			Namespace: ns,
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplateRelease,
-				v1alpha2.LabelReleaseOf:     templateName,
-				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
-			},
-			Annotations: map[string]string{
-				v1alpha2.AnnotationTemplateVersion: version,
-			},
-		},
-		Data: map[string]string{
-			CueTemplateKey: validCue,
-		},
-	}
-}
-
 // makeTemplateWithLinks creates a template ConfigMap with linked template refs.
 func makeTemplateWithLinks(ns, name string, links []*consolev1.LinkedTemplateRef) *corev1.ConfigMap {
 	type storedRef struct {
@@ -118,10 +95,10 @@ func TestCheckUpdates(t *testing.T) {
 			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Create releases: 1.0.0 and 1.1.0
-		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
-		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.1.0")
-		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2)
-		handler := newTestHandler(t, fakeClient, shareUsers)
+		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
+		r2 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.1.0")
+		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
+		handler := newTestHandler(t, fakeClient, shareUsers, r1, r2)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -148,11 +125,11 @@ func TestCheckUpdates(t *testing.T) {
 			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Create releases: 1.0.0, 1.5.0, 2.0.0
-		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
-		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.5.0")
-		r3 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "2.0.0")
-		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2, r3)
-		handler := newTestHandler(t, fakeClient, shareUsers)
+		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
+		r2 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.5.0")
+		r3 := makeReleaseCRD("org-"+org, linkedTemplateName, "2.0.0")
+		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
+		handler := newTestHandler(t, fakeClient, shareUsers, r1, r2, r3)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -189,10 +166,10 @@ func TestCheckUpdates(t *testing.T) {
 			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ""),
 		})
 		// Create releases: 1.0.0, 2.0.0
-		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
-		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "2.0.0")
-		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2)
-		handler := newTestHandler(t, fakeClient, shareUsers)
+		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
+		r2 := makeReleaseCRD("org-"+org, linkedTemplateName, "2.0.0")
+		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
+		handler := newTestHandler(t, fakeClient, shareUsers, r1, r2)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -219,9 +196,9 @@ func TestCheckUpdates(t *testing.T) {
 			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ""),
 		})
 		// Single release: current == latest, no update.
-		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
-		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1)
-		handler := newTestHandler(t, fakeClient, shareUsers)
+		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
+		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
+		handler := newTestHandler(t, fakeClient, shareUsers, r1)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -285,12 +262,12 @@ func TestCheckUpdates(t *testing.T) {
 			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, "gateway", ">=1.0.0 <2.0.0"),
 		})
 		// httproute: has breaking update (2.0.0)
-		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
-		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "2.0.0")
+		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
+		r2 := makeReleaseCRD("org-"+org, linkedTemplateName, "2.0.0")
 		// gateway: has no updates
-		r3 := makeReleaseCMInNS("org-"+org, "gateway", "1.0.0")
-		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl1, tmpl2, r1, r2, r3)
-		handler := newTestHandler(t, fakeClient, shareUsers)
+		r3 := makeReleaseCRD("org-"+org, "gateway", "1.0.0")
+		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl1, tmpl2)
+		handler := newTestHandler(t, fakeClient, shareUsers, r1, r2, r3)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -317,10 +294,10 @@ func TestCheckUpdates(t *testing.T) {
 			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Releases: 1.0.0 and 1.1.0 — already on latest compatible.
-		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
-		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.1.0")
-		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2)
-		handler := newTestHandler(t, fakeClient, shareUsers)
+		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
+		r2 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.1.0")
+		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
+		handler := newTestHandler(t, fakeClient, shareUsers, r1, r2)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -355,10 +332,10 @@ func TestCheckUpdates(t *testing.T) {
 			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Releases: 1.0.0 and 1.1.0 — already on latest compatible.
-		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
-		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.1.0")
-		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2)
-		handler := newTestHandler(t, fakeClient, shareUsers)
+		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
+		r2 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.1.0")
+		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
+		handler := newTestHandler(t, fakeClient, shareUsers, r1, r2)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
@@ -408,11 +385,11 @@ func TestCheckUpdates(t *testing.T) {
 			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Releases: 1.0.0, 1.5.0, 2.0.0 — breaking update exists.
-		r1 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.0.0")
-		r2 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "1.5.0")
-		r3 := makeReleaseCMInNS("org-"+org, linkedTemplateName, "2.0.0")
-		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl, r1, r2, r3)
-		handler := newTestHandler(t, fakeClient, shareUsers)
+		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
+		r2 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.5.0")
+		r3 := makeReleaseCRD("org-"+org, linkedTemplateName, "2.0.0")
+		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
+		handler := newTestHandler(t, fakeClient, shareUsers, r1, r2, r3)
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{

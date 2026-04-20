@@ -87,9 +87,6 @@ func TestStartManager_BasicCRUD(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	if env.Core == nil {
-		t.Fatalf("Env.Core was nil; Core is required for Release ConfigMap paths")
-	}
 	if env.Cfg == nil {
 		t.Fatalf("Env.Cfg was nil; Cfg is required for multi-manager fixtures")
 	}
