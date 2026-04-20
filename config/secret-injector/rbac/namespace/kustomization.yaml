@@ -1,0 +1,11 @@
+# Namespace-scoped RBAC base for holos-secret-injector in holos-system.
+# ServiceAccount the controller runs as, plus a Role + RoleBinding
+# granting CUD on core/v1 Secret within this single namespace (the
+# hash-material envelope the M2 reconciler owns). Consumed by
+# ../../namespace-scoped/.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- serviceaccount.yaml
+- secrets-role.yaml
+- secrets-rolebinding.yaml

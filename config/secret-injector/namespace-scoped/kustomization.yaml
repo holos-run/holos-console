@@ -1,0 +1,18 @@
+# Namespace-scoped overlay for holos-secret-injector. Installs
+# resources that live in the `holos-system` namespace — at M1 that's
+# the ServiceAccount plus the narrow Role+RoleBinding that grants the
+# controller CUD on core/v1 Secret within its own namespace.
+#
+#   kubectl apply -k config/secret-injector/namespace-scoped/
+#
+# M1 deferral: the Deployment + Service that actually run the
+# controller land in HOL-670 successor tickets per parent plan
+# HOL-675. See README.md in this directory.
+#
+# Apply this overlay BEFORE ../cluster-scoped/ so the ServiceAccount
+# exists before the ClusterRoleBinding in cluster-scoped tries to bind
+# it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../rbac/namespace

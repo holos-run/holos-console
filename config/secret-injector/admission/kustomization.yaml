@@ -1,0 +1,15 @@
+# ValidatingAdmissionPolicy base for secrets.holos.run (HOL-703). Each
+# file contains one VAP + one VAPB pair with failurePolicy: Fail and
+# validationActions: [Deny]. Consumed by ../cluster-scoped/.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- credential-authn-type-apikey-only.yaml
+- credential-upstreamref-same-namespace.yaml
+- namespace-scope-label-immutable.yaml
+- secretinjectionpolicy-authn-type-apikey-only.yaml
+- secretinjectionpolicy-folder-or-org-only.yaml
+- secretinjectionpolicybinding-folder-or-org-only.yaml
+- secretinjectionpolicybinding-policyref-same-namespace-or-ancestor.yaml
+- upstreamsecret-project-only.yaml
+- upstreamsecret-valuetemplate-no-control-chars.yaml
