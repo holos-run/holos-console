@@ -150,8 +150,8 @@ func (k *K8sClient) ListAllTemplates(ctx context.Context) ([]templatesv1alpha1.T
 // it is enough to attribute the namespace to its root organization without
 // a Walker round-trip per namespace.
 func (k *K8sClient) GetNamespaceOrg(ctx context.Context, ns string) (string, error) {
-	got, err := k.coreClient.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
-	if err != nil {
+	var got corev1.Namespace
+	if err := k.client.Get(ctx, types.NamespacedName{Name: ns}, &got); err != nil {
 		return "", err
 	}
 	if got.Labels == nil {

@@ -163,6 +163,26 @@ func seedTemplatesFromClientset(t *testing.T, cs *kfake.Clientset) []client.Obje
 	return out
 }
 
+// seedNamespacesFromClientset extracts every Namespace from the fake clientset
+// and returns deep copies as client.Object so the controller-runtime fake
+// client can answer Namespace Get calls (e.g. K8sClient.GetNamespaceOrg used
+// by SearchTemplates' organization filter). Tests still seed namespace
+// fixtures into the kfake.Clientset; this bridge mirrors them into the
+// controller-runtime client so both surfaces see the same set.
+func seedNamespacesFromClientset(t *testing.T, cs *kfake.Clientset) []client.Object {
+	t.Helper()
+	nss, err := cs.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("listing Namespaces: %v", err)
+	}
+	out := make([]client.Object, 0, len(nss.Items))
+	for i := range nss.Items {
+		ns := nss.Items[i]
+		out = append(out, &ns)
+	}
+	return out
+}
+
 // newFakeCtrlClient returns a fake controller-runtime client preloaded with
 // the given Template CRD objects. The scheme includes core types plus
 // templates v1alpha1 so the client.Client methods accept Template CRs.
@@ -184,6 +204,7 @@ func newFakeCtrlClient(t *testing.T, objs ...client.Object) client.Client {
 func newTestK8sClient(t *testing.T, cs *kfake.Clientset, r *resolver.Resolver, extra ...client.Object) *K8sClient {
 	t.Helper()
 	objs := seedTemplatesFromClientset(t, cs)
+	objs = append(objs, seedNamespacesFromClientset(t, cs)...)
 	objs = append(objs, extra...)
 	ctrl := newFakeCtrlClient(t, objs...)
 	_ = cs
