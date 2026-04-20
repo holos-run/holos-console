@@ -96,7 +96,6 @@ func existingProjectTemplateWithLinks(project, name string, refs []*consolev1.Li
 			Namespace: "prj-" + project,
 			Labels: map[string]string{
 				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeProject,
 			},
 			Annotations: map[string]string{
@@ -319,7 +318,6 @@ func TestHandler_CreateTemplate_NoRecordOnPersistFailure(t *testing.T) {
 			Namespace: "prj-my-project",
 			Labels: map[string]string{
 				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeProject,
 			},
 		},

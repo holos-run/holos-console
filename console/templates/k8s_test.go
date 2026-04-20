@@ -114,7 +114,6 @@ func templateConfigMap(scope scopeKind, scopePrefix, scopeName, name, displayNam
 			Namespace: scopePrefix + scopeName,
 			Labels: map[string]string{
 				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 				v1alpha2.LabelTemplateScope: scopeLabelValue(scope),
 			},
 			Annotations: map[string]string{

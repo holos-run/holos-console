@@ -53,7 +53,6 @@ func enabledTemplateCMForScope(ns, name, displayName, description string, scope 
 			Namespace: ns,
 			Labels: map[string]string{
 				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 				v1alpha2.LabelTemplateScope: scopeLabel,
 			},
 			Annotations: map[string]string{
@@ -89,7 +88,6 @@ func enabledTemplateCM(ns, name, displayName, description string, _ bool) *corev
 			Namespace: ns,
 			Labels: map[string]string{
 				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
 			},
 			Annotations: map[string]string{

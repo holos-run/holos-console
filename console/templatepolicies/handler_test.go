@@ -564,9 +564,6 @@ func TestCreatePolicyHappyPath(t *testing.T) {
 	if p == nil {
 		t.Fatal("expected TemplatePolicy CRD to be created")
 	}
-	if p.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeTemplatePolicy {
-		t.Errorf("expected template-policy label, got %q", p.Labels[v1alpha2.LabelResourceType])
-	}
 	if p.Annotations[v1alpha2.AnnotationCreatorEmail] != "owner@example.com" {
 		t.Errorf("expected creator annotation, got %q", p.Annotations[v1alpha2.AnnotationCreatorEmail])
 	}
@@ -642,8 +639,7 @@ func TestUpdatePreservesUnspecifiedFields(t *testing.T) {
 			Name:      "policy",
 			Namespace: "holos-fld-payments",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicy,
+				v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 			},
 			Annotations: map[string]string{
 				v1alpha2.AnnotationCreatorEmail: "original@example.com",
@@ -875,8 +871,7 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 			Name:      "require-httproute",
 			Namespace: "holos-fld-payments",
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicy,
+				v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 			},
 			Annotations: map[string]string{
 				v1alpha2.AnnotationCreatorEmail: "platform@example.com",

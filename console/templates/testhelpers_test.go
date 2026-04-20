@@ -58,19 +58,11 @@ func testScheme(t *testing.T) *runtime.Scheme {
 }
 
 // configMapIsTemplate reports whether a ConfigMap in the fake clientset
-// represents a Template (as opposed to a Release or some other resource).
-// Recognizes either the canonical v1alpha2 ResourceType=template label, or
-// the template-scope label (used by older fixtures that pre-date the
-// ResourceType label convention but still describe templates). Release
-// ConfigMaps never carry LabelTemplateScope, so the union is still precise.
+// represents a Template. Templates are identified by the presence of the
+// LabelTemplateScope label stamped on every template fixture.
 func configMapIsTemplate(cm *corev1.ConfigMap) bool {
-	if cm.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeTemplate {
-		return true
-	}
-	if _, ok := cm.Labels[v1alpha2.LabelTemplateScope]; ok {
-		return true
-	}
-	return false
+	_, hasScope := cm.Labels[v1alpha2.LabelTemplateScope]
+	return hasScope
 }
 
 // configMapToTemplateCRD converts a v1alpha2-labeled template ConfigMap
@@ -85,8 +77,7 @@ func configMapToTemplateCRD(cm *corev1.ConfigMap) *templatesv1alpha1.Template {
 			Name:      cm.Name,
 			Namespace: cm.Namespace,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplate,
+				v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 			},
 		},
 		Spec: templatesv1alpha1.TemplateSpec{
