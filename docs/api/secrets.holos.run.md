@@ -84,6 +84,7 @@ that carry tighter RBAC, encryption-at-rest, and KMS integration.
 | --- | --- | --- | --- |
 | `authentication` | `Authentication` | yes | Authentication scheme + transport-specific knobs. |
 | `authentication.type` | `enum { APIKey, OIDC }` | yes | Authentication scheme. Admission rejects `OIDC` in v1alpha1 (`credential-authn-type-apikey-only`). |
+| `authentication.apiKey` | `*APIKeySettings` | yes when `type=APIKey` | Transport-specific API-key knobs; admission requires presence when `type=APIKey`. |
 | `authentication.apiKey.headerName` | `string` (min 1) | when `type=APIKey` | HTTP header the injector writes on the hot path. |
 | `upstreamSecretRef` | `NamespacedSecretKeyReference` | yes | Sibling `v1.Secret` whose bytes are swapped onto the request. |
 | `upstreamSecretRef.namespace` | `string` | no | Target namespace; admission requires `== metadata.namespace` (`credential-upstreamref-same-namespace`). |
@@ -107,6 +108,7 @@ that carry tighter RBAC, encryption-at-rest, and KMS integration.
 | `observedGeneration` | `int64` | Most recent `metadata.generation` the reconciler has acted on. |
 | `phase` | `enum { Active, Rotating, Retired, Revoked, Expired }` | Current lifecycle phase. |
 | `credentialID` | `string` (KSUID regex `^[0-9A-Za-z]{27}$`, len 27) | Opaque identifier; **MUST NOT** be or contain the plaintext, a prefix, a last-4, or any substring of the plaintext. |
+| `hashSecretRef` | `*SecretKeyReference` | Pointer; absent until the reconciler materialises the hash `v1.Secret` (M2). Populated the first time `HashMaterialized` transitions to `True`. |
 | `hashSecretRef.name` | `string` (min 1) | `metadata.name` of the sibling `v1.Secret` (same namespace) that stores the argon2id hash + per-credential salt. Owned by the reconciler (M2). |
 | `hashSecretRef.key` | `string` (min 1) | Key inside that `v1.Secret .data`. |
 | `pepperVersion` | `int32` | Monotonic counter of pepper rotations; **MUST NOT** hint at pepper material. |
@@ -117,8 +119,11 @@ that carry tighter RBAC, encryption-at-rest, and KMS integration.
 ## Kind: `SecretInjectionPolicy`
 
 - **Group/Version:** `secrets.holos.run/v1alpha1`
-- **Scope:** `Namespaced` (organization or folder namespaces only —
-  admission: `secretinjectionpolicy-folder-or-org-only`).
+- **Scope:** `Namespaced`. Admission
+  (`secretinjectionpolicy-folder-or-org-only`) rejects creation in any
+  namespace labelled `console.holos.run/resource-type=project`;
+  unlabelled namespaces and any other label value are admitted. In
+  practice this means organization, folder, and bootstrap namespaces.
 - **Short names:** `sip`. **Categories:** `holos`, `secrets`.
 - **Invariant:** carries only the match predicate, authentication scheme,
   and the name of the object that holds the sensitive bytes. No field may
@@ -153,8 +158,11 @@ that carry tighter RBAC, encryption-at-rest, and KMS integration.
 ## Kind: `SecretInjectionPolicyBinding`
 
 - **Group/Version:** `secrets.holos.run/v1alpha1`
-- **Scope:** `Namespaced` (organization or folder namespaces only —
-  admission: `secretinjectionpolicybinding-folder-or-org-only`).
+- **Scope:** `Namespaced`. Admission
+  (`secretinjectionpolicybinding-folder-or-org-only`) rejects creation
+  in any namespace labelled `console.holos.run/resource-type=project`;
+  unlabelled namespaces and any other label value are admitted. In
+  practice this means organization, folder, and bootstrap namespaces.
 - **Short names:** `sipb`. **Categories:** `holos`, `secrets`.
 - **Invariant:** names a policy and target set only. No field may carry
   sensitive byte material.
