@@ -549,8 +549,7 @@ func templatePolicyCRDToProto(p *templatesv1alpha1.TemplatePolicy) *consolev1.Te
 	return policy
 }
 
-// mapK8sError converts Kubernetes API errors to ConnectRPC errors. HOL-662
-// removed the ProjectNamespaceError type-switch — the CEL
+// mapK8sError converts Kubernetes API errors to ConnectRPC errors. The CEL
 // ValidatingAdmissionPolicy shipped in HOL-618 rejects project-namespace
 // creates at admission time, so the handler only needs the generic
 // k8serrors taxonomy here (plus extractPolicyScope as defense-in-depth).

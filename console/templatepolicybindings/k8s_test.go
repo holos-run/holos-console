@@ -587,9 +587,9 @@ func TestK8sClient_ListReflectsCreate(t *testing.T) {
 // TestCreateBindingRejectedByAdmissionInProjectNamespace is the admission
 // regression: the CEL ValidatingAdmissionPolicy shipped with the CRDs
 // (HOL-618) rejects TemplatePolicyBinding writes into project-labelled
-// namespaces. ProjectNamespaceError is gone from this package; admission
-// rejection is now the authoritative enforcement point, and this test
-// locks in that the policy is installed and wired to the storage path.
+// namespaces. Admission rejection is the authoritative enforcement point,
+// and this test locks in that the policy is installed and wired to the
+// storage path.
 //
 // The test uses a namespace labelled ResourceType=project. The CEL VAP
 // reads that label to classify the namespace and reject the write.

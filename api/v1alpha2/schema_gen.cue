@@ -19,18 +19,15 @@
 #LabelProject:      "console.holos.run/project"
 
 // Label values.
-#ManagedByValue:                 "console.holos.run"
-#ResourceTypeOrganization:       "organization"
-#ResourceTypeFolder:             "folder"
-#ResourceTypeProject:            "project"
-#ResourceTypeDeployment:         "deployment"
-#ResourceTypeDeploymentTemplate: "deployment-template"
-#ResourceTypeOrgTemplate:        "org-template"
+#ManagedByValue:           "console.holos.run"
+#ResourceTypeOrganization: "organization"
+#ResourceTypeFolder:       "folder"
+#ResourceTypeProject:      "project"
+#ResourceTypeDeployment:   "deployment"
 
 // ResourceTypeTemplate is the unified v1alpha2 template resource type.
-// It replaces ResourceTypeDeploymentTemplate (project-scoped) and
-// ResourceTypeOrgTemplate (org-scoped) with a single label value used
-// across all hierarchy levels (ADR 021 Decision 4).
+// A single label value is used across every hierarchy level (ADR 021
+// Decision 4).
 #ResourceTypeTemplate: "template"
 
 // ResourceTypeTemplatePolicy is the resource type label value for
@@ -137,16 +134,6 @@
 // this label upward to collect templates and resolve permissions (ADR 020
 // Decision 3 and Decision 6).
 #AnnotationParent: "console.holos.run/parent"
-
-// AnnotationLinkedOrgTemplates stores the list of explicitly linked
-// platform template names as a JSON array on a legacy v1alpha2
-// deployment template ConfigMap. Read-only compatibility shim —
-// new deployments serialize linked templates via the
-// templates.holos.run Template CRD (HOL-621); this annotation is
-// only consulted when migrating older ConfigMap-shaped deployment
-// templates forward. No production code writes this annotation.
-// Example: ["microservice-v2", "istio-gateway"]
-#AnnotationLinkedOrgTemplates: "console.holos.run/linked-org-templates"
 
 // AnnotationLinkedTemplates is the wire format used to bridge
 // Template CRDs to the deployment handler. Template CRD storage
