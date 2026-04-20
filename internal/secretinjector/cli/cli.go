@@ -84,9 +84,10 @@ func Command() *cobra.Command {
 }
 
 // Run is the RunE for the holos-secret-injector root command. It constructs a
-// controller-runtime manager stub and blocks on Start() until the process
-// receives SIGINT or SIGTERM. ctrl.SetupSignalHandler installs the signal
-// handlers the controller-runtime way so Start returns cleanly on shutdown.
+// controller-runtime manager stub and blocks on Start() until the context
+// provided by cmd.ExecuteContext is cancelled — the cmd/secret-injector main
+// passes a ctrl.SetupSignalHandler context so SIGINT/SIGTERM drive a graceful
+// shutdown.
 //
 // No reconcilers are registered yet — that is M2 (see ADR 031 §4). Running
 // this binary today produces a manager that successfully stands up its
@@ -94,9 +95,6 @@ func Command() *cobra.Command {
 // when the signal arrives.
 func Run(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
-	if ctx == nil {
-		ctx = ctrl.SetupSignalHandler()
-	}
 
 	cfg, err := ctrl.GetConfig()
 	if err != nil {

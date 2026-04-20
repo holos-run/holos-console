@@ -1,10 +1,11 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
+
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/holos-run/holos-console/console"
 	"github.com/holos-run/holos-console/internal/secretinjector/cli"
@@ -23,7 +24,12 @@ func run() int {
 		return 0
 	}
 
-	ctx := context.Background()
+	// Install the controller-runtime signal handler in main() so SIGTERM
+	// and SIGINT drive a graceful shutdown of the manager. Without this,
+	// Kubernetes rollouts and pod deletions would force-kill the binary
+	// after the grace period instead of letting the manager unwind its
+	// caches cleanly.
+	ctx := ctrl.SetupSignalHandler()
 	cmd := cli.Command()
 
 	if err := cmd.ExecuteContext(ctx); err != nil {
