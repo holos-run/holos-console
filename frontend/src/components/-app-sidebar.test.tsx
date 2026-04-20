@@ -46,23 +46,12 @@ vi.mock('@/components/ui/sidebar', () => ({
   SidebarSeparator: () => <hr />,
 }))
 
-vi.mock('@/components/ui/dropdown-menu', () => ({
-  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  DropdownMenuItem: ({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) => <div onClick={onClick}>{children}</div>,
-  DropdownMenuSeparator: () => <hr />,
-  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-}))
-
-vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { children: React.ReactNode; variant?: string; size?: string }) => <button {...props}>{children}</button>,
-}))
-
-vi.mock('@/components/create-org-dialog', () => ({
-  CreateOrgDialog: () => null,
-}))
-vi.mock('@/components/create-project-dialog', () => ({
-  CreateProjectDialog: () => null,
+// Stub WorkspaceMenu so the AppSidebar test stays focused on sidebar nav
+// composition; WorkspaceMenu has its own dedicated test file. WorkspaceMenu
+// owns the dropdown-menu and dialog wiring after HOL-603, so AppSidebar no
+// longer imports those primitives directly.
+vi.mock('@/components/workspace-menu', () => ({
+  WorkspaceMenu: () => <div data-testid="workspace-menu" />,
 }))
 
 import { useOrg } from '@/lib/org-context'
