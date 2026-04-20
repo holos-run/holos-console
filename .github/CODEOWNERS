@@ -1,20 +1,26 @@
-# CODEOWNERS for holos-console
+# CODEOWNERS for holos-console — INTENTIONALLY DISABLED
 #
-# GitHub automatically requests review from the owners listed below when a pull
-# request modifies matching paths. See
+# This file is kept in the repository as a design document only. Every line
+# below is a comment, so GitHub parses the file as empty and applies NO
+# automatic review-request routing. Reviews fall back to the repository's
+# default assignment behavior until this file is re-enabled.
+#
+# File format reference:
 # https://docs.github.com/en/repositories/managing-your-repositories-settings-and-customizations/customizing-your-repository/about-code-owners
-# for the file format: `<glob> <owners...>`, and note that the LAST matching
-# rule wins.
+# (rules are `<glob> <owners...>`; the LAST matching rule wins.)
 #
-# This file establishes non-overlapping ownership boundaries between the
-# templates/console code (the original holos-console product surface) and the
-# new secret-injector workload, per the HOL-674 M0 Foundation plan and
+# ---------------------------------------------------------------------------
+# Intended structure (for future re-enablement)
+# ---------------------------------------------------------------------------
+#
+# The goal is non-overlapping ownership boundaries between the
+# templates/console code (the original holos-console product surface) and
+# the secret-injector workload, per the HOL-674 M0 Foundation plan and
 # ADR-031. The smoke-test invariant is that a PR touching only
-# `api/templates/**` must request templates owners and NOT secret-injector
+# `api/templates/**` would request templates owners and NOT secret-injector
 # owners, and vice versa for `api/secrets/**` / `internal/secretinjector/**`.
 #
-# Team handles below are placeholders pending creation / confirmation of the
-# actual GitHub teams. See `HOL-690` for the human-action checklist.
+# Proposed owner groups (placeholders until the GitHub teams are created):
 #
 #   @holos-run/templates-owners       — templates / console API, controller,
 #                                        cmd/holos-console, console-focused
@@ -26,30 +32,36 @@
 #   @holos-run/maintainers            — catch-all default owner
 #
 # Ordering note: later rules override earlier rules for the same path. The
-# catch-all MUST remain the first rule below so that the more specific path
-# rules that follow take precedence.
-
-# Default owner for anything not matched by a more specific rule (root files
-# like Makefile, go.mod, go.sum, README.md, LICENSE, etc.).
-* @holos-run/maintainers
-
-# --- Templates / console ownership -----------------------------------------
-/api/templates/ @holos-run/templates-owners
-/internal/controller/ @holos-run/templates-owners
-/cmd/holos-console/ @holos-run/templates-owners
-/config/crd/ @holos-run/templates-owners
-/config/rbac/ @holos-run/templates-owners
-/config/admission/ @holos-run/templates-owners
-/config/samples/ @holos-run/templates-owners
-/Dockerfile.console @holos-run/templates-owners
-/Dockerfile @holos-run/templates-owners
-
-# --- Secret-injector ownership ---------------------------------------------
-/api/secrets/ @holos-run/secret-injector-owners
-/internal/secretinjector/ @holos-run/secret-injector-owners
-/cmd/secret-injector/ @holos-run/secret-injector-owners
-/config/secret-injector/ @holos-run/secret-injector-owners
-/Dockerfile.secret-injector @holos-run/secret-injector-owners
-
-# --- Frontend ownership ----------------------------------------------------
-/frontend/ @holos-run/frontend-owners
+# catch-all must be the first rule so that the more specific path rules that
+# follow take precedence.
+#
+# ---------------------------------------------------------------------------
+# Intended rules (all commented out — do NOT uncomment without first
+# creating the referenced GitHub teams and confirming the boundaries with
+# maintainers):
+# ---------------------------------------------------------------------------
+#
+# # Default owner for anything not matched by a more specific rule (root
+# # files like Makefile, go.mod, go.sum, README.md, LICENSE, etc.).
+# * @holos-run/maintainers
+#
+# # Templates / console ownership
+# /api/templates/ @holos-run/templates-owners
+# /internal/controller/ @holos-run/templates-owners
+# /cmd/holos-console/ @holos-run/templates-owners
+# /config/crd/ @holos-run/templates-owners
+# /config/rbac/ @holos-run/templates-owners
+# /config/admission/ @holos-run/templates-owners
+# /config/samples/ @holos-run/templates-owners
+# /Dockerfile.console @holos-run/templates-owners
+# /Dockerfile @holos-run/templates-owners
+#
+# # Secret-injector ownership
+# /api/secrets/ @holos-run/secret-injector-owners
+# /internal/secretinjector/ @holos-run/secret-injector-owners
+# /cmd/secret-injector/ @holos-run/secret-injector-owners
+# /config/secret-injector/ @holos-run/secret-injector-owners
+# /Dockerfile.secret-injector @holos-run/secret-injector-owners
+#
+# # Frontend ownership
+# /frontend/ @holos-run/frontend-owners
