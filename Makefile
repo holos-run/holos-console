@@ -6,6 +6,7 @@ REPO_PATH=$(ORG_PATH)/$(PROJ)
 
 VERSION := $(shell cat console/version/major console/version/minor console/version/patch | xargs printf "%s.%s.%s")
 BIN_NAME := holos-console
+INJECTOR_BIN_NAME := holos-secret-injector
 
 GIT_COMMIT=$(shell git rev-parse HEAD)
 GIT_SUFFIX=$(shell test -n "`git status --porcelain`" && echo "-dirty" || echo "")
@@ -64,31 +65,49 @@ tag: ## Create annotated version tag from embedded version files.
 	@echo "Created tag v$(VERSION)"
 
 .PHONY: build
-build: | console/dist ## Build executable.
+build: build-console build-injector ## Build both binaries (holos-console, holos-secret-injector).
+
+.PHONY: build-console
+build-console: | console/dist ## Build the holos-console executable.
 	@echo "building ${BIN_NAME} ${VERSION}"
 	@echo "GOPATH=${GOPATH}"
-	go build -trimpath -o bin/$(BIN_NAME) -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd
+	go build -trimpath -o bin/$(BIN_NAME) -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd/holos-console
+
+.PHONY: build-injector
+# build-injector depends on console/dist because cmd/secret-injector imports
+# github.com/holos-run/holos-console/console for GetVersion(), and
+# console/console.go has `//go:embed all:dist`. Without the prerequisite,
+# `make build-injector` and `make -j build` would fail on fresh checkouts
+# before the frontend has been generated. When M0 phase HOL-689 splits the
+# injector onto its own Dockerfile, the in-container build can use a
+# no-UI-prereq variant similar to build-binary.
+build-injector: | console/dist ## Build the holos-secret-injector executable.
+	@echo "building ${INJECTOR_BIN_NAME} ${VERSION}"
+	@echo "GOPATH=${GOPATH}"
+	go build -trimpath -o bin/$(INJECTOR_BIN_NAME) -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd/secret-injector
 
 .PHONY: build-binary
-build-binary: ## Build executable without UI prerequisites (for use in Dockerfile Go stage).
+build-binary: ## Build holos-console without UI prerequisites (for use in Dockerfile Go stage).
 	@echo "building ${BIN_NAME} ${VERSION}"
 	@echo "GOPATH=${GOPATH}"
-	go build -trimpath -o bin/$(BIN_NAME) -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd
+	go build -trimpath -o bin/$(BIN_NAME) -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd/holos-console
 
 .PHONY: debug
 debug: | console/dist ## Build debug executable.
 	@echo "building ${BIN_NAME}-debug ${VERSION}"
 	@echo "GOPATH=${GOPATH}"
-	go build -o bin/$(BIN_NAME)-debug $(REPO_PATH)/cmd
+	go build -o bin/$(BIN_NAME)-debug $(REPO_PATH)/cmd/holos-console
 
 .PHONY: install
-install: build ## Install to GOPATH/bin
+install: build ## Install both binaries to GOPATH/bin
 	install bin/$(BIN_NAME) $(shell go env GOPATH)/bin/$(BIN_NAME)
+	install bin/$(INJECTOR_BIN_NAME) $(shell go env GOPATH)/bin/$(INJECTOR_BIN_NAME)
 
 .PHONY: clean
 clean: ## Clean executables.
 	@test ! -e bin/${BIN_NAME} || rm bin/${BIN_NAME}
 	@test ! -e bin/${BIN_NAME}-debug || rm bin/${BIN_NAME}-debug
+	@test ! -e bin/${INJECTOR_BIN_NAME} || rm bin/${INJECTOR_BIN_NAME}
 
 .PHONY: fmt
 fmt: ## Format code.
