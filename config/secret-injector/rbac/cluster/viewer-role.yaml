@@ -1,0 +1,41 @@
+# Opt-in viewer ClusterRole for the secrets.holos.run group. Grants
+# read-only visibility into every kind in the group so operators,
+# auditors, and read-only UIs can introspect Credential / UpstreamSecret
+# / SecretInjectionPolicy / SecretInjectionPolicyBinding state without
+# any ability to mutate the CRs or reach the underlying core/v1 Secret.
+#
+# The viewer role is deliberately NOT bound to the holos-secret-injector
+# ServiceAccount by default — it ships unbound so sites opt in by
+# authoring their own ClusterRoleBinding scoped to whichever principals
+# they actually want to grant read access. This keeps the least-
+# privilege default (nobody reads secret-injector state) explicit and
+# forces a cluster-admin decision at install time.
+#
+# No access to core/v1 Secret is granted. The whole point of the service
+# is to remove plaintext Secret content from the operator-visible
+# surface; the viewer role must not undo that.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: holos-secret-injector-viewer
+rules:
+- apiGroups:
+  - secrets.holos.run
+  resources:
+  - credentials
+  - secretinjectionpolicies
+  - secretinjectionpolicybindings
+  - upstreamsecrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - secrets.holos.run
+  resources:
+  - credentials/status
+  - secretinjectionpolicies/status
+  - secretinjectionpolicybindings/status
+  - upstreamsecrets/status
+  verbs:
+  - get

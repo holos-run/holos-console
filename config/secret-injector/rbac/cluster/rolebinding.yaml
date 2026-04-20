@@ -1,0 +1,31 @@
+# ClusterRoleBinding linking the holos-secret-injector ServiceAccount to
+# the cluster-wide ClusterRole of the same name. Despite the filename
+# (`rolebinding.yaml` per HOL-705 AC), this is a ClusterRoleBinding —
+# the secret-injector watches CRDs across every namespace that hosts
+# SecretInjectionPolicy / SecretInjectionPolicyBinding / Credential /
+# UpstreamSecret objects, so cluster-wide visibility is required.
+#
+# Scope boundary: this binding grants exactly the verbs in the
+# `holos-secret-injector` ClusterRole. The cluster-wide `get` on
+# core/v1 Secret is intentional (ref resolution is by name+namespace,
+# no enumeration). Cluster-wide CUD on core/v1 Secret is deliberately
+# NOT granted — the hash-material Secret CUD rule lives in the
+# namespace-scoped overlay (`secrets-namespace-role.yaml` +
+# `secrets-namespace-rolebinding.yaml`) so it cannot escape the
+# controller's own namespace.
+#
+# The viewer ClusterRole (`holos-secret-injector-viewer`) is
+# intentionally NOT bound here; sites opt in to read-only access by
+# authoring their own ClusterRoleBinding.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: holos-secret-injector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: holos-secret-injector
+subjects:
+- kind: ServiceAccount
+  name: holos-secret-injector
+  namespace: holos-system

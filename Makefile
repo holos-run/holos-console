@@ -213,7 +213,7 @@ manifests-secrets: ## Generate CRD, RBAC, and deepcopy sources for the secrets g
 		paths="./api/secrets/..." \
 		paths="./internal/secretinjector/controller/..." \
 		output:crd:artifacts:config=config/secret-injector/crd \
-		output:rbac:artifacts:config=config/secret-injector/rbac
+		output:rbac:artifacts:config=config/secret-injector/rbac/cluster
 
 .PHONY: generate
 generate: manifests manifests-secrets ## Generate protobuf code, CRD manifests, and build frontend.
