@@ -80,14 +80,21 @@ func TestHandleUserInfo_Removed(t *testing.T) {
 
 func TestServeIndex_InjectsConsoleConfig(t *testing.T) {
 	// When ConsoleConfig is provided, serveIndex should inject
-	// window.__CONSOLE_CONFIG__ into the HTML <head>.
+	// window.__CONSOLE_CONFIG__ into the HTML <head>, including the namespace
+	// prefix fields the frontend uses for scope-label derivation (HOL-722).
 	fakeFS := fstest.MapFS{
 		"index.html": &fstest.MapFile{
 			Data: []byte(`<!DOCTYPE html><html><head></head><body></body></html>`),
 		},
 	}
 
-	consoleConfig := &ConsoleConfig{DevToolsEnabled: true}
+	consoleConfig := &ConsoleConfig{
+		DevToolsEnabled:    true,
+		NamespacePrefix:    "holos-",
+		OrganizationPrefix: "org-",
+		FolderPrefix:       "fld-",
+		ProjectPrefix:      "prj-",
+	}
 	h := newUIHandler(fakeFS, nil, consoleConfig)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -95,8 +102,40 @@ func TestServeIndex_InjectsConsoleConfig(t *testing.T) {
 	h.ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, `window.__CONSOLE_CONFIG__={"devToolsEnabled":true}`) {
-		t.Errorf("expected console config injection in HTML, got:\n%s", body)
+	const want = `window.__CONSOLE_CONFIG__={"devToolsEnabled":true,"namespacePrefix":"holos-","organizationPrefix":"org-","folderPrefix":"fld-","projectPrefix":"prj-"}`
+	if !strings.Contains(body, want) {
+		t.Errorf("expected console config injection %q, got:\n%s", want, body)
+	}
+}
+
+func TestServeIndex_InjectsNonDefaultPrefixes(t *testing.T) {
+	// Operators can override the default namespace prefixes via CLI flags.
+	// The frontend's scope-label helpers source the live values through
+	// window.__CONSOLE_CONFIG__, so the server must emit whatever the
+	// operator configured (HOL-722).
+	fakeFS := fstest.MapFS{
+		"index.html": &fstest.MapFile{
+			Data: []byte(`<!DOCTYPE html><html><head></head><body></body></html>`),
+		},
+	}
+
+	consoleConfig := &ConsoleConfig{
+		DevToolsEnabled:    false,
+		NamespacePrefix:    "ci-",
+		OrganizationPrefix: "organization-",
+		FolderPrefix:       "folder-",
+		ProjectPrefix:      "project-",
+	}
+	h := newUIHandler(fakeFS, nil, consoleConfig)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	const want = `window.__CONSOLE_CONFIG__={"devToolsEnabled":false,"namespacePrefix":"ci-","organizationPrefix":"organization-","folderPrefix":"folder-","projectPrefix":"project-"}`
+	if !strings.Contains(body, want) {
+		t.Errorf("expected non-default prefix injection %q, got:\n%s", want, body)
 	}
 }
 
@@ -122,14 +161,21 @@ func TestServeIndex_NoConsoleConfig(t *testing.T) {
 }
 
 func TestServeIndex_ConsoleConfigDevToolsDisabled(t *testing.T) {
-	// When DevToolsEnabled is false, the injection should reflect that.
+	// When DevToolsEnabled is false, the injection should reflect that
+	// alongside the default namespace prefix fields.
 	fakeFS := fstest.MapFS{
 		"index.html": &fstest.MapFile{
 			Data: []byte(`<!DOCTYPE html><html><head></head><body></body></html>`),
 		},
 	}
 
-	consoleConfig := &ConsoleConfig{DevToolsEnabled: false}
+	consoleConfig := &ConsoleConfig{
+		DevToolsEnabled:    false,
+		NamespacePrefix:    "holos-",
+		OrganizationPrefix: "org-",
+		FolderPrefix:       "fld-",
+		ProjectPrefix:      "prj-",
+	}
 	h := newUIHandler(fakeFS, nil, consoleConfig)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -137,7 +183,7 @@ func TestServeIndex_ConsoleConfigDevToolsDisabled(t *testing.T) {
 	h.ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, `window.__CONSOLE_CONFIG__={"devToolsEnabled":false}`) {
+	if !strings.Contains(body, `"devToolsEnabled":false`) {
 		t.Errorf("expected devToolsEnabled:false in console config, got:\n%s", body)
 	}
 }
