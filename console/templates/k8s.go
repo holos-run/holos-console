@@ -153,13 +153,6 @@ func (k *K8sClient) GetTemplate(ctx context.Context, namespace, name string) (*t
 }
 
 // CreateTemplate creates a new Template CRD in the given namespace.
-//
-// The proto-level LinkedTemplateRef list is translated into the CRD's
-// structured spec field here — no JSON annotation round-trip is used any
-// more. HOL-619's annotation-based storage path is the main reason
-// legacy_shim.go needed to exist; with the CRD carrying linked refs as a
-// first-class field, callers can read and write them without parsing
-// JSON.
 func (k *K8sClient) CreateTemplate(
 	ctx context.Context,
 	namespace, name, displayName, description, cueTemplate string,
