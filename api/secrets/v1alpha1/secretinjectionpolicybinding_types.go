@@ -51,8 +51,14 @@ type PolicyRef struct {
 	Scope PolicyRefScope `json:"scope"`
 
 	// Namespace is the Kubernetes namespace that owns the referenced
-	// SecretInjectionPolicy. Admission additionally verifies that the
-	// namespace's `console.holos.run/resource-type` label matches Scope.
+	// SecretInjectionPolicy. Admission (VAP
+	// `secretinjectionpolicybinding-policyref-same-namespace-or-ancestor`)
+	// accepts this value only when it is one of: (1) the binding's own
+	// namespace, (2) the value of the binding namespace's
+	// `console.holos.run/parent` label (direct parent), or (3) the
+	// synthesized `holos-org-<console.holos.run/organization>` namespace
+	// from the binding namespace's labels (root organization). Scope does
+	// not gate admission — it narrows the reconciler's resolution path.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
