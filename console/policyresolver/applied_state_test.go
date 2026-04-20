@@ -2,6 +2,7 @@ package policyresolver
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -333,6 +334,115 @@ func TestRecordAppliedRenderSet_BothTargetKinds(t *testing.T) {
 	}
 	if len(prjGot) != 1 || prjGot[0].GetName() != "prj-tmpl" {
 		t.Errorf("project-template kind: got %v", refNames(prjGot))
+	}
+}
+
+// flakyRenderStateClient wraps a controller-runtime client and injects
+// per-method failures for the first N invocations of Get and Update.
+// Used to regress the AlreadyExists → Get → Update retry loop on the
+// two recoverable failure modes:
+//
+//   - cache-stale NotFound on Get (informer hasn't observed our Create
+//     yet),
+//   - Conflict on Update (a peer console replica raced us between Get
+//     and Update).
+//
+// Both must be tolerated by RecordAppliedRenderSet so a transient race
+// never surfaces as a drift-record write failure.
+type flakyRenderStateClient struct {
+	ctrlclient.Client
+	getNotFoundCount int
+	updateConflicts  int
+}
+
+func (f *flakyRenderStateClient) Get(ctx context.Context, key ctrlclient.ObjectKey, obj ctrlclient.Object, opts ...ctrlclient.GetOption) error {
+	if _, ok := obj.(*templatesv1alpha1.RenderState); ok && f.getNotFoundCount > 0 {
+		f.getNotFoundCount--
+		return k8serrors.NewNotFound(
+			templatesv1alpha1.GroupVersion.WithResource("renderstates").GroupResource(),
+			key.Name,
+		)
+	}
+	return f.Client.Get(ctx, key, obj, opts...)
+}
+
+func (f *flakyRenderStateClient) Update(ctx context.Context, obj ctrlclient.Object, opts ...ctrlclient.UpdateOption) error {
+	if _, ok := obj.(*templatesv1alpha1.RenderState); ok && f.updateConflicts > 0 {
+		f.updateConflicts--
+		return k8serrors.NewConflict(
+			templatesv1alpha1.GroupVersion.WithResource("renderstates").GroupResource(),
+			obj.GetName(),
+			fmt.Errorf("simulated conflict"),
+		)
+	}
+	return f.Client.Update(ctx, obj, opts...)
+}
+
+// TestRecordAppliedRenderSet_TransientNotFoundOnRetry simulates the
+// cache-stale window: Create returns AlreadyExists (the apiserver has
+// the object) but the cache-backed Get briefly serves NotFound. The
+// retry loop must resolve once the cache catches up.
+func TestRecordAppliedRenderSet_TransientNotFoundOnRetry(t *testing.T) {
+	client, r, ns := buildRenderStateFixture(t)
+	walker := walkerForCtrl(client, r)
+
+	v1 := []*consolev1.LinkedTemplateRef{
+		{Namespace: "holos-org-acme", Name: "a"},
+	}
+	v2 := []*consolev1.LinkedTemplateRef{
+		{Namespace: "holos-org-acme", Name: "b"},
+	}
+	c := NewAppliedRenderStateClient(client, r, walker)
+	if err := c.RecordAppliedRenderSet(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", v1); err != nil {
+		t.Fatalf("seed Record: %v", err)
+	}
+
+	// Wrap the client so the first two Gets return NotFound, simulating
+	// two informer-watch cycles of cache lag.
+	flaky := &flakyRenderStateClient{Client: client, getNotFoundCount: 2}
+	cFlaky := NewAppliedRenderStateClient(flaky, r, walker)
+	if err := cFlaky.RecordAppliedRenderSet(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", v2); err != nil {
+		t.Fatalf("retry Record: %v", err)
+	}
+	if flaky.getNotFoundCount != 0 {
+		t.Errorf("expected all 2 NotFound attempts consumed, got %d remaining", flaky.getNotFoundCount)
+	}
+	got, ok, err := c.ReadAppliedRenderSet(context.Background(), ns["projectLilies"], TargetKindDeployment, "api")
+	if err != nil || !ok {
+		t.Fatalf("Read after retry: ok=%v err=%v", ok, err)
+	}
+	if len(got) != 1 || got[0].GetName() != "b" {
+		t.Errorf("retry overwrite did not land: got %v", refNames(got))
+	}
+}
+
+// TestRecordAppliedRenderSet_TransientConflictOnRetry simulates a peer
+// console replica winning the Update race once: the first Update returns
+// Conflict, the second succeeds. The retry loop must absorb the
+// Conflict and re-apply the Get-then-Update against the fresh
+// resourceVersion.
+func TestRecordAppliedRenderSet_TransientConflictOnRetry(t *testing.T) {
+	client, r, ns := buildRenderStateFixture(t)
+	walker := walkerForCtrl(client, r)
+
+	v1 := []*consolev1.LinkedTemplateRef{
+		{Namespace: "holos-org-acme", Name: "a"},
+	}
+	v2 := []*consolev1.LinkedTemplateRef{
+		{Namespace: "holos-org-acme", Name: "b"},
+	}
+	c := NewAppliedRenderStateClient(client, r, walker)
+	if err := c.RecordAppliedRenderSet(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", v1); err != nil {
+		t.Fatalf("seed Record: %v", err)
+	}
+
+	flaky := &flakyRenderStateClient{Client: client, updateConflicts: 1}
+	cFlaky := NewAppliedRenderStateClient(flaky, r, walker)
+	if err := cFlaky.RecordAppliedRenderSet(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", v2); err != nil {
+		t.Fatalf("retry Record: %v", err)
+	}
+	if flaky.updateConflicts != 0 {
+		t.Errorf("expected Conflict attempt consumed, got %d remaining", flaky.updateConflicts)
 	}
 }
 

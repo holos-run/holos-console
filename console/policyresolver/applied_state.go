@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -221,21 +222,86 @@ func (c *AppliedRenderStateClient) RecordAppliedRenderSet(
 		return fmt.Errorf("creating RenderState %q in %q: %w", rsName, folderNs, createErr)
 	}
 
-	existing := &templatesv1alpha1.RenderState{}
-	if getErr := c.client.Get(ctx, types.NamespacedName{Namespace: folderNs, Name: rsName}, existing); getErr != nil {
-		return fmt.Errorf("getting RenderState %q in %q for update: %w", rsName, folderNs, getErr)
-	}
-	existing.Spec = desiredSpec
-	if existing.Labels == nil {
-		existing.Labels = make(map[string]string, len(desiredLabels))
-	}
-	for k, v := range desiredLabels {
-		existing.Labels[k] = v
-	}
-	if updateErr := c.client.Update(ctx, existing); updateErr != nil {
+	return c.updateExistingRenderState(ctx, folderNs, rsName, desiredSpec, desiredLabels)
+}
+
+// recordRetryAttempts bounds the AlreadyExists → Get → Update loop. The two
+// recoverable failures are NotFound (cache lag — the apiserver has the
+// object, but the local informer cache has not observed the watch event
+// yet) and Conflict (a concurrent writer updated the object between our
+// Get and our Update). Both resolve with a fresh Get; this constant caps
+// the work we do before surfacing a real failure to the caller. Five
+// attempts at 100 ms between attempts gives ~500 ms of headroom, which
+// covers a healthy informer's worst observed lag without making a
+// genuinely wedged write hang on the success path of the render handler.
+const (
+	recordRetryAttempts = 5
+	recordRetryBackoff  = 100 * time.Millisecond
+)
+
+// updateExistingRenderState handles the AlreadyExists branch of
+// RecordAppliedRenderSet. The cache-backed client may briefly serve a
+// NotFound after our own Create succeeds at the apiserver but before the
+// informer observes the watch event; the apiserver may also reject the
+// Update with Conflict if a peer console replica updated the object
+// between our Get and our Update. Both are resolved by re-fetching and
+// retrying with bounded backoff so a transient race never surfaces as a
+// drift-record write failure.
+func (c *AppliedRenderStateClient) updateExistingRenderState(
+	ctx context.Context,
+	folderNs, rsName string,
+	desiredSpec templatesv1alpha1.RenderStateSpec,
+	desiredLabels map[string]string,
+) error {
+	var lastErr error
+	for attempt := 0; attempt < recordRetryAttempts; attempt++ {
+		existing := &templatesv1alpha1.RenderState{}
+		getErr := c.client.Get(ctx, types.NamespacedName{Namespace: folderNs, Name: rsName}, existing)
+		if getErr != nil {
+			if k8serrors.IsNotFound(getErr) {
+				lastErr = getErr
+				if !sleepWithContext(ctx, recordRetryBackoff) {
+					return ctx.Err()
+				}
+				continue
+			}
+			return fmt.Errorf("getting RenderState %q in %q for update: %w", rsName, folderNs, getErr)
+		}
+		existing.Spec = desiredSpec
+		if existing.Labels == nil {
+			existing.Labels = make(map[string]string, len(desiredLabels))
+		}
+		for k, v := range desiredLabels {
+			existing.Labels[k] = v
+		}
+		updateErr := c.client.Update(ctx, existing)
+		if updateErr == nil {
+			return nil
+		}
+		if k8serrors.IsConflict(updateErr) {
+			lastErr = updateErr
+			if !sleepWithContext(ctx, recordRetryBackoff) {
+				return ctx.Err()
+			}
+			continue
+		}
 		return fmt.Errorf("updating RenderState %q in %q: %w", rsName, folderNs, updateErr)
 	}
-	return nil
+	return fmt.Errorf("recording RenderState %q in %q after %d attempts: %w", rsName, folderNs, recordRetryAttempts, lastErr)
+}
+
+// sleepWithContext sleeps for d unless ctx is cancelled first. Returns
+// false when the context expired so the caller can short-circuit instead
+// of looping until the retry budget is exhausted.
+func sleepWithContext(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // ReadAppliedRenderSet returns the applied render set last recorded for the
