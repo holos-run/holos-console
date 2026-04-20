@@ -2,7 +2,12 @@ import { useMemo } from 'react'
 import { create } from '@bufbuild/protobuf'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  useQuery,
+  useQueries,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query'
 import {
   TemplatePolicyService,
   TemplatePolicySchema,
@@ -13,6 +18,8 @@ import type {
   TemplatePolicyRule,
 } from '@/gen/holos/console/v1/template_policies_pb.js'
 import { useAuth } from '@/lib/auth'
+import { useListFolders } from '@/queries/folders'
+import { namespaceForFolder, namespaceForOrg } from '@/lib/scope-labels'
 
 // Re-export generated types/enums used by UI consumers. HOL-600 removed
 // TemplatePolicyTarget from the proto — render-target selection now
@@ -47,6 +54,79 @@ export function useListTemplatePolicies(namespace: string) {
     },
     enabled: isAuthenticated && !!namespace,
   })
+}
+
+// useAllTemplatePoliciesForOrg fans a ListTemplatePolicies call across every
+// namespace reachable from an organization root — the org namespace plus one
+// namespace per folder visible to the caller — and flattens the results into
+// one array. HOL-608 AC requires the unified Template Policies index to show
+// org- and folder-scoped policies together, but TemplatePolicyService has no
+// SearchTemplatePolicies RPC (tracked in HOL-590 as the eventual server-side
+// consolidation). Until that lands this hook is the client-side fan-out.
+//
+// Pending / error semantics deliberately OR across the constituent queries so
+// the page can show a single Skeleton or Alert regardless of which call is
+// still in flight.
+export function useAllTemplatePoliciesForOrg(orgName: string): {
+  data: TemplatePolicy[] | undefined
+  isPending: boolean
+  error: Error | null
+} {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(
+    () => createClient(TemplatePolicyService, transport),
+    [transport],
+  )
+  const orgNamespace = namespaceForOrg(orgName)
+  const foldersQuery = useListFolders(orgName)
+  const folders = foldersQuery.data ?? []
+
+  const folderQueries = useQueries({
+    queries: folders.map((folder) => ({
+      queryKey: templatePolicyListKey(namespaceForFolder(folder.name)),
+      queryFn: async (): Promise<TemplatePolicy[]> => {
+        const response = await client.listTemplatePolicies({
+          namespace: namespaceForFolder(folder.name),
+        })
+        return response.policies
+      },
+      enabled: isAuthenticated && !!folder.name,
+    })),
+  })
+
+  const orgQuery = useQuery({
+    queryKey: templatePolicyListKey(orgNamespace),
+    queryFn: async () => {
+      const response = await client.listTemplatePolicies({ namespace: orgNamespace })
+      return response.policies
+    },
+    enabled: isAuthenticated && !!orgNamespace,
+  })
+
+  const folderError =
+    folderQueries.find((q) => q.error)?.error ?? null
+  const error = (foldersQuery.error ??
+    orgQuery.error ??
+    folderError) as Error | null
+
+  const isPending =
+    foldersQuery.isPending ||
+    orgQuery.isPending ||
+    folderQueries.some((q) => q.isPending)
+
+  const data = useMemo(() => {
+    if (isPending || error) return undefined
+    const all: TemplatePolicy[] = []
+    if (orgQuery.data) all.push(...orgQuery.data)
+    for (const q of folderQueries) {
+      if (q.data) all.push(...q.data)
+    }
+    return all
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPending, error, orgQuery.data, ...folderQueries.map((q) => q.data)])
+
+  return { data, isPending, error }
 }
 
 // useGetTemplatePolicy fetches a single policy by name within a namespace.

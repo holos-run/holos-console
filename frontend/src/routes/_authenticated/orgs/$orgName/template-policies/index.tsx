@@ -1,17 +1,33 @@
+import { useMemo, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
+import {
+  useReactTable,
+  getCoreRowModel,
+  getFilteredRowModel,
+  flexRender,
+  createColumnHelper,
+} from '@tanstack/react-table'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Separator } from '@/components/ui/separator'
-import { Badge } from '@/components/ui/badge'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import {
-  useListTemplatePolicies,
-  countRulesByKind,
-} from '@/queries/templatePolicies'
-import { namespaceForOrg } from '@/lib/scope-labels'
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { useAllTemplatePoliciesForOrg } from '@/queries/templatePolicies'
+import type { TemplatePolicy } from '@/queries/templatePolicies'
 import { useGetOrganization } from '@/queries/organizations'
+import {
+  scopeLabelFromNamespace,
+  scopeNameFromNamespace,
+} from '@/lib/scope-labels'
 
 export const Route = createFileRoute(
   '/_authenticated/orgs/$orgName/template-policies/',
@@ -23,6 +39,8 @@ function OrgTemplatePoliciesIndexRoute() {
   const { orgName } = Route.useParams()
   return <OrgTemplatePoliciesIndexPage orgName={orgName} />
 }
+
+const columnHelper = createColumnHelper<TemplatePolicy>()
 
 export function OrgTemplatePoliciesIndexPage({
   orgName: propOrgName,
@@ -36,21 +54,95 @@ export function OrgTemplatePoliciesIndexPage({
   }
   const orgName = propOrgName ?? routeOrgName ?? ''
 
-  const namespace = namespaceForOrg(orgName)
-  const { data: policies, isPending, error } = useListTemplatePolicies(namespace)
+  const { data: policies, isPending, error } = useAllTemplatePoliciesForOrg(orgName)
   const { data: org } = useGetOrganization(orgName)
 
   const userRole = org?.userRole ?? Role.VIEWER
   // PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors too.
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
+  const [globalFilter, setGlobalFilter] = useState('')
+
+  const rows = useMemo(() => policies ?? [], [policies])
+
+  const columns = useMemo(
+    () => [
+      columnHelper.accessor((row) => row.displayName || row.name, {
+        id: 'displayName',
+        header: 'Display Name',
+        cell: ({ row }) => {
+          const p = row.original
+          const label = p.displayName || p.name
+          const scope = scopeLabelFromNamespace(p.namespace)
+          // HOL-590 policies live at org or folder scope only; project scope
+          // has never been reachable for policies.
+          if (scope === 'folder') {
+            const folderName = scopeNameFromNamespace(p.namespace)
+            return (
+              <Link
+                to="/folders/$folderName/template-policies/$policyName"
+                params={{ folderName, policyName: p.name }}
+                title={p.name}
+                className="hover:underline font-medium"
+              >
+                {label}
+              </Link>
+            )
+          }
+          return (
+            <Link
+              to="/orgs/$orgName/template-policies/$policyName"
+              params={{ orgName, policyName: p.name }}
+              title={p.name}
+              className="hover:underline font-medium"
+            >
+              {label}
+            </Link>
+          )
+        },
+      }),
+      columnHelper.accessor('namespace', {
+        header: 'Namespace',
+        cell: ({ getValue }) => (
+          <span className="text-muted-foreground font-mono text-sm">
+            {getValue()}
+          </span>
+        ),
+      }),
+      columnHelper.accessor('name', {
+        header: 'Name',
+        cell: ({ getValue }) => (
+          <span className="text-muted-foreground font-mono text-sm">
+            {getValue()}
+          </span>
+        ),
+      }),
+    ],
+    [orgName],
+  )
+
+  const table = useReactTable({
+    data: rows,
+    columns,
+    state: { globalFilter },
+    onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: 'includesString',
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+  })
+
   if (isPending) {
     return (
       <Card>
-        <CardContent className="pt-6 space-y-4">
-          <Skeleton className="h-5 w-48" />
-          <Skeleton className="h-8 w-full" />
-          <Skeleton className="h-8 w-full" />
+        <CardHeader>
+          <CardTitle>Template Policies</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2" data-testid="policies-loading">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
         </CardContent>
       </Card>
     )
@@ -72,7 +164,9 @@ export function OrgTemplatePoliciesIndexPage({
     <Card>
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <div>
-          <p className="text-sm text-muted-foreground">{orgName} / Template Policies</p>
+          <p className="text-sm text-muted-foreground">
+            {orgName} / Template Policies
+          </p>
           <CardTitle className="mt-1">Template Policies</CardTitle>
         </div>
         {canWrite && (
@@ -81,69 +175,60 @@ export function OrgTemplatePoliciesIndexPage({
           </Link>
         )}
       </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Template policies attach templates to projects via REQUIRE or EXCLUDE rules. Rules apply
-          to BOTH project templates and deployments. Policies live only at folder or organization
-          scope — they can never be authored inside a project.
-        </p>
-        <Separator />
-        {policies && policies.length > 0 ? (
-          <ul className="space-y-2" data-testid="policies-list">
-            {policies.map((policy) => {
-              const counts = countRulesByKind(policy)
-              return (
-                <li key={policy.name}>
-                  <Link
-                    to="/orgs/$orgName/template-policies/$policyName"
-                    params={{ orgName, policyName: policy.name }}
-                    className="flex items-center gap-2 p-3 rounded-md hover:bg-muted transition-colors border border-border"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium font-mono">{policy.name}</span>
-                        {counts.require > 0 && (
-                          <Badge
-                            variant="outline"
-                            className="text-xs border-green-500/30 text-green-500"
-                          >
-                            REQUIRE x {counts.require}
-                          </Badge>
-                        )}
-                        {counts.exclude > 0 && (
-                          <Badge
-                            variant="outline"
-                            className="text-xs border-amber-500/30 text-amber-500"
-                          >
-                            EXCLUDE x {counts.exclude}
-                          </Badge>
-                        )}
-                      </div>
-                      {policy.description && (
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">
-                          {policy.description}
-                        </p>
-                      )}
-                      {policy.creatorEmail && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Created by {policy.creatorEmail}
-                        </p>
-                      )}
-                    </div>
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        ) : (
+      <CardContent>
+        {rows.length === 0 ? (
           <div className="rounded-md border border-dashed border-border p-6 text-center">
             <p className="text-sm font-medium">No template policies yet.</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Policies attach templates to projects through REQUIRE or EXCLUDE rules. Rules apply
-              to both project templates and deployments. Create a policy to enforce a template
-              across every project in this organization.
+              Policies attach templates to projects through REQUIRE or EXCLUDE
+              rules. Rules apply to both project templates and deployments.
+              Policies live only at folder or organization scope.
             </p>
           </div>
+        ) : (
+          <>
+            <div className="mb-3">
+              <Input
+                placeholder="Search policies…"
+                value={globalFilter}
+                onChange={(e) => setGlobalFilter(e.target.value)}
+                className="max-w-sm"
+                aria-label="Search template policies"
+              />
+            </div>
+            <Table>
+              <TableHeader>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead key={header.id}>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableHeader>
+              <TableBody>
+                {table.getRowModel().rows.map((row) => (
+                  <TableRow key={row.id}>
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id}>
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </>
         )}
       </CardContent>
     </Card>

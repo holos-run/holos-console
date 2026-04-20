@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
@@ -14,16 +14,27 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       children,
       to,
       params,
-      ...props
-    }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+      title,
+      className,
+    }: {
       children: React.ReactNode
-      to?: string
+      to: string
       params?: Record<string, string>
-    }) => (
-      <a href={to} data-params={JSON.stringify(params)} {...props}>
-        {children}
-      </a>
-    ),
+      title?: string
+      className?: string
+    }) => {
+      let href = to
+      if (params) {
+        for (const [k, v] of Object.entries(params)) {
+          href = href.replace(`$${k}`, v)
+        }
+      }
+      return (
+        <a href={href} title={title} className={className}>
+          {children}
+        </a>
+      )
+    },
   }
 })
 
@@ -33,7 +44,7 @@ vi.mock('@/queries/templatePolicies', async () => {
   )
   return {
     ...actual,
-    useListTemplatePolicies: vi.fn(),
+    useAllTemplatePoliciesForOrg: vi.fn(),
   }
 })
 
@@ -41,37 +52,46 @@ vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
 }))
 
-import { useListTemplatePolicies, TemplatePolicyKind } from '@/queries/templatePolicies'
+import {
+  useAllTemplatePoliciesForOrg,
+} from '@/queries/templatePolicies'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { OrgTemplatePoliciesIndexPage } from './index'
 
-function makePolicy(name: string, require = 1, exclude = 0) {
-  const rule = (kind: TemplatePolicyKind) => ({
-    kind,
-    template: { namespace: 'holos-org-test-org', name: 'httproute', versionConstraint: '' },
-    target: { projectPattern: '*', deploymentPattern: '*' },
-  })
+type PolicyFixture = {
+  name: string
+  namespace: string
+  displayName: string
+  description?: string
+  creatorEmail?: string
+  rules: unknown[]
+}
+
+function makePolicy(
+  name: string,
+  namespace: string,
+  displayName = name,
+): PolicyFixture {
   return {
     name,
-    displayName: name,
+    namespace,
+    displayName,
     description: '',
     creatorEmail: '',
-    rules: [
-      ...Array.from({ length: require }, () => rule(TemplatePolicyKind.REQUIRE)),
-      ...Array.from({ length: exclude }, () => rule(TemplatePolicyKind.EXCLUDE)),
-    ],
+    rules: [],
   }
 }
 
 function setup(
+  policies: PolicyFixture[] = [],
   userRole: Role = Role.OWNER,
-  policies: ReturnType<typeof makePolicy>[] = [],
+  overrides: Partial<{ isPending: boolean; error: Error | null }> = {},
 ) {
-  ;(useListTemplatePolicies as Mock).mockReturnValue({
-    data: policies,
-    isPending: false,
-    error: null,
+  ;(useAllTemplatePoliciesForOrg as Mock).mockReturnValue({
+    data: overrides.isPending ? undefined : policies,
+    isPending: overrides.isPending ?? false,
+    error: overrides.error ?? null,
   })
   ;(useGetOrganization as Mock).mockReturnValue({
     data: { name: 'test-org', userRole },
@@ -80,41 +100,145 @@ function setup(
   })
 }
 
+const ORG_NS = 'holos-org-test-org'
+const FOLDER_NS = 'holos-fld-team-alpha'
+
 describe('OrgTemplatePoliciesIndexPage', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('renders populated list with summary counts', () => {
-    setup(Role.OWNER, [makePolicy('p-1', 2, 1)])
-    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
-    expect(screen.getByText('p-1')).toBeInTheDocument()
-    expect(screen.getByText(/REQUIRE x 2/)).toBeInTheDocument()
-    expect(screen.getByText(/EXCLUDE x 1/)).toBeInTheDocument()
+  it('renders skeleton while loading', () => {
+    setup([], Role.OWNER, { isPending: true })
+    const { container } = render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    expect(container.querySelector('[data-testid="policies-loading"]')).toBeInTheDocument()
   })
 
-  it('renders empty state', () => {
-    setup(Role.OWNER, [])
+  it('renders error alert when the fan-out fails', () => {
+    setup([], Role.OWNER, { error: new Error('bad gateway') })
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    expect(screen.getByText('bad gateway')).toBeInTheDocument()
+  })
+
+  it('renders empty state when no policies exist', () => {
+    setup([])
     render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
     expect(screen.getByText(/no template policies yet/i)).toBeInTheDocument()
   })
 
+  it('renders org-scoped policies only', () => {
+    setup([makePolicy('p-org', ORG_NS, 'Org Policy')])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    expect(screen.getByText('Org Policy')).toBeInTheDocument()
+    expect(screen.getAllByText(ORG_NS).length).toBeGreaterThan(0)
+    expect(screen.getByText('p-org')).toBeInTheDocument()
+  })
+
+  it('renders folder-scoped policies only', () => {
+    setup([makePolicy('p-folder', FOLDER_NS, 'Folder Policy')])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    expect(screen.getByText('Folder Policy')).toBeInTheDocument()
+    expect(screen.getAllByText(FOLDER_NS).length).toBeGreaterThan(0)
+  })
+
+  it('renders org and folder policies combined in one grid', () => {
+    setup([
+      makePolicy('p-org', ORG_NS, 'Org Policy'),
+      makePolicy('p-folder', FOLDER_NS, 'Folder Policy'),
+    ])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    expect(screen.getByText('Org Policy')).toBeInTheDocument()
+    expect(screen.getByText('Folder Policy')).toBeInTheDocument()
+  })
+
+  it('routes org-scoped rows to the org detail page', () => {
+    setup([makePolicy('p-org', ORG_NS, 'Org Policy')])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    const link = screen.getByRole('link', { name: 'Org Policy' })
+    expect(link).toHaveAttribute(
+      'href',
+      '/orgs/test-org/template-policies/p-org',
+    )
+  })
+
+  it('routes folder-scoped rows to the folder detail page', () => {
+    setup([makePolicy('p-folder', FOLDER_NS, 'Folder Policy')])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    const link = screen.getByRole('link', { name: 'Folder Policy' })
+    expect(link).toHaveAttribute(
+      'href',
+      '/folders/team-alpha/template-policies/p-folder',
+    )
+  })
+
+  it('falls back to the name when displayName is empty', () => {
+    setup([makePolicy('p-nodn', ORG_NS, '')])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    const link = screen.getByRole('link', { name: 'p-nodn' })
+    expect(link).toBeInTheDocument()
+  })
+
+  it('filters by display name', () => {
+    setup([
+      makePolicy('p-alpha', ORG_NS, 'Alpha Policy'),
+      makePolicy('p-beta', ORG_NS, 'Beta Policy'),
+    ])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    const search = screen.getByRole('textbox', { name: /search template policies/i })
+    fireEvent.change(search, { target: { value: 'alpha' } })
+    expect(screen.getByText('Alpha Policy')).toBeInTheDocument()
+    expect(screen.queryByText('Beta Policy')).not.toBeInTheDocument()
+  })
+
+  it('filters by namespace', () => {
+    setup([
+      makePolicy('p-org', ORG_NS, 'Org Policy'),
+      makePolicy('p-folder', FOLDER_NS, 'Folder Policy'),
+    ])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    const search = screen.getByRole('textbox', { name: /search template policies/i })
+    fireEvent.change(search, { target: { value: 'fld-team-alpha' } })
+    expect(screen.getByText('Folder Policy')).toBeInTheDocument()
+    expect(screen.queryByText('Org Policy')).not.toBeInTheDocument()
+  })
+
+  it('filters by policy name', () => {
+    setup([
+      makePolicy('reference-grant', ORG_NS, 'ReferenceGrant'),
+      makePolicy('tls-required', ORG_NS, 'Require TLS'),
+    ])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    const search = screen.getByRole('textbox', { name: /search template policies/i })
+    fireEvent.change(search, { target: { value: 'reference' } })
+    expect(screen.getByText('ReferenceGrant')).toBeInTheDocument()
+    expect(screen.queryByText('Require TLS')).not.toBeInTheDocument()
+  })
+
   it('shows Create Policy for OWNER', () => {
-    setup(Role.OWNER, [])
+    setup([])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    expect(screen.getByRole('link', { name: /create policy/i })).toBeInTheDocument()
+  })
+
+  it('shows Create Policy for EDITOR', () => {
+    setup([], Role.EDITOR)
     render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
     expect(screen.getByRole('link', { name: /create policy/i })).toBeInTheDocument()
   })
 
   it('hides Create Policy for VIEWER', () => {
-    setup(Role.VIEWER, [])
+    setup([], Role.VIEWER)
     render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
     expect(screen.queryByRole('link', { name: /create policy/i })).not.toBeInTheDocument()
   })
 
-  // Regression test for codex review round 1: editors are granted
-  // PERMISSION_TEMPLATE_POLICIES_WRITE by the cascade table and must see the
-  // Create Policy affordance.
-  it('shows Create Policy for EDITOR', () => {
-    setup(Role.EDITOR, [])
+  it('renders each policy row with a distinct Display Name cell', () => {
+    setup([
+      makePolicy('p-org', ORG_NS, 'Org Policy'),
+      makePolicy('p-folder', FOLDER_NS, 'Folder Policy'),
+    ])
     render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
-    expect(screen.getByRole('link', { name: /create policy/i })).toBeInTheDocument()
+    const table = screen.getByRole('table')
+    const rows = within(table).getAllByRole('row')
+    // 1 header + 2 body rows
+    expect(rows.length).toBe(3)
   })
 })
