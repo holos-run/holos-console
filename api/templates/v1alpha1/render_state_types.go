@@ -35,6 +35,22 @@ const (
 	// RenderTargetKindProjectTemplate marks a RenderState that snapshots
 	// the effective render set last applied to a project-scope Template.
 	RenderTargetKindProjectTemplate RenderTargetKind = "ProjectTemplate"
+
+	// RenderStateTargetKindLabel mirrors `spec.targetKind` onto the
+	// RenderState's labels so callers that only know `(targetKind,
+	// targetName)` can list within a namespace via a single label
+	// selector instead of a full list-and-scan. The deterministic name
+	// helper covers the common Get-by-key path; the label is for the
+	// fallback list path the original ConfigMap layout supported.
+	RenderStateTargetKindLabel = "templates.holos.run/render-target-kind"
+	// RenderStateTargetNameLabel mirrors `spec.targetName` onto the
+	// RenderState's labels for the same reason as
+	// RenderStateTargetKindLabel.
+	RenderStateTargetNameLabel = "templates.holos.run/render-target-name"
+	// RenderStateTargetProjectLabel mirrors `spec.project` onto the
+	// RenderState's labels so a render-state list scoped to one project
+	// within a folder namespace is a single selector match.
+	RenderStateTargetProjectLabel = "templates.holos.run/render-target-project"
 )
 
 // RenderStateLinkedTemplateRef is the structured form of a single resolved

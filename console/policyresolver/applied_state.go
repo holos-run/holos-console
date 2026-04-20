@@ -184,8 +184,11 @@ func (c *AppliedRenderStateClient) RecordAppliedRenderSet(
 		AppliedRefs: refsToRenderStateRefs(refs),
 	}
 	desiredLabels := map[string]string{
-		v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
-		v1alpha2.LabelProject:   project,
+		v1alpha2.LabelManagedBy:                         v1alpha2.ManagedByValue,
+		v1alpha2.LabelProject:                           project,
+		templatesv1alpha1.RenderStateTargetKindLabel:    string(rsTargetKind),
+		templatesv1alpha1.RenderStateTargetNameLabel:    targetName,
+		templatesv1alpha1.RenderStateTargetProjectLabel: project,
 	}
 
 	slog.DebugContext(ctx, "recording applied render set",
