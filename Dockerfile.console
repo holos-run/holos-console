@@ -17,10 +17,11 @@
 # The repo-root `Dockerfile` is a symlink to this file so existing external
 # automation that references the bare path (CI snippets, docs, ad-hoc
 # `docker build .` invocations) keeps working for one release. The symlink
-# is a temporary M0 backwards-compat shim and MUST be removed in the M0
-# cleanup phase (tracked under HOL-674 / HOL-691). When the symlink is
-# removed, callers must invoke `docker build -f Dockerfile.console .`
-# explicitly.
+# is a temporary M0 backwards-compat shim: it MUST be deleted before the
+# next release cuts, and a follow-up ticket under the HOL-674 M0 plan will
+# land that removal (see the "Follow-up sweep" phase at the tail of
+# HOL-674). When the symlink is removed, callers must invoke
+# `docker build -f Dockerfile.console .` explicitly.
 
 # UI build stage
 FROM node:22 AS ui-build
