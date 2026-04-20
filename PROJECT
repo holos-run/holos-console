@@ -59,15 +59,14 @@ resources:
   kind: RenderState
   path: github.com/holos-run/holos-console/api/templates/v1alpha1
   version: v1alpha1
-# The secrets.holos.run entries below are M0 placeholders scaffolded by
-# HOL-687. The exact kinds and scope land in M1; ADR 031 locks the group
-# name, version, and the "CRs carry refs, not material" guardrail that the
-# M1 types will enforce. Placeholder kinds: Secret and SecretBinding (per
-# HOL-687 acceptance criteria). Printer columns and the precise scope
+# The secrets.holos.run entries below are the M1 kinds for the Secret
+# Injection Service. ADR 031 locks the group name, version, and the "CRs
+# carry refs, not material" guardrail each kind enforces. Printer columns
 # follow the HOL-615 conventions (Ready/Generation/Age, plus ResolvedRefs
-# for kinds with cross-object references) once M1 lands. HOL-697 added
-# UpstreamSecret, HOL-699 adds Credential; the remaining placeholders will
-# be retired as HOL-701 lands the remaining M1 kinds.
+# for kinds with cross-object references). HOL-697 added UpstreamSecret,
+# HOL-699 added Credential, and HOL-701 adds SecretInjectionPolicy and
+# SecretInjectionPolicyBinding — retiring the M0 Secret/SecretBinding
+# placeholders scaffolded by HOL-687.
 - api:
     crdVersion: v1
     namespaced: true
@@ -92,7 +91,7 @@ resources:
   controller: true
   domain: holos.run
   group: secrets
-  kind: Secret
+  kind: SecretInjectionPolicy
   path: github.com/holos-run/holos-console/api/secrets/v1alpha1
   version: v1alpha1
 - api:
@@ -101,7 +100,7 @@ resources:
   controller: true
   domain: holos.run
   group: secrets
-  kind: SecretBinding
+  kind: SecretInjectionPolicyBinding
   path: github.com/holos-run/holos-console/api/secrets/v1alpha1
   version: v1alpha1
 version: "3"
