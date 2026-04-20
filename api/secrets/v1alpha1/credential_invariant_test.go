@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"reflect"
 	"regexp"
-	"strings"
 	"testing"
 	"time"
 
@@ -87,29 +86,12 @@ func TestCredential_NoSensitiveValues(t *testing.T) {
 
 // TestCredential_FieldNames walks the exported fields of Credential,
 // CredentialSpec, and CredentialStatus and asserts none carries a name
-// that signals storage of forbidden material on a CR. Each forbidden
-// substring carries its own allowlist of exact field names that
-// legitimately contain the substring — widening an allowlist requires a
-// GoDoc justification at the field itself, because the allowlist is the
-// concrete guard on the no-sensitive-values invariant.
+// that signals storage of forbidden material on a CR. The rule set +
+// walker live in invariant_helper_test.go so every kind in this group
+// asserts the invariant against the same rules — widening an allowlist
+// requires a GoDoc justification at the field itself, because the
+// allowlist is the concrete guard on the no-sensitive-values invariant.
 func TestCredential_FieldNames(t *testing.T) {
-	rules := []struct {
-		substring string
-		allow     []string
-	}{
-		{substring: "Plaintext"},
-		{substring: "Token"},
-		{substring: "Prefix"},
-		{substring: "LastFour"},
-		{substring: "Fingerprint"},
-		// *Ref fields name a sibling v1.Secret. The bytes never appear on
-		// the Credential CR; only the metadata reference does. Each
-		// entry here must be a pure-reference field.
-		{substring: "Secret", allow: []string{"HashSecretRef", "UpstreamSecretRef"}},
-		{substring: "Hash", allow: []string{"HashSecretRef"}},
-		{substring: "Pepper", allow: []string{"PepperVersion"}},
-	}
-
 	// Cover the top-level CR types, every nested struct introduced by
 	// HOL-699, AND the shared secret-ref structs reachable from
 	// Spec.UpstreamSecretRef and Status.HashSecretRef. A future
@@ -127,33 +109,10 @@ func TestCredential_FieldNames(t *testing.T) {
 		reflect.TypeOf(v1alpha1.SecretKeyReference{}),
 		reflect.TypeOf(v1alpha1.NamespacedSecretKeyReference{}),
 	}
-	for _, rt := range types {
-		for i := 0; i < rt.NumField(); i++ {
-			f := rt.Field(i)
-			if !f.IsExported() {
-				continue
-			}
-			for _, rule := range rules {
-				if !strings.Contains(f.Name, rule.substring) {
-					continue
-				}
-				if containsString(rule.allow, f.Name) {
-					continue
-				}
-				t.Errorf("%s.%s contains forbidden substring %q; rename the field or add it to the allowlist in credential_invariant_test.go with a GoDoc justification on the field",
-					rt.Name(), f.Name, rule.substring)
-			}
-		}
+	for _, v := range v1alpha1.WalkForbiddenFieldNames(types, v1alpha1.DefaultForbiddenFieldNameRules) {
+		t.Errorf("%s.%s contains forbidden substring %q; rename the field or add it to the allowlist in invariant_helper_test.go with a GoDoc justification on the field",
+			v.TypeName, v.FieldName, v.Substring)
 	}
-}
-
-func containsString(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
 }
 
 // fullyPopulatedCredential returns a Credential whose fields are set to
