@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -147,16 +148,18 @@ export function FolderIndexPage({
 
 interface SectionCardProps {
   title: string
+  testId: string
   count: number | undefined
   isPending: boolean
   error: Error | null
   emptyText: string
-  viewAll: React.ReactNode
-  children: React.ReactNode
+  viewAll: ReactNode
+  children: ReactNode
 }
 
 function SectionCard({
   title,
+  testId,
   count,
   isPending,
   error,
@@ -164,6 +167,9 @@ function SectionCard({
   viewAll,
   children,
 }: SectionCardProps) {
+  // Treat `undefined` as empty so a resolved-but-shape-less query still
+  // surfaces the zero-state copy instead of an empty <ul>.
+  const isEmpty = (count ?? 0) === 0
   return (
     <Card>
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
@@ -179,7 +185,7 @@ function SectionCard({
       </CardHeader>
       <CardContent>
         {isPending ? (
-          <div className="space-y-2" data-testid={`${title.toLowerCase().replace(/\s+/g, '-')}-loading`}>
+          <div className="space-y-2" data-testid={`${testId}-loading`}>
             {Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-8 w-full" />
             ))}
@@ -188,7 +194,7 @@ function SectionCard({
           <Alert variant="destructive">
             <AlertDescription>{error.message}</AlertDescription>
           </Alert>
-        ) : count === 0 ? (
+        ) : isEmpty ? (
           <p className="text-sm text-muted-foreground">{emptyText}</p>
         ) : (
           children
@@ -213,6 +219,7 @@ function TemplatesSection({
   return (
     <SectionCard
       title="Templates"
+      testId="templates"
       count={templates?.length}
       isPending={isPending}
       error={error}
@@ -221,6 +228,7 @@ function TemplatesSection({
         <Link
           to="/folders/$folderName/templates"
           params={{ folderName }}
+          aria-label="View all templates"
         >
           <Button variant="outline" size="sm">
             View all
@@ -268,6 +276,7 @@ function TemplatePoliciesSection({
   return (
     <SectionCard
       title="Template Policies"
+      testId="template-policies"
       count={policies?.length}
       isPending={isPending}
       error={error}
@@ -276,6 +285,7 @@ function TemplatePoliciesSection({
         <Link
           to="/folders/$folderName/template-policies"
           params={{ folderName }}
+          aria-label="View all template policies"
         >
           <Button variant="outline" size="sm">
             View all
@@ -318,12 +328,21 @@ function ProjectsSection({
   return (
     <SectionCard
       title="Projects"
+      testId="projects"
       count={projects?.length}
       isPending={isPending}
       error={error}
       emptyText="No projects in this folder."
       viewAll={
-        <Link to="/orgs/$orgName/projects" params={{ orgName }}>
+        // No folder-scoped projects index exists yet (HOL-755); "View all"
+        // falls back to the org-wide list. The aria-label makes the
+        // fallback explicit so a screen-reader user is not surprised by
+        // the wider scope after activating the link.
+        <Link
+          to="/orgs/$orgName/projects"
+          params={{ orgName }}
+          aria-label="View all projects in the organization"
+        >
           <Button variant="outline" size="sm">
             View all
           </Button>

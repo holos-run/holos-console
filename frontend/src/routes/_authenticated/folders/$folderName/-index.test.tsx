@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import type React from 'react'
+import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
@@ -144,16 +145,29 @@ describe('FolderIndexPage', () => {
   it('renders all three summary sections in order: Templates, Template Policies, Projects', () => {
     setup()
     render(<FolderIndexPage folderName="payments" />)
-    // Section order is established by the order of the per-section "View
-    // all" links, which target stable, section-specific hrefs.
-    const hrefs = screen
-      .getAllByRole('link', { name: 'View all' })
-      .map((a) => a.getAttribute('href'))
-    expect(hrefs).toEqual([
-      '/folders/payments/templates',
-      '/folders/payments/template-policies',
-      '/orgs/test-org/projects',
-    ])
+    // Section order is established by the document order of the
+    // section-specific "View all" links. Each link carries a distinct
+    // accessible name so a screen-reader user (who jumps between links
+    // via the rotor) can tell which section each belongs to.
+    const templatesLink = screen.getByRole('link', {
+      name: 'View all templates',
+    })
+    const policiesLink = screen.getByRole('link', {
+      name: 'View all template policies',
+    })
+    const projectsLink = screen.getByRole('link', {
+      name: 'View all projects in the organization',
+    })
+    // Position compareDocumentPosition returns a bitmask where bit 0x04
+    // ("following") is set when `other` appears after `this` in the DOM.
+    expect(
+      templatesLink.compareDocumentPosition(policiesLink) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      policiesLink.compareDocumentPosition(projectsLink) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
   })
 
   it('renders a folder-level error when useGetFolder fails', () => {
@@ -190,6 +204,37 @@ describe('FolderIndexPage', () => {
       screen.getByText(/no template policies in this folder/i),
     ).toBeInTheDocument()
     expect(screen.getByText(/no projects in this folder/i)).toBeInTheDocument()
+  })
+
+  it('renders the empty state when a list query resolves with undefined data', () => {
+    // Guards against a regression where a resolved-but-shape-less query
+    // (`data: undefined, isPending: false`) slipped through to the
+    // children branch and rendered an empty <ul>. The section card
+    // must treat undefined as empty.
+    ;(useGetFolder as Mock).mockReturnValue({
+      data: mockFolder,
+      isPending: false,
+      error: null,
+    })
+    ;(useListTemplates as Mock).mockReturnValue({
+      data: undefined,
+      isPending: false,
+      error: null,
+    })
+    ;(useListTemplatePolicies as Mock).mockReturnValue({
+      data: [],
+      isPending: false,
+      error: null,
+    })
+    ;(useListProjectsByParent as Mock).mockReturnValue({
+      data: [],
+      isPending: false,
+      error: null,
+    })
+    render(<FolderIndexPage folderName="payments" />)
+    expect(
+      screen.getByText(/no templates in this folder/i),
+    ).toBeInTheDocument()
   })
 
   it('renders templates with a count badge and per-item link', () => {
@@ -263,18 +308,23 @@ describe('FolderIndexPage', () => {
     )
   })
 
-  it('renders per-section View all links to the scoped indexes', () => {
+  it('renders per-section View all links to the scoped indexes with distinct accessible names', () => {
     setup()
     render(<FolderIndexPage folderName="payments" />)
-    const viewAllLinks = screen.getAllByRole('link', { name: 'View all' })
-    const hrefs = viewAllLinks.map((a) => a.getAttribute('href'))
-    // Template-scope and policy-scope indexes live under /folders/.
-    expect(hrefs).toContain('/folders/payments/templates')
-    expect(hrefs).toContain('/folders/payments/template-policies')
-    // No folder-scoped projects index exists yet; View all for projects
-    // falls back to the org-wide projects page. Revisit when a folder-
-    // scoped projects index lands.
-    expect(hrefs).toContain('/orgs/test-org/projects')
+    // Each "View all" link carries a section-specific aria-label so
+    // the three buttons are distinguishable in a screen-reader link
+    // list. The Projects link additionally signals that the fallback
+    // destination widens scope to the whole org (HOL-755 will swap
+    // this for a folder-scoped projects index).
+    expect(
+      screen.getByRole('link', { name: 'View all templates' }),
+    ).toHaveAttribute('href', '/folders/payments/templates')
+    expect(
+      screen.getByRole('link', { name: 'View all template policies' }),
+    ).toHaveAttribute('href', '/folders/payments/template-policies')
+    expect(
+      screen.getByRole('link', { name: 'View all projects in the organization' }),
+    ).toHaveAttribute('href', '/orgs/test-org/projects')
   })
 
   it('renders per-section error alerts when a single list query fails', () => {
@@ -298,14 +348,13 @@ describe('FolderIndexPage', () => {
     )
   })
 
-  it('passes ParentType.FOLDER to useListProjectsByParent so the query is non-recursive', async () => {
+  it('passes ParentType.FOLDER to useListProjectsByParent so the query is non-recursive', () => {
     setup()
     render(<FolderIndexPage folderName="payments" />)
     // Non-recursive semantics come from the query contract: the RPC filters
     // to children whose immediate parent is this folder. We assert the
     // call shape here — verifying the contract the page relies on without
     // re-testing the RPC.
-    const { ParentType } = await import('@/gen/holos/console/v1/folders_pb')
     expect(useListProjectsByParent).toHaveBeenCalledWith(
       'test-org',
       ParentType.FOLDER,
