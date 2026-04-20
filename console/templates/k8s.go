@@ -30,7 +30,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -629,23 +628,29 @@ func (k *K8sClient) CreateRelease(ctx context.Context, namespace, templateName s
 // ListReleases returns all TemplateRelease CRDs for a template, sorted by
 // version descending (newest first). Releases whose spec.version fails to
 // parse as semver sort to the end.
+//
+// Filtering is done on `spec.templateName` rather than the
+// `console.holos.run/release-of` label so a TemplateRelease that omits the
+// convenience labels (say, one authored directly via `kubectl apply` or a
+// migration tool) is still visible to the resolver and duplicate-publish
+// detection. Labels remain on CreateRelease-produced objects as cache-side
+// indexing hints for tooling like kubectl; they are not authoritative for
+// visibility.
 func (k *K8sClient) ListReleases(ctx context.Context, namespace, templateName string) ([]templatesv1alpha1.TemplateRelease, error) {
 	slog.DebugContext(ctx, "listing releases from kubernetes",
 		slog.String("namespace", namespace),
 		slog.String("templateName", templateName),
 	)
 	var list templatesv1alpha1.TemplateReleaseList
-	sel := labels.SelectorFromSet(labels.Set{
-		v1alpha2.LabelResourceType: releaseResourceTypeLabelValue,
-		releaseOfLabelKey:          templateName,
-	})
-	if err := k.client.List(ctx, &list,
-		ctrlclient.InNamespace(namespace),
-		ctrlclient.MatchingLabelsSelector{Selector: sel},
-	); err != nil {
+	if err := k.client.List(ctx, &list, ctrlclient.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("listing releases: %w", err)
 	}
-	items := list.Items
+	items := list.Items[:0]
+	for _, rel := range list.Items {
+		if rel.Spec.TemplateName == templateName {
+			items = append(items, rel)
+		}
+	}
 	sortReleasesDesc(items)
 	return items, nil
 }
