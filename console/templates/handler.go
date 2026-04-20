@@ -1646,16 +1646,9 @@ func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTe
 	return update, nil
 }
 
-// extractScope converts an incoming namespace to the legacy
-// `(scope, scopeName)` pair the handler still uses for RBAC checks and
-// slog attributes. Returns InvalidArgument when the namespace is empty or
-// cannot be classified, matching the pre-HOL-619 contract that rejected
-// TEMPLATE_SCOPE_UNSPECIFIED.
-//
-// HOL-621 moved this helper out of the now-deleted legacy_shim.go and
-// into handler.go alongside the other scope plumbing; the RBAC tables
-// are keyed on scope, so the handler still needs the enum even though
-// storage no longer does.
+// extractScope converts an incoming namespace to the (scope, scopeName)
+// pair the handler uses for RBAC checks and slog attributes. Returns
+// InvalidArgument when the namespace is empty or cannot be classified.
 func (h *Handler) extractScope(namespace string) (scopeshim.Scope, string, error) {
 	if namespace == "" {
 		return scopeshim.ScopeUnspecified, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace is required"))
