@@ -251,7 +251,8 @@ test.describe('Mobile Responsive Layout', () => {
     // Tap hamburger to open drawer
     await page.getByRole('button', { name: /toggle sidebar/i }).click()
 
-    // Profile link should be visible in the drawer (always present)
-    await expect(page.getByRole('link', { name: 'Profile' })).toBeVisible({ timeout: 5000 })
+    // Workspace menu trigger (HOL-603) is rendered at the top of the sidebar
+    // and is always present, so it acts as the drawer-visible sentinel.
+    await expect(page.getByTestId('workspace-menu')).toBeVisible({ timeout: 5000 })
   })
 })

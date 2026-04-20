@@ -141,15 +141,14 @@ test.describe('Profile Page', () => {
     await expect(page.getByText('ID Token Status')).toBeVisible({ timeout: 10000 })
   })
 
-  test('should navigate to profile page from sidebar', async ({ page }) => {
+  test('should navigate to profile page from workspace menu', async ({ page }) => {
     // Login + cross-page navigation takes extra time on mobile CI.
     test.setTimeout(60_000)
 
     await loginViaProfilePage(page)
 
-    // Navigate away from profile to test sidebar navigation. Use a project
-    // route rather than /about (sidebar footer, adjacent to Profile) to avoid
-    // the About link intercepting clicks on Profile on mobile.
+    // Navigate away from profile so the sidebar workspace menu is the route
+    // under test.
     await page.goto('/projects/e2e-auth-nav-test/secrets')
     await page.waitForLoadState('networkidle')
 
@@ -161,8 +160,10 @@ test.describe('Profile Page', () => {
       await page.waitForTimeout(500)
     }
 
-    // Click Profile link in sidebar
-    await page.getByRole('link', { name: 'Profile' }).click()
+    // HOL-603 moved Profile from the sidebar footer into the workspace menu
+    // dropdown at the top of the sidebar. Open the menu, then click Profile.
+    await page.getByTestId('workspace-menu').click()
+    await page.getByTestId('workspace-menu-item-profile').click()
 
     // Verify URL is /profile
     await expect(page).toHaveURL(/\/profile/)
