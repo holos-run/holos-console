@@ -70,6 +70,12 @@ type TemplateReleaseStatus struct {
 // the semver version. The resource name is a deterministic function of those
 // two fields (see console/templates.ReleaseObjectName).
 //
+// The spec is immutable after creation (see the CEL rule on Spec). This
+// mirrors the `Immutable: true` guarantee the retired release ConfigMaps
+// offered: published releases are a version pin, so rewriting their CUE
+// payload in place would silently break downstream template references that
+// resolved against an earlier snapshot.
+//
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced,shortName=tmplrel,categories=holos
 // +kubebuilder:subresource:status
@@ -80,6 +86,7 @@ type TemplateRelease struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="TemplateRelease spec is immutable after creation"
 	Spec   TemplateReleaseSpec   `json:"spec,omitempty"`
 	Status TemplateReleaseStatus `json:"status,omitempty"`
 }

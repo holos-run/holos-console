@@ -37,6 +37,12 @@ spec:
           `.spec.templateName` identifies the Template and `.spec.version` identifies
           the semver version. The resource name is a deterministic function of those
           two fields (see console/templates.ReleaseObjectName).
+
+          The spec is immutable after creation (see the CEL rule on Spec). This
+          mirrors the `Immutable: true` guarantee the retired release ConfigMaps
+          offered: published releases are a version pin, so rewriting their CUE
+          payload in place would silently break downstream template references that
+          resolved against an earlier snapshot.
         properties:
           apiVersion:
             description: |-
@@ -152,6 +158,9 @@ spec:
             - templateName
             - version
             type: object
+            x-kubernetes-validations:
+            - message: TemplateRelease spec is immutable after creation
+              rule: self == oldSelf
           status:
             description: |-
               TemplateReleaseStatus describes the observed state of a TemplateRelease.
