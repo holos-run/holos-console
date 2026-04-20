@@ -57,6 +57,7 @@ import {
 } from '@/queries/templatePolicies'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { namespaceForOrg, namespaceForFolder } from '@/lib/scope-labels'
 import { OrgTemplatePoliciesIndexPage } from './index'
 
 type PolicyFixture = {
@@ -100,8 +101,8 @@ function setup(
   })
 }
 
-const ORG_NS = 'holos-org-test-org'
-const FOLDER_NS = 'holos-fld-team-alpha'
+const ORG_NS = namespaceForOrg('test-org')
+const FOLDER_NS = namespaceForFolder('team-alpha')
 
 describe('OrgTemplatePoliciesIndexPage', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -174,6 +175,21 @@ describe('OrgTemplatePoliciesIndexPage', () => {
     render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
     const link = screen.getByRole('link', { name: 'p-nodn' })
     expect(link).toBeInTheDocument()
+  })
+
+  it('renders a plain span (not a link) for unknown or project-scoped namespaces', () => {
+    // Safety net for stale caches or proto drift: HOL-590 guarantees policies
+    // live only at org or folder scope, but if the server ever surfaces a
+    // project-scoped row we must not forge a link to a 404 page.
+    setup([
+      makePolicy('p-proj', 'holos-prj-billing', 'Project Policy'),
+      makePolicy('p-bad', 'some-other-ns', 'Bad Scope Policy'),
+    ])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    expect(screen.queryByRole('link', { name: 'Project Policy' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Bad Scope Policy' })).toBeNull()
+    expect(screen.getByText('Project Policy')).toBeInTheDocument()
+    expect(screen.getByText('Bad Scope Policy')).toBeInTheDocument()
   })
 
   it('filters by display name', () => {

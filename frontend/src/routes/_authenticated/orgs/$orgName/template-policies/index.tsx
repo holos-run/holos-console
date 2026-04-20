@@ -74,14 +74,29 @@ export function OrgTemplatePoliciesIndexPage({
           const p = row.original
           const label = p.displayName || p.name
           const scope = scopeLabelFromNamespace(p.namespace)
-          // HOL-590 policies live at org or folder scope only; project scope
-          // has never been reachable for policies.
+          // HOL-590 guarantees policies live only at org or folder scope.
+          // If the server ever surfaces a project-scoped or unprefixed
+          // namespace (stale cache, proto drift) we render a plain cell
+          // rather than forging a link to a page that will 404.
           if (scope === 'folder') {
             const folderName = scopeNameFromNamespace(p.namespace)
+            if (folderName) {
+              return (
+                <Link
+                  to="/folders/$folderName/template-policies/$policyName"
+                  params={{ folderName, policyName: p.name }}
+                  title={p.name}
+                  className="hover:underline font-medium"
+                >
+                  {label}
+                </Link>
+              )
+            }
+          } else if (scope === 'org') {
             return (
               <Link
-                to="/folders/$folderName/template-policies/$policyName"
-                params={{ folderName, policyName: p.name }}
+                to="/orgs/$orgName/template-policies/$policyName"
+                params={{ orgName, policyName: p.name }}
                 title={p.name}
                 className="hover:underline font-medium"
               >
@@ -90,14 +105,9 @@ export function OrgTemplatePoliciesIndexPage({
             )
           }
           return (
-            <Link
-              to="/orgs/$orgName/template-policies/$policyName"
-              params={{ orgName, policyName: p.name }}
-              title={p.name}
-              className="hover:underline font-medium"
-            >
+            <span className="font-medium" title={p.name}>
               {label}
-            </Link>
+            </span>
           )
         },
       }),

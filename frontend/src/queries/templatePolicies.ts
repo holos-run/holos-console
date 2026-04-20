@@ -56,6 +56,63 @@ export function useListTemplatePolicies(namespace: string) {
   })
 }
 
+// Slice of the TanStack Query result this module cares about. Accepting an
+// interface (vs a union of `useQuery` return types) keeps aggregateFanOut
+// testable without importing TanStack internals and lets the disabled-query
+// case be modeled with `fetchStatus === 'idle'`.
+export interface FanOutQueryState<T> {
+  data: T | undefined
+  error: unknown
+  isPending: boolean
+  fetchStatus: 'fetching' | 'paused' | 'idle'
+}
+
+export interface FanOutAggregate<T> {
+  data: T[] | undefined
+  isPending: boolean
+  error: Error | null
+}
+
+// aggregateFanOut merges org-scope + folder-scope `ListTemplatePolicies`
+// results into a single list view. The rules:
+//
+// - `isPending` reports first-load only — a query counts as "still loading"
+//   when it is pending AND actively fetching. A disabled query
+//   (`fetchStatus === 'idle'`) is treated as resolved-empty so the aggregate
+//   does not lock on an empty org name or unauthenticated user.
+// - `error` is the first non-null error encountered, as an Error. Partial
+//   data is preserved alongside the error so the caller can render rows
+//   from successful queries with an inline warning rather than blanking
+//   the whole grid.
+// - `data` is the concatenated list whenever any query has resolved. It is
+//   only `undefined` while the aggregate is still pending with nothing
+//   materialized yet.
+export function aggregateFanOut(
+  queries: FanOutQueryState<TemplatePolicy[]>[],
+): FanOutAggregate<TemplatePolicy> {
+  const firstLoadPending = queries.some(
+    (q) => q.isPending && q.fetchStatus !== 'idle' && q.data === undefined,
+  )
+  const firstError = queries.find((q) => q.error != null)?.error
+  const error =
+    firstError instanceof Error
+      ? firstError
+      : firstError != null
+        ? new Error(String(firstError))
+        : null
+
+  const hasAnyData = queries.some((q) => q.data !== undefined)
+  if (!hasAnyData && firstLoadPending) {
+    return { data: undefined, isPending: true, error }
+  }
+
+  const data: TemplatePolicy[] = []
+  for (const q of queries) {
+    if (q.data) data.push(...q.data)
+  }
+  return { data, isPending: false, error }
+}
+
 // useAllTemplatePoliciesForOrg fans a ListTemplatePolicies call across every
 // namespace reachable from an organization root — the org namespace plus one
 // namespace per folder visible to the caller — and flattens the results into
@@ -64,14 +121,10 @@ export function useListTemplatePolicies(namespace: string) {
 // SearchTemplatePolicies RPC (tracked in HOL-590 as the eventual server-side
 // consolidation). Until that lands this hook is the client-side fan-out.
 //
-// Pending / error semantics deliberately OR across the constituent queries so
-// the page can show a single Skeleton or Alert regardless of which call is
-// still in flight.
-export function useAllTemplatePoliciesForOrg(orgName: string): {
-  data: TemplatePolicy[] | undefined
-  isPending: boolean
-  error: Error | null
-} {
+// See aggregateFanOut for the exact pending / error semantics.
+export function useAllTemplatePoliciesForOrg(
+  orgName: string,
+): FanOutAggregate<TemplatePolicy> {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(
@@ -98,35 +151,43 @@ export function useAllTemplatePoliciesForOrg(orgName: string): {
   const orgQuery = useQuery({
     queryKey: templatePolicyListKey(orgNamespace),
     queryFn: async () => {
-      const response = await client.listTemplatePolicies({ namespace: orgNamespace })
+      const response = await client.listTemplatePolicies({
+        namespace: orgNamespace,
+      })
       return response.policies
     },
     enabled: isAuthenticated && !!orgNamespace,
   })
 
-  const folderError =
-    folderQueries.find((q) => q.error)?.error ?? null
-  const error = (foldersQuery.error ??
-    orgQuery.error ??
-    folderError) as Error | null
-
-  const isPending =
-    foldersQuery.isPending ||
-    orgQuery.isPending ||
-    folderQueries.some((q) => q.isPending)
-
-  const data = useMemo(() => {
-    if (isPending || error) return undefined
-    const all: TemplatePolicy[] = []
-    if (orgQuery.data) all.push(...orgQuery.data)
-    for (const q of folderQueries) {
-      if (q.data) all.push(...q.data)
+  // Pre-empt the folders-still-loading case: if we never get a folder list
+  // we cannot know whether folder policies exist. Propagate pending in that
+  // specific case to avoid showing an empty grid that is actually partial.
+  if (foldersQuery.isPending && foldersQuery.fetchStatus !== 'idle') {
+    return {
+      data: undefined,
+      isPending: true,
+      error:
+        foldersQuery.error instanceof Error ? foldersQuery.error : null,
     }
-    return all
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPending, error, orgQuery.data, ...folderQueries.map((q) => q.data)])
+  }
+  if (foldersQuery.error instanceof Error) {
+    return { data: undefined, isPending: false, error: foldersQuery.error }
+  }
 
-  return { data, isPending, error }
+  return aggregateFanOut<TemplatePolicy>([
+    {
+      data: orgQuery.data,
+      error: orgQuery.error,
+      isPending: orgQuery.isPending,
+      fetchStatus: orgQuery.fetchStatus,
+    },
+    ...folderQueries.map((q) => ({
+      data: q.data,
+      error: q.error,
+      isPending: q.isPending,
+      fetchStatus: q.fetchStatus,
+    })),
+  ])
 }
 
 // useGetTemplatePolicy fetches a single policy by name within a namespace.
