@@ -58,13 +58,9 @@ func testScheme(t *testing.T) *runtime.Scheme {
 }
 
 // configMapIsTemplate reports whether a ConfigMap in the fake clientset
-// represents a Template (as opposed to a Release or some other resource).
-// Release ConfigMaps are identified by ResourceType=template-release;
-// everything else that carries LabelTemplateScope is treated as a template.
+// represents a Template. Templates are identified by the presence of the
+// LabelTemplateScope label stamped on every template fixture.
 func configMapIsTemplate(cm *corev1.ConfigMap) bool {
-	if cm.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeTemplateRelease {
-		return false
-	}
 	_, hasScope := cm.Labels[v1alpha2.LabelTemplateScope]
 	return hasScope
 }

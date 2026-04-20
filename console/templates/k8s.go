@@ -88,8 +88,8 @@ func (k *K8sClient) ListTemplates(ctx context.Context, namespace string) ([]temp
 
 // ListAllTemplates returns every Template across every namespace the
 // controller-runtime client can see, filtered down to the holos-console
-// managed-by/resource-type=template label pair so unmanaged Template CRs
-// don't leak into the cross-scope SearchTemplates response.
+// managed-by label so unmanaged Template CRs don't leak into the
+// cross-scope SearchTemplates response.
 //
 // Used by SearchTemplates (HOL-602). Reads hit the same informer cache as
 // ListTemplates — the only difference is the absence of an InNamespace
@@ -99,8 +99,7 @@ func (k *K8sClient) ListAllTemplates(ctx context.Context) ([]templatesv1alpha1.T
 	slog.DebugContext(ctx, "listing templates from kubernetes across all namespaces")
 	var list templatesv1alpha1.TemplateList
 	selector := ctrlclient.MatchingLabels{
-		v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-		v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplate,
+		v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 	}
 	if err := k.client.List(ctx, &list, selector); err != nil {
 		return nil, fmt.Errorf("listing templates across all namespaces: %w", err)

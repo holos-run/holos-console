@@ -83,7 +83,6 @@ func templateCMInNs(ns, name, displayName string, scopeLabel string) *corev1.Con
 			Namespace: ns,
 			Labels: map[string]string{
 				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 				v1alpha2.LabelTemplateScope: scopeLabel,
 			},
 			Annotations: map[string]string{
