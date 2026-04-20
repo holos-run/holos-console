@@ -22,21 +22,54 @@ package v1alpha1
 // and ADR 031 (Secret Injection Service — Architecture Pre-Decisions). See
 // the templates group's equivalent file (api/templates/v1alpha1/conditions.go)
 // for the pattern; the two groups deliberately keep independent contracts.
-
-// UpstreamSecret condition types.
+//
+// The Condition* catalog holds the shared condition-type string literals
+// named in HOL-675. Per-kind Condition* aliases below reference these
+// entries so reconcilers can set conditions either through the shared
+// name (`ConditionAccepted`) or the kind-scoped alias (e.g.,
+// `CredentialConditionAccepted`), and both resolve to the same string.
+// Reason strings remain kind-specific because several reasons (like
+// `SecretNotFound` or `WaypointNotFound`) only make sense for one kind.
 const (
-	// UpstreamSecretConditionAccepted tracks whether the reconciler parsed
-	// .spec and accepted it, or rejected it with a typed reason.
-	UpstreamSecretConditionAccepted = "Accepted"
-	// UpstreamSecretConditionResolvedRefs tracks whether the referenced
-	// v1.Secret named by .spec.secretRef exists and contains the named
-	// key. The condition name mirrors the Gateway API HTTPRoute.status
-	// ResolvedRefs condition — platform operators already understand its
-	// meaning.
-	UpstreamSecretConditionResolvedRefs = "ResolvedRefs"
-	// UpstreamSecretConditionReady is the aggregate: Accepted && ResolvedRefs
-	// are both True.
-	UpstreamSecretConditionReady = "Ready"
+	// ConditionAccepted tracks whether a reconciler parsed .spec and
+	// accepted it, or rejected it with a typed reason. Every kind in
+	// this group carries an Accepted condition.
+	ConditionAccepted = "Accepted"
+	// ConditionResolvedRefs tracks whether every cross-object reference
+	// on the spec resolves to an existing object at a compatible
+	// version. The condition name mirrors the Gateway API
+	// HTTPRoute.status ResolvedRefs condition — platform operators
+	// already understand its meaning. UpstreamSecret and
+	// SecretInjectionPolicyBinding carry this condition.
+	ConditionResolvedRefs = "ResolvedRefs"
+	// ConditionReady is the aggregate: all other non-aggregate True
+	// conditions for the kind are also True. Every kind in this group
+	// carries a Ready condition.
+	ConditionReady = "Ready"
+	// ConditionHashMaterialized tracks whether the controller has
+	// written the argon2id hash + per-credential salt to the sibling
+	// v1.Secret named by .status.hashSecretRef. The hash bytes never
+	// appear on the Credential CR. Credential carries this condition.
+	ConditionHashMaterialized = "HashMaterialized"
+	// ConditionExpired reports whether .spec.expiresAt has elapsed. It
+	// is a standalone condition (not an aggregate) so operators can
+	// filter on it independently of Ready. Credential carries this
+	// condition.
+	ConditionExpired = "Expired"
+	// ConditionProgrammed reports whether the reconciler has
+	// successfully written the backing security.istio.io
+	// AuthorizationPolicy (and located the waypoint). The condition
+	// name mirrors the Gateway API Programmed condition.
+	// SecretInjectionPolicyBinding carries this condition.
+	ConditionProgrammed = "Programmed"
+)
+
+// UpstreamSecret condition types. Each constant aliases the shared
+// Condition* catalog above; operators and reconcilers may use either form.
+const (
+	UpstreamSecretConditionAccepted     = ConditionAccepted
+	UpstreamSecretConditionResolvedRefs = ConditionResolvedRefs
+	UpstreamSecretConditionReady        = ConditionReady
 )
 
 // UpstreamSecret condition reasons.
@@ -50,24 +83,13 @@ const (
 	UpstreamSecretReasonNotReady         = "NotReady"
 )
 
-// Credential condition types.
+// Credential condition types. Each constant aliases the shared
+// Condition* catalog above; operators and reconcilers may use either form.
 const (
-	// CredentialConditionAccepted tracks whether the reconciler parsed
-	// .spec and accepted it, or rejected it with a typed reason (OIDC in
-	// v1alpha1, cross-namespace upstreamSecretRef, etc.).
-	CredentialConditionAccepted = "Accepted"
-	// CredentialConditionHashMaterialized tracks whether the controller
-	// has written the argon2id hash + per-credential salt to the sibling
-	// v1.Secret named by .status.hashSecretRef. The hash bytes never
-	// appear on the Credential CR.
-	CredentialConditionHashMaterialized = "HashMaterialized"
-	// CredentialConditionReady is the aggregate: Accepted &&
-	// HashMaterialized are both True and .status.phase is not Revoked.
-	CredentialConditionReady = "Ready"
-	// CredentialConditionExpired reports whether .spec.expiresAt has
-	// elapsed. It is a standalone condition (not an aggregate) so
-	// operators can filter on it independently of Ready.
-	CredentialConditionExpired = "Expired"
+	CredentialConditionAccepted         = ConditionAccepted
+	CredentialConditionHashMaterialized = ConditionHashMaterialized
+	CredentialConditionReady            = ConditionReady
+	CredentialConditionExpired          = ConditionExpired
 )
 
 // Credential condition reasons.
@@ -83,14 +105,11 @@ const (
 	CredentialReasonExpired           = "Expired"
 )
 
-// SecretInjectionPolicy condition types.
+// SecretInjectionPolicy condition types. Each constant aliases the shared
+// Condition* catalog above; operators and reconcilers may use either form.
 const (
-	// SecretInjectionPolicyConditionAccepted tracks whether the reconciler
-	// parsed .spec and accepted it, or rejected it with a typed reason.
-	SecretInjectionPolicyConditionAccepted = "Accepted"
-	// SecretInjectionPolicyConditionReady is the aggregate: Accepted is
-	// True.
-	SecretInjectionPolicyConditionReady = "Ready"
+	SecretInjectionPolicyConditionAccepted = ConditionAccepted
+	SecretInjectionPolicyConditionReady    = ConditionReady
 )
 
 // SecretInjectionPolicy condition reasons.
@@ -101,26 +120,14 @@ const (
 	SecretInjectionPolicyReasonNotReady    = "NotReady"
 )
 
-// SecretInjectionPolicyBinding condition types.
+// SecretInjectionPolicyBinding condition types. Each constant aliases the
+// shared Condition* catalog above; operators and reconcilers may use either
+// form.
 const (
-	// SecretInjectionPolicyBindingConditionAccepted tracks whether the
-	// reconciler parsed .spec.policyRef and .spec.targetRefs and accepted
-	// the spec.
-	SecretInjectionPolicyBindingConditionAccepted = "Accepted"
-	// SecretInjectionPolicyBindingConditionResolvedRefs tracks whether
-	// every target_ref kind is permitted and the referenced
-	// SecretInjectionPolicy exists. The condition name mirrors the
-	// Gateway API ResolvedRefs condition.
-	SecretInjectionPolicyBindingConditionResolvedRefs = "ResolvedRefs"
-	// SecretInjectionPolicyBindingConditionProgrammed reports whether the
-	// reconciler has successfully written the backing
-	// security.istio.io/AuthorizationPolicy (and located the
-	// waypoint). The condition name mirrors the Gateway API Programmed
-	// condition.
-	SecretInjectionPolicyBindingConditionProgrammed = "Programmed"
-	// SecretInjectionPolicyBindingConditionReady is the aggregate:
-	// Accepted && ResolvedRefs && Programmed are all True.
-	SecretInjectionPolicyBindingConditionReady = "Ready"
+	SecretInjectionPolicyBindingConditionAccepted     = ConditionAccepted
+	SecretInjectionPolicyBindingConditionResolvedRefs = ConditionResolvedRefs
+	SecretInjectionPolicyBindingConditionProgrammed   = ConditionProgrammed
+	SecretInjectionPolicyBindingConditionReady        = ConditionReady
 )
 
 // SecretInjectionPolicyBinding condition reasons.
