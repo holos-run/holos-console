@@ -41,7 +41,6 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('@/queries/templates', () => ({
   useRenderTemplate: vi.fn(),
-  makeProjectScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-project' }),
 }))
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))

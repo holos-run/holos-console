@@ -8,7 +8,7 @@ import {
 } from './rule-draft'
 import { TemplatePolicyKind } from '@/queries/templatePolicies'
 import { linkableKey } from '@/queries/templates'
-import { TemplateScope, namespaceFor } from '@/lib/scope-shim'
+import { namespaceForFolder, namespaceForOrg } from '@/lib/scope-labels'
 
 // HOL-598: The rule draft is no longer a vehicle for glob Target authoring.
 // Attachment is expressed exclusively via TemplatePolicyBinding. These tests
@@ -38,13 +38,13 @@ describe('rule-draft (HOL-598)', () => {
     it('emits a proto rule with target unset', () => {
       const draft: RuleDraft = {
         kind: TemplatePolicyKind.REQUIRE,
-        templateKey: linkableKey(TemplateScope.ORGANIZATION, 'acme', 'httproute'),
+        templateKey: linkableKey(namespaceForOrg('acme'), 'httproute'),
         versionConstraint: '^1.0.0',
       }
       const proto = ruleDraftToProto(draft)
       expect(proto.kind).toBe(TemplatePolicyKind.REQUIRE)
       expect(proto.template?.name).toBe('httproute')
-      expect(proto.template?.namespace).toBe(namespaceFor(TemplateScope.ORGANIZATION, 'acme'))
+      expect(proto.template?.namespace).toBe(namespaceForOrg('acme'))
       expect(proto.template?.versionConstraint).toBe('^1.0.0')
       // AC: target must be unset (or explicitly empty) on every new/edited rule.
       expect(proto.target).toBeUndefined()
@@ -55,7 +55,7 @@ describe('rule-draft (HOL-598)', () => {
       // fields and verify they are stripped at the proto conversion boundary.
       const legacyDraft = {
         kind: TemplatePolicyKind.EXCLUDE,
-        templateKey: linkableKey(TemplateScope.FOLDER, 'team-a', 'gateway'),
+        templateKey: linkableKey(namespaceForFolder('team-a'), 'gateway'),
         versionConstraint: '',
         projectPattern: '*',
         deploymentPattern: '*',
@@ -72,7 +72,7 @@ describe('rule-draft (HOL-598)', () => {
       const draft = ruleProtoToDraft({
         kind: TemplatePolicyKind.REQUIRE,
         template: {
-          namespace: namespaceFor(TemplateScope.ORGANIZATION, 'acme'),
+          namespace: namespaceForOrg('acme'),
           name: 'httproute',
           versionConstraint: '',
         },
@@ -83,7 +83,7 @@ describe('rule-draft (HOL-598)', () => {
       } as unknown as Parameters<typeof ruleProtoToDraft>[0])
       expect(draft).toEqual({
         kind: TemplatePolicyKind.REQUIRE,
-        templateKey: linkableKey(TemplateScope.ORGANIZATION, 'acme', 'httproute'),
+        templateKey: linkableKey(namespaceForOrg('acme'), 'httproute'),
         versionConstraint: '',
       })
       const extra = draft as Partial<RuleDraft> & {
@@ -104,7 +104,7 @@ describe('rule-draft (HOL-598)', () => {
     it('passes when a template is selected and no glob fields exist', () => {
       const draft: RuleDraft = {
         kind: TemplatePolicyKind.REQUIRE,
-        templateKey: linkableKey(TemplateScope.ORGANIZATION, 'acme', 'httproute'),
+        templateKey: linkableKey(namespaceForOrg('acme'), 'httproute'),
         versionConstraint: '',
       }
       expect(validateRuleDraft(draft)).toBeNull()

@@ -46,7 +46,6 @@ vi.mock('@/queries/templates', async () => {
   )
   return {
     ...actual,
-    makeOrgScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-org' }),
     useListTemplates: vi.fn().mockReturnValue({
       data: [],
       isPending: false,

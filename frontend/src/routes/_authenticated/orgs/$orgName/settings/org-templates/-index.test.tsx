@@ -18,7 +18,6 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 
 vi.mock('@/queries/templates', () => ({
   useListTemplates: vi.fn(),
-  makeOrgScope: vi.fn().mockReturnValue({ scope: 2, scopeName: 'test-org' }),
 }))
 
 vi.mock('@/queries/organizations', () => ({

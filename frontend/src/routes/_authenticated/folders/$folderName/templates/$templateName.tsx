@@ -23,8 +23,8 @@ import {
   useUpdateTemplate,
   useDeleteTemplate,
   useCloneTemplate,
-  makeFolderScope,
 } from '@/queries/templates'
+import { namespaceForFolder } from '@/lib/scope-labels'
 import { useGetFolder } from '@/queries/folders'
 import { useGetOrganization } from '@/queries/organizations'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
@@ -72,11 +72,11 @@ export function FolderTemplateDetailPage({
   // folder's parent organization.
   const { data: org, isPending: orgPending, error: orgError } = useGetOrganization(orgName)
 
-  const scope = makeFolderScope(folderName)
-  const { data: template, isPending, error } = useGetTemplate(scope, templateName)
-  const updateMutation = useUpdateTemplate(scope, templateName)
-  const deleteMutation = useDeleteTemplate(scope)
-  const cloneMutation = useCloneTemplate(scope)
+  const namespace = namespaceForFolder(folderName)
+  const { data: template, isPending, error } = useGetTemplate(namespace, templateName)
+  const updateMutation = useUpdateTemplate(namespace, templateName)
+  const deleteMutation = useDeleteTemplate(namespace)
+  const cloneMutation = useCloneTemplate(namespace)
 
   const [cueTemplate, setCueTemplate] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -295,12 +295,12 @@ export function FolderTemplateDetailPage({
               isSaving={updateMutation.isPending}
               defaultPlatformInput={defaultPlatformInput}
               defaultProjectInput={defaultProjectInput}
-              scope={scope}
+              namespace={namespace}
             />
           </div>
 
           <TemplateReleases
-            scope={scope}
+            namespace={namespace}
             templateName={templateName}
             canWrite={canWrite}
             currentCueTemplate={cueTemplate}

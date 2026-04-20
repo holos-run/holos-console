@@ -12,35 +12,33 @@ import {
   validateBindingDraft,
 } from './binding-draft'
 import { TemplatePolicyBindingTargetKind } from '@/queries/templatePolicyBindings'
-import { TemplateScope } from '@/queries/templates'
-import { namespaceFor } from '@/lib/scope-shim'
+import { namespaceForFolder, namespaceForOrg } from '@/lib/scope-labels'
 
 describe('policyKey / parsePolicyKey', () => {
   it('round-trips a composite key', () => {
-    const key = policyKey(TemplateScope.ORGANIZATION, 'test-org', 'policy-a')
-    expect(key).toBe('1/test-org/policy-a')
+    const ns = namespaceForOrg('test-org')
+    const key = policyKey(ns, 'policy-a')
+    expect(key).toBe(`${ns}/policy-a`)
     const parsed = parsePolicyKey(key)
     expect(parsed).toEqual({
-      scope: TemplateScope.ORGANIZATION,
-      scopeName: 'test-org',
+      namespace: ns,
       name: 'policy-a',
     })
   })
 
   it('handles a name containing a slash', () => {
-    // parsePolicyKey joins the remainder after the first two parts so names
-    // with slashes survive the round trip.
-    const key = policyKey(TemplateScope.FOLDER, 'team', 'has/slash')
+    // parsePolicyKey splits on the first slash only so names with slashes
+    // survive the round trip.
+    const ns = namespaceForFolder('team')
+    const key = policyKey(ns, 'has/slash')
     const parsed = parsePolicyKey(key)
     expect(parsed.name).toBe('has/slash')
-    expect(parsed.scope).toBe(TemplateScope.FOLDER)
-    expect(parsed.scopeName).toBe('team')
+    expect(parsed.namespace).toBe(ns)
   })
 
-  it('parses an empty key into UNSPECIFIED zero values', () => {
+  it('parses an empty key into empty values', () => {
     const parsed = parsePolicyKey('')
-    expect(parsed.scope).toBe(TemplateScope.UNSPECIFIED)
-    expect(parsed.scopeName).toBe('')
+    expect(parsed.namespace).toBe('')
     expect(parsed.name).toBe('')
   })
 })
@@ -60,8 +58,7 @@ describe('validateBindingDraft', () => {
     const draft = {
       ...newEmptyBindingDraft(),
       name: 'bind-a',
-      policyScope: TemplateScope.ORGANIZATION,
-      policyScopeName: 'test-org',
+      policyNamespace: namespaceForOrg('test-org'),
       policyName: 'policy-a',
       targetRefs: [],
     }
@@ -72,8 +69,7 @@ describe('validateBindingDraft', () => {
     const draft = {
       ...newEmptyBindingDraft(),
       name: 'bind-a',
-      policyScope: TemplateScope.ORGANIZATION,
-      policyScopeName: 'test-org',
+      policyNamespace: namespaceForOrg('test-org'),
       policyName: 'policy-a',
       targetRefs: [
         {
@@ -90,8 +86,7 @@ describe('validateBindingDraft', () => {
     const draft = {
       ...newEmptyBindingDraft(),
       name: 'bind-a',
-      policyScope: TemplateScope.ORGANIZATION,
-      policyScopeName: 'test-org',
+      policyNamespace: namespaceForOrg('test-org'),
       policyName: 'policy-a',
       targetRefs: [
         {
@@ -108,8 +103,7 @@ describe('validateBindingDraft', () => {
     const draft = {
       ...newEmptyBindingDraft(),
       name: 'bind-a',
-      policyScope: TemplateScope.ORGANIZATION,
-      policyScopeName: 'test-org',
+      policyNamespace: namespaceForOrg('test-org'),
       policyName: 'policy-a',
       targetRefs: [
         {
@@ -133,8 +127,7 @@ describe('validateBindingDraft', () => {
     const draft = {
       ...newEmptyBindingDraft(),
       name: 'bind-a',
-      policyScope: TemplateScope.ORGANIZATION,
-      policyScopeName: 'test-org',
+      policyNamespace: namespaceForOrg('test-org'),
       policyName: 'policy-a',
       targetRefs: [
         {
@@ -171,12 +164,13 @@ describe('targetRefDraft round-trip', () => {
 
 describe('bindingProtoToDraft', () => {
   it('populates every field from a proto binding', () => {
+    const folderNs = namespaceForFolder('team')
     const draft = bindingProtoToDraft({
       name: 'bind-a',
       displayName: 'Bind A',
       description: 'desc',
       policyRef: {
-        namespace: namespaceFor(TemplateScope.FOLDER, 'team'),
+        namespace: folderNs,
         name: 'policy-a',
       } as never,
       targetRefs: [
@@ -191,8 +185,7 @@ describe('bindingProtoToDraft', () => {
       name: 'bind-a',
       displayName: 'Bind A',
       description: 'desc',
-      policyScope: TemplateScope.FOLDER,
-      policyScopeName: 'team',
+      policyNamespace: folderNs,
       policyName: 'policy-a',
     })
     expect(draft.targetRefs).toHaveLength(1)
@@ -203,11 +196,10 @@ describe('bindingProtoToDraft', () => {
     })
   })
 
-  it('defaults missing fields to empty / UNSPECIFIED', () => {
+  it('defaults missing fields to empty strings', () => {
     const draft = bindingProtoToDraft({})
     expect(draft.name).toBe('')
-    expect(draft.policyScope).toBe(TemplateScope.UNSPECIFIED)
-    expect(draft.policyScopeName).toBe('')
+    expect(draft.policyNamespace).toBe('')
     expect(draft.policyName).toBe('')
     expect(draft.targetRefs).toEqual([])
   })
@@ -216,9 +208,9 @@ describe('bindingProtoToDraft', () => {
 describe('applyPolicyKey', () => {
   it('splits a composite policy key into the draft fields', () => {
     const draft = newEmptyBindingDraft()
-    const next = applyPolicyKey(draft, policyKey(TemplateScope.ORGANIZATION, 'test-org', 'policy-a'))
-    expect(next.policyScope).toBe(TemplateScope.ORGANIZATION)
-    expect(next.policyScopeName).toBe('test-org')
+    const ns = namespaceForOrg('test-org')
+    const next = applyPolicyKey(draft, policyKey(ns, 'policy-a'))
+    expect(next.policyNamespace).toBe(ns)
     expect(next.policyName).toBe('policy-a')
     // Other fields remain untouched
     expect(next.name).toBe(draft.name)
@@ -228,15 +220,15 @@ describe('applyPolicyKey', () => {
 
 describe('draftToPolicyRef / draftToMutationParams', () => {
   it('builds a LinkedTemplatePolicyRef from draft fields', () => {
+    const ns = namespaceForFolder('team')
     const draft = {
       ...newEmptyBindingDraft(),
-      policyScope: TemplateScope.FOLDER,
-      policyScopeName: 'team',
+      policyNamespace: ns,
       policyName: 'policy-a',
     }
     const ref = draftToPolicyRef(draft)
     expect(ref.name).toBe('policy-a')
-    expect(ref.namespace).toBe(namespaceFor(TemplateScope.FOLDER, 'team'))
+    expect(ref.namespace).toBe(ns)
   })
 
   it('draftToMutationParams trims whitespace on user-editable fields', () => {
@@ -245,8 +237,7 @@ describe('draftToPolicyRef / draftToMutationParams', () => {
       name: '  bind-a  ',
       displayName: '  Bind A  ',
       description: '  desc  ',
-      policyScope: TemplateScope.ORGANIZATION,
-      policyScopeName: 'test-org',
+      policyNamespace: namespaceForOrg('test-org'),
       policyName: 'policy-a',
       targetRefs: [
         {

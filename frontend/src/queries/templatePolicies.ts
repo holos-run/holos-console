@@ -12,7 +12,6 @@ import type {
   TemplatePolicy,
   TemplatePolicyRule,
 } from '@/gen/holos/console/v1/template_policies_pb.js'
-import { type TemplateScopeRef, namespaceForRef } from '@/lib/scope-shim'
 import { useAuth } from '@/lib/auth'
 
 // Re-export generated types/enums used by UI consumers. HOL-600 removed
@@ -21,19 +20,19 @@ import { useAuth } from '@/lib/auth'
 export type { TemplatePolicy, TemplatePolicyRule }
 export { TemplatePolicyKind }
 
-/** Query key helper for the template policies list at a given scope. */
-function templatePolicyListKey(scope: TemplateScopeRef) {
-  return ['templatePolicies', 'list', scope.scope, scope.scopeName] as const
+/** Query key helper for the template policies list at a given namespace. */
+function templatePolicyListKey(namespace: string) {
+  return ['templatePolicies', 'list', namespace] as const
 }
 
 /** Query key helper for a single template policy. */
-function templatePolicyGetKey(scope: TemplateScopeRef, name: string) {
-  return ['templatePolicies', 'get', scope.scope, scope.scopeName, name] as const
+function templatePolicyGetKey(namespace: string, name: string) {
+  return ['templatePolicies', 'get', namespace, name] as const
 }
 
-// useListTemplatePolicies fetches all policies visible within a scope.
+// useListTemplatePolicies fetches all policies visible within a namespace.
 // Mirrors the shape of useListTemplates in queries/templates.ts.
-export function useListTemplatePolicies(scope: TemplateScopeRef) {
+export function useListTemplatePolicies(namespace: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(
@@ -41,17 +40,17 @@ export function useListTemplatePolicies(scope: TemplateScopeRef) {
     [transport],
   )
   return useQuery({
-    queryKey: templatePolicyListKey(scope),
+    queryKey: templatePolicyListKey(namespace),
     queryFn: async () => {
-      const response = await client.listTemplatePolicies({ namespace: namespaceForRef(scope) })
+      const response = await client.listTemplatePolicies({ namespace })
       return response.policies
     },
-    enabled: isAuthenticated && !!scope.scopeName,
+    enabled: isAuthenticated && !!namespace,
   })
 }
 
-// useGetTemplatePolicy fetches a single policy by name within a scope.
-export function useGetTemplatePolicy(scope: TemplateScopeRef, name: string) {
+// useGetTemplatePolicy fetches a single policy by name within a namespace.
+export function useGetTemplatePolicy(namespace: string, name: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(
@@ -59,17 +58,17 @@ export function useGetTemplatePolicy(scope: TemplateScopeRef, name: string) {
     [transport],
   )
   return useQuery({
-    queryKey: templatePolicyGetKey(scope, name),
+    queryKey: templatePolicyGetKey(namespace, name),
     queryFn: async () => {
-      const response = await client.getTemplatePolicy({ namespace: namespaceForRef(scope), name })
+      const response = await client.getTemplatePolicy({ namespace, name })
       return response.policy
     },
-    enabled: isAuthenticated && !!scope.scopeName && !!name,
+    enabled: isAuthenticated && !!namespace && !!name,
   })
 }
 
-// useCreateTemplatePolicy creates a new policy at the given scope.
-export function useCreateTemplatePolicy(scope: TemplateScopeRef) {
+// useCreateTemplatePolicy creates a new policy at the given namespace.
+export function useCreateTemplatePolicy(namespace: string) {
   const transport = useTransport()
   const client = useMemo(
     () => createClient(TemplatePolicyService, transport),
@@ -83,12 +82,11 @@ export function useCreateTemplatePolicy(scope: TemplateScopeRef) {
       description: string
       rules: TemplatePolicyRule[]
     }) => {
-      const ns = namespaceForRef(scope)
       return client.createTemplatePolicy({
-        namespace: ns,
+        namespace,
         policy: create(TemplatePolicySchema, {
           name: params.name,
-          namespace: ns,
+          namespace,
           displayName: params.displayName,
           description: params.description,
           rules: params.rules,
@@ -96,13 +94,13 @@ export function useCreateTemplatePolicy(scope: TemplateScopeRef) {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templatePolicyListKey(scope) })
+      queryClient.invalidateQueries({ queryKey: templatePolicyListKey(namespace) })
     },
   })
 }
 
 // useUpdateTemplatePolicy updates an existing policy.
-export function useUpdateTemplatePolicy(scope: TemplateScopeRef, name: string) {
+export function useUpdateTemplatePolicy(namespace: string, name: string) {
   const transport = useTransport()
   const client = useMemo(
     () => createClient(TemplatePolicyService, transport),
@@ -115,12 +113,11 @@ export function useUpdateTemplatePolicy(scope: TemplateScopeRef, name: string) {
       description?: string
       rules: TemplatePolicyRule[]
     }) => {
-      const ns = namespaceForRef(scope)
       return client.updateTemplatePolicy({
-        namespace: ns,
+        namespace,
         policy: create(TemplatePolicySchema, {
           name,
-          namespace: ns,
+          namespace,
           displayName: params.displayName ?? '',
           description: params.description ?? '',
           rules: params.rules,
@@ -128,14 +125,14 @@ export function useUpdateTemplatePolicy(scope: TemplateScopeRef, name: string) {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templatePolicyListKey(scope) })
-      queryClient.invalidateQueries({ queryKey: templatePolicyGetKey(scope, name) })
+      queryClient.invalidateQueries({ queryKey: templatePolicyListKey(namespace) })
+      queryClient.invalidateQueries({ queryKey: templatePolicyGetKey(namespace, name) })
     },
   })
 }
 
 // useDeleteTemplatePolicy deletes a policy by name.
-export function useDeleteTemplatePolicy(scope: TemplateScopeRef) {
+export function useDeleteTemplatePolicy(namespace: string) {
   const transport = useTransport()
   const client = useMemo(
     () => createClient(TemplatePolicyService, transport),
@@ -144,9 +141,9 @@ export function useDeleteTemplatePolicy(scope: TemplateScopeRef) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (params: { name: string }) =>
-      client.deleteTemplatePolicy({ namespace: namespaceForRef(scope), ...params }),
+      client.deleteTemplatePolicy({ namespace, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templatePolicyListKey(scope) })
+      queryClient.invalidateQueries({ queryKey: templatePolicyListKey(namespace) })
     },
   })
 }

@@ -24,13 +24,12 @@ vi.mock('@/queries/templates', () => ({
   useCreateTemplate: vi.fn(),
   useRenderTemplate: vi.fn(),
   useListLinkableTemplates: vi.fn().mockReturnValue({ data: [], isPending: false }),
-  makeProjectScope: vi.fn().mockReturnValue({ scope: 3, scopeName: 'test-project' }),
-  TemplateScope: { UNSPECIFIED: 0, ORGANIZATION: 1, FOLDER: 2, PROJECT: 3 },
-  linkableKey: (scope: number | undefined, scopeName: string | undefined, name: string) =>
-    `${scope ?? 0}/${scopeName ?? ''}/${name}`,
+  linkableKey: (namespace: string | undefined, name: string) =>
+    `${namespace ?? ''}/${name}`,
   parseLinkableKey: (key: string) => {
-    const parts = key.split('/')
-    return { scope: Number(parts[0]), scopeName: parts[1] ?? '', name: parts.slice(2).join('/') }
+    const slash = key.indexOf('/')
+    if (slash < 0) return { namespace: '', name: key }
+    return { namespace: key.slice(0, slash), name: key.slice(slash + 1) }
   },
 }))
 

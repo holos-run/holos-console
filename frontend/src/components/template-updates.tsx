@@ -20,15 +20,20 @@ import {
 } from '@/components/ui/table'
 import { ArrowUpCircle, AlertTriangle } from 'lucide-react'
 import { useCheckUpdates, useUpdateTemplate } from '@/queries/templates'
-import type { TemplateScopeRef, TemplateUpdate, LinkedTemplateRef } from '@/queries/templates'
-import { TemplateScope, scopeFromNamespace } from '@/lib/scope-shim'
+import type { TemplateUpdate, LinkedTemplateRef } from '@/queries/templates'
+import { scopeLabelFromNamespace } from '@/lib/scope-labels'
 import { toast } from 'sonner'
 
-// scopeLabel returns a human-readable scope label.
-function scopeLabel(scope: number | undefined): string {
-  if (scope === TemplateScope.ORGANIZATION) return 'Org'
-  if (scope === TemplateScope.FOLDER) return 'Folder'
-  return ''
+// scopeShortLabel returns a human-readable short scope label for a namespace.
+function scopeShortLabel(namespace: string | undefined): string {
+  switch (scopeLabelFromNamespace(namespace)) {
+    case 'org':
+      return 'Org'
+    case 'folder':
+      return 'Folder'
+    default:
+      return ''
+  }
 }
 
 // hasCompatibleUpdate returns true when a non-breaking compatible update exists.
@@ -39,14 +44,14 @@ function hasCompatibleUpdate(update: TemplateUpdate): boolean {
 // --- UpdatesAvailableBadge ---
 
 interface UpdatesAvailableBadgeProps {
-  scope: TemplateScopeRef
+  namespace: string
   templateName: string
   onClick?: () => void
 }
 
 /** Pill badge showing "N updates" for a template with available linked-template updates. */
-export function UpdatesAvailableBadge({ scope, templateName, onClick }: UpdatesAvailableBadgeProps) {
-  const { data: updates, isPending } = useCheckUpdates(scope, templateName)
+export function UpdatesAvailableBadge({ namespace, templateName, onClick }: UpdatesAvailableBadgeProps) {
+  const { data: updates, isPending } = useCheckUpdates(namespace, templateName)
 
   if (isPending || !updates || updates.length === 0) return null
 
@@ -71,7 +76,7 @@ interface UpgradeDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   updates: TemplateUpdate[]
-  scope: TemplateScopeRef
+  namespace: string
   templateName: string
   linkedTemplates: LinkedTemplateRef[]
 }
@@ -81,11 +86,11 @@ export function UpgradeDialog({
   open,
   onOpenChange,
   updates,
-  scope,
+  namespace,
   templateName,
   linkedTemplates,
 }: UpgradeDialogProps) {
-  const updateMutation = useUpdateTemplate(scope, templateName)
+  const updateMutation = useUpdateTemplate(namespace, templateName)
   const [error, setError] = useState<string | null>(null)
   const [confirmBreaking, setConfirmBreaking] = useState<TemplateUpdate | null>(null)
 
@@ -194,7 +199,7 @@ export function UpgradeDialog({
                         <span className="font-medium">{ref?.name}</span>
                         {ref && (
                           <span className="text-xs text-muted-foreground">
-                            {scopeLabel(scopeFromNamespace(ref.namespace))}
+                            {scopeShortLabel(ref.namespace)}
                           </span>
                         )}
                       </div>

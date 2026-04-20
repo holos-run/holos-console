@@ -5,12 +5,6 @@ import {
   type LinkedTemplatePolicyRef,
 } from '@/queries/templatePolicyBindings'
 import {
-  TemplateScope,
-  namespaceFor,
-  scopeFromNamespace,
-  scopeNameFromNamespace,
-} from '@/lib/scope-shim'
-import {
   TemplatePolicyBindingTargetRefSchema,
   LinkedTemplatePolicyRefSchema,
 } from '@/gen/holos/console/v1/template_policy_bindings_pb.js'
@@ -27,17 +21,19 @@ export type TargetRefDraft = {
 }
 
 /**
- * Draft shape for a binding while the user is authoring it. `policyScope` and
- * `policyScopeName` identify the TemplatePolicy referenced by the binding;
- * the picker surfaces ancestor- and same-scope policies so the form submits
- * both halves of the LinkedTemplatePolicyRef together.
+ * Draft shape for a binding while the user is authoring it. `policyNamespace`
+ * together with `policyName` identifies the TemplatePolicy referenced by the
+ * binding; the picker surfaces ancestor- and same-namespace policies so the
+ * form submits both halves of the LinkedTemplatePolicyRef together.
+ *
+ * HOL-623: policies are keyed by (namespace, name); the draft tracks
+ * `policyNamespace` directly rather than the legacy (scope, scopeName) pair.
  */
 export type BindingDraft = {
   name: string
   displayName: string
   description: string
-  policyScope: TemplateScope
-  policyScopeName: string
+  policyNamespace: string
   policyName: string
   targetRefs: TargetRefDraft[]
 }
@@ -55,8 +51,7 @@ export function newEmptyBindingDraft(): BindingDraft {
     name: '',
     displayName: '',
     description: '',
-    policyScope: TemplateScope.UNSPECIFIED,
-    policyScopeName: '',
+    policyNamespace: '',
     policyName: '',
     targetRefs: [newEmptyTargetRef()],
   }
@@ -87,7 +82,7 @@ export function targetRefProtoToDraft(
 /** Build a LinkedTemplatePolicyRef proto from a binding draft. */
 export function draftToPolicyRef(draft: BindingDraft): LinkedTemplatePolicyRef {
   return create(LinkedTemplatePolicyRefSchema, {
-    namespace: namespaceFor(draft.policyScope, draft.policyScopeName),
+    namespace: draft.policyNamespace,
     name: draft.policyName,
   })
 }
@@ -105,17 +100,12 @@ export function bindingProtoToDraft(
     targetRefs?: TemplatePolicyBindingTargetRef[]
   },
 ): BindingDraft {
-  const policyNamespace = binding.policyRef?.namespace ?? ''
-  const policyScope = scopeFromNamespace(policyNamespace)
-  const policyScopeName = scopeNameFromNamespace(policyNamespace)
-  const policyName = binding.policyRef?.name ?? ''
   return {
     name: binding.name ?? '',
     displayName: binding.displayName ?? '',
     description: binding.description ?? '',
-    policyScope,
-    policyScopeName,
-    policyName,
+    policyNamespace: binding.policyRef?.namespace ?? '',
+    policyName: binding.policyRef?.name ?? '',
     targetRefs: (binding.targetRefs ?? []).map(targetRefProtoToDraft),
   }
 }
@@ -129,7 +119,7 @@ export function validateBindingDraft(draft: BindingDraft): string | null {
   if (!draft.name.trim()) {
     return 'Binding name is required.'
   }
-  if (!draft.policyName || !draft.policyScopeName) {
+  if (!draft.policyName || !draft.policyNamespace) {
     return 'Policy selection is required.'
   }
   if (draft.targetRefs.length === 0) {
@@ -165,44 +155,39 @@ export function validateBindingDraft(draft: BindingDraft): string | null {
 
 /**
  * Composite key used by the policy picker. A TemplatePolicy is uniquely
- * identified by (scope, scopeName, name). Serialize into a single value so
- * the Combobox can present it as a single option.
+ * identified by (namespace, name). Serialize into a single value so the
+ * Combobox can present it as a single option. The name segment may contain
+ * characters other than `/`, so we split on the first slash only.
  */
-export function policyKey(
-  scope: TemplateScope | number | undefined,
-  scopeName: string | undefined,
-  name: string,
-): string {
-  return `${scope ?? 0}/${scopeName ?? ''}/${name}`
+export function policyKey(namespace: string | undefined, name: string): string {
+  return `${namespace ?? ''}/${name}`
 }
 
 /** Inverse of policyKey — parse a composite key back into its parts. */
 export function parsePolicyKey(key: string): {
-  scope: TemplateScope
-  scopeName: string
+  namespace: string
   name: string
 } {
-  const parts = key.split('/')
+  const slash = key.indexOf('/')
+  if (slash < 0) return { namespace: '', name: key }
   return {
-    scope: (Number(parts[0]) as TemplateScope) || TemplateScope.UNSPECIFIED,
-    scopeName: parts[1] ?? '',
-    name: parts.slice(2).join('/'),
+    namespace: key.slice(0, slash),
+    name: key.slice(slash + 1),
   }
 }
 
 /**
- * Fill in policyScope/policyScopeName/policyName on a draft from a composite
+ * Fill in policyNamespace/policyName on a draft from a composite
  * policy key (used by the PolicyForm's Combobox handler).
  */
 export function applyPolicyKey(
   draft: BindingDraft,
   key: string,
 ): BindingDraft {
-  const { scope, scopeName, name } = parsePolicyKey(key)
+  const { namespace, name } = parsePolicyKey(key)
   return {
     ...draft,
-    policyScope: scope,
-    policyScopeName: scopeName,
+    policyNamespace: namespace,
     policyName: name,
   }
 }

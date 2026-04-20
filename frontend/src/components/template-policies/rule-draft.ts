@@ -5,12 +5,6 @@ import {
   linkableKey,
   parseLinkableKey,
 } from '@/queries/templates'
-import {
-  TemplateScope,
-  namespaceFor,
-  scopeFromNamespace,
-  scopeNameFromNamespace,
-} from '@/lib/scope-shim'
 import { TemplatePolicyRuleSchema } from '@/gen/holos/console/v1/template_policies_pb.js'
 import { LinkedTemplateRefSchema } from '@/gen/holos/console/v1/policy_state_pb.js'
 
@@ -24,6 +18,9 @@ import { LinkedTemplateRefSchema } from '@/gen/holos/console/v1/policy_state_pb.
  * removed from the UI. Attachment is now expressed exclusively via
  * TemplatePolicyBinding. The draft therefore no longer carries glob fields,
  * and `ruleDraftToProto` emits a rule with `target` unset.
+ *
+ * HOL-623: the template identity on the wire is now (namespace, name) — the
+ * composite templateKey is `<namespace>/<name>`, built via `linkableKey`.
  */
 export type RuleDraft = {
   kind: TemplatePolicyKind
@@ -45,11 +42,11 @@ export function newEmptyRule(): RuleDraft {
  * TemplatePolicyBinding.
  */
 export function ruleDraftToProto(draft: RuleDraft): TemplatePolicyRule {
-  const { scope, scopeName, name } = parseLinkableKey(draft.templateKey)
+  const { namespace, name } = parseLinkableKey(draft.templateKey)
   return create(TemplatePolicyRuleSchema, {
     kind: draft.kind,
     template: create(LinkedTemplateRefSchema, {
-      namespace: namespaceFor(scope as TemplateScope, scopeName),
+      namespace,
       name,
       versionConstraint: draft.versionConstraint,
     }),
@@ -67,9 +64,7 @@ export function ruleProtoToDraft(rule: TemplatePolicyRule): RuleDraft {
   const tmpl = rule.template
   return {
     kind: rule.kind,
-    templateKey: tmpl
-      ? linkableKey(scopeFromNamespace(tmpl.namespace), scopeNameFromNamespace(tmpl.namespace), tmpl.name)
-      : '',
+    templateKey: tmpl ? linkableKey(tmpl.namespace, tmpl.name) : '',
     versionConstraint: tmpl?.versionConstraint ?? '',
   }
 }

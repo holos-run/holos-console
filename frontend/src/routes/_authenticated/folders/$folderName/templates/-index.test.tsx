@@ -24,7 +24,6 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 
 vi.mock('@/queries/templates', () => ({
   useListTemplates: vi.fn(),
-  makeFolderScope: vi.fn().mockReturnValue({ scope: 2, scopeName: 'test-folder' }),
 }))
 
 vi.mock('@/queries/folders', () => ({

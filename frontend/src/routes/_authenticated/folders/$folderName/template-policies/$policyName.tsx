@@ -20,7 +20,7 @@ import {
   useUpdateTemplatePolicy,
   useDeleteTemplatePolicy,
 } from '@/queries/templatePolicies'
-import { makeFolderScope } from '@/queries/templates'
+import { namespaceForFolder } from '@/lib/scope-labels'
 import { useGetFolder } from '@/queries/folders'
 import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
 import {
@@ -63,7 +63,7 @@ export function FolderTemplatePolicyDetailPage({
   const policyName = propPolicyName ?? routeParams.policyName ?? ''
 
   const navigate = useNavigate()
-  const scope = makeFolderScope(folderName)
+  const namespace = namespaceForFolder(folderName)
   const { data: folder } = useGetFolder(folderName)
   const orgName = folder?.organization ?? ''
   const userRole = folder?.userRole ?? Role.VIEWER
@@ -79,13 +79,13 @@ export function FolderTemplatePolicyDetailPage({
     data: policy,
     isPending,
     error,
-  } = useGetTemplatePolicy(scope, policyName)
-  const updateMutation = useUpdateTemplatePolicy(scope, policyName)
-  const deleteMutation = useDeleteTemplatePolicy(scope)
+  } = useGetTemplatePolicy(namespace, policyName)
+  const updateMutation = useUpdateTemplatePolicy(namespace, policyName)
+  const deleteMutation = useDeleteTemplatePolicy(namespace)
   // HOL-598: list folder-scope bindings and filter to those referencing this
   // policy by name. Folder-scope bindings live in the same namespace as the
   // folder-scope policy itself; binding detail links target the folder route.
-  const bindingsQuery = useListTemplatePolicyBindings(scope)
+  const bindingsQuery = useListTemplatePolicyBindings(namespace)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -173,7 +173,7 @@ export function FolderTemplatePolicyDetailPage({
           <PolicyForm
             mode="edit"
             scopeType={scopeType}
-            scopeRef={scope}
+            namespace={namespace}
             canWrite={canWrite}
             initialValues={initialValues}
             lockName

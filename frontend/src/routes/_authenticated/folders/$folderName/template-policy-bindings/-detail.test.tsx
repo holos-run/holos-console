@@ -46,9 +46,6 @@ vi.mock('@/queries/templates', async () => {
   )
   return {
     ...actual,
-    makeFolderScope: vi
-      .fn()
-      .mockReturnValue({ scope: 2, scopeName: 'test-folder' }),
     useListTemplates: vi.fn().mockReturnValue({
       data: [],
       isPending: false,

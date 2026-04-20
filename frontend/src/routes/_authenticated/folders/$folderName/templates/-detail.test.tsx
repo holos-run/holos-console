@@ -27,7 +27,6 @@ vi.mock('@/queries/templates', () => ({
   useDeleteTemplate: vi.fn(),
   useCloneTemplate: vi.fn(),
   useRenderTemplate: vi.fn(),
-  makeFolderScope: vi.fn().mockReturnValue({ scope: 3, scopeName: 'test-folder' }),
 }))
 
 vi.mock('@/queries/folders', () => ({

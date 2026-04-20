@@ -44,7 +44,6 @@ vi.mock('@/queries/templates', async () => {
   const actual = await vi.importActual<typeof import('@/queries/templates')>('@/queries/templates')
   return {
     ...actual,
-    makeOrgScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-org' }),
     useListLinkableTemplates: vi.fn().mockReturnValue({
       data: [],
       isPending: false,

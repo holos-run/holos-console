@@ -13,9 +13,9 @@ import { useCreateDeployment } from '@/queries/deployments'
 import {
   useListTemplates,
   useGetTemplateDefaults,
-  makeProjectScope,
   type TemplateDefaults,
 } from '@/queries/templates'
+import { namespaceForProject } from '@/lib/scope-labels'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/new')({
   component: CreateDeploymentRoute,
@@ -55,8 +55,8 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
 
   const navigate = useNavigate()
   const createMutation = useCreateDeployment(projectName)
-  const scope = makeProjectScope(projectName)
-  const { data: templates = [] } = useListTemplates(scope)
+  const namespace = namespaceForProject(projectName)
+  const { data: templates = [] } = useListTemplates(namespace)
 
   const [displayName, setDisplayName] = useState('')
   const [name, setName] = useState('')
@@ -78,7 +78,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
   // ADR 027 §1: the explicit GetTemplateDefaults RPC is the sole source of
   // pre-fill data. We intentionally ignore the embedded Template.defaults
   // field on ListTemplates responses.
-  const defaultsQuery = useGetTemplateDefaults({ scope, name: template })
+  const defaultsQuery = useGetTemplateDefaults({ namespace, name: template })
   const {
     data: fetchedDefaults,
     refetch: refetchDefaults,

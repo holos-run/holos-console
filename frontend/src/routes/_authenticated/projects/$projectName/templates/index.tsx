@@ -25,7 +25,8 @@ import {
 } from '@/components/ui/table'
 import { Pencil, Trash2, Copy } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useListTemplates, useDeleteTemplate, useCloneTemplate, useCheckUpdates, useGetTemplate, makeProjectScope } from '@/queries/templates'
+import { useListTemplates, useDeleteTemplate, useCloneTemplate, useCheckUpdates, useGetTemplate } from '@/queries/templates'
+import { namespaceForProject } from '@/lib/scope-labels'
 import { useGetProject } from '@/queries/projects'
 import { UpdatesAvailableBadge, UpgradeDialog } from '@/components/template-updates'
 import { ProjectTemplateDriftBadge } from '@/components/policy-drift/ProjectTemplateDriftBadge'
@@ -49,11 +50,11 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
   }
   const projectName = propProjectName ?? routeProjectName ?? ''
 
-  const scope = makeProjectScope(projectName)
-  const { data: templates = [], isLoading, error } = useListTemplates(scope)
+  const namespace = namespaceForProject(projectName)
+  const { data: templates = [], isLoading, error } = useListTemplates(namespace)
   const { data: project } = useGetProject(projectName)
-  const deleteMutation = useDeleteTemplate(scope)
-  const cloneMutation = useCloneTemplate(scope)
+  const deleteMutation = useDeleteTemplate(namespace)
+  const cloneMutation = useCloneTemplate(namespace)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
@@ -66,9 +67,9 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
   const [upgradeTemplateName, setUpgradeTemplateName] = useState<string | null>(null)
 
   // Fetch updates for the selected upgrade template (only when dialog is open).
-  const { data: upgradeUpdates = [] } = useCheckUpdates(scope, upgradeTemplateName ?? '', { enabled: !!upgradeTemplateName })
+  const { data: upgradeUpdates = [] } = useCheckUpdates(namespace, upgradeTemplateName ?? '', { enabled: !!upgradeTemplateName })
   // Fetch the selected template to get its linkedTemplates for the dialog.
-  const { data: upgradeTemplate } = useGetTemplate(scope, upgradeTemplateName ?? '')
+  const { data: upgradeTemplate } = useGetTemplate(namespace, upgradeTemplateName ?? '')
 
   const handleOpenUpgrade = (templateName: string) => {
     setUpgradeTemplateName(templateName)
@@ -186,7 +187,7 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
                           {template.name}
                         </Link>
                         <UpdatesAvailableBadge
-                          scope={scope}
+                          namespace={namespace}
                           templateName={template.name}
                           onClick={() => handleOpenUpgrade(template.name)}
                         />
@@ -201,7 +202,7 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
                           in-sync templates. PolicyState is sourced from
                           the folder-namespace render-state store.
                         */}
-                        <ProjectTemplateDriftBadge scope={scope} templateName={template.name} />
+                        <ProjectTemplateDriftBadge namespace={namespace} templateName={template.name} />
                       </div>
                     </TableCell>
                     <TableCell>
@@ -325,7 +326,7 @@ export function DeploymentTemplatesPage({ projectName: propProjectName }: { proj
             if (!open) setUpgradeTemplateName(null)
           }}
           updates={upgradeUpdates}
-          scope={scope}
+          namespace={namespace}
           templateName={upgradeTemplateName}
           linkedTemplates={upgradeTemplate?.linkedTemplates ?? []}
         />

@@ -7,7 +7,7 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
-import { makeOrgScope } from '@/queries/templates'
+import { namespaceForOrg } from '@/lib/scope-labels'
 import { useGetOrganization } from '@/queries/organizations'
 
 export const Route = createFileRoute(
@@ -33,8 +33,8 @@ export function OrgTemplatePolicyBindingsIndexPage({
   }
   const orgName = propOrgName ?? routeOrgName ?? ''
 
-  const scope = makeOrgScope(orgName)
-  const { data: bindings, isPending, error } = useListTemplatePolicyBindings(scope)
+  const namespace = namespaceForOrg(orgName)
+  const { data: bindings, isPending, error } = useListTemplatePolicyBindings(namespace)
   const { data: org } = useGetOrganization(orgName)
 
   const userRole = org?.userRole ?? Role.VIEWER

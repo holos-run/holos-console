@@ -7,7 +7,7 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
-import { makeFolderScope } from '@/queries/templates'
+import { namespaceForFolder } from '@/lib/scope-labels'
 import { useGetFolder } from '@/queries/folders'
 
 export const Route = createFileRoute(
@@ -36,8 +36,8 @@ export function FolderTemplatePolicyBindingsIndexPage({
   const { data: folder } = useGetFolder(folderName)
   const orgName = folder?.organization ?? ''
 
-  const scope = makeFolderScope(folderName)
-  const { data: bindings, isPending, error } = useListTemplatePolicyBindings(scope)
+  const namespace = namespaceForFolder(folderName)
+  const { data: bindings, isPending, error } = useListTemplatePolicyBindings(namespace)
 
   const userRole = folder?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR

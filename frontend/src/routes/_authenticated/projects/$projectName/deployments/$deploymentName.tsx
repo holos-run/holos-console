@@ -40,7 +40,7 @@ import { ArrowLeft, CheckCircle2, Copy, ExternalLink, Info, TriangleAlert, XCirc
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import type { EnvVar, Event, ContainerStatus, Link as DeploymentLink } from '@/gen/holos/console/v1/deployments_pb'
 import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentRenderPreview, useGetDeploymentPolicyState, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
-import { makeProjectScope } from '@/queries/templates'
+import { namespaceForProject } from '@/lib/scope-labels'
 import { useGetProject } from '@/queries/projects'
 import { isSafeHttpUrl } from '@/lib/url'
 import { PolicySection } from '@/components/policy-drift/PolicySection'
@@ -766,7 +766,7 @@ export function DeploymentDetailPage({
                     readOnly={true}
                     defaultPlatformInput={preview.cuePlatformInput}
                     defaultProjectInput={preview.cueProjectInput}
-                    scope={makeProjectScope(projectName)}
+                    namespace={namespaceForProject(projectName)}
                   />
                 ) : null}
               </div>

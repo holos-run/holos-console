@@ -20,7 +20,7 @@ import {
   useUpdateTemplatePolicyBinding,
   useDeleteTemplatePolicyBinding,
 } from '@/queries/templatePolicyBindings'
-import { makeFolderScope } from '@/queries/templates'
+import { namespaceForFolder } from '@/lib/scope-labels'
 import { useGetFolder } from '@/queries/folders'
 import {
   BindingForm,
@@ -64,7 +64,7 @@ export function FolderTemplatePolicyBindingDetailPage({
   const bindingName = propBindingName ?? routeParams.bindingName ?? ''
 
   const navigate = useNavigate()
-  const scope = makeFolderScope(folderName)
+  const namespace = namespaceForFolder(folderName)
   const { data: folder } = useGetFolder(folderName)
   const orgName = folder?.organization ?? ''
   const userRole = folder?.userRole ?? Role.VIEWER
@@ -77,9 +77,9 @@ export function FolderTemplatePolicyBindingDetailPage({
     data: binding,
     isPending,
     error,
-  } = useGetTemplatePolicyBinding(scope, bindingName)
-  const updateMutation = useUpdateTemplatePolicyBinding(scope, bindingName)
-  const deleteMutation = useDeleteTemplatePolicyBinding(scope)
+  } = useGetTemplatePolicyBinding(namespace, bindingName)
+  const updateMutation = useUpdateTemplatePolicyBinding(namespace, bindingName)
+  const deleteMutation = useDeleteTemplatePolicyBinding(namespace)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -172,7 +172,7 @@ export function FolderTemplatePolicyBindingDetailPage({
           <BindingForm
             mode="edit"
             scopeType={scopeType}
-            scopeRef={scope}
+            namespace={namespace}
             organization={orgName}
             canWrite={canWrite}
             initialValues={initialValues}

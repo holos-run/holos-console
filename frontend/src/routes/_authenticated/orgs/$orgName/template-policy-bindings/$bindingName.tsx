@@ -20,7 +20,7 @@ import {
   useUpdateTemplatePolicyBinding,
   useDeleteTemplatePolicyBinding,
 } from '@/queries/templatePolicyBindings'
-import { makeOrgScope } from '@/queries/templates'
+import { namespaceForOrg } from '@/lib/scope-labels'
 import { useGetOrganization } from '@/queries/organizations'
 import {
   BindingForm,
@@ -64,7 +64,7 @@ export function OrgTemplatePolicyBindingDetailPage({
   const bindingName = propBindingName ?? routeParams.bindingName ?? ''
 
   const navigate = useNavigate()
-  const scope = makeOrgScope(orgName)
+  const namespace = namespaceForOrg(orgName)
   const { data: org } = useGetOrganization(orgName)
   const userRole = org?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
@@ -79,9 +79,9 @@ export function OrgTemplatePolicyBindingDetailPage({
     data: binding,
     isPending,
     error,
-  } = useGetTemplatePolicyBinding(scope, bindingName)
-  const updateMutation = useUpdateTemplatePolicyBinding(scope, bindingName)
-  const deleteMutation = useDeleteTemplatePolicyBinding(scope)
+  } = useGetTemplatePolicyBinding(namespace, bindingName)
+  const updateMutation = useUpdateTemplatePolicyBinding(namespace, bindingName)
+  const deleteMutation = useDeleteTemplatePolicyBinding(namespace)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -158,7 +158,7 @@ export function OrgTemplatePolicyBindingDetailPage({
           <BindingForm
             mode="edit"
             scopeType={scopeType}
-            scopeRef={scope}
+            namespace={namespace}
             organization={orgName}
             canWrite={canWrite}
             initialValues={initialValues}

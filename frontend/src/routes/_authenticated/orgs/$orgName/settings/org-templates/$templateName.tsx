@@ -18,7 +18,8 @@ import {
 } from '@/components/ui/dialog'
 import { Copy } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useGetTemplate, useUpdateTemplate, useCloneTemplate, makeOrgScope } from '@/queries/templates'
+import { useGetTemplate, useUpdateTemplate, useCloneTemplate } from '@/queries/templates'
+import { namespaceForOrg } from '@/lib/scope-labels'
 import { useGetOrganization } from '@/queries/organizations'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { TemplateReleases } from '@/components/template-releases'
@@ -52,11 +53,11 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
     navigate = undefined
   }
 
-  const scope = makeOrgScope(orgName)
-  const { data: template, isPending, error } = useGetTemplate(scope, templateName)
+  const namespace = namespaceForOrg(orgName)
+  const { data: template, isPending, error } = useGetTemplate(namespace, templateName)
   const { data: org, isPending: orgPending, error: orgError } = useGetOrganization(orgName)
-  const updateMutation = useUpdateTemplate(scope, templateName)
-  const cloneMutation = useCloneTemplate(scope)
+  const updateMutation = useUpdateTemplate(namespace, templateName)
+  const cloneMutation = useCloneTemplate(namespace)
 
   const [cueTemplate, setCueTemplate] = useState('')
   const [cloneOpen, setCloneOpen] = useState(false)
@@ -226,12 +227,12 @@ export function OrgTemplateDetailPage({ orgName: propOrgName, templateName: prop
               isSaving={updateMutation.isPending}
               defaultPlatformInput={defaultPlatformInput}
               defaultProjectInput={defaultProjectInput}
-              scope={scope}
+              namespace={namespace}
             />
           </div>
 
           <TemplateReleases
-            scope={scope}
+            namespace={namespace}
             templateName={templateName}
             canWrite={canWrite}
             currentCueTemplate={cueTemplate}

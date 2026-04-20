@@ -11,8 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Info } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates, makeProjectScope, linkableKey, parseLinkableKey } from '@/queries/templates'
-import { TemplateScope, namespaceFor, scopeFromNamespace, scopeNameFromNamespace } from '@/lib/scope-shim'
+import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates, linkableKey, parseLinkableKey } from '@/queries/templates'
+import { namespaceForProject, scopeLabelFromNamespace } from '@/lib/scope-labels'
 import type { LinkedTemplateRef } from '@/queries/templates'
 import { create } from '@bufbuild/protobuf'
 import { LinkedTemplateRefSchema } from '@/gen/holos/console/v1/policy_state_pb.js'
@@ -240,14 +240,14 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const projectName = propProjectName ?? routeProjectName ?? ''
 
   const navigate = useNavigate()
-  const scope = makeProjectScope(projectName)
-  const createMutation = useCreateTemplate(scope)
+  const namespace = namespaceForProject(projectName)
+  const createMutation = useCreateTemplate(namespace)
   const { data: project } = useGetProject(projectName)
   // The authoring org's gatewayNamespace (HOL-526) is mirrored into the
   // platform-input preview default so the preview matches what the backend
   // will inject at render time.
   const { data: org, isPending: orgPending, error: orgError } = useGetOrganization(project?.organization ?? '')
-  const { data: linkableTemplates = [], isPending: linkablePending } = useListLinkableTemplates(scope)
+  const { data: linkableTemplates = [], isPending: linkablePending } = useListLinkableTemplates(namespace)
 
   const userRole = project?.userRole ?? Role.VIEWER
   const canLink = userRole === Role.OWNER
@@ -263,10 +263,10 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
 
   // Group linkable templates by scope for display.
   const orgTemplates = linkableTemplates.filter(
-    (t) => scopeFromNamespace(t.namespace) === TemplateScope.ORGANIZATION,
+    (t) => scopeLabelFromNamespace(t.namespace) === 'org',
   )
   const folderTemplates = linkableTemplates.filter(
-    (t) => scopeFromNamespace(t.namespace) === TemplateScope.FOLDER,
+    (t) => scopeLabelFromNamespace(t.namespace) === 'folder',
   )
 
   // Fall back to "istio-ingress" only after the org query has successfully
@@ -306,7 +306,7 @@ ${gatewayNamespaceLine}\tclaims: {
     const parsed = parseLinkableKey(key)
     const vc = selectedVersionConstraints.get(key) ?? ''
     return {
-      namespace: namespaceFor(parsed.scope, parsed.scopeName),
+      namespace: parsed.namespace,
       name: parsed.name,
       versionConstraint: vc,
     } as LinkedTemplateRef
@@ -314,7 +314,7 @@ ${gatewayNamespaceLine}\tclaims: {
 
   const debouncedCueTemplate = useDebouncedValue(cueTemplate, 500)
   const renderQuery = useRenderTemplate(
-    scope,
+    namespace,
     debouncedCueTemplate,
     previewCueInput,
     previewOpen,
@@ -347,7 +347,7 @@ ${gatewayNamespaceLine}\tclaims: {
           const parsed = parseLinkableKey(key)
           const vc = selectedVersionConstraints.get(key) ?? ''
           return create(LinkedTemplateRefSchema, {
-            namespace: namespaceFor(parsed.scope, parsed.scopeName),
+            namespace: parsed.namespace,
             name: parsed.name,
             versionConstraint: vc,
           })
@@ -449,7 +449,7 @@ ${gatewayNamespaceLine}\tclaims: {
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Organization Templates</p>
                     {orgTemplates.map((t) => {
-                      const key = linkableKey(scopeFromNamespace(t.namespace), scopeNameFromNamespace(t.namespace), t.name)
+                      const key = linkableKey(t.namespace, t.name)
                       const hasReleases = t.releases && t.releases.length > 0
                       const forced = !!t.forced
                       return (
@@ -509,7 +509,7 @@ ${gatewayNamespaceLine}\tclaims: {
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Folder Templates</p>
                     {folderTemplates.map((t) => {
-                      const key = linkableKey(scopeFromNamespace(t.namespace), scopeNameFromNamespace(t.namespace), t.name)
+                      const key = linkableKey(t.namespace, t.name)
                       const hasReleases = t.releases && t.releases.length > 0
                       const forced = !!t.forced
                       return (

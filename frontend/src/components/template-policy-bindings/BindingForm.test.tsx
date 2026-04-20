@@ -47,11 +47,11 @@ import { BindingForm } from './BindingForm'
 import { useListTemplatePolicies } from '@/queries/templatePolicies'
 import { useListProjects } from '@/queries/projects'
 import { useListDeployments } from '@/queries/deployments'
-import { useListTemplates, TemplateScope, makeOrgScope } from '@/queries/templates'
-import { namespaceFor } from '@/lib/scope-shim'
+import { useListTemplates } from '@/queries/templates'
+import { namespaceForOrg, namespaceForProject } from '@/lib/scope-labels'
 import { TemplatePolicyBindingTargetKind } from '@/queries/templatePolicyBindings'
 
-const ORG_SCOPE = makeOrgScope('test-org')
+const ORG_NAMESPACE = namespaceForOrg('test-org')
 
 function stubQueries({
   policies = [],
@@ -106,7 +106,7 @@ describe('BindingForm', () => {
       <BindingForm
         mode="create"
         scopeType="organization"
-        scopeRef={ORG_SCOPE}
+        namespace={ORG_NAMESPACE}
         organization="test-org"
         canWrite
         submitLabel="Create"
@@ -134,7 +134,7 @@ describe('BindingForm', () => {
       <BindingForm
         mode="create"
         scopeType="organization"
-        scopeRef={ORG_SCOPE}
+        namespace={ORG_NAMESPACE}
         organization="test-org"
         canWrite
         submitLabel="Create"
@@ -159,7 +159,7 @@ describe('BindingForm', () => {
       <BindingForm
         mode="create"
         scopeType="organization"
-        scopeRef={ORG_SCOPE}
+        namespace={ORG_NAMESPACE}
         organization="test-org"
         canWrite
         submitLabel="Create"
@@ -189,7 +189,7 @@ describe('BindingForm', () => {
           name: 'require-http',
           displayName: 'Require HTTP',
           description: '',
-          namespace: namespaceFor(TemplateScope.ORGANIZATION, 'test-org'),
+          namespace: namespaceForOrg('test-org'),
         },
       ],
       projects: [{ name: 'proj-a', displayName: 'Project A' }],
@@ -203,7 +203,7 @@ describe('BindingForm', () => {
       <BindingForm
         mode="create"
         scopeType="organization"
-        scopeRef={ORG_SCOPE}
+        namespace={ORG_NAMESPACE}
         organization="test-org"
         canWrite
         submitLabel="Create"
@@ -249,7 +249,7 @@ describe('BindingForm', () => {
           name: 'require-http',
           displayName: 'Require HTTP',
           description: '',
-          namespace: namespaceFor(TemplateScope.ORGANIZATION, 'test-org'),
+          namespace: namespaceForOrg('test-org'),
         },
       ],
       projects: [{ name: 'proj-a', displayName: 'Project A' }],
@@ -257,7 +257,7 @@ describe('BindingForm', () => {
         {
           name: 'ingress',
           displayName: 'Ingress',
-          namespace: namespaceFor(TemplateScope.PROJECT, 'proj-a'),
+          namespace: namespaceForProject('proj-a'),
         },
       ],
     })
@@ -270,7 +270,7 @@ describe('BindingForm', () => {
       <BindingForm
         mode="create"
         scopeType="organization"
-        scopeRef={ORG_SCOPE}
+        namespace={ORG_NAMESPACE}
         organization="test-org"
         canWrite
         submitLabel="Create"
@@ -319,7 +319,7 @@ describe('BindingForm', () => {
     expect(arg.displayName).toBe('Bind HTTPRoute')
     expect(arg.description).toBe('Attach on proj-a ingress')
     expect(arg.policyRef?.name).toBe('require-http')
-    expect(arg.policyRef?.namespace).toBe(namespaceFor(TemplateScope.ORGANIZATION, 'test-org'))
+    expect(arg.policyRef?.namespace).toBe(namespaceForOrg('test-org'))
     expect(arg.targetRefs).toHaveLength(1)
     expect(arg.targetRefs[0]).toMatchObject({
       kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
@@ -334,7 +334,7 @@ describe('BindingForm', () => {
       <BindingForm
         mode="create"
         scopeType="project"
-        scopeRef={ORG_SCOPE}
+        namespace={ORG_NAMESPACE}
         organization="test-org"
         canWrite
         submitLabel="Create"
@@ -362,7 +362,7 @@ describe('BindingForm', () => {
       <BindingForm
         mode="create"
         scopeType="organization"
-        scopeRef={ORG_SCOPE}
+        namespace={ORG_NAMESPACE}
         organization="test-org"
         canWrite={false}
         submitLabel="Create"

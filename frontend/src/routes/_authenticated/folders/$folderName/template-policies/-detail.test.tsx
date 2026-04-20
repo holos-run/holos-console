@@ -44,7 +44,6 @@ vi.mock('@/queries/templates', async () => {
   const actual = await vi.importActual<typeof import('@/queries/templates')>('@/queries/templates')
   return {
     ...actual,
-    makeFolderScope: vi.fn().mockReturnValue({ scope: 2, scopeName: 'test-folder' }),
     useListLinkableTemplates: vi.fn().mockReturnValue({
       data: [],
       isPending: false,

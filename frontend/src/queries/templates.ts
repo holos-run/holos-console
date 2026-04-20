@@ -7,64 +7,63 @@ import {
   TemplateService,
   ReleaseSchema,
 } from '@/gen/holos/console/v1/templates_pb.js'
-import type { LinkableTemplate, Release, TemplateUpdate, TemplateDefaults } from '@/gen/holos/console/v1/templates_pb.js'
+import type {
+  LinkableTemplate,
+  Release,
+  TemplateUpdate,
+  TemplateDefaults,
+} from '@/gen/holos/console/v1/templates_pb.js'
 import type { LinkedTemplateRef } from '@/gen/holos/console/v1/policy_state_pb.js'
-import {
-  type TemplateScopeRef,
-  TemplateScope,
-  namespaceForRef,
-  scopeFromNamespace,
-  scopeNameFromNamespace,
-  makeScope,
-  makeOrgScope,
-  makeFolderScope,
-  makeProjectScope,
-} from '@/lib/scope-shim'
 import { useAuth } from '@/lib/auth'
 
-// Re-export types used by consumers.
-export type { TemplateScopeRef, LinkableTemplate, LinkedTemplateRef, Release, TemplateUpdate, TemplateDefaults }
-export { TemplateScope, makeScope, makeOrgScope, makeFolderScope, makeProjectScope }
+// Re-export generated types used by consumers.
+export type { LinkableTemplate, LinkedTemplateRef, Release, TemplateUpdate, TemplateDefaults }
 
-/** Build a composite key that uniquely identifies a linkable template across scopes. */
-export function linkableKey(scope: number | undefined, scopeName: string | undefined, name: string): string {
-  return `${scope ?? 0}/${scopeName ?? ''}/${name}`
+// linkableKey builds a composite key that uniquely identifies a linkable
+// template across namespaces. HOL-623 reworked the UI to key templates by
+// (namespace, name) only — no more TemplateScopeRef. Consumers that need a
+// stable React key (e.g. select option values, table row ids) should use
+// this helper.
+export function linkableKey(namespace: string | undefined, name: string): string {
+  return `${namespace ?? ''}/${name}`
 }
 
-/** Parse a composite key back into its constituent parts. */
-export function parseLinkableKey(key: string): { scope: number; scopeName: string; name: string } {
-  const parts = key.split('/')
-  return { scope: Number(parts[0]), scopeName: parts[1] ?? '', name: parts.slice(2).join('/') }
+// parseLinkableKey reverses linkableKey. The name segment may itself contain
+// slashes, so we split from the left only once.
+export function parseLinkableKey(key: string): { namespace: string; name: string } {
+  const slash = key.indexOf('/')
+  if (slash < 0) return { namespace: '', name: key }
+  return { namespace: key.slice(0, slash), name: key.slice(slash + 1) }
 }
 
-function templateListKey(scope: TemplateScopeRef) {
-  return ['templates', 'list', scope.scope, scope.scopeName] as const
+function templateListKey(namespace: string) {
+  return ['templates', 'list', namespace] as const
 }
 
-function templateGetKey(scope: TemplateScopeRef, name: string) {
-  return ['templates', 'get', scope.scope, scope.scopeName, name] as const
+function templateGetKey(namespace: string, name: string) {
+  return ['templates', 'get', namespace, name] as const
 }
 
-function linkableTemplatesKey(scope: TemplateScopeRef, includeSelfScope: boolean) {
-  return ['templates', 'linkable', scope.scope, scope.scopeName, includeSelfScope] as const
+function linkableTemplatesKey(namespace: string, includeSelfScope: boolean) {
+  return ['templates', 'linkable', namespace, includeSelfScope] as const
 }
 
-export function useListTemplates(scope: TemplateScopeRef) {
+export function useListTemplates(namespace: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: templateListKey(scope),
+    queryKey: templateListKey(namespace),
     queryFn: async () => {
-      const response = await client.listTemplates({ namespace: namespaceForRef(scope) })
+      const response = await client.listTemplates({ namespace })
       return response.templates
     },
-    enabled: isAuthenticated && !!scope.scopeName,
+    enabled: isAuthenticated && !!namespace,
   })
 }
 
-function templateDefaultsKey(scope: TemplateScopeRef, name: string) {
-  return ['templates', 'defaults', scope.scope, scope.scopeName, name] as const
+function templateDefaultsKey(namespace: string, name: string) {
+  return ['templates', 'defaults', namespace, name] as const
 }
 
 // useGetTemplateDefaults fetches the TemplateDefaults payload for a given
@@ -75,39 +74,39 @@ function templateDefaultsKey(scope: TemplateScopeRef, name: string) {
 // The hook is disabled when name is empty so the RPC is never called
 // eagerly on mount before the user selects a template.
 export function useGetTemplateDefaults(
-  params: { scope: TemplateScopeRef; name: string },
+  params: { namespace: string; name: string },
   options?: { enabled?: boolean },
 ) {
-  const { scope, name } = params
+  const { namespace, name } = params
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   const callerEnabled = options?.enabled ?? true
   return useQuery({
-    queryKey: templateDefaultsKey(scope, name),
+    queryKey: templateDefaultsKey(namespace, name),
     queryFn: async () => {
-      const response = await client.getTemplateDefaults({ namespace: namespaceForRef(scope), name })
+      const response = await client.getTemplateDefaults({ namespace, name })
       return response.defaults
     },
-    enabled: isAuthenticated && !!scope.scopeName && !!name && callerEnabled,
+    enabled: isAuthenticated && !!namespace && !!name && callerEnabled,
   })
 }
 
-export function useGetTemplate(scope: TemplateScopeRef, name: string) {
+export function useGetTemplate(namespace: string, name: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: templateGetKey(scope, name),
+    queryKey: templateGetKey(namespace, name),
     queryFn: async () => {
-      const response = await client.getTemplate({ namespace: namespaceForRef(scope), name })
+      const response = await client.getTemplate({ namespace, name })
       return response.template
     },
-    enabled: isAuthenticated && !!scope.scopeName && !!name,
+    enabled: isAuthenticated && !!namespace && !!name,
   })
 }
 
-export function useCreateTemplate(scope: TemplateScopeRef) {
+export function useCreateTemplate(namespace: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   const queryClient = useQueryClient()
@@ -120,12 +119,11 @@ export function useCreateTemplate(scope: TemplateScopeRef) {
       enabled?: boolean
       linkedTemplates?: LinkedTemplateRef[]
     }) => {
-      const ns = namespaceForRef(scope)
       return client.createTemplate({
-        namespace: ns,
+        namespace,
         template: {
           name: params.name,
-          namespace: ns,
+          namespace,
           displayName: params.displayName,
           description: params.description,
           cueTemplate: params.cueTemplate,
@@ -135,12 +133,12 @@ export function useCreateTemplate(scope: TemplateScopeRef) {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templateListKey(scope) })
+      queryClient.invalidateQueries({ queryKey: templateListKey(namespace) })
     },
   })
 }
 
-export function useUpdateTemplate(scope: TemplateScopeRef, name: string) {
+export function useUpdateTemplate(namespace: string, name: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   const queryClient = useQueryClient()
@@ -153,13 +151,12 @@ export function useUpdateTemplate(scope: TemplateScopeRef, name: string) {
       linkedTemplates?: LinkedTemplateRef[]
       updateLinkedTemplates?: boolean
     }) => {
-      const ns = namespaceForRef(scope)
       return client.updateTemplate({
-        namespace: ns,
+        namespace,
         updateLinkedTemplates: params.updateLinkedTemplates ?? false,
         template: {
           name,
-          namespace: ns,
+          namespace,
           displayName: params.displayName ?? '',
           description: params.description ?? '',
           cueTemplate: params.cueTemplate ?? '',
@@ -169,57 +166,57 @@ export function useUpdateTemplate(scope: TemplateScopeRef, name: string) {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templateListKey(scope) })
-      queryClient.invalidateQueries({ queryKey: templateGetKey(scope, name) })
-      // Invalidate all check-updates queries for this scope so upgrade badges
-      // and dialogs reflect the new state immediately after a template update.
+      queryClient.invalidateQueries({ queryKey: templateListKey(namespace) })
+      queryClient.invalidateQueries({ queryKey: templateGetKey(namespace, name) })
+      // Invalidate all check-updates queries so upgrade badges and dialogs
+      // reflect the new state immediately after a template update.
       queryClient.invalidateQueries({ queryKey: ['templates', 'checkUpdates'] })
       // HOL-559: a successful UpdateTemplate re-renders against the
       // current TemplatePolicy chain and records a fresh applied render
       // set on the backend. Invalidate all policy-state queries for this
-      // scope so the list-row drift badge and the detail PolicySection
+      // namespace so the list-row drift badge and the detail PolicySection
       // both refresh from the authoritative state rather than showing
       // the stale "drifted" snapshot after reconcile.
-      queryClient.invalidateQueries({ queryKey: ['templates', 'policy-state', scope.scope, scope.scopeName] })
+      queryClient.invalidateQueries({ queryKey: ['templates', 'policy-state', namespace] })
     },
   })
 }
 
-export function useDeleteTemplate(scope: TemplateScopeRef) {
+export function useDeleteTemplate(namespace: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (params: { name: string }) =>
-      client.deleteTemplate({ namespace: namespaceForRef(scope), ...params }),
+      client.deleteTemplate({ namespace, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templateListKey(scope) })
+      queryClient.invalidateQueries({ queryKey: templateListKey(namespace) })
     },
   })
 }
 
-export function useCloneTemplate(scope: TemplateScopeRef) {
+export function useCloneTemplate(namespace: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (params: { sourceName: string; name: string; displayName: string }) =>
-      client.cloneTemplate({ namespace: namespaceForRef(scope), ...params }),
+      client.cloneTemplate({ namespace, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templateListKey(scope) })
+      queryClient.invalidateQueries({ queryKey: templateListKey(namespace) })
     },
   })
 }
 
 // useListLinkableTemplates returns enabled templates that can be explicitly
-// linked to templates at the given scope. By default only ancestor-scope
+// linked to templates at the given namespace. By default only ancestor-scope
 // templates are returned — the semantics required by the project-template
 // linking UI. Pass `{ includeSelfScope: true }` to also include templates at
-// the request's own scope; the TemplatePolicy editor uses this so org-scope
+// the request's own namespace; the TemplatePolicy editor uses this so org-scope
 // policies (which have no ancestors) and folder-scope policies can pick
 // same-scope templates. See HOL-561.
 export function useListLinkableTemplates(
-  scope: TemplateScopeRef,
+  namespace: string,
   options?: { includeSelfScope?: boolean },
 ) {
   const includeSelfScope = options?.includeSelfScope ?? false
@@ -227,54 +224,54 @@ export function useListLinkableTemplates(
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: linkableTemplatesKey(scope, includeSelfScope),
+    queryKey: linkableTemplatesKey(namespace, includeSelfScope),
     queryFn: async () => {
-      const response = await client.listLinkableTemplates({ namespace: namespaceForRef(scope), includeSelfScope })
+      const response = await client.listLinkableTemplates({ namespace, includeSelfScope })
       return response.templates
     },
-    enabled: isAuthenticated && !!scope.scopeName,
+    enabled: isAuthenticated && !!namespace,
   })
 }
 
 // --- Release hooks ---
 
-function releaseListKey(scope: TemplateScopeRef, templateName: string) {
-  return ['releases', 'list', scope.scope, scope.scopeName, templateName] as const
+function releaseListKey(namespace: string, templateName: string) {
+  return ['releases', 'list', namespace, templateName] as const
 }
 
-function releaseGetKey(scope: TemplateScopeRef, templateName: string, version: string) {
-  return ['releases', 'get', scope.scope, scope.scopeName, templateName, version] as const
+function releaseGetKey(namespace: string, templateName: string, version: string) {
+  return ['releases', 'get', namespace, templateName, version] as const
 }
 
-export function useListReleases(scope: TemplateScopeRef, templateName: string) {
+export function useListReleases(namespace: string, templateName: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: releaseListKey(scope, templateName),
+    queryKey: releaseListKey(namespace, templateName),
     queryFn: async () => {
-      const response = await client.listReleases({ namespace: namespaceForRef(scope), templateName })
+      const response = await client.listReleases({ namespace, templateName })
       return response.releases
     },
-    enabled: isAuthenticated && !!scope.scopeName && !!templateName,
+    enabled: isAuthenticated && !!namespace && !!templateName,
   })
 }
 
-export function useGetRelease(scope: TemplateScopeRef, templateName: string, version: string) {
+export function useGetRelease(namespace: string, templateName: string, version: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: releaseGetKey(scope, templateName, version),
+    queryKey: releaseGetKey(namespace, templateName, version),
     queryFn: async () => {
-      const response = await client.getRelease({ namespace: namespaceForRef(scope), templateName, version })
+      const response = await client.getRelease({ namespace, templateName, version })
       return response.release
     },
-    enabled: isAuthenticated && !!scope.scopeName && !!templateName && !!version,
+    enabled: isAuthenticated && !!namespace && !!templateName && !!version,
   })
 }
 
-export function useCreateRelease(scope: TemplateScopeRef, templateName: string) {
+export function useCreateRelease(namespace: string, templateName: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   const queryClient = useQueryClient()
@@ -286,12 +283,11 @@ export function useCreateRelease(scope: TemplateScopeRef, templateName: string) 
       cueTemplate: string
       defaults?: Release['defaults']
     }) => {
-      const ns = namespaceForRef(scope)
       return client.createRelease({
-        namespace: ns,
+        namespace,
         release: create(ReleaseSchema, {
           templateName,
-          namespace: ns,
+          namespace,
           version: params.version,
           changelog: params.changelog,
           upgradeAdvice: params.upgradeAdvice ?? '',
@@ -301,36 +297,40 @@ export function useCreateRelease(scope: TemplateScopeRef, templateName: string) 
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: releaseListKey(scope, templateName) })
+      queryClient.invalidateQueries({ queryKey: releaseListKey(namespace, templateName) })
     },
   })
 }
 
 // --- CheckUpdates hooks ---
 
-function checkUpdatesKey(scope: TemplateScopeRef, templateName: string) {
-  return ['templates', 'checkUpdates', scope.scope, scope.scopeName, templateName] as const
+function checkUpdatesKey(namespace: string, templateName: string) {
+  return ['templates', 'checkUpdates', namespace, templateName] as const
 }
 
 // useCheckUpdates returns available version updates for linked templates.
 // When templateName is provided, only that template's links are checked.
-// When empty, all templates in the scope are checked.
+// When empty, all templates in the namespace are checked.
 // Pass options.enabled to control when the query fires (defaults to true).
 // Pass options.includeCurrent to include entries for templates already at their
 // latest version (useful for the version status indicator).
-export function useCheckUpdates(scope: TemplateScopeRef, templateName = '', options?: { enabled?: boolean; includeCurrent?: boolean }) {
+export function useCheckUpdates(
+  namespace: string,
+  templateName = '',
+  options?: { enabled?: boolean; includeCurrent?: boolean },
+) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   const callerEnabled = options?.enabled ?? true
   const includeCurrent = options?.includeCurrent ?? false
   return useQuery({
-    queryKey: [...checkUpdatesKey(scope, templateName), includeCurrent] as const,
+    queryKey: [...checkUpdatesKey(namespace, templateName), includeCurrent] as const,
     queryFn: async () => {
-      const response = await client.checkUpdates({ namespace: namespaceForRef(scope), templateName, includeCurrent })
+      const response = await client.checkUpdates({ namespace, templateName, includeCurrent })
       return response.updates
     },
-    enabled: isAuthenticated && !!scope.scopeName && callerEnabled,
+    enabled: isAuthenticated && !!namespace && callerEnabled,
   })
 }
 
@@ -341,36 +341,34 @@ export function useCheckUpdates(scope: TemplateScopeRef, templateName = '', opti
 // path used by the drift UI for project-scope templates; never infer drift
 // from other template fields.
 //
-// The request uses TEMPLATE_SCOPE_PROJECT; the backend validates the scope
-// and rejects non-project scopes with InvalidArgument.
-function projectTemplatePolicyStateKey(scope: TemplateScopeRef, name: string) {
-  return ['templates', 'policy-state', scope.scope, scope.scopeName, name] as const
+// The hook is always enabled when namespace and name are set. The backend
+// validates that the namespace corresponds to a project scope and rejects
+// non-project scopes with InvalidArgument; the UI should therefore only
+// invoke this hook on project-scope editor pages. See the callsite.
+function projectTemplatePolicyStateKey(namespace: string, name: string) {
+  return ['templates', 'policy-state', namespace, name] as const
 }
 
-export function useGetProjectTemplatePolicyState(scope: TemplateScopeRef, name: string) {
+export function useGetProjectTemplatePolicyState(namespace: string, name: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: projectTemplatePolicyStateKey(scope, name),
+    queryKey: projectTemplatePolicyStateKey(namespace, name),
     queryFn: async () => {
-      const response = await client.getProjectTemplatePolicyState({ namespace: namespaceForRef(scope), name })
+      const response = await client.getProjectTemplatePolicyState({ namespace, name })
       return response.state
     },
-    enabled:
-      isAuthenticated &&
-      !!scope.scopeName &&
-      !!name &&
-      scope.scope === TemplateScope.PROJECT,
+    enabled: isAuthenticated && !!namespace && !!name,
   })
 }
 
-// useRenderTemplate renders a CUE template with the given inputs. The scope
+// useRenderTemplate renders a CUE template with the given inputs. The namespace
 // parameter determines which ancestor platform templates are resolved.
 // linkedTemplates optionally passes explicit linked template refs to unify
 // with the project template for a combined preview.
 export function useRenderTemplate(
-  scope: TemplateScopeRef,
+  namespace: string,
   cueTemplate: string,
   cueInput = '',
   enabled = true,
@@ -383,13 +381,13 @@ export function useRenderTemplate(
   // Serialize linked templates into the query key so the query refetches when
   // the linked selection changes.
   const linkedKey = linkedTemplates
-    .map(t => `${scopeFromNamespace(t.namespace)}/${scopeNameFromNamespace(t.namespace)}/${t.name}@${t.versionConstraint ?? ''}`)
+    .map(t => `${t.namespace}/${t.name}@${t.versionConstraint ?? ''}`)
     .join(',')
   return useQuery({
-    queryKey: ['templates', 'render', scope.scope, scope.scopeName, cueTemplate, cueInput, cuePlatformInput, linkedKey] as const,
+    queryKey: ['templates', 'render', namespace, cueTemplate, cueInput, cuePlatformInput, linkedKey] as const,
     queryFn: async () => {
       const response = await client.renderTemplate({
-        namespace: namespaceForRef(scope),
+        namespace,
         cueTemplate,
         cueProjectInput: cueInput,
         cuePlatformInput,

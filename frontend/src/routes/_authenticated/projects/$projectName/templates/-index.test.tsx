@@ -23,7 +23,6 @@ vi.mock('@/queries/templates', () => ({
   useCheckUpdates: vi.fn().mockReturnValue({ data: [], isPending: false, error: null }),
   useGetTemplate: vi.fn().mockReturnValue({ data: undefined, isPending: false, error: null }),
   useGetProjectTemplatePolicyState: vi.fn().mockReturnValue({ data: undefined, isPending: false, error: null }),
-  makeProjectScope: vi.fn().mockReturnValue({ scope: 1, scopeName: 'test-project' }),
 }))
 
 vi.mock('@/components/template-updates', () => ({

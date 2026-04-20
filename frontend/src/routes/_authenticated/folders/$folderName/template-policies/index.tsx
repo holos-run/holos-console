@@ -10,7 +10,7 @@ import {
   useListTemplatePolicies,
   countRulesByKind,
 } from '@/queries/templatePolicies'
-import { makeFolderScope } from '@/queries/templates'
+import { namespaceForFolder } from '@/lib/scope-labels'
 import { useGetFolder } from '@/queries/folders'
 
 export const Route = createFileRoute(
@@ -39,8 +39,8 @@ export function FolderTemplatePoliciesIndexPage({
   const { data: folder } = useGetFolder(folderName)
   const orgName = folder?.organization ?? ''
 
-  const scope = makeFolderScope(folderName)
-  const { data: policies, isPending, error } = useListTemplatePolicies(scope)
+  const namespace = namespaceForFolder(folderName)
+  const { data: policies, isPending, error } = useListTemplatePolicies(namespace)
 
   const userRole = folder?.userRole ?? Role.VIEWER
   // PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors too.

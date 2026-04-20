@@ -15,8 +15,7 @@ import type { TargetRefDraft } from './binding-draft'
 import { useListDeployments } from '@/queries/deployments'
 import { useListProjects } from '@/queries/projects'
 import { useListTemplates } from '@/queries/templates'
-import { makeProjectScope } from '@/queries/templates'
-import { TemplateScope, scopeFromNamespace } from '@/lib/scope-shim'
+import { namespaceForProject, scopeLabelFromNamespace } from '@/lib/scope-labels'
 
 // Kind options exposed to the target-row select. UNSPECIFIED is intentionally
 // omitted — the backend rejects it and the UI must not offer it.
@@ -139,10 +138,10 @@ function TargetRow({
   // Name picker: project-scope templates or deployments, both scoped to the
   // selected project. Both hooks are called unconditionally — they gate on a
   // non-empty project name via their `enabled` option (useListTemplates keys
-  // on scope.scopeName, useListDeployments keys on the project argument), so
+  // on the namespace, useListDeployments keys on the project argument), so
   // no fetch occurs until a project is picked.
-  const projectScope = makeProjectScope(target.projectName)
-  const { data: projectTemplates = [] } = useListTemplates(projectScope)
+  const projectNamespace = namespaceForProject(target.projectName)
+  const { data: projectTemplates = [] } = useListTemplates(projectNamespace)
   const { data: deployments = [] } = useListDeployments(target.projectName)
 
   // KIND_OPTIONS omits UNSPECIFIED, so kind is always DEPLOYMENT or
@@ -156,7 +155,7 @@ function TargetRow({
       }))
     }
     return projectTemplates
-      .filter((t) => scopeFromNamespace(t.namespace) === TemplateScope.PROJECT)
+      .filter((t) => scopeLabelFromNamespace(t.namespace) === 'project')
       .map((t) => ({
         value: t.name,
         label: t.displayName ? `${t.displayName} (${t.name})` : t.name,
