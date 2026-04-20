@@ -11,9 +11,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   return {
     ...actual,
     createFileRoute: () => () => ({}),
-    Navigate: () => null,
     Outlet: () => null,
-    useMatchRoute: () => () => false,
   }
 })
 

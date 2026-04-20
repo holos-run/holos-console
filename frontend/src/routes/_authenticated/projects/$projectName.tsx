@@ -1,4 +1,4 @@
-import { createFileRoute, Navigate, Outlet, useMatchRoute } from '@tanstack/react-router'
+import { createFileRoute, Outlet } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { useProject } from '@/lib/project-context'
 import { useOrg } from '@/lib/org-context'
@@ -14,8 +14,6 @@ function RouteComponent() {
 }
 
 export function ProjectLayout({ projectName }: { projectName: string }) {
-  const matchRoute = useMatchRoute()
-  const isExact = matchRoute({ to: '/projects/$projectName', params: { projectName } })
   const { setSelectedProject } = useProject()
   const { selectedOrg, setSelectedOrg } = useOrg()
   const { data: project } = useGetProject(projectName)
@@ -29,10 +27,6 @@ export function ProjectLayout({ projectName }: { projectName: string }) {
       setSelectedOrg(project.organization)
     }
   }, [project?.organization, selectedOrg, setSelectedOrg])
-
-  if (isExact) {
-    return <Navigate to="/projects/$projectName/secrets" params={{ projectName }} replace />
-  }
 
   return <Outlet />
 }
