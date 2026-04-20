@@ -169,15 +169,21 @@ function SectionCard({
 }: SectionCardProps) {
   // Treat `undefined` as empty so a resolved-but-shape-less query still
   // surfaces the zero-state copy instead of an empty <ul>.
-  const isEmpty = (count ?? 0) === 0
+  const isEmpty = count === undefined || count === 0
+  // The badge is a count signal; it only makes sense alongside data we
+  // actually fetched. Suppress it during load (we don't know the count
+  // yet) and on error (the count is unknown, not zero). A successful
+  // empty-data query still renders `0` for visual consistency with the
+  // zero-count case.
+  const showCount = !isPending && !error
   return (
     <Card>
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <CardTitle className="flex items-center gap-2">
           {title}
-          {typeof count === 'number' && (
-            <Badge variant="secondary" aria-label={`${count} total`}>
-              {count}
+          {showCount && (
+            <Badge variant="secondary" aria-label={`${count ?? 0} total`}>
+              {count ?? 0}
             </Badge>
           )}
         </CardTitle>

@@ -221,20 +221,35 @@ describe('FolderIndexPage', () => {
       isPending: false,
       error: null,
     })
+    // Populate the other two sections so any template-item <li>/<ul> or
+    // template-item link rendered by a regression stands out from the
+    // neighbors' legitimately-rendered lists.
     ;(useListTemplatePolicies as Mock).mockReturnValue({
-      data: [],
+      data: [{ name: 'disallow-privileged' }],
       isPending: false,
       error: null,
     })
     ;(useListProjectsByParent as Mock).mockReturnValue({
-      data: [],
+      data: [{ name: 'checkout', displayName: 'Checkout' }],
       isPending: false,
       error: null,
     })
     render(<FolderIndexPage folderName="payments" />)
+    // Zero-state copy renders...
     expect(
       screen.getByText(/no templates in this folder/i),
     ).toBeInTheDocument()
+    // ...and the Templates section surfaces a "0 total" count badge so
+    // the undefined-data path is visually consistent with the zero-
+    // count path — both tell the user there are zero templates.
+    expect(screen.getByLabelText('0 total')).toBeInTheDocument()
+    // ...and no template-item link leaks through. The two neighbor
+    // sections rendered their own items, so "no hrefs into the
+    // templates editor" is a tight regression pin.
+    const templateLinks = screen
+      .queryAllByRole('link')
+      .filter((a) => a.getAttribute('href')?.startsWith('/folders/payments/templates/'))
+    expect(templateLinks).toEqual([])
   })
 
   it('renders templates with a count badge and per-item link', () => {
