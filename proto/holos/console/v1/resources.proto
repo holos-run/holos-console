@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package holos.console.v1;
+
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// resources.proto defines ResourceService, the cross-kind "Resources" listing
+// that powers the Linear-style navigation refactor (HOL-553). It returns
+// folders and projects together in a single flat stream so a sidebar or
+// index page can render the organization tree without first fanning out to
+// ListFolders and ListProjects and stitching the ancestry client-side.
+//
+// This file is additive. Existing FolderService.ListFolders and
+// ProjectService.ListProjects continue to serve their dedicated per-kind
+// surfaces; ResourceService.ListResources is the only cross-kind endpoint
+// and it does NOT replace those RPCs.
+//
+// Introduced in HOL-601 (proto-only). Handler lands in HOL-602.
+
+// ResourceService provides cross-kind listing of the two resources that make
+// up the organization tree: folders and projects. Introduced in HOL-601.
+service ResourceService {
+  // ListResources returns a flat list of every folder and project visible to
+  // the caller. Each entry carries its type discriminator, its ancestor
+  // path (root→leaf), its display name, and its object name so a navigation
+  // tree can be built without a second round-trip.
+  //
+  // Ordering is unspecified in this phase — clients should sort client-side
+  // if they need a stable presentation. The handler (HOL-602) MAY choose to
+  // return a depth-first ordering later; this RPC does not commit to one.
+  rpc ListResources(ListResourcesRequest) returns (ListResourcesResponse);
+}
+
+// ResourceType discriminates the kind of a Resource entry in ListResources
+// responses. Mirrors the existing ParentType enum in folders.proto but is
+// distinct because ResourceType describes the entry itself, not its parent,
+// and because it omits ORGANIZATION — organizations are not returned as
+// entries (they are the root of the ancestor path). Kept in its own enum so
+// the two enums remain independently extensible.
+enum ResourceType {
+  RESOURCE_TYPE_UNSPECIFIED = 0;
+  // RESOURCE_TYPE_FOLDER indicates the entry is a Folder.
+  RESOURCE_TYPE_FOLDER = 1;
+  // RESOURCE_TYPE_PROJECT indicates the entry is a Project.
+  RESOURCE_TYPE_PROJECT = 2;
+}
+
+// PathElement is a single hop in a resource's ancestor path. Ancestor paths
+// are ordered root→leaf, with the root organization first and the entry's
+// immediate parent last (the entry itself is NOT included in the path — it
+// is returned in the sibling fields on Resource).
+//
+// Named to follow the LinkedTemplateRef convention in policy_state.proto:
+// small, purpose-specific qualified references rather than overloading
+// richer domain messages (Folder, Project, Organization) whose fields would
+// mostly be unused in a path context.
+message PathElement {
+  // name is the object name (slug) of the ancestor — e.g. the organization
+  // name, or a folder slug.
+  string name = 1;
+  // display_name is the human-readable name of the ancestor. The UI SHOULD
+  // render this; clients MUST fall back to name when display_name is empty.
+  string display_name = 2;
+  // type identifies the kind of the ancestor. Callers MAY rely on the
+  // leftmost element always being RESOURCE_TYPE_UNSPECIFIED for the root
+  // organization (organizations are not a ResourceType) and the remaining
+  // elements being RESOURCE_TYPE_FOLDER. The leaf Resource's own type is
+  // carried on Resource.type, not in the path.
+  ResourceType type = 3;
+}
+
+// Resource is a single entry in a ListResources response. It carries just
+// enough to render a navigation row — type, ancestor breadcrumb, display
+// name, and object name — without pulling in the full Folder or Project
+// message. Callers that need the full object should follow up with
+// GetFolder or GetProject using `name` (and `organization` derived from
+// path[0]).
+message Resource {
+  // type discriminates whether this entry is a folder or a project.
+  ResourceType type = 1;
+  // path is the ancestor chain for this resource, ordered root→leaf. The
+  // first element is the root organization; subsequent elements are folders
+  // between the organization and this entry. The entry itself is NOT
+  // repeated in the path. An entry directly under the organization has a
+  // path of length 1.
+  repeated PathElement path = 2;
+  // display_name is the human-readable name of this entry. Clients MUST
+  // fall back to `name` when display_name is empty, matching the pattern on
+  // Folder and Project.
+  string display_name = 3;
+  // name is the object name (slug) of this entry — the folder slug or the
+  // project name. Pair with path[0].name (the organization) to uniquely
+  // address the resource.
+  string name = 4;
+}
+
+// ListResourcesRequest contains optional filters for listing resources.
+// All filters are optional; omit a field to leave that dimension
+// unconstrained. When every filter is empty the response lists every
+// folder and project visible to the caller.
+message ListResourcesRequest {
+  // organization, when non-empty, restricts results to resources rooted at
+  // the given organization. Analogous to ListFoldersRequest.organization
+  // and ListProjectsRequest.organization.
+  string organization = 1;
+  // types, when non-empty, restricts results to the listed resource kinds.
+  // An empty list means "both folders and projects". Values of
+  // RESOURCE_TYPE_UNSPECIFIED MUST be ignored by the handler.
+  repeated ResourceType types = 2;
+}
+
+// ListResourcesResponse contains the flat list of resources.
+message ListResourcesResponse {
+  // resources is the list of folder and project entries visible to the
+  // caller, subject to the request filters. Ordering is unspecified in
+  // this phase.
+  repeated Resource resources = 1;
+}

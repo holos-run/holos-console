@@ -1159,6 +1159,83 @@ export declare type CheckUpdatesResponse = Message<"holos.console.v1.CheckUpdate
 export declare const CheckUpdatesResponseSchema: GenMessage<CheckUpdatesResponse>;
 
 /**
+ * SearchTemplatesRequest requests templates matching the given filters across
+ * any namespace scope the caller can see. All filters are optional; omit a
+ * field to leave that dimension unconstrained. When every filter is empty
+ * the response lists every template visible to the caller across every scope
+ * (organization, folder, project). Introduced in HOL-601.
+ *
+ * @generated from message holos.console.v1.SearchTemplatesRequest
+ */
+export declare type SearchTemplatesRequest = Message<"holos.console.v1.SearchTemplatesRequest"> & {
+  /**
+   * namespace, when non-empty, restricts results to templates owned by the
+   * given Kubernetes namespace. Equivalent to ListTemplates(namespace) when
+   * no other filters are set.
+   *
+   * @generated from field: string namespace = 1;
+   */
+  namespace: string;
+
+  /**
+   * name, when non-empty, restricts results to templates whose DNS label
+   * slug is an exact match. Combined with namespace this yields at most one
+   * result and is equivalent to GetTemplate(namespace, name).
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * display_name_contains, when non-empty, is a case-insensitive substring
+   * filter against Template.display_name. Empty means no display-name
+   * filtering (matches every template).
+   *
+   * @generated from field: string display_name_contains = 3;
+   */
+  displayNameContains: string;
+
+  /**
+   * organization, when non-empty, restricts results to templates owned by a
+   * namespace reachable from the given root organization. Intended for
+   * multi-org deployments where the caller wants to scope a search to one
+   * organization without enumerating every descendant namespace.
+   *
+   * @generated from field: string organization = 4;
+   */
+  organization: string;
+};
+
+/**
+ * Describes the message holos.console.v1.SearchTemplatesRequest.
+ * Use `create(SearchTemplatesRequestSchema)` to create a new message.
+ */
+export declare const SearchTemplatesRequestSchema: GenMessage<SearchTemplatesRequest>;
+
+/**
+ * SearchTemplatesResponse contains matching templates. Each Template carries
+ * its own `namespace` field so callers can render a flat list across scopes
+ * without a separate lookup.
+ *
+ * @generated from message holos.console.v1.SearchTemplatesResponse
+ */
+export declare type SearchTemplatesResponse = Message<"holos.console.v1.SearchTemplatesResponse"> & {
+  /**
+   * templates lists the matching templates in no guaranteed order. The
+   * handler is free to page or truncate; this phase defines no cursor.
+   *
+   * @generated from field: repeated holos.console.v1.Template templates = 1;
+   */
+  templates: Template[];
+};
+
+/**
+ * Describes the message holos.console.v1.SearchTemplatesResponse.
+ * Use `create(SearchTemplatesResponseSchema)` to create a new message.
+ */
+export declare const SearchTemplatesResponseSchema: GenMessage<SearchTemplatesResponse>;
+
+/**
  * TemplateService is the single unified service for managing CUE-based templates
  * at every hierarchy level (organization, folder, project). It replaces the
  * separate DeploymentTemplateService and OrgTemplateService from v1alpha1
@@ -1357,6 +1434,26 @@ export declare const TemplateService: GenService<{
     methodKind: "unary";
     input: typeof GetProjectTemplatePolicyStateRequestSchema;
     output: typeof GetProjectTemplatePolicyStateResponseSchema;
+  },
+  /**
+   * SearchTemplates returns templates visible to the caller across every
+   * namespace scope (organization, folder, project), optionally filtered by
+   * namespace, exact name, and a case-insensitive substring match against
+   * the display name. Introduced in HOL-601 to power the Linear-style
+   * navigation's unified Templates index — existing List*Templates RPCs
+   * continue to serve the per-namespace surface.
+   *
+   * Unlike ListTemplates, this RPC does NOT require the caller to know
+   * which namespace owns a template up front. The response includes each
+   * template's owning namespace so the UI can render a flat, sortable table
+   * across scopes without issuing N per-namespace calls.
+   *
+   * @generated from rpc holos.console.v1.TemplateService.SearchTemplates
+   */
+  searchTemplates: {
+    methodKind: "unary";
+    input: typeof SearchTemplatesRequestSchema;
+    output: typeof SearchTemplatesResponseSchema;
   },
 }>;
 
