@@ -107,7 +107,7 @@ that carry tighter RBAC, encryption-at-rest, and KMS integration.
 | --- | --- | --- |
 | `observedGeneration` | `int64` | Most recent `metadata.generation` the reconciler has acted on. |
 | `phase` | `enum { Active, Rotating, Retired, Revoked, Expired }` | Current lifecycle phase. |
-| `credentialID` | `string` (KSUID regex `^[0-9A-Za-z]{27}$`, len 27) | Opaque identifier; **MUST NOT** be or contain the plaintext, a prefix, a last-4, or any substring of the plaintext. |
+| `credentialID` | `string` (KSUID regex `^[0-9A-Za-z]{27}$`, len 27) | Opaque identifier set by the reconciler (M2); **MUST NOT** be or contain the plaintext, a prefix, a last-4, or any substring of the plaintext. |
 | `hashSecretRef` | `*SecretKeyReference` | Pointer; absent until the reconciler materialises the hash `v1.Secret` (M2). Populated the first time `HashMaterialized` transitions to `True`. |
 | `hashSecretRef.name` | `string` (min 1) | `metadata.name` of the sibling `v1.Secret` (same namespace) that stores the argon2id hash + per-credential salt. Owned by the reconciler (M2). |
 | `hashSecretRef.key` | `string` (min 1) | Key inside that `v1.Secret .data`. |

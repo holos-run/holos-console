@@ -254,7 +254,8 @@ type CredentialStatus struct {
 // Status.HashSecretRef and the UpstreamSecret v1.Secret named by
 // Spec.UpstreamSecretRef; this CR carries only the opaque credentialID, the
 // pepper-version counter, phase, conditions, and cross-object references.
-// See the package doc.go "no sensitive values on CRs" invariant.
+// See the package doc.go "no sensitive values on CRs" invariant, ADR 031,
+// and the parent plan (HOL-675) for the full design.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced,shortName=cred,categories=holos;secrets

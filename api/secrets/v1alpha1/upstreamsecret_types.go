@@ -133,7 +133,7 @@ type UpstreamSecretStatus struct {
 // shape. The CR never carries the credential bytes themselves — see the
 // package doc.go "no sensitive values on CRs" invariant. Resolution of the
 // sibling v1.Secret happens on the hot path in the injector (M2), not on
-// reconcile.
+// reconcile. See ADR 031 and the parent plan (HOL-675) for the full design.
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced,shortName=us,categories=holos;secrets
