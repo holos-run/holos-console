@@ -15,16 +15,23 @@ limitations under the License.
 */
 
 // Package v1alpha1 contains API Schema definitions for the secrets.holos.run
-// v1alpha1 API group. See docs/adrs/031-secret-injection-service.md for the
-// architectural decisions behind this package; the group and version are
-// locked by ADR 031 §1 and mirror the api/templates/v1alpha1 layout.
+// v1alpha1 API group. The authoritative reference for this API surface is
+// the M1 plan HOL-675:
+// https://linear.app/holos-run/issue/HOL-675/plan-m1-crds-admission-policies-rbac
+// See docs/adrs/031-secret-injection-service.md for the architectural
+// decisions; the group and version are locked by ADR 031 §1 and mirror the
+// api/templates/v1alpha1 layout. The per-kind API reference lives at
+// docs/api/secrets.holos.run.md.
 //
 // # Invariant: no sensitive values on CRs (MUST READ before editing any field)
 //
 // Every CRD in secrets.holos.run/v1alpha1 is a control object, not a vault.
 // It carries references, selectors, lifecycle metadata, and conditions —
 // never bytes an attacker could use to authenticate, replay, or grind
-// offline.
+// offline. Operators and future contributors MUST consult HOL-675 before
+// adding or changing any field: the invariant below is enforced by the
+// admission policies in config/secret-injector/admission/ and by the
+// field-name guards in *_invariant_test.go.
 //
 // Forbidden on any spec or status field of any kind in this group:
 //
@@ -58,10 +65,13 @@ limitations under the License.
 //
 // # Scope
 //
-// This package registers the group-version and shared types; per-kind
-// type definitions land in sibling files as subsequent phases implement
-// each CRD (HOL-697 UpstreamSecret, HOL-699 Credential, HOL-701
-// SecretInjectionPolicy + SecretInjectionPolicyBinding).
+// This package registers the group-version, the shared reference/enum
+// types, the shared condition catalog, and the four kinds shipped in M1:
+// UpstreamSecret (HOL-697), Credential (HOL-699), SecretInjectionPolicy
+// and SecretInjectionPolicyBinding (HOL-701). The admission policies that
+// enforce the invariant live under config/secret-injector/admission/
+// (HOL-703); the negative-path envtest suite lives at
+// api/secrets/v1alpha1/crd_test.go (HOL-708).
 //
 // +kubebuilder:object:generate=true
 // +groupName=secrets.holos.run
