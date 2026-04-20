@@ -46,9 +46,6 @@ vi.mock('@/components/ui/sidebar', () => ({
     <div {...rest}>{children}</div>
   ),
   SidebarGroupContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SidebarGroupLabel: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="sidebar-group-label">{children}</div>
-  ),
   SidebarHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SidebarMenu: ({ children }: { children: React.ReactNode }) => <ul>{children}</ul>,
   SidebarMenuButton: ({
@@ -602,6 +599,24 @@ describe('AppSidebar — Organization tree (HOL-605)', () => {
       expect(activeOfOrgChild(/^template policies$/i)).toBe('true')
       expect(activeOfOrgChild(/^templates$/i)).toBe('false')
       expect(activeOfOrgChild(/^resources$/i)).toBe('false')
+    })
+
+    // Regression: the Organization trigger's isActive must use an
+    // exact-or-prefix-with-slash match on `/orgs/<selectedOrg>`, not a bare
+    // startsWith. Otherwise pathname `/orgs/my-org-staging/resources` while
+    // selectedOrg is `my-org` would light up the wrong org's tree.
+    it('does not mark the Organization trigger active when pathname belongs to a prefix-sibling org', () => {
+      mockPathname = '/orgs/my-org-staging/resources'
+      render(<AppSidebar />)
+      const trigger = screen.getByTestId('organization-tree-trigger')
+      expect(trigger.getAttribute('data-active')).toBe('false')
+    })
+
+    it('marks the Organization trigger active on /orgs/<selectedOrg>/<any>', () => {
+      mockPathname = '/orgs/my-org/resources'
+      render(<AppSidebar />)
+      const trigger = screen.getByTestId('organization-tree-trigger')
+      expect(trigger.getAttribute('data-active')).toBe('true')
     })
   })
 })

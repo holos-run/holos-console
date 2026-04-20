@@ -231,7 +231,10 @@ export function AppSidebar() {
                           <TooltipTrigger asChild>
                             <SidebarMenuButton
                               data-testid="organization-tree-trigger"
-                              isActive={pathname.startsWith(`/orgs/${selectedOrg}`)}
+                              isActive={
+                                pathname === `/orgs/${selectedOrg}` ||
+                                pathname.startsWith(`/orgs/${selectedOrg}/`)
+                              }
                             >
                               <Building2 className="h-4 w-4" />
                               <span>Organization</span>
