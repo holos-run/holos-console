@@ -299,21 +299,27 @@ export async function apiDeleteFolder(
 }
 
 /**
- * Select an org in the sidebar org picker.
- * Navigates to /profile to ensure the sidebar is loaded with org data.
+ * Select an org via the /organizations page. HOL-603 removed the sidebar
+ * org picker in favor of the workspace menu -> "Switch organization" flow,
+ * which lands on /organizations. We navigate there, filter the table by
+ * org name, and click the matching row. This both sets the org in
+ * OrgContext and navigates to the org-scoped projects index.
  */
 export async function selectOrg(page: Page, orgName: string): Promise<void> {
-  await page.goto('/profile')
+  await page.goto('/organizations')
   await page.waitForLoadState('networkidle')
 
-  const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
-  if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
-    await sidebarTrigger.click()
-  }
+  const search = page.getByPlaceholder(/search organizations/i)
+  await search.waitFor({ timeout: 5000 })
+  await search.fill(orgName)
 
-  await page.getByTestId('org-picker').waitFor({ timeout: 5000 })
-  await page.getByTestId('org-picker').click()
-  await page.getByRole('menuitem', { name: orgName }).click()
+  await page
+    .getByRole('row')
+    .filter({ hasText: orgName })
+    .first()
+    .click()
+
+  await page.waitForURL(new RegExp(`/orgs/${orgName}/projects`), { timeout: 5000 })
 }
 
 /**

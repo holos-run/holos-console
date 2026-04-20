@@ -82,23 +82,14 @@ test.describe('Multi-Persona RBAC', () => {
     // Login as SRE (who was granted VIEWER on the org in the previous test)
     await loginAsPersona(page, SRE_EMAIL)
 
-    // Navigate to profile and verify the org is accessible via the sidebar.
-    // Use /profile so the sidebar is loaded with org data.
-    await page.goto('/profile')
+    // HOL-603 moved org switching from a sidebar picker to the /organizations
+    // page reached via the workspace menu. The org should be listed there for
+    // a user granted VIEWER access.
+    await page.goto('/organizations')
     await page.waitForLoadState('networkidle')
 
-    // On mobile viewports, open the sidebar drawer first.
-    const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
-    if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await sidebarTrigger.click()
-      await page.waitForTimeout(500) // Wait for drawer animation
-    }
-
-    // The org should appear in the sidebar org picker.
-    await page.getByTestId('org-picker').waitFor({ timeout: 5000 })
-    await page.getByTestId('org-picker').click()
     await expect(
-      page.getByRole('menuitem', { name: orgName }),
+      page.getByRole('row').filter({ hasText: orgName }).first(),
     ).toBeVisible({ timeout: 5000 })
   })
 
@@ -108,22 +99,13 @@ test.describe('Multi-Persona RBAC', () => {
     // Login as product engineer (who was granted EDITOR on the org)
     await loginAsPersona(page, PRODUCT_ENGINEER_EMAIL)
 
-    // Navigate to profile and verify the org is accessible via the sidebar.
-    await page.goto('/profile')
+    // HOL-603 moved org switching to the /organizations page (reached via
+    // the workspace menu). Verify the org is listed for the granted user.
+    await page.goto('/organizations')
     await page.waitForLoadState('networkidle')
 
-    // On mobile viewports, open the sidebar drawer first.
-    const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
-    if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await sidebarTrigger.click()
-      await page.waitForTimeout(500) // Wait for drawer animation
-    }
-
-    // The org should appear in the sidebar org picker.
-    await page.getByTestId('org-picker').waitFor({ timeout: 5000 })
-    await page.getByTestId('org-picker').click()
     await expect(
-      page.getByRole('menuitem', { name: orgName }),
+      page.getByRole('row').filter({ hasText: orgName }).first(),
     ).toBeVisible({ timeout: 5000 })
   })
 })
