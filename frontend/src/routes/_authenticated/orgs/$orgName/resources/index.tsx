@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { useState, useMemo } from 'react'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import {
   useReactTable,
   getCoreRowModel,
@@ -21,7 +21,6 @@ import {
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useListResources } from '@/queries/resources'
-import { useOrg } from '@/lib/org-context'
 import {
   ResourceType,
   type Resource,
@@ -40,73 +39,78 @@ function typeBadge(type: ResourceType) {
   if (type === ResourceType.PROJECT) {
     return <Badge variant="outline">Project</Badge>
   }
-  return <Badge variant="outline">Unknown</Badge>
+  // The server contract forbids UNSPECIFIED entries. Render a destructive
+  // badge so the backend bug is visible instead of blending in.
+  return <Badge variant="destructive">Unknown</Badge>
 }
 
 // PathCell renders the root→leaf display-name breadcrumb with the leaf
 // (this resource) on the right. The root element (index 0) is the
 // organization; subsequent elements are ancestor folders; the leaf is the
-// resource itself. Each element is a clickable link routed to that
-// ancestor's index page — org element routes to /orgs/$orgName, folder
-// elements to /orgs/$orgName/folders/$folderName, and the leaf routes to
-// /folders/$folderName or /projects/$projectName depending on type. Slugs
-// surface on hover via the anchor's `title` attribute so users can
-// disambiguate when display names collide.
+// resource itself. Every element is a TanStack Router Link so navigation
+// stays SPA. Slugs surface via `title` so colliding display names can be
+// disambiguated.
 function PathCell({ resource }: { resource: Resource }) {
   const org = resource.path[0]
   const orgName = org?.name ?? ''
-
-  const leafHref =
-    resource.type === ResourceType.FOLDER
-      ? `/folders/${resource.name}`
-      : `/projects/${resource.name}`
   const leafDisplay = resource.displayName || resource.name
 
   return (
     <span className="flex flex-wrap items-center gap-1 text-sm">
       {resource.path.map((element, i) => {
         const display = element.displayName || element.name
-        const href =
-          i === 0
-            ? `/orgs/${element.name}`
-            : `/orgs/${orgName}/folders/${element.name}`
         return (
           <span key={`${element.name}-${i}`} className="flex items-center gap-1">
-            <a
-              href={href}
-              title={element.name}
-              className="hover:underline text-muted-foreground"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {display}
-            </a>
+            {i === 0 ? (
+              <Link
+                to="/orgs/$orgName"
+                params={{ orgName: element.name }}
+                title={element.name}
+                className="hover:underline text-muted-foreground"
+              >
+                {display}
+              </Link>
+            ) : (
+              <Link
+                to="/orgs/$orgName/folders/$folderName"
+                params={{ orgName, folderName: element.name }}
+                title={element.name}
+                className="hover:underline text-muted-foreground"
+              >
+                {display}
+              </Link>
+            )}
             <span className="text-muted-foreground">/</span>
           </span>
         )
       })}
-      <a
-        href={leafHref}
-        title={resource.name}
-        className="hover:underline font-medium"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {leafDisplay}
-      </a>
+      {resource.type === ResourceType.FOLDER ? (
+        <Link
+          to="/orgs/$orgName/folders/$folderName"
+          params={{ orgName, folderName: resource.name }}
+          title={resource.name}
+          className="hover:underline font-medium"
+        >
+          {leafDisplay}
+        </Link>
+      ) : (
+        <Link
+          to="/projects/$projectName"
+          params={{ projectName: resource.name }}
+          title={resource.name}
+          className="hover:underline font-medium"
+        >
+          {leafDisplay}
+        </Link>
+      )}
     </span>
   )
 }
 
 export function ResourcesIndexPage() {
   const { orgName } = Route.useParams()
-  const { selectedOrg, setSelectedOrg } = useOrg()
   const { data, isLoading, error } = useListResources(orgName)
   const resources = useMemo(() => data?.resources ?? [], [data])
-
-  useEffect(() => {
-    if (selectedOrg !== orgName) {
-      setSelectedOrg(orgName)
-    }
-  }, [orgName, selectedOrg, setSelectedOrg])
 
   const [globalFilter, setGlobalFilter] = useState('')
 
@@ -244,13 +248,13 @@ function typeLabel(type: ResourceType) {
 }
 
 // pathSearchString serializes the row's display-name breadcrumb plus the
-// leaf display name so globalFilter `includesString` can match anywhere in
-// the visible path. Includes the resource slug so searching by name also
-// works.
+// leaf display name and slug so globalFilter `includesString` matches
+// anywhere in the visible path OR the underlying resource slug.
 function pathSearchString(resource: Resource): string {
   const crumbs = resource.path.map((p) => p.displayName || p.name)
   crumbs.push(resource.displayName || resource.name)
-  crumbs.push(resource.name)
+  if (resource.name !== (resource.displayName || resource.name)) {
+    crumbs.push(resource.name)
+  }
   return crumbs.join(' / ')
 }
-

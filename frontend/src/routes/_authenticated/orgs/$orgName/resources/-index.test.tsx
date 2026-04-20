@@ -10,20 +10,36 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     createFileRoute: () => () => ({
       useParams: () => ({ orgName: 'test-org' }),
     }),
+    Link: ({
+      children,
+      to,
+      params,
+      title,
+      className,
+    }: {
+      children: React.ReactNode
+      to: string
+      params?: Record<string, string>
+      title?: string
+      className?: string
+    }) => {
+      let href = to
+      if (params) {
+        for (const [k, v] of Object.entries(params)) {
+          href = href.replace(`$${k}`, v)
+        }
+      }
+      return (
+        <a href={href} title={title} className={className}>
+          {children}
+        </a>
+      )
+    },
   }
 })
 
 vi.mock('@/queries/resources', () => ({
   useListResources: vi.fn(),
-}))
-
-vi.mock('@/lib/org-context', () => ({
-  useOrg: vi.fn().mockReturnValue({
-    selectedOrg: 'test-org',
-    setSelectedOrg: vi.fn(),
-    organizations: [],
-    isLoading: false,
-  }),
 }))
 
 import { useListResources } from '@/queries/resources'
@@ -55,12 +71,7 @@ function makeFolder(
   displayName = '',
   ancestors: PathElement[] = [orgPath()],
 ): Resource {
-  return {
-    type: ResourceType.FOLDER,
-    path: ancestors,
-    displayName,
-    name,
-  }
+  return { type: ResourceType.FOLDER, path: ancestors, displayName, name }
 }
 
 function makeProject(
@@ -68,12 +79,7 @@ function makeProject(
   displayName = '',
   ancestors: PathElement[] = [orgPath()],
 ): Resource {
-  return {
-    type: ResourceType.PROJECT,
-    path: ancestors,
-    displayName,
-    name,
-  }
+  return { type: ResourceType.PROJECT, path: ancestors, displayName, name }
 }
 
 function setupMocks(resources: Resource[] = []) {
@@ -133,9 +139,7 @@ describe('ResourcesIndexPage', () => {
 
   it('renders clickable path elements with correct hrefs and slug titles', () => {
     const ancestorsUnderTeam = [orgPath(), folderPath('team-a', 'Team A')]
-    setupMocks([
-      makeProject('web', 'Web App', ancestorsUnderTeam),
-    ])
+    setupMocks([makeProject('web', 'Web App', ancestorsUnderTeam)])
     render(<ResourcesIndexPage />)
 
     const orgLink = screen.getByRole('link', { name: 'Test Org' })
@@ -151,22 +155,25 @@ describe('ResourcesIndexPage', () => {
     expect(leafLink).toHaveAttribute('title', 'web')
   })
 
-  it('routes folder leaves to the folder detail URL', () => {
+  it('routes folder leaves to the org-scoped folder detail URL', () => {
     setupMocks([makeFolder('shared', 'Shared Folder')])
     render(<ResourcesIndexPage />)
 
     const leafLink = screen.getByRole('link', { name: 'Shared Folder' })
-    expect(leafLink).toHaveAttribute('href', '/folders/shared')
+    expect(leafLink).toHaveAttribute('href', '/orgs/test-org/folders/shared')
   })
 
   it('falls back to the slug when display name is empty', () => {
     setupMocks([makeFolder('ops')])
     render(<ResourcesIndexPage />)
 
-    // The leaf link uses the slug since display name is empty.
+    // Leaf link uses the slug since display name is empty.
     const leafLinks = screen.getAllByRole('link', { name: 'ops' })
-    // One link in the path breadcrumb for the leaf itself.
-    expect(leafLinks.some((l) => l.getAttribute('href') === '/folders/ops')).toBe(true)
+    expect(
+      leafLinks.some(
+        (l) => l.getAttribute('href') === '/orgs/test-org/folders/ops',
+      ),
+    ).toBe(true)
   })
 
   it('filters rows via the global search input', () => {
@@ -199,11 +206,5 @@ describe('ResourcesIndexPage', () => {
     const rows = screen.getAllByRole('row')
     expect(rows).toHaveLength(2)
     expect(within(rows[1]).getByText('Web App')).toBeInTheDocument()
-  })
-})
-
-describe('ResourcesIndexPage — React import keeps JSX runtime happy', () => {
-  it('uses React', () => {
-    expect(React).toBeDefined()
   })
 })
