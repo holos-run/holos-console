@@ -1,0 +1,6 @@
+# Placeholder so `config/secret-injector/crd/` exists before the
+# secrets.holos.run API group ships kinds under M1. `make manifests` emits
+# CRDs here via controller-gen's `output:crd:artifacts:config` directive; until
+# M1 registers +kubebuilder:object:root=true kinds under api/secrets/...,
+# controller-gen has nothing to emit and this directory would otherwise be
+# empty. Remove this .gitkeep once real CRDs land.

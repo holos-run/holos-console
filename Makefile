@@ -144,6 +144,16 @@ test: test-go test-ui ## Run tests.
 test-go: | console/dist ## Run Go tests.
 	CGO_ENABLED=1 go test -race -coverprofile=coverage.out $(TEST_LDFLAGS) ./...
 
+.PHONY: test-secret-injector
+# test-secret-injector runs the Go race detector across the secret-injector's
+# disjoint source tree: cmd/secret-injector/... + internal/secretinjector/... +
+# api/secrets/... . No test files live under these paths at the end of M0, so
+# `go test -race` exits 0 with a "no test files" notice per package. M1+ adds
+# real tests without changing this target's shape. See ADR 031 for the disjoint
+# tree rationale.
+test-secret-injector: ## Run holos-secret-injector Go tests with the race detector.
+	CGO_ENABLED=1 go test -race ./cmd/secret-injector/... ./internal/secretinjector/... ./api/secrets/...
+
 .PHONY: test-ui
 test-ui: | frontend/node_modules ## Run UI tests.
 	cd frontend && npm test -- --run
@@ -157,6 +167,13 @@ coverage: test ## Test coverage profile.
 	go tool cover -html=coverage.out
 
 .PHONY: manifests
+# manifests invokes controller-gen twice so each binary's API group lands in a
+# separate config/ tree. Per ADR 031, the templates group (owned by
+# holos-console) keeps config/{crd,rbac}/, and the secrets group (owned by
+# holos-secret-injector) lands under config/secret-injector/{crd,rbac}/. The
+# second invocation emits an empty config/secret-injector/crd/ during M0
+# because no kinds exist yet — M1 adds SecretRequest et al. without any
+# Makefile change.
 manifests: ## Generate CRD, RBAC, and deepcopy sources from +kubebuilder markers.
 	controller-gen \
 		crd \
@@ -166,6 +183,14 @@ manifests: ## Generate CRD, RBAC, and deepcopy sources from +kubebuilder markers
 		paths="./internal/controller/..." \
 		output:crd:artifacts:config=config/crd \
 		output:rbac:artifacts:config=config/rbac
+	controller-gen \
+		crd \
+		rbac:roleName=holos-secret-injector \
+		object:headerFile="hack/boilerplate.go.txt" \
+		paths="./api/secrets/..." \
+		paths="./internal/secretinjector/controller/..." \
+		output:crd:artifacts:config=config/secret-injector/crd \
+		output:rbac:artifacts:config=config/secret-injector/rbac
 
 .PHONY: generate
 generate: manifests ## Generate protobuf code, CRD manifests, and build frontend.
@@ -199,17 +224,33 @@ IMAGE_TAG ?= $(VERSION)-$(GIT_SHA)
 PLATFORMS ?= linux/amd64,linux/arm64
 
 .PHONY: docker-build
-docker-build: ## Build container image for current platform.
-	docker build --load -t $(DOCKER_REPO):$(IMAGE_TAG) .
+docker-build: docker-build-console docker-build-injector ## Build both holos-console and holos-secret-injector container images.
+
+.PHONY: docker-build-console
+docker-build-console: ## Build holos-console container image for current platform.
+	docker build --load -f Dockerfile.console -t $(DOCKER_REPO):$(IMAGE_TAG) .
 	docker tag $(DOCKER_REPO):$(IMAGE_TAG) $(DOCKER_REPO):latest
 
+.PHONY: docker-build-injector
+docker-build-injector: ## Build holos-secret-injector container image for current platform.
+	docker build --load -f Dockerfile.secret-injector -t $(DOCKER_REPO)-secret-injector:$(IMAGE_TAG) .
+	docker tag $(DOCKER_REPO)-secret-injector:$(IMAGE_TAG) $(DOCKER_REPO)-secret-injector:latest
+
 .PHONY: docker-buildx
-docker-buildx: ## Build multi-platform container images (amd64, arm64).
-	docker buildx build --platform $(PLATFORMS) -t $(DOCKER_REPO):$(IMAGE_TAG) -t $(DOCKER_REPO):latest .
+docker-buildx: docker-buildx-console docker-buildx-injector ## Build multi-platform images for both binaries (amd64, arm64).
+
+.PHONY: docker-buildx-console
+docker-buildx-console: ## Build multi-platform holos-console image (amd64, arm64).
+	docker buildx build --platform $(PLATFORMS) -f Dockerfile.console -t $(DOCKER_REPO):$(IMAGE_TAG) -t $(DOCKER_REPO):latest .
+
+.PHONY: docker-buildx-injector
+docker-buildx-injector: ## Build multi-platform holos-secret-injector image (amd64, arm64).
+	docker buildx build --platform $(PLATFORMS) -f Dockerfile.secret-injector -t $(DOCKER_REPO)-secret-injector:$(IMAGE_TAG) -t $(DOCKER_REPO)-secret-injector:latest .
 
 .PHONY: docker-push
-docker-push: ## Build and push multi-platform container images.
-	docker buildx build --platform $(PLATFORMS) -t $(DOCKER_REPO):$(IMAGE_TAG) -t $(DOCKER_REPO):latest --push .
+docker-push: ## Build and push multi-platform container images for both binaries.
+	docker buildx build --platform $(PLATFORMS) -f Dockerfile.console -t $(DOCKER_REPO):$(IMAGE_TAG) -t $(DOCKER_REPO):latest --push .
+	docker buildx build --platform $(PLATFORMS) -f Dockerfile.secret-injector -t $(DOCKER_REPO)-secret-injector:$(IMAGE_TAG) -t $(DOCKER_REPO)-secret-injector:latest --push .
 
 .PHONY: cluster
 cluster: ## Create local k3d cluster (DNS + cluster + CA).
