@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
-import React from 'react'
+import type React from 'react'
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
@@ -108,9 +108,10 @@ describe('ProjectIndexPage', () => {
   it('renders all three sections: Deployments, Usage / Quota / Limits, Service Status', () => {
     setup([])
     render(<ProjectIndexPage projectName="my-project" />)
-    // "Deployments" is used twice — the section title and a quota-bar label —
-    // so match both. The other titles are unique.
-    expect(screen.getAllByText('Deployments').length).toBeGreaterThanOrEqual(1)
+    // "Deployments" appears exactly twice: the section title and the
+    // quota-bar label. Pinning the count catches the regression where
+    // either one silently disappears.
+    expect(screen.getAllByText('Deployments').length).toBe(2)
     expect(screen.getByText('Usage / Quota / Limits')).toBeInTheDocument()
     expect(screen.getByText('Service Status')).toBeInTheDocument()
   })
@@ -151,7 +152,15 @@ describe('ProjectIndexPage', () => {
     expect(screen.getAllByText('Running').length).toBe(2)
   })
 
-  it('shows Create Deployment for OWNER and EDITOR roles', () => {
+  it('shows Create Deployment for OWNER role', () => {
+    setup([], { userRole: Role.OWNER })
+    render(<ProjectIndexPage projectName="my-project" />)
+    expect(
+      screen.getByRole('link', { name: /create deployment/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows Create Deployment for EDITOR role', () => {
     setup([], { userRole: Role.EDITOR })
     render(<ProjectIndexPage projectName="my-project" />)
     expect(
@@ -184,23 +193,51 @@ describe('ProjectIndexPage', () => {
     ).toBeInTheDocument()
   })
 
-  it('renders placeholder progress bars with role="progressbar"', () => {
+  it('renders four placeholder bars labeled as illustrative', () => {
     setup([])
     render(<ProjectIndexPage projectName="my-project" />)
     // CPU, Memory, Storage, Deployments — four bars.
-    expect(screen.getAllByRole('progressbar').length).toBe(4)
+    const bars = screen.getAllByRole('img', { name: /illustrative placeholder/i })
+    expect(bars.length).toBe(4)
   })
 
   it('renders the Deployment Service row unconditionally', () => {
     setup([])
     render(<ProjectIndexPage projectName="my-project" />)
     expect(screen.getByText('Deployment Service')).toBeInTheDocument()
+    // Deployment Service is the only row with a confirmed OK status.
+    expect(
+      screen.getByRole('listitem', { name: /deployment service: ok/i }),
+    ).toBeInTheDocument()
   })
 
-  it('renders Database and Identity Provider dependency rows', () => {
+  it('renders Database and Identity Provider rows as "not yet reported"', () => {
     setup([])
     render(<ProjectIndexPage projectName="my-project" />)
     expect(screen.getByText('Database')).toBeInTheDocument()
     expect(screen.getByText('Identity Provider')).toBeInTheDocument()
+    // Placeholder rows must NOT claim the dependency is healthy.
+    expect(
+      screen.getByRole('listitem', { name: /database: not yet reported/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('listitem', {
+        name: /identity provider: not yet reported/i,
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('makes the dependency tooltip triggers keyboard-focusable', () => {
+    setup([])
+    render(<ProjectIndexPage projectName="my-project" />)
+    // The dependency rows use role=button triggers so keyboard-only
+    // users can reach the "Planned: …" explanation.
+    const triggers = screen.getAllByRole('button', {
+      name: /(database|identity provider)/i,
+    })
+    expect(triggers.length).toBe(2)
+    for (const t of triggers) {
+      expect(t).toHaveAttribute('tabindex', '0')
+    }
   })
 })

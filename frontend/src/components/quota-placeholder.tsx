@@ -26,13 +26,19 @@ export function QuotaPlaceholder() {
                   {bar.limit}
                 </span>
               </div>
+              {/*
+                Placeholder bar. We intentionally do not expose
+                role="progressbar" with aria-valuenow — the numeric
+                share below is illustrative only, not a real usage
+                reading, and exposing fake values to assistive tech
+                would misrepresent state. The img role plus a label
+                that names the bar as illustrative communicates the
+                intent without asserting a measurement.
+              */}
               <div
                 className="mt-1 h-2 w-full rounded-full bg-muted"
-                role="progressbar"
-                aria-label={`${bar.label} usage (placeholder)`}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(bar.used * 100)}
+                role="img"
+                aria-label={`${bar.label} — illustrative placeholder, no real usage data`}
               >
                 <div
                   className="h-full rounded-full bg-primary/60"
