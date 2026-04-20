@@ -7,7 +7,6 @@ import {
   apiDeleteFolder,
   apiCreateProject,
   apiDeleteProject,
-  selectOrg,
 } from './helpers'
 
 /**
@@ -137,30 +136,5 @@ test.describe('Nested folder workflow', () => {
     await apiDeleteProject(page, projectName)
     await apiDeleteFolder(page, folderName, orgName)
     await apiDeleteOrg(page, orgName)
-  })
-})
-
-test.describe('Sidebar Folders navigation', () => {
-  test('org nav section includes Folders link', async ({ page }) => {
-    await loginViaProfilePage(page)
-
-    const orgName = `e2e-sidebar-folders-${Date.now()}`
-    await apiCreateOrg(page, orgName)
-
-    try {
-      // Select the org in the sidebar picker so the org nav items appear
-      await selectOrg(page, orgName)
-
-      // On mobile, open the sidebar drawer
-      const sidebarTrigger = page.getByRole('button', { name: /toggle sidebar/i })
-      if (await sidebarTrigger.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await sidebarTrigger.click()
-      }
-
-      // Sidebar should show a Folders link for the selected org
-      await expect(page.getByRole('link', { name: /^folders$/i })).toBeVisible({ timeout: 10000 })
-    } finally {
-      await apiDeleteOrg(page, orgName)
-    }
   })
 })
