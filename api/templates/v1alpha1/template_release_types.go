@@ -38,9 +38,16 @@ type TemplateReleaseSpec struct {
 	// CueTemplate is the CUE source snapshot the render path evaluates
 	// when resolving a versioned reference to this release.
 	CueTemplate string `json:"cueTemplate,omitempty"`
-	// Defaults snapshots the Template's defaults at publish time. Only
-	// meaningful for project-scope templates.
-	Defaults *TemplateDefaults `json:"defaults,omitempty"`
+	// DefaultsJSON is the release's TemplateDefaults serialized as the
+	// canonical proto JSON. Stored as an opaque string rather than a
+	// structured CRD subtree because a release is an immutable version
+	// pin — it must round-trip the full proto TemplateDefaults surface
+	// (including env vars with secret_key_ref / config_map_key_ref) that
+	// the structured Template.Spec.Defaults does not currently model. The
+	// retired release ConfigMaps stored the proto JSON verbatim in the
+	// `defaults.json` data key; this field preserves that fidelity.
+	// Empty when the published Template had no defaults.
+	DefaultsJSON string `json:"defaultsJSON,omitempty"`
 	// Changelog is a free-form description of what changed in this
 	// release relative to the prior one.
 	Changelog string `json:"changelog,omitempty"`

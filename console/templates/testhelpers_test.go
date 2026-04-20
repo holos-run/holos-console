@@ -222,9 +222,14 @@ func makeReleaseCRDWithData(ns, templateName, version, cue, defaults string) *te
 		},
 	}
 	if defaults != "" {
+		// Tests pass the legacy `defaults.json` payload shape. Normalize it
+		// through the same protojson path the handler uses so fixtures
+		// serialize identically to release objects produced by CreateRelease.
 		var d consolev1.TemplateDefaults
 		if err := json.Unmarshal([]byte(defaults), &d); err == nil {
-			rel.Spec.Defaults = protoDefaultsToCRD(&d)
+			if s, err := marshalProtoDefaults(&d); err == nil {
+				rel.Spec.DefaultsJSON = s
+			}
 		}
 	}
 	return rel

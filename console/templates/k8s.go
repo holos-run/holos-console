@@ -26,6 +26,7 @@ import (
 	"log/slog"
 
 	"github.com/Masterminds/semver/v3"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -595,6 +596,11 @@ func (k *K8sClient) CreateRelease(ctx context.Context, namespace, templateName s
 		slog.String("name", name),
 	)
 
+	defaultsJSON, err := marshalProtoDefaults(defaults)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling release defaults: %w", err)
+	}
+
 	rel := &templatesv1alpha1.TemplateRelease{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -609,7 +615,7 @@ func (k *K8sClient) CreateRelease(ctx context.Context, namespace, templateName s
 			TemplateName:  templateName,
 			Version:       version.String(),
 			CueTemplate:   cueTemplate,
-			Defaults:      protoDefaultsToCRD(defaults),
+			DefaultsJSON:  defaultsJSON,
 			Changelog:     changelog,
 			UpgradeAdvice: upgradeAdvice,
 		},
@@ -703,10 +709,48 @@ func releaseCRDToProto(rel *templatesv1alpha1.TemplateRelease) *consolev1.Releas
 		CueTemplate:   rel.Spec.CueTemplate,
 		CreatedAt:     timestamppb.New(rel.CreationTimestamp.Time),
 	}
-	if rel.Spec.Defaults != nil {
-		out.Defaults = crdDefaultsToProto(rel.Spec.Defaults)
+	if defaults := unmarshalProtoDefaults(rel.Spec.DefaultsJSON); defaults != nil {
+		out.Defaults = defaults
 	}
 	return out
+}
+
+// marshalProtoDefaults serializes a proto TemplateDefaults for opaque
+// storage in TemplateRelease.Spec.DefaultsJSON. Returns the empty string
+// for nil or fully-empty input so releases without defaults land a
+// missing field rather than an empty JSON object. Using proto JSON
+// preserves fidelity for env-var variants (secret_key_ref,
+// config_map_key_ref) that the structured CRD TemplateDefaults does not
+// model.
+func marshalProtoDefaults(defaults *consolev1.TemplateDefaults) (string, error) {
+	if defaults == nil {
+		return "", nil
+	}
+	b, err := protojson.Marshal(defaults)
+	if err != nil {
+		return "", err
+	}
+	// Treat the proto zero-value as "no defaults" to keep the CRD spec
+	// clean for releases that carry nothing to record.
+	if string(b) == "{}" {
+		return "", nil
+	}
+	return string(b), nil
+}
+
+// unmarshalProtoDefaults deserializes a TemplateRelease.Spec.DefaultsJSON
+// blob back into a proto TemplateDefaults. Returns nil for an empty
+// string or an unmarshalable payload; callers rely on a nil return as
+// "no defaults recorded on this release".
+func unmarshalProtoDefaults(raw string) *consolev1.TemplateDefaults {
+	if raw == "" {
+		return nil
+	}
+	var out consolev1.TemplateDefaults
+	if err := protojson.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return &out
 }
 
 // ListReleaseVersions returns all parsed semver versions for a template's

@@ -300,6 +300,71 @@ func TestCreateRelease(t *testing.T) {
 		}
 	})
 
+	t.Run("preserves env secret_key_ref and config_map_key_ref through round-trip", func(t *testing.T) {
+		// Regression guard for HOL-693: the retired release ConfigMap
+		// stored the proto TemplateDefaults as JSON verbatim. The CRD
+		// replacement must preserve the same fidelity; a literal-only
+		// round-trip would silently drop env entries that select a
+		// SecretKeyRef or ConfigMapKeyRef.
+		ns := orgNS(org)
+		fakeClient := fake.NewClientset(ns)
+		handler := newOrgTestHandler(t, fakeClient, shareUsers)
+
+		ctx := authedCtx(ownerEmail, nil)
+		defaults := &consolev1.TemplateDefaults{
+			Image: "ghcr.io/example/app",
+			Env: []*consolev1.EnvVar{
+				{
+					Name:   "PLAIN",
+					Source: &consolev1.EnvVar_Value{Value: "literal"},
+				},
+				{
+					Name: "DB_PASSWORD",
+					Source: &consolev1.EnvVar_SecretKeyRef{
+						SecretKeyRef: &consolev1.SecretKeyRef{
+							Name: "db-credentials",
+							Key:  "password",
+						},
+					},
+				},
+				{
+					Name: "FEATURE_FLAGS",
+					Source: &consolev1.EnvVar_ConfigMapKeyRef{
+						ConfigMapKeyRef: &consolev1.ConfigMapKeyRef{
+							Name: "feature-flags",
+							Key:  "json",
+						},
+					},
+				},
+			},
+		}
+
+		createReq := connect.NewRequest(&consolev1.CreateReleaseRequest{
+			Namespace: orgScopeRef(org),
+			Release: &consolev1.Release{
+				TemplateName: templateName,
+				Version:      "1.2.3",
+				CueTemplate:  validCue,
+				Defaults:     defaults,
+			},
+		})
+		createResp, err := handler.CreateRelease(ctx, createReq)
+		if err != nil {
+			t.Fatalf("CreateRelease returned unexpected error: %v", err)
+		}
+		assertEnvRoundTripped(t, createResp.Msg.Release.GetDefaults())
+
+		getResp, err := handler.GetRelease(ctx, connect.NewRequest(&consolev1.GetReleaseRequest{
+			Namespace:    orgScopeRef(org),
+			TemplateName: templateName,
+			Version:      "1.2.3",
+		}))
+		if err != nil {
+			t.Fatalf("GetRelease returned unexpected error: %v", err)
+		}
+		assertEnvRoundTripped(t, getResp.Msg.Release.GetDefaults())
+	})
+
 	t.Run("unauthenticated request rejected", func(t *testing.T) {
 		ns := orgNS(org)
 		fakeClient := fake.NewClientset(ns)
@@ -511,4 +576,35 @@ func TestGetRelease(t *testing.T) {
 			t.Errorf("expected code InvalidArgument, got %v", connect.CodeOf(err))
 		}
 	})
+}
+
+// assertEnvRoundTripped verifies the TemplateDefaults produced by
+// CreateRelease / GetRelease preserved the three env-var variants used by
+// the HOL-693 regression guard: a literal value, a SecretKeyRef, and a
+// ConfigMapKeyRef.
+func assertEnvRoundTripped(t *testing.T, got *consolev1.TemplateDefaults) {
+	t.Helper()
+	if got == nil {
+		t.Fatal("expected non-nil defaults in response")
+	}
+	if len(got.GetEnv()) != 3 {
+		t.Fatalf("expected 3 env entries, got %d", len(got.GetEnv()))
+	}
+	if v := got.GetEnv()[0].GetValue(); v != "literal" {
+		t.Errorf("PLAIN: expected literal %q, got %q", "literal", v)
+	}
+	secretRef := got.GetEnv()[1].GetSecretKeyRef()
+	if secretRef == nil {
+		t.Fatal("DB_PASSWORD: expected SecretKeyRef source, got nil (regression: env ref dropped)")
+	}
+	if secretRef.GetName() != "db-credentials" || secretRef.GetKey() != "password" {
+		t.Errorf("DB_PASSWORD: unexpected SecretKeyRef: %+v", secretRef)
+	}
+	cmRef := got.GetEnv()[2].GetConfigMapKeyRef()
+	if cmRef == nil {
+		t.Fatal("FEATURE_FLAGS: expected ConfigMapKeyRef source, got nil (regression: env ref dropped)")
+	}
+	if cmRef.GetName() != "feature-flags" || cmRef.GetKey() != "json" {
+		t.Errorf("FEATURE_FLAGS: unexpected ConfigMapKeyRef: %+v", cmRef)
+	}
 }

@@ -79,63 +79,18 @@ spec:
                   CueTemplate is the CUE source snapshot the render path evaluates
                   when resolving a versioned reference to this release.
                 type: string
-              defaults:
+              defaultsJSON:
                 description: |-
-                  Defaults snapshots the Template's defaults at publish time. Only
-                  meaningful for project-scope templates.
-                properties:
-                  args:
-                    description: Args overrides the container image CMD.
-                    items:
-                      type: string
-                    type: array
-                  command:
-                    description: Command overrides the container image ENTRYPOINT.
-                    items:
-                      type: string
-                    type: array
-                  description:
-                    description: Description is a short human-readable description
-                      of the deployment.
-                    type: string
-                  env:
-                    description: Env sets default container environment variables.
-                    items:
-                      description: |-
-                        EnvVar is a name/value pair carried on TemplateDefaults. Mirrors the shape
-                        of the existing proto EnvVar used by deployments — kept minimal here so the
-                        CRD schema validates the small default-value surface without pulling a
-                        separate Kubernetes-style EnvVar type (which would force valueFrom handling
-                        the template defaults path does not use).
-                      properties:
-                        name:
-                          description: Name of the environment variable.
-                          minLength: 1
-                          type: string
-                        value:
-                          description: Value of the environment variable. Optional.
-                          type: string
-                      required:
-                      - name
-                      type: object
-                    type: array
-                  image:
-                    description: Image is the default container image.
-                    type: string
-                  name:
-                    description: Name is the default deployment name.
-                    type: string
-                  port:
-                    description: Port is the default container port the application
-                      listens on.
-                    format: int32
-                    maximum: 65535
-                    minimum: 0
-                    type: integer
-                  tag:
-                    description: Tag is the default image tag.
-                    type: string
-                type: object
+                  DefaultsJSON is the release's TemplateDefaults serialized as the
+                  canonical proto JSON. Stored as an opaque string rather than a
+                  structured CRD subtree because a release is an immutable version
+                  pin — it must round-trip the full proto TemplateDefaults surface
+                  (including env vars with secret_key_ref / config_map_key_ref) that
+                  the structured Template.Spec.Defaults does not currently model. The
+                  retired release ConfigMaps stored the proto JSON verbatim in the
+                  `defaults.json` data key; this field preserves that fidelity.
+                  Empty when the published Template had no defaults.
+                type: string
               templateName:
                 description: |-
                   TemplateName is the DNS label slug of the Template this release
