@@ -32,7 +32,6 @@ import {
   useDeleteOrganization,
 } from '@/queries/organizations'
 import { useListFolders } from '@/queries/folders'
-import { ORG_SCOPE_INDEX_DESCRIPTION } from '@/components/platform-template-copy'
 
 export const Route = createFileRoute('/_authenticated/orgs/$orgName/settings/')({
   component: OrgSettingsRoute,
@@ -452,22 +451,6 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
               onSave={handleSaveDefaultSharing}
               isSaving={updateOrganizationDefaultSharing.isPending}
             />
-
-            {/* Platform Templates section */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium">Platform Templates</h3>
-              <Separator />
-              <p className="text-sm text-muted-foreground">{ORG_SCOPE_INDEX_DESCRIPTION}</p>
-              <Link
-                to="/orgs/$orgName/settings/org-templates"
-                params={{ orgName }}
-                aria-label="Platform Templates"
-                className="flex items-center justify-between p-3 rounded-md border border-border hover:bg-muted transition-colors"
-              >
-                <span className="text-sm">Manage Platform Templates</span>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              </Link>
-            </div>
 
             {/* Template Policies section */}
             <div className="space-y-4">
