@@ -752,11 +752,11 @@ func TestManager_MultiManagerFreshness(t *testing.T) {
 // Template / TemplatePolicy / TemplatePolicyBinding reconcilers register
 // their own watches via For(), which the cache resolves at sync time;
 // TemplateRelease has no reconciler in this package so its informer is
-// registered explicitly). If the corresponding CRD is absent, that
-// eager registration surfaces the missing-CRD condition immediately via
-// a "no matches for kind" error, so the console pod fails to construct
-// its manager rather than reporting /readyz green and then failing on
-// first release read.
+// registered explicitly). HOL-694 added RenderState to the same eager-
+// prime list. If any of those CRDs are absent, that eager registration
+// surfaces the missing-CRD condition immediately via a "no matches for
+// kind" error, so the console pod fails to construct its manager rather
+// than reporting /readyz green and then failing on first request.
 func TestManager_SyncErrorWhenCRDMissing(t *testing.T) {
 	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
 		if assets := detectEnvtestAssets(); assets != "" {

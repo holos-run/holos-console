@@ -1,0 +1,59 @@
+# RenderState cannot be created or updated in a namespace that the
+# holos-console classifies as a project namespace. HOL-554 documented the
+# storage-isolation invariant; HOL-694 promotes enforcement for the new
+# RenderState CRD from handler-level to the API server via a CEL
+# ValidatingAdmissionPolicy so a crashed console pod cannot silently bypass
+# the guard. A project-namespace write would let a project owner forge drift
+# evidence — write a fake RenderState matching the live render output, and
+# the drift checker would report no drift even after a policy revoked a
+# required template.
+#
+# Namespace classification. The resolver.Resolver package labels every
+# console-managed namespace with `console.holos.run/resource-type`, whose
+# values are `organization`, `folder`, or `project` (see
+# api/v1alpha2/annotations.go, LabelResourceType). This CEL policy reads
+# exactly that label via namespaceObject.metadata.labels and rejects admission
+# when the label value equals `project`. Namespaces without the label (for
+# example, cluster-default or manually-created namespaces) are not classified
+# and therefore MUST NOT be rejected here — there may be legitimate reasons a
+# site wants to store records in an unlabeled namespace during bootstrap.
+#
+# Failure mode. `failurePolicy: Fail` ensures a misconfigured or missing
+# policy at admission time surfaces loudly rather than silently permitting
+# project-scope writes.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: renderstate-folder-or-org-only
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: ["templates.holos.run"]
+      apiVersions: ["v1alpha1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["renderstates"]
+  validations:
+  - expression: >-
+      !has(namespaceObject.metadata.labels)
+      || !("console.holos.run/resource-type" in namespaceObject.metadata.labels)
+      || namespaceObject.metadata.labels["console.holos.run/resource-type"] != "project"
+    messageExpression: >-
+      "RenderState cannot be stored in project namespace " + namespaceObject.metadata.name +
+      "; use the owning folder or organization namespace (see HOL-554)."
+    reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: renderstate-folder-or-org-only
+spec:
+  policyName: renderstate-folder-or-org-only
+  validationActions:
+  - Deny
+  matchResources:
+    resourceRules:
+    - apiGroups: ["templates.holos.run"]
+      apiVersions: ["v1alpha1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["renderstates"]

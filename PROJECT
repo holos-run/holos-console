@@ -50,6 +50,15 @@ resources:
   kind: TemplateRelease
   path: github.com/holos-run/holos-console/api/templates/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: holos.run
+  group: templates
+  kind: RenderState
+  path: github.com/holos-run/holos-console/api/templates/v1alpha1
+  version: v1alpha1
 # The secrets.holos.run entries below are M0 placeholders scaffolded by
 # HOL-687. The exact kinds and scope land in M1; ADR 031 locks the group
 # name, version, and the "CRs carry refs, not material" guardrail that the

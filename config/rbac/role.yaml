@@ -33,6 +33,7 @@ rules:
 - apiGroups:
   - templates.holos.run
   resources:
+  - renderstates
   - templatepolicies
   - templatepolicybindings
   - templatereleases
@@ -48,6 +49,7 @@ rules:
 - apiGroups:
   - templates.holos.run
   resources:
+  - renderstates/finalizers
   - templatepolicies/finalizers
   - templatepolicybindings/finalizers
   - templatereleases/finalizers
@@ -57,6 +59,7 @@ rules:
 - apiGroups:
   - templates.holos.run
   resources:
+  - renderstates/status
   - templatepolicies/status
   - templatepolicybindings/status
   - templatereleases/status

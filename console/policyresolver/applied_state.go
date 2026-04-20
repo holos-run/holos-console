@@ -2,9 +2,9 @@ package policyresolver
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -19,34 +20,25 @@ import (
 
 // AppliedRenderStateClient persists and reads the effective set of
 // LinkedTemplateRef values last applied to a render target (deployment or
-// project-scope template). Storage is a ConfigMap in the *folder* namespace
-// that owns the project — NEVER the project namespace itself (HOL-554
-// storage-isolation). When the project's immediate parent is an organization
-// (i.e. no intervening folder), the organization namespace is used as the
-// storage location.
+// project-scope template). Storage is a `RenderState` CRD object in the
+// *folder* namespace that owns the project — NEVER the project namespace
+// itself (HOL-554 storage-isolation, enforced at admission by the
+// ValidatingAdmissionPolicy `renderstate-folder-or-org-only`). When the
+// project's immediate parent is an organization (i.e. no intervening
+// folder), the organization namespace is used as the storage location.
 //
-// A render-state ConfigMap is keyed by `(targetKind, targetName)` within a
-// namespace, so multiple deployments or templates under the same project each
-// get their own record. The record carries the project slug on a label so
-// callers can list by project without re-walking the ancestor chain.
+// A RenderState object is keyed by `(targetKind, targetName)` within a
+// namespace, so multiple deployments or templates under the same project
+// each get their own record. The record carries the project slug both on
+// `spec.project` and on a label so callers can list by project without
+// re-walking the ancestor chain.
 //
-// This package owns render-state storage instead of pushing it into
-// console/templates because the seam lives here: the resolver computes the
-// effective set, and the same package stores what was applied. Keeping the
-// two helpers co-located avoids a cross-package dependency cycle between
-// templates and policyresolver.
-//
-// HOL-622 scope decision: render-state remains on ConfigMap storage (the
-// HOL-615 plan scopes the CRD migration to `Template`, `TemplatePolicy`, and
-// `TemplatePolicyBinding`), but the client now reads and writes through the
-// controller-runtime client.Client. Production wires the embedded Manager's
-// cache-backed client; with the render-state ConfigMap informer primed by
-// the Manager (scoped via a label selector so we don't watch every ConfigMap
-// in the cluster), drift-check reads land in the shared informer cache
-// alongside policy and binding reads. A future phase may migrate render
-// state to a dedicated CRD; the seam here does not change shape when that
-// happens because controller-runtime's client.Client surfaces both
-// ConfigMap and any future CRD uniformly.
+// HOL-694 migrated this client off ConfigMap storage onto the dedicated
+// `RenderState` CRD (ADR 033). Reads and writes both go through the
+// controller-runtime `client.Client`; in production that client is the
+// embedded Manager's cache-backed client, primed with a RenderState
+// informer so drift-check reads land in the shared informer cache
+// alongside policy and binding reads.
 type AppliedRenderStateClient struct {
 	client   ctrlclient.Client
 	resolver *resolver.Resolver
@@ -61,10 +53,10 @@ type WalkerInterface interface {
 }
 
 // NewAppliedRenderStateClient creates a client that reads and writes
-// applied-render-set records to the folder namespace that owns a project.
-// HOL-622 migrated the underlying client type from client-go
-// kubernetes.Interface to controller-runtime client.Client so the read path
-// lands in the shared informer cache wired by the embedded Manager.
+// applied-render-set records as RenderState CRDs in the folder namespace
+// that owns a project. The controller-runtime client backs both reads and
+// writes; production wires the embedded Manager's cache-backed client so
+// reads land in the shared informer cache.
 func NewAppliedRenderStateClient(client ctrlclient.Client, r *resolver.Resolver, w WalkerInterface) *AppliedRenderStateClient {
 	return &AppliedRenderStateClient{client: client, resolver: r, walker: w}
 }
@@ -111,44 +103,27 @@ func (c *AppliedRenderStateClient) FolderNamespaceForProject(ctx context.Context
 	return "", fmt.Errorf("no folder or organization ancestor for project namespace %q", projectNs)
 }
 
-// storedLinkedRef is the JSON wire shape for applied-render-set entries.
-// Records can be inspected with `kubectl` without a proto decoder.
-type storedLinkedRef struct {
-	Namespace         string `json:"namespace"`
-	Name              string `json:"name"`
-	VersionConstraint string `json:"version_constraint,omitempty"`
-}
-
-// MarshalAppliedRenderSet serializes a slice of LinkedTemplateRef values to
-// the canonical JSON wire shape used for the AnnotationAppliedRenderSet
-// annotation. Nil entries are skipped so a caller passing an unfiltered
-// resolver output gets a stable document.
-func MarshalAppliedRenderSet(refs []*consolev1.LinkedTemplateRef) ([]byte, error) {
-	stored := make([]storedLinkedRef, 0, len(refs))
+// refsToRenderStateRefs converts the wire-side LinkedTemplateRef proto into
+// the structured form stored on RenderState.spec.appliedRefs. Nil entries
+// are skipped so a caller passing an unfiltered resolver output produces a
+// stable document.
+func refsToRenderStateRefs(refs []*consolev1.LinkedTemplateRef) []templatesv1alpha1.RenderStateLinkedTemplateRef {
+	stored := make([]templatesv1alpha1.RenderStateLinkedTemplateRef, 0, len(refs))
 	for _, r := range refs {
 		if r == nil {
 			continue
 		}
-		stored = append(stored, storedLinkedRef{
+		stored = append(stored, templatesv1alpha1.RenderStateLinkedTemplateRef{
 			Namespace:         r.GetNamespace(),
 			Name:              r.GetName(),
 			VersionConstraint: r.GetVersionConstraint(),
 		})
 	}
-	return json.Marshal(stored)
+	return stored
 }
 
-// UnmarshalAppliedRenderSet parses the canonical JSON wire shape back into
-// LinkedTemplateRef values. Returns an empty slice (not nil) when raw is the
-// empty string so callers can compare len() without a nil check.
-func UnmarshalAppliedRenderSet(raw string) ([]*consolev1.LinkedTemplateRef, error) {
-	if raw == "" {
-		return []*consolev1.LinkedTemplateRef{}, nil
-	}
-	var stored []storedLinkedRef
-	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
-		return nil, fmt.Errorf("parsing applied render set: %w", err)
-	}
+// renderStateRefsToProto inverts refsToRenderStateRefs.
+func renderStateRefsToProto(stored []templatesv1alpha1.RenderStateLinkedTemplateRef) []*consolev1.LinkedTemplateRef {
 	refs := make([]*consolev1.LinkedTemplateRef, 0, len(stored))
 	for _, s := range stored {
 		refs = append(refs, &consolev1.LinkedTemplateRef{
@@ -157,16 +132,16 @@ func UnmarshalAppliedRenderSet(raw string) ([]*consolev1.LinkedTemplateRef, erro
 			VersionConstraint: s.VersionConstraint,
 		})
 	}
-	return refs, nil
+	return refs
 }
 
 // RecordAppliedRenderSet writes the resolved render set to the folder or
-// organization namespace that owns the project. The record is a ConfigMap
-// named `<targetKind>-<project>-<targetName>`; collisions are impossible
-// within the same folder namespace because (targetKind, project, targetName)
-// is unique per deployment or project-scope template. Callers invoke this
-// helper from CreateDeployment, UpdateDeployment, CreateTemplate (project),
-// and UpdateTemplate (project) on the success path only.
+// organization namespace that owns the project. The record is a RenderState
+// object named `<targetKind>-<project>-<targetName>`; collisions are
+// impossible within the same folder namespace because (targetKind, project,
+// targetName) is unique per deployment or project-scope template. Callers
+// invoke this helper from CreateDeployment, UpdateDeployment, CreateTemplate
+// (project), and UpdateTemplate (project) on the success path only.
 //
 // A nil client returns nil without error so call sites that run in
 // test/dry-run modes without a Kubernetes client do not need conditional
@@ -198,94 +173,147 @@ func (c *AppliedRenderStateClient) RecordAppliedRenderSet(
 		return fmt.Errorf("extracting project name from namespace %q: %w", projectNs, projectErr)
 	}
 
-	payload, err := MarshalAppliedRenderSet(refs)
+	rsName := renderStateObjectName(targetKind, project, targetName)
+	rsTargetKind, err := renderStateTargetKindEnum(targetKind)
 	if err != nil {
-		return fmt.Errorf("serializing applied render set: %w", err)
+		return err
 	}
-
-	kindLabel := renderTargetKindLabel(targetKind)
-	cmName := renderStateConfigMapName(targetKind, project, targetName)
-	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cmName,
-			Namespace: folderNs,
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:        v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:     v1alpha2.ResourceTypeRenderState,
-				v1alpha2.LabelRenderTargetKind: kindLabel,
-				v1alpha2.LabelRenderTargetName: targetName,
-				v1alpha2.LabelProject:          project,
-			},
-			Annotations: map[string]string{
-				v1alpha2.AnnotationAppliedRenderSet: string(payload),
-			},
-		},
+	desiredSpec := templatesv1alpha1.RenderStateSpec{
+		TargetKind:  rsTargetKind,
+		TargetName:  targetName,
+		Project:     project,
+		AppliedRefs: refsToRenderStateRefs(refs),
+	}
+	desiredLabels := map[string]string{
+		v1alpha2.LabelManagedBy:                         v1alpha2.ManagedByValue,
+		v1alpha2.LabelProject:                           project,
+		templatesv1alpha1.RenderStateTargetKindLabel:    string(rsTargetKind),
+		templatesv1alpha1.RenderStateTargetNameLabel:    targetName,
+		templatesv1alpha1.RenderStateTargetProjectLabel: project,
 	}
 
 	slog.DebugContext(ctx, "recording applied render set",
 		slog.String("folderNamespace", folderNs),
 		slog.String("projectNamespace", projectNs),
 		slog.String("project", project),
-		slog.String("targetKind", kindLabel),
+		slog.String("targetKind", string(rsTargetKind)),
 		slog.String("targetName", targetName),
-		slog.String("configMap", cmName),
+		slog.String("renderState", rsName),
 		slog.Int("refs", len(refs)),
 	)
 
+	rs := &templatesv1alpha1.RenderState{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      rsName,
+			Namespace: folderNs,
+			Labels:    desiredLabels,
+		},
+		Spec: desiredSpec,
+	}
+
 	// Try to create first. On AlreadyExists, fall through to Update so
 	// re-applying an unchanged render set is idempotent and an edit that
-	// shrinks the applied set still overwrites the stored value. The
-	// controller-runtime client.Client writes go straight to the API server
-	// (the delegating client does not buffer writes); the create/update
-	// choreography mirrors the previous client-go implementation.
-	createErr := c.client.Create(ctx, cm)
+	// shrinks the applied set still overwrites the stored value.
+	createErr := c.client.Create(ctx, rs)
 	if createErr == nil {
 		return nil
 	}
 	if !k8serrors.IsAlreadyExists(createErr) {
-		return fmt.Errorf("creating render state ConfigMap %q in %q: %w", cmName, folderNs, createErr)
+		return fmt.Errorf("creating RenderState %q in %q: %w", rsName, folderNs, createErr)
 	}
 
-	existing := &corev1.ConfigMap{}
-	if getErr := c.client.Get(ctx, types.NamespacedName{Namespace: folderNs, Name: cmName}, existing); getErr != nil {
-		return fmt.Errorf("getting render state ConfigMap %q in %q for update: %w", cmName, folderNs, getErr)
+	return c.updateExistingRenderState(ctx, folderNs, rsName, desiredSpec, desiredLabels)
+}
+
+// recordRetryAttempts bounds the AlreadyExists → Get → Update loop. The two
+// recoverable failures are NotFound (cache lag — the apiserver has the
+// object, but the local informer cache has not observed the watch event
+// yet) and Conflict (a concurrent writer updated the object between our
+// Get and our Update). Both resolve with a fresh Get; this constant caps
+// the work we do before surfacing a real failure to the caller. Five
+// attempts at 100 ms between attempts gives ~500 ms of headroom, which
+// covers a healthy informer's worst observed lag without making a
+// genuinely wedged write hang on the success path of the render handler.
+const (
+	recordRetryAttempts = 5
+	recordRetryBackoff  = 100 * time.Millisecond
+)
+
+// updateExistingRenderState handles the AlreadyExists branch of
+// RecordAppliedRenderSet. The cache-backed client may briefly serve a
+// NotFound after our own Create succeeds at the apiserver but before the
+// informer observes the watch event; the apiserver may also reject the
+// Update with Conflict if a peer console replica updated the object
+// between our Get and our Update. Both are resolved by re-fetching and
+// retrying with bounded backoff so a transient race never surfaces as a
+// drift-record write failure.
+func (c *AppliedRenderStateClient) updateExistingRenderState(
+	ctx context.Context,
+	folderNs, rsName string,
+	desiredSpec templatesv1alpha1.RenderStateSpec,
+	desiredLabels map[string]string,
+) error {
+	var lastErr error
+	for attempt := 0; attempt < recordRetryAttempts; attempt++ {
+		existing := &templatesv1alpha1.RenderState{}
+		getErr := c.client.Get(ctx, types.NamespacedName{Namespace: folderNs, Name: rsName}, existing)
+		if getErr != nil {
+			if k8serrors.IsNotFound(getErr) {
+				lastErr = getErr
+				if !sleepWithContext(ctx, recordRetryBackoff) {
+					return ctx.Err()
+				}
+				continue
+			}
+			return fmt.Errorf("getting RenderState %q in %q for update: %w", rsName, folderNs, getErr)
+		}
+		existing.Spec = desiredSpec
+		if existing.Labels == nil {
+			existing.Labels = make(map[string]string, len(desiredLabels))
+		}
+		for k, v := range desiredLabels {
+			existing.Labels[k] = v
+		}
+		updateErr := c.client.Update(ctx, existing)
+		if updateErr == nil {
+			return nil
+		}
+		if k8serrors.IsConflict(updateErr) {
+			lastErr = updateErr
+			if !sleepWithContext(ctx, recordRetryBackoff) {
+				return ctx.Err()
+			}
+			continue
+		}
+		return fmt.Errorf("updating RenderState %q in %q: %w", rsName, folderNs, updateErr)
 	}
-	if existing.Annotations == nil {
-		existing.Annotations = make(map[string]string)
+	return fmt.Errorf("recording RenderState %q in %q after %d attempts: %w", rsName, folderNs, recordRetryAttempts, lastErr)
+}
+
+// sleepWithContext sleeps for d unless ctx is cancelled first. Returns
+// false when the context expired so the caller can short-circuit instead
+// of looping until the retry budget is exhausted.
+func sleepWithContext(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
 	}
-	existing.Annotations[v1alpha2.AnnotationAppliedRenderSet] = string(payload)
-	// Refresh labels in case prior writers used stale values (e.g. a project
-	// rename). The managed-by/resource-type labels never change; the
-	// target-kind/project/name labels are invariants for this CM name so
-	// overwriting is safe.
-	if existing.Labels == nil {
-		existing.Labels = make(map[string]string)
-	}
-	existing.Labels[v1alpha2.LabelManagedBy] = v1alpha2.ManagedByValue
-	existing.Labels[v1alpha2.LabelResourceType] = v1alpha2.ResourceTypeRenderState
-	existing.Labels[v1alpha2.LabelRenderTargetKind] = kindLabel
-	existing.Labels[v1alpha2.LabelRenderTargetName] = targetName
-	existing.Labels[v1alpha2.LabelProject] = project
-	// LabelRenderTargetProject was set by earlier writers before HOL-567
-	// standardized on LabelProject; scrub it so older values cannot linger
-	// on update after the canonical label is authoritative.
-	delete(existing.Labels, v1alpha2.LabelRenderTargetProject)
-	if updateErr := c.client.Update(ctx, existing); updateErr != nil {
-		return fmt.Errorf("updating render state ConfigMap %q in %q: %w", cmName, folderNs, updateErr)
-	}
-	return nil
 }
 
 // ReadAppliedRenderSet returns the applied render set last recorded for the
 // target. Returns an empty slice (and ok=false) when no record exists; this
 // lets callers treat "never applied" and "empty applied set" as distinct
-// states (the latter round-trips the empty JSON array and returns ok=true).
+// states (the latter round-trips the empty list and returns ok=true).
 //
 // The read consults ONLY folder/organization namespace storage; any
-// render-set artifact sitting in a project namespace is ignored. Operators
+// RenderState artifact sitting in a project namespace is ignored. Operators
 // migrating from a stale fixture can observe this by seeing
 // GetDeploymentPolicyState report no drift even while a project-namespace
-// annotation carries a different value.
+// snapshot carries a different value.
 func (c *AppliedRenderStateClient) ReadAppliedRenderSet(
 	ctx context.Context,
 	projectNs string,
@@ -311,45 +339,55 @@ func (c *AppliedRenderStateClient) ReadAppliedRenderSet(
 		return nil, false, fmt.Errorf("extracting project name from namespace %q: %w", projectNs, projectErr)
 	}
 
-	cmName := renderStateConfigMapName(targetKind, project, targetName)
-	cm := &corev1.ConfigMap{}
-	if getErr := c.client.Get(ctx, types.NamespacedName{Namespace: folderNs, Name: cmName}, cm); getErr != nil {
+	rsName := renderStateObjectName(targetKind, project, targetName)
+	rs := &templatesv1alpha1.RenderState{}
+	if getErr := c.client.Get(ctx, types.NamespacedName{Namespace: folderNs, Name: rsName}, rs); getErr != nil {
 		if k8serrors.IsNotFound(getErr) {
 			return []*consolev1.LinkedTemplateRef{}, false, nil
 		}
-		return nil, false, fmt.Errorf("getting render state ConfigMap %q in %q: %w", cmName, folderNs, getErr)
+		return nil, false, fmt.Errorf("getting RenderState %q in %q: %w", rsName, folderNs, getErr)
 	}
-	raw := cm.Annotations[v1alpha2.AnnotationAppliedRenderSet]
-	parsed, parseErr := UnmarshalAppliedRenderSet(raw)
-	if parseErr != nil {
-		return nil, false, fmt.Errorf("parsing applied render set on %q in %q: %w", cmName, folderNs, parseErr)
-	}
-	return parsed, true, nil
+	return renderStateRefsToProto(rs.Spec.AppliedRefs), true, nil
 }
 
-// renderTargetKindLabel maps a TargetKind to the string label value written
-// to the LabelRenderTargetKind label.
-func renderTargetKindLabel(kind TargetKind) string {
+// renderStateTargetKindEnum maps a resolver.TargetKind to the structured
+// CRD enum value written to RenderState.spec.targetKind.
+func renderStateTargetKindEnum(kind TargetKind) (templatesv1alpha1.RenderTargetKind, error) {
 	switch kind {
 	case TargetKindDeployment:
-		return v1alpha2.RenderTargetKindDeployment
+		return templatesv1alpha1.RenderTargetKindDeployment, nil
 	case TargetKindProjectTemplate:
-		return v1alpha2.RenderTargetKindProjectTemplate
+		return templatesv1alpha1.RenderTargetKindProjectTemplate, nil
+	default:
+		return "", fmt.Errorf("unknown render target kind %v", kind)
+	}
+}
+
+// renderStateTargetKindNameSegment returns the lowercase slug embedded in
+// the RenderState object name for a given TargetKind. The segment matches
+// the legacy ConfigMap naming so operators inspecting kubectl output do not
+// see a sudden naming shift across the migration.
+func renderStateTargetKindNameSegment(kind TargetKind) string {
+	switch kind {
+	case TargetKindDeployment:
+		return "deployment"
+	case TargetKindProjectTemplate:
+		return "project-template"
 	default:
 		return ""
 	}
 }
 
-// renderStateConfigMapName builds the deterministic ConfigMap name that
-// stores the applied render set for a given target. The name encodes
+// renderStateObjectName builds the deterministic object name that stores
+// the applied render set for a given target. The name encodes
 // (kind, project, target) so multiple projects and multiple render targets
 // can coexist in the same folder namespace.
 //
-// The name is bounded by the Kubernetes ConfigMap name limit (253 chars).
-// Because project and target names are themselves DNS labels (max 63 each)
-// and the kind prefix is a literal, the concatenation cannot overflow.
-func renderStateConfigMapName(kind TargetKind, project, target string) string {
-	return fmt.Sprintf("render-state-%s-%s-%s", renderTargetKindLabel(kind), project, target)
+// The name is bounded by the Kubernetes 253-char object-name limit. Each
+// project and target name is itself a DNS label (max 63 each), and the
+// kind prefix is a literal, so the concatenation cannot overflow.
+func renderStateObjectName(kind TargetKind, project, target string) string {
+	return fmt.Sprintf("render-state-%s-%s-%s", renderStateTargetKindNameSegment(kind), project, target)
 }
 
 // DiffRenderSets classifies refs as (added, removed, drifted) given a prior
