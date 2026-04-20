@@ -189,7 +189,7 @@ func fullyPopulatedCredential() v1alpha1.Credential {
 			ObservedGeneration: 3,
 			Phase:              v1alpha1.PhaseActive,
 			CredentialID:       "1htmGQrYpQl3VlzKdVcG2oB5t2e",
-			HashSecretRef: v1alpha1.SecretKeyReference{
+			HashSecretRef: &v1alpha1.SecretKeyReference{
 				Name: "cred-hash",
 				Key:  "hash",
 			},

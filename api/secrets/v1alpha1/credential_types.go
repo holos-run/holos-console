@@ -214,8 +214,15 @@ type CredentialStatus struct {
 	// owned by the reconciler via an ownerReference (enforced in M2), so
 	// deleting the Credential reclaims its hash material.
 	//
+	// Pointer type (not a value struct with omitempty): Go's encoding/json
+	// always marshals a value-struct field, so the zero value would emit
+	// "hashSecretRef: {}" and fail the generated CRD schema that requires
+	// name and key when the object is present. A pointer lets the
+	// reconciler leave the field truly absent before the hash Secret is
+	// materialised.
+	//
 	// +kubebuilder:validation:Optional
-	HashSecretRef SecretKeyReference `json:"hashSecretRef,omitempty"`
+	HashSecretRef *SecretKeyReference `json:"hashSecretRef,omitempty"`
 
 	// PepperVersion is the monotonic counter of pepper rotations this
 	// credential has observed. It is an integer — it MUST NOT hint at
