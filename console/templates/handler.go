@@ -214,7 +214,177 @@ func (h *Handler) ListTemplates(
 	}), nil
 }
 
-// GetTemplate returns a single template by name.
+// SearchTemplates returns templates visible to the caller across organization,
+// folder, and project namespaces in a single flat response (HOL-602). The
+// request supports four optional, intersecting filters:
+//
+//   - namespace: when non-empty, only templates owned by the given namespace
+//     are returned. The namespace must classify through the resolver as one
+//     of organization/folder/project for RBAC to apply; an unclassifiable
+//     namespace yields an empty result rather than an error so this RPC
+//     behaves consistently with the "templates visible to the caller"
+//     contract.
+//   - name: exact DNS-label match against Template.name.
+//   - display_name_contains: case-insensitive substring match against
+//     Template.display_name.
+//   - organization: restricts results to namespaces rooted at the given
+//     organization. Combines with namespace when both are set.
+//
+// RBAC is enforced per owning namespace using the same TemplateCascadePerms
+// table that ListTemplates consults — a caller without PermissionTemplatesList
+// at a given scope simply doesn't see that scope's templates. Per-namespace
+// grant lookups are memoized for the duration of one request so a folder with
+// 100 templates pays one folder-grant lookup, not 100.
+func (h *Handler) SearchTemplates(
+	ctx context.Context,
+	req *connect.Request[consolev1.SearchTemplatesRequest],
+) (*connect.Response[consolev1.SearchTemplatesResponse], error) {
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	if h.k8s == nil || h.k8s.Resolver == nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("namespace resolver not wired"))
+	}
+
+	nameFilter := req.Msg.GetName()
+	displayNameNeedle := strings.ToLower(req.Msg.GetDisplayNameContains())
+	orgFilter := req.Msg.GetOrganization()
+	nsFilter := req.Msg.GetNamespace()
+
+	var crds []templatesv1alpha1.Template
+	if nsFilter != "" {
+		// Single-namespace path — equivalent to ListTemplates but without
+		// short-circuiting on access denial; if the caller cannot see the
+		// scope, the result is an empty list (visible-to-caller contract).
+		ns := nsFilter
+		scope, scopeName, classifyErr := scopeshim.FromNamespace(h.k8s.Resolver, ns)
+		if classifyErr != nil || scope == scopeshim.ScopeUnspecified {
+			// Unclassifiable namespace — return empty rather than error so
+			// the search RPC stays consistent with cross-scope behavior.
+			return connect.NewResponse(&consolev1.SearchTemplatesResponse{}), nil
+		}
+		// Apply organization filter when the namespace is folder- or
+		// project-scoped (org scope's name == filter target).
+		if orgFilter != "" && !h.namespaceBelongsToOrg(ctx, scope, scopeName, ns, orgFilter) {
+			return connect.NewResponse(&consolev1.SearchTemplatesResponse{}), nil
+		}
+		listed, err := h.k8s.ListTemplates(ctx, ns)
+		if err != nil {
+			return nil, mapK8sError(err)
+		}
+		// Skip the access check when the caller has no permission at this
+		// scope — return an empty list instead of erroring.
+		if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesList); err != nil {
+			return connect.NewResponse(&consolev1.SearchTemplatesResponse{}), nil
+		}
+		crds = listed
+	} else {
+		// Cross-scope path — list every Template the controller-runtime
+		// client can see and filter per template.
+		listed, err := h.k8s.ListAllTemplates(ctx)
+		if err != nil {
+			return nil, mapK8sError(err)
+		}
+		crds = listed
+	}
+
+	// Per-namespace access cache keyed by (ns) so we evaluate RBAC at most
+	// once per scope namespace within this request, even when the namespace
+	// owns N templates.
+	nsAccess := make(map[string]bool, 16)
+	allows := func(ns string) bool {
+		if cached, ok := nsAccess[ns]; ok {
+			return cached
+		}
+		scope, scopeName, classifyErr := scopeshim.FromNamespace(h.k8s.Resolver, ns)
+		if classifyErr != nil || scope == scopeshim.ScopeUnspecified {
+			nsAccess[ns] = false
+			return false
+		}
+		// Org filter: skip namespaces that don't roll up to the requested
+		// organization. For org-scope namespaces the scopeName is the org
+		// name itself; for folder and project namespaces consult the
+		// LabelOrganization stamped at create time (HOL-602).
+		if orgFilter != "" {
+			if !h.namespaceBelongsToOrg(ctx, scope, scopeName, ns, orgFilter) {
+				nsAccess[ns] = false
+				return false
+			}
+		}
+		err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesList)
+		ok := err == nil
+		nsAccess[ns] = ok
+		return ok
+	}
+
+	templates := make([]*consolev1.Template, 0, len(crds))
+	for i := range crds {
+		tmpl := &crds[i]
+		if nameFilter != "" && tmpl.Name != nameFilter {
+			continue
+		}
+		if displayNameNeedle != "" {
+			haystack := strings.ToLower(tmpl.Spec.DisplayName)
+			if !strings.Contains(haystack, displayNameNeedle) {
+				continue
+			}
+		}
+		if !allows(tmpl.Namespace) {
+			continue
+		}
+		scope, _, classifyErr := scopeshim.FromNamespace(h.k8s.Resolver, tmpl.Namespace)
+		if classifyErr != nil {
+			scope = scopeshim.ScopeUnspecified
+		}
+		templates = append(templates, templateCRDToProto(tmpl, scope))
+	}
+
+	slog.InfoContext(ctx, "templates searched",
+		slog.String("action", "templates_search"),
+		slog.String("resource_type", auditResourceType),
+		slog.String("namespace_filter", nsFilter),
+		slog.String("name_filter", nameFilter),
+		slog.String("display_name_contains", req.Msg.GetDisplayNameContains()),
+		slog.String("organization_filter", orgFilter),
+		slog.String("sub", claims.Sub),
+		slog.Int("count", len(templates)),
+	)
+
+	return connect.NewResponse(&consolev1.SearchTemplatesResponse{
+		Templates: templates,
+	}), nil
+}
+
+// namespaceBelongsToOrg reports whether the given namespace rolls up to the
+// given organization. For org-scope namespaces the check is direct against
+// the resolver-derived scope name; for folder and project namespaces it
+// reads the v1alpha2.LabelOrganization stamped on the namespace at create
+// time. The label is present on every managed namespace and is updated on
+// reparent, so a single Get-namespace lookup is enough to attribute the
+// namespace to its root organization without walking the parent chain
+// per template (HOL-602).
+//
+// Lookups are intentionally per-call here — SearchTemplates wraps the
+// allows() check in a per-namespace cache so each unique namespace sees at
+// most one Get-namespace round-trip per request.
+func (h *Handler) namespaceBelongsToOrg(ctx context.Context, scope scopeshim.Scope, scopeName, ns, org string) bool {
+	if scope == scopeshim.ScopeOrganization {
+		return scopeName == org
+	}
+	got, err := h.k8s.GetNamespaceOrg(ctx, ns)
+	if err != nil {
+		// Treat lookup failures as "not in this org" so a misconfigured
+		// fixture or a transient apiserver glitch never widens the search
+		// beyond what the caller asked for.
+		slog.WarnContext(ctx, "failed to resolve namespace organization for SearchTemplates filter",
+			slog.String("namespace", ns),
+			slog.Any("error", err),
+		)
+		return false
+	}
+	return got == org
+}
 func (h *Handler) GetTemplate(
 	ctx context.Context,
 	req *connect.Request[consolev1.GetTemplateRequest],

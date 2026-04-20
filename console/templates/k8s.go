@@ -139,6 +139,46 @@ func (k *K8sClient) ListTemplates(ctx context.Context, namespace string) ([]temp
 	return list.Items, nil
 }
 
+// ListAllTemplates returns every Template across every namespace the
+// controller-runtime client can see, filtered down to the holos-console
+// managed-by/resource-type=template label pair so unmanaged Template CRs
+// don't leak into the cross-scope SearchTemplates response.
+//
+// Used by SearchTemplates (HOL-602). Reads hit the same informer cache as
+// ListTemplates — the only difference is the absence of an InNamespace
+// option, which makes this a single cluster-wide List rather than one List
+// per scope namespace.
+func (k *K8sClient) ListAllTemplates(ctx context.Context) ([]templatesv1alpha1.Template, error) {
+	slog.DebugContext(ctx, "listing templates from kubernetes across all namespaces")
+	var list templatesv1alpha1.TemplateList
+	selector := ctrlclient.MatchingLabels{
+		v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+		v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplate,
+	}
+	if err := k.client.List(ctx, &list, selector); err != nil {
+		return nil, fmt.Errorf("listing templates across all namespaces: %w", err)
+	}
+	return list.Items, nil
+}
+
+// GetNamespaceOrg returns the v1alpha2.LabelOrganization value on the given
+// namespace, or "" if the namespace is missing or carries no such label.
+// Used by SearchTemplates (HOL-602) to apply the organization filter to
+// folder- and project-scope namespaces — the label is stamped on every
+// managed namespace at create time and is updated on reparent, so reading
+// it is enough to attribute the namespace to its root organization without
+// a Walker round-trip per namespace.
+func (k *K8sClient) GetNamespaceOrg(ctx context.Context, ns string) (string, error) {
+	got, err := k.coreClient.CoreV1().Namespaces().Get(ctx, ns, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	if got.Labels == nil {
+		return "", nil
+	}
+	return got.Labels[v1alpha2.LabelOrganization], nil
+}
+
 // GetTemplate retrieves a Template by name from the given namespace.
 func (k *K8sClient) GetTemplate(ctx context.Context, namespace, name string) (*templatesv1alpha1.Template, error) {
 	slog.DebugContext(ctx, "getting template from kubernetes",
