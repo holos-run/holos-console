@@ -177,8 +177,7 @@ func (k *K8sClient) CreatePolicy(
 			Name:      name,
 			Namespace: namespace,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicy,
+				v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 			},
 			Annotations: map[string]string{
 				v1alpha2.AnnotationCreatorEmail: creatorEmail,

@@ -156,8 +156,7 @@ func (k *K8sClient) CreateTemplate(
 			Name:      name,
 			Namespace: namespace,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplate,
+				v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 			},
 		},
 		Spec: templatesv1alpha1.TemplateSpec{

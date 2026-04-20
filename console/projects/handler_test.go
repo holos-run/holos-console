@@ -1330,8 +1330,7 @@ func seedOrgRequirePolicy(t *testing.T, org, templateName, _ string) *corev1.Con
 			Name:      "require-" + templateName,
 			Namespace: "holos-org-" + org,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicy,
+				v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 			},
 		},
 	}
@@ -1358,7 +1357,6 @@ func seedOrgTemplate(org, templateName, projectNs string) *corev1.ConfigMap {
 			Namespace: "holos-org-" + org,
 			Labels: map[string]string{
 				v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 				v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
 			},
 			Annotations: map[string]string{

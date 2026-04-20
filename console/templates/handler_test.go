@@ -455,7 +455,6 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 				Namespace: "prj-" + project,
 				Labels: map[string]string{
 					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeProject,
 				},
 				Annotations: map[string]string{
@@ -682,7 +681,6 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 				Namespace: "fld-" + folder,
 				Labels: map[string]string{
 					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
 				},
 				Annotations: map[string]string{
@@ -757,7 +755,6 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 				Namespace: "org-" + org,
 				Labels: map[string]string{
 					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeOrganization,
 				},
 				Annotations: map[string]string{
@@ -774,7 +771,6 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 				Namespace: "fld-" + folder,
 				Labels: map[string]string{
 					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
 				},
 				Annotations: map[string]string{
@@ -893,7 +889,6 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 				Namespace: "fld-" + folder,
 				Labels: map[string]string{
 					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-					v1alpha2.LabelResourceType:  v1alpha2.ResourceTypeTemplate,
 					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeFolder,
 				},
 				Annotations: map[string]string{

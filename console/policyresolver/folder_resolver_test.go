@@ -187,7 +187,13 @@ func objectMetaCRD(name, namespace, resourceType string) metav1.ObjectMeta {
 // spec.rules directly. Post-HOL-662 there is no JSON annotation wire shape.
 func policyCRD(namespace, name string, rules []templatesv1alpha1.TemplatePolicyRule) templatesv1alpha1.TemplatePolicy {
 	return templatesv1alpha1.TemplatePolicy{
-		ObjectMeta: objectMetaCRD(name, namespace, v1alpha2.ResourceTypeTemplatePolicy),
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
+			},
+		},
 		Spec: templatesv1alpha1.TemplatePolicySpec{
 			Rules: rules,
 		},

@@ -158,8 +158,7 @@ func TestFolderResolver_MultiPodFreshness(t *testing.T) {
 			Name:      "audit",
 			Namespace: orgNs,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicy,
+				v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 			},
 		},
 		Spec: templatesv1alpha1.TemplatePolicySpec{
@@ -229,8 +228,7 @@ func TestFolderResolver_MultiPodFreshness(t *testing.T) {
 			Name:      "net",
 			Namespace: folderEngNs,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicy,
+				v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
 			},
 		},
 		Spec: templatesv1alpha1.TemplatePolicySpec{

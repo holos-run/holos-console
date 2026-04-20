@@ -25,20 +25,6 @@
 #ResourceTypeProject:      "project"
 #ResourceTypeDeployment:   "deployment"
 
-// ResourceTypeTemplate is the unified v1alpha2 template resource type.
-// A single label value is used across every hierarchy level (ADR 021
-// Decision 4).
-#ResourceTypeTemplate: "template"
-
-// ResourceTypeTemplatePolicy is the resource type label value for
-// TemplatePolicy ConfigMaps. TemplatePolicy objects bind REQUIRE/EXCLUDE
-// rules to templates and replace the removed `mandatory` flag on Template
-// and LinkableTemplate (HOL-554/HOL-555). Policy ConfigMaps live only in
-// organization or folder namespaces; project-scoped storage is forbidden
-// because a project owner could otherwise tamper with the very policy the
-// platform meant to constrain them with.
-#ResourceTypeTemplatePolicy: "template-policy"
-
 // ResourceTypeTemplatePolicyBinding is the resource type label value for
 // TemplatePolicyBinding ConfigMaps. A TemplatePolicyBinding attaches a
 // single TemplatePolicy to an explicit list of project templates and/or
