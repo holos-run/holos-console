@@ -78,9 +78,12 @@ build-console: | console/dist ## Build the holos-console executable.
 # github.com/holos-run/holos-console/console for GetVersion(), and
 # console/console.go has `//go:embed all:dist`. Without the prerequisite,
 # `make build-injector` and `make -j build` would fail on fresh checkouts
-# before the frontend has been generated. When M0 phase HOL-689 splits the
-# injector onto its own Dockerfile, the in-container build can use a
-# no-UI-prereq variant similar to build-binary.
+# before the frontend has been generated. Dockerfile.secret-injector
+# (HOL-689) takes a different path: its Go build stage creates an empty
+# `console/dist/` directly so the embed directive resolves without the
+# Vite pipeline. The host-side `make build-injector` retains the
+# prerequisite because developers usually already have `console/dist`
+# from a prior `make generate`.
 build-injector: | console/dist ## Build the holos-secret-injector executable.
 	@echo "building ${INJECTOR_BIN_NAME} ${VERSION}"
 	@echo "GOPATH=${GOPATH}"
