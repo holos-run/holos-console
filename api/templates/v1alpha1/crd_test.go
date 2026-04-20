@@ -18,26 +18,22 @@ package v1alpha1_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 
-	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	v1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
+	envtesthelpers "github.com/holos-run/holos-console/internal/envtest"
 )
 
 // envtestSuite wraps the test env so each package-level test can share one
@@ -59,17 +55,14 @@ func setupEnvTest(t *testing.T) *envtestSuite {
 	t.Helper()
 
 	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
-		// setup-envtest places binaries under
-		// ~/.local/share/kubebuilder-envtest/k8s/<version>-<os>-<arch>. We
-		// search for the highest-version directory; failing that, we skip.
-		if assets := detectEnvtestAssets(); assets != "" {
+		if assets := envtesthelpers.DetectAssets(); assets != "" {
 			t.Setenv("KUBEBUILDER_ASSETS", assets)
 		} else {
 			t.Skip("envtest binaries not found; set KUBEBUILDER_ASSETS or run `setup-envtest use` to download")
 		}
 	}
 
-	repoRoot, err := findRepoRoot()
+	repoRoot, err := envtesthelpers.FindRepoRoot()
 	if err != nil {
 		t.Fatalf("finding repo root: %v", err)
 	}
@@ -105,143 +98,11 @@ func setupEnvTest(t *testing.T) *envtestSuite {
 	// in lockstep with the actual policy surface.
 	ctx := context.Background()
 	admissionDir := filepath.Join(repoRoot, "config", "admission")
-	if err := applyYAMLFilesInDir(ctx, c, admissionDir); err != nil {
+	if err := envtesthelpers.ApplyYAMLFilesInDir(ctx, c, admissionDir); err != nil {
 		t.Fatalf("applying admission policies: %v", err)
 	}
 
 	return &envtestSuite{env: env, client: c}
-}
-
-// applyYAMLFilesInDir reads every *.yaml file in dir and server-side applies
-// each document through the controller-runtime client. Used to install the
-// CEL ValidatingAdmissionPolicy manifests after envtest.Environment.Start()
-// returns — envtest itself has no built-in VAP installer.
-func applyYAMLFilesInDir(ctx context.Context, c client.Client, dir string) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return fmt.Errorf("read dir: %w", err)
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
-		if err != nil {
-			return fmt.Errorf("read %s: %w", e.Name(), err)
-		}
-		// Split on YAML document separator and apply each doc
-		// individually. The VAP manifests ship one policy + one binding
-		// per file joined with "---".
-		for _, doc := range splitYAMLDocuments(data) {
-			if len(strings.TrimSpace(string(doc))) == 0 {
-				continue
-			}
-			// Try each known kind in order — VAP and VAPBinding are
-			// both registered in admissionregistration/v1.
-			if err := applyAdmissionDoc(ctx, c, doc); err != nil {
-				return fmt.Errorf("apply doc from %s: %w", e.Name(), err)
-			}
-		}
-	}
-	return nil
-}
-
-func splitYAMLDocuments(data []byte) [][]byte {
-	// Very small splitter — envtest manifests are authored in-repo and
-	// never contain the "---" sequence inside a string, so a line-wise
-	// split is sufficient.
-	var docs [][]byte
-	var current []byte
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.TrimSpace(line) == "---" {
-			if len(current) > 0 {
-				docs = append(docs, current)
-			}
-			current = nil
-			continue
-		}
-		current = append(current, []byte(line+"\n")...)
-	}
-	if len(current) > 0 {
-		docs = append(docs, current)
-	}
-	return docs
-}
-
-func applyAdmissionDoc(ctx context.Context, c client.Client, doc []byte) error {
-	// Probe the Kind field to pick the correct runtime type. We keep this
-	// narrow to the two kinds we ship in config/admission/.
-	kindProbe := struct {
-		Kind string `json:"kind"`
-	}{}
-	if err := yaml.Unmarshal(doc, &kindProbe); err != nil {
-		return fmt.Errorf("unmarshal kind: %w", err)
-	}
-	switch kindProbe.Kind {
-	case "ValidatingAdmissionPolicy":
-		policy := &admissionregistrationv1.ValidatingAdmissionPolicy{}
-		if err := yaml.Unmarshal(doc, policy); err != nil {
-			return fmt.Errorf("unmarshal policy: %w", err)
-		}
-		return c.Create(ctx, policy)
-	case "ValidatingAdmissionPolicyBinding":
-		binding := &admissionregistrationv1.ValidatingAdmissionPolicyBinding{}
-		if err := yaml.Unmarshal(doc, binding); err != nil {
-			return fmt.Errorf("unmarshal binding: %w", err)
-		}
-		return c.Create(ctx, binding)
-	default:
-		return fmt.Errorf("unsupported admission kind %q", kindProbe.Kind)
-	}
-}
-
-// findRepoRoot walks up from the current test file to find the nearest
-// go.mod, which gives us an absolute path to the holos-console repo root so
-// the envtest CRDDirectoryPaths are stable regardless of the caller's CWD.
-func findRepoRoot() (string, error) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", errors.New("runtime.Caller failed")
-	}
-	dir := filepath.Dir(file)
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("no go.mod above %q", file)
-		}
-		dir = parent
-	}
-}
-
-// detectEnvtestAssets finds the highest-version envtest asset directory under
-// the user's XDG data dir. Returns empty string when nothing is found so the
-// caller can decide whether to skip.
-func detectEnvtestAssets() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	base := filepath.Join(home, ".local", "share", "kubebuilder-envtest", "k8s")
-	entries, err := os.ReadDir(base)
-	if err != nil {
-		return ""
-	}
-	var best string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		candidate := filepath.Join(base, e.Name())
-		if _, err := os.Stat(filepath.Join(candidate, "kube-apiserver")); err == nil {
-			if best == "" || e.Name() > filepath.Base(best) {
-				best = candidate
-			}
-		}
-	}
-	return best
 }
 
 // createNamespace provisions a namespace labeled for the given resource-type.
@@ -527,8 +388,8 @@ func TestAdmission_FolderOrOrgOnly(t *testing.T) {
 	// Wait for the admission policy to be registered before issuing
 	// writes; envtest loads VAP manifests asynchronously after the API
 	// server starts and a raced create can slip through the guard.
-	waitForAdmissionPolicy(t, ctx, s.client, "templatepolicy-folder-or-org-only")
-	waitForAdmissionPolicy(t, ctx, s.client, "templatepolicybinding-folder-or-org-only")
+	envtesthelpers.WaitForAdmissionPolicy(t, ctx, s.client, "templatepolicy-folder-or-org-only")
+	envtesthelpers.WaitForAdmissionPolicy(t, ctx, s.client, "templatepolicybinding-folder-or-org-only")
 
 	tests := []struct {
 		name          string
@@ -680,21 +541,4 @@ func TestAdmission_FolderOrOrgOnly(t *testing.T) {
 			}
 		})
 	}
-}
-
-// waitForAdmissionPolicy polls for a registered ValidatingAdmissionPolicy by
-// name. envtest starts the API server immediately but does not block Start()
-// on VAP manifest application; racing a Create ahead of the guard leads to
-// flaky false-negative admission tests.
-func waitForAdmissionPolicy(t *testing.T, ctx context.Context, c client.Client, name string) {
-	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		vap := &admissionregistrationv1.ValidatingAdmissionPolicy{}
-		if err := c.Get(ctx, types.NamespacedName{Name: name}, vap); err == nil {
-			return
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	t.Fatalf("admission policy %q not registered within deadline", name)
 }
