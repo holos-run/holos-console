@@ -588,6 +588,9 @@ func (h *Handler) CreateTemplate(
 			return nil, err
 		}
 	}
+	if err := h.validateLinkedRefs(tmpl.LinkedTemplates); err != nil {
+		return nil, err
+	}
 
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
@@ -658,6 +661,11 @@ func (h *Handler) UpdateTemplate(
 	}
 	if tmpl.CueTemplate != "" {
 		if err := validateCueSyntax(tmpl.CueTemplate); err != nil {
+			return nil, err
+		}
+	}
+	if req.Msg.GetUpdateLinkedTemplates() {
+		if err := h.validateLinkedRefs(tmpl.LinkedTemplates); err != nil {
 			return nil, err
 		}
 	}
@@ -1273,6 +1281,35 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeKind,
 	}
 
 	return result, nil
+}
+
+// validateLinkedRefs rejects linked template references whose namespace does
+// not classify as a console-managed organization/folder/project namespace.
+// HOL-619 collapsed the scope enum and HOL-723 retired the scopeshim; this
+// check preserves the guardrail the old (scope, scopeName) enum gave us for
+// free — render-time resolution only searches console-managed ancestor
+// namespaces, so a link to `default` or any other foreign namespace would
+// silently never resolve.
+func (h *Handler) validateLinkedRefs(refs []*consolev1.LinkedTemplateRef) error {
+	for i, ref := range refs {
+		if ref == nil {
+			continue
+		}
+		ns := ref.GetNamespace()
+		if ns == "" {
+			return connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("linked_templates[%d].namespace is required", i))
+		}
+		if ref.GetName() == "" {
+			return connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("linked_templates[%d].name is required", i))
+		}
+		if kind, _ := classifyNamespace(h.resolver, ns); kind == scopeKindUnspecified {
+			return connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("linked_templates[%d].namespace %q is not a console-managed organization, folder, or project namespace", i, ns))
+		}
+	}
+	return nil
 }
 
 // checkLinkPermissions verifies the caller has the scoped link permissions

@@ -266,7 +266,7 @@ func (h *Handler) CreateTemplatePolicy(
 	if err := validatePolicyName(policy.GetName()); err != nil {
 		return nil, err
 	}
-	if err := validatePolicyRules(policy.GetRules()); err != nil {
+	if err := validatePolicyRules(h.resolver, policy.GetRules()); err != nil {
 		return nil, err
 	}
 
@@ -331,7 +331,7 @@ func (h *Handler) UpdateTemplatePolicy(
 	if name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
 	}
-	if err := validatePolicyRules(policy.GetRules()); err != nil {
+	if err := validatePolicyRules(h.resolver, policy.GetRules()); err != nil {
 		return nil, err
 	}
 
@@ -502,7 +502,14 @@ func validatePolicyName(name string) error {
 // deployment_pattern) was removed in HOL-600 — TemplatePolicyBinding objects
 // now own render-target selection, so a policy's rules carry only the
 // (kind, template) tuple the binding will inject.
-func validatePolicyRules(rules []*consolev1.TemplatePolicyRule) error {
+//
+// When the resolver is non-nil, `template.namespace` must classify as an
+// organization/folder/project namespace. HOL-619 collapsed the scope enum and
+// HOL-723 retired the scopeshim; this check preserves the guardrail the old
+// (scope, scopeName) enum gave us for free — render-time resolution only
+// searches console-managed ancestor namespaces, so a rule naming `default`
+// or any other foreign namespace would silently never apply.
+func validatePolicyRules(r *resolver.Resolver, rules []*consolev1.TemplatePolicyRule) error {
 	if len(rules) == 0 {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("policy must have at least one rule"))
 	}
@@ -522,9 +529,16 @@ func validatePolicyRules(rules []*consolev1.TemplatePolicyRule) error {
 			return connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("rule %d: template.name is required", i))
 		}
-		if tmpl.GetNamespace() == "" {
+		ns := tmpl.GetNamespace()
+		if ns == "" {
 			return connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("rule %d: template.namespace is required", i))
+		}
+		if r != nil {
+			if kind, _ := classifyNamespace(r, ns); kind == scopeKindUnspecified {
+				return connect.NewError(connect.CodeInvalidArgument,
+					fmt.Errorf("rule %d: template.namespace %q is not a console-managed organization, folder, or project namespace", i, ns))
+			}
 		}
 	}
 	return nil

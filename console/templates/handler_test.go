@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -392,6 +393,48 @@ func TestCreateTemplateLinkPermissions(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestCreateTemplateLinkedRefsValidation covers the HOL-723 guardrail: a
+// LinkedTemplateRef whose namespace does not classify as a console-managed
+// org/folder/project namespace must be rejected before persistence, because
+// render-time resolution only walks ancestor namespaces and would silently
+// drop such a ref. HOL-619 flattened the scope enum off the wire; HOL-723
+// retired the (scope, scopeName) CRD fields that previously caught this at
+// decode time.
+func TestCreateTemplateLinkedRefsValidation(t *testing.T) {
+	const project = "my-project"
+	const ownerEmail = "platform@localhost"
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "prj-" + project,
+		},
+	}
+	fakeClient := fake.NewClientset(ns)
+	handler := newTestHandler(t, fakeClient, map[string]string{ownerEmail: "owner"})
+	ctx := authedCtx(ownerEmail, nil)
+
+	req := connect.NewRequest(&consolev1.CreateTemplateRequest{
+		Namespace: projectScopeRef(project),
+		Template: &consolev1.Template{
+			Name:        "foreign-linked",
+			CueTemplate: validCue,
+			LinkedTemplates: []*consolev1.LinkedTemplateRef{
+				{Namespace: "default", Name: "rogue"},
+			},
+		},
+	})
+
+	_, err := handler.CreateTemplate(ctx, req)
+	if err == nil {
+		t.Fatal("expected validation error for foreign linked namespace, got nil")
+	}
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+	}
+	if !strings.Contains(err.Error(), "not a console-managed") {
+		t.Errorf("expected 'not a console-managed' in error, got: %v", err)
 	}
 }
 

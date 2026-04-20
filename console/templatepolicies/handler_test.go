@@ -349,6 +349,19 @@ func TestCreatePolicyValidation(t *testing.T) {
 			},
 			wantMsg: "valid DNS label",
 		},
+		{
+			name: "foreign template namespace",
+			policy: &consolev1.TemplatePolicy{
+				Name: "foreign-ref",
+				Rules: []*consolev1.TemplatePolicyRule{
+					{
+						Kind:     consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE,
+						Template: &consolev1.LinkedTemplateRef{Namespace: "default", Name: "t"},
+					},
+				},
+			},
+			wantMsg: "not a console-managed",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
