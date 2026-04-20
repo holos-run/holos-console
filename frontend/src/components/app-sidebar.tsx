@@ -3,10 +3,11 @@ import { Link, useRouter } from '@tanstack/react-router'
 import {
   ChevronRight,
   KeyRound,
-  Folder,
   FolderKanban,
+  FolderTree,
   LayoutTemplate,
   Layers,
+  Building2,
   Settings,
   Shield,
 } from 'lucide-react'
@@ -15,7 +16,6 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -59,59 +59,6 @@ export function AppSidebar() {
   const projectDisplayName = selectedProjectObj
     ? (selectedProjectObj.displayName || selectedProjectObj.name)
     : selectedProject ?? ''
-
-  const orgNavItems: Array<{
-    label: string
-    to: string
-    params: Record<string, string>
-    icon: React.ComponentType<{ className?: string }>
-  }> = selectedOrg
-    ? [
-        {
-          label: 'Folders',
-          to: '/orgs/$orgName/folders' as const,
-          params: { orgName: selectedOrg },
-          icon: Folder,
-        },
-        {
-          label: 'Projects',
-          to: '/orgs/$orgName/projects' as const,
-          params: { orgName: selectedOrg },
-          icon: FolderKanban,
-        },
-        // Template Policies is an org- and folder-scoped concept (HOL-558);
-        // there is deliberately no project-scoped equivalent. Policies are
-        // surfaced here under the org nav and via in-page links from folder
-        // detail routes. They must NOT appear under projectNavItems, AND
-        // must not be rendered when the user is focused on a project route
-        // (where the org nav group is still visible via selectedOrg but the
-        // tab would misleadingly imply a project-level concept).
-        //
-        // Gate on the current pathname rather than `selectedProject` from
-        // context: `selectedProject` persists across navigations within the
-        // same org (ProjectProvider only clears it when the org changes),
-        // so a user who visits a project route and then returns to Folders
-        // / Projects / Org Settings still has `selectedProject` set. Using
-        // the pathname ensures the tab is hidden only while the user is
-        // actually on a /projects/... route.
-        ...(!pathname.startsWith('/projects/')
-          ? [
-              {
-                label: 'Template Policies',
-                to: '/orgs/$orgName/template-policies' as const,
-                params: { orgName: selectedOrg },
-                icon: Shield,
-              },
-            ]
-          : []),
-        {
-          label: 'Org Settings',
-          to: '/orgs/$orgName/settings/' as const,
-          params: { orgName: selectedOrg },
-          icon: Settings,
-        },
-      ]
-    : []
 
   const deploymentsEnabled = projectSettings?.deploymentsEnabled ?? false
 
@@ -160,6 +107,40 @@ export function AppSidebar() {
       ]
     : []
 
+  // HOL-605 replaces the former flat Folders / Projects / Template Policies /
+  // Org Settings group with a single collapsible "Organization" tree mirrored
+  // on the Project tree pattern (HOL-604). Children order is canonical:
+  // Resources, Templates, Template Policies. Org Settings has moved to the
+  // workspace menu (HOL-603). The Organization tree itself is rendered only
+  // when an organization is selected.
+  const orgNavItems: Array<{
+    label: string
+    to: string
+    params: Record<string, string>
+    icon: React.ComponentType<{ className?: string }>
+  }> = selectedOrg
+    ? [
+        {
+          label: 'Resources',
+          to: '/orgs/$orgName/resources' as const,
+          params: { orgName: selectedOrg },
+          icon: FolderTree,
+        },
+        {
+          label: 'Templates',
+          to: '/orgs/$orgName/templates' as const,
+          params: { orgName: selectedOrg },
+          icon: LayoutTemplate,
+        },
+        {
+          label: 'Template Policies',
+          to: '/orgs/$orgName/template-policies' as const,
+          params: { orgName: selectedOrg },
+          icon: Shield,
+        },
+      ]
+    : []
+
   return (
     <Sidebar>
       <SidebarHeader className="px-2 py-2">
@@ -180,30 +161,6 @@ export function AppSidebar() {
       <SidebarSeparator />
 
       <SidebarContent>
-        {orgNavItems.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel>{orgDisplayName}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {orgNavItems.map((item) => {
-                  const activePath = (item.to as string)
-                    .replace('$orgName', item.params.orgName)
-                    .replace(/\/$/, '')
-                  return (
-                    <SidebarMenuItem key={item.label}>
-                      <SidebarMenuButton asChild isActive={pathname.startsWith(activePath)}>
-                        <Link to={item.to} params={item.params}>
-                          <item.icon className="h-4 w-4" />
-                          <span>{item.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
         {projectNavItems.length > 0 && (
           <SidebarGroup data-testid="project-tree">
             <SidebarGroupContent>
@@ -239,6 +196,64 @@ export function AppSidebar() {
                         {projectNavItems.map((item) => {
                           const activePath = (item.to as string)
                             .replace('$projectName', item.params.projectName)
+                            .replace(/\/$/, '')
+                          return (
+                            <SidebarMenuSubItem key={item.label}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={pathname === activePath || pathname.startsWith(`${activePath}/`)}
+                              >
+                                <Link to={item.to} params={item.params}>
+                                  <item.icon className="h-4 w-4" />
+                                  <span>{item.label}</span>
+                                </Link>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          )
+                        })}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+        {orgNavItems.length > 0 && (
+          <SidebarGroup data-testid="org-tree">
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <Collapsible defaultOpen asChild className="group/collapsible">
+                  <SidebarMenuItem>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <CollapsibleTrigger asChild>
+                          <TooltipTrigger asChild>
+                            <SidebarMenuButton
+                              data-testid="org-tree-trigger"
+                              isActive={pathname.startsWith('/orgs/')}
+                            >
+                              <Building2 className="h-4 w-4" />
+                              <span>Organization</span>
+                              <ChevronRight className="ml-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                            </SidebarMenuButton>
+                          </TooltipTrigger>
+                        </CollapsibleTrigger>
+                        <TooltipContent
+                          side="right"
+                          align="start"
+                          data-testid="org-tree-tooltip"
+                        >
+                          <div>{orgDisplayName}</div>
+                          <div>{selectedOrg}</div>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <CollapsibleContent data-testid="org-tree-content">
+                      <SidebarMenuSub>
+                        {orgNavItems.map((item) => {
+                          const activePath = (item.to as string)
+                            .replace('$orgName', item.params.orgName)
                             .replace(/\/$/, '')
                           return (
                             <SidebarMenuSubItem key={item.label}>
