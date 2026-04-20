@@ -36,14 +36,42 @@ vi.mock('@/components/ui/sidebar', () => ({
   Sidebar: ({ children }: { children: React.ReactNode }) => <div data-testid="sidebar">{children}</div>,
   SidebarContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SidebarFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SidebarGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SidebarGroup: ({ children, ...rest }: React.HTMLAttributes<HTMLDivElement> & { children: React.ReactNode }) => <div {...rest}>{children}</div>,
   SidebarGroupContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SidebarGroupLabel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SidebarHeader: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement> & { children: React.ReactNode }) => <div {...props}>{children}</div>,
   SidebarMenu: ({ children }: { children: React.ReactNode }) => <ul data-testid="sidebar-menu">{children}</ul>,
-  SidebarMenuButton: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement> & { children: React.ReactNode; asChild?: boolean; isActive?: boolean }) => <div {...props}>{children}</div>,
+  SidebarMenuButton: ({ children, asChild, isActive, ...props }: React.HTMLAttributes<HTMLDivElement> & { children: React.ReactNode; asChild?: boolean; isActive?: boolean }) => {
+    void isActive
+    return asChild ? <>{children}</> : <div {...props}>{children}</div>
+  },
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
+  SidebarMenuSub: ({ children }: { children: React.ReactNode }) => <ul data-testid="sidebar-menu-sub">{children}</ul>,
+  SidebarMenuSubItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
+  SidebarMenuSubButton: ({ children, asChild, isActive, ...props }: React.HTMLAttributes<HTMLElement> & { children: React.ReactNode; asChild?: boolean; isActive?: boolean }) => {
+    void isActive
+    return asChild ? <>{children}</> : <a {...props}>{children}</a>
+  },
   SidebarSeparator: () => <hr />,
+}))
+
+// Flatten Collapsible / Tooltip primitives so the Project tree renders its
+// children and tooltip content inline without requiring portals or user
+// interaction. The primitives themselves are covered by their dedicated
+// test files; here we only care about AppSidebar composition.
+vi.mock('@/components/ui/collapsible', () => ({
+  Collapsible: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  CollapsibleTrigger: ({ children, asChild }: { children: React.ReactNode; asChild?: boolean }) =>
+    asChild ? <>{children}</> : <button>{children}</button>,
+  CollapsibleContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}))
+
+vi.mock('@/components/ui/tooltip', () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipTrigger: ({ children, asChild }: { children: React.ReactNode; asChild?: boolean }) =>
+    asChild ? <>{children}</> : <span>{children}</span>,
+  TooltipContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 
 // Stub WorkspaceMenu so the AppSidebar test stays focused on sidebar nav
