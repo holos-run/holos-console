@@ -10,26 +10,43 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
+
+// newLinkedRef is a test-only helper that mirrors the retired
+// scopeshim.NewLinkedTemplateRef: given a scopeKind + scope name + template
+// name + version constraint, it produces a proto LinkedTemplateRef with the
+// Namespace classified via the package-level testResolver.
+func newLinkedRef(scope scopeKind, scopeName, name, constraint string) *consolev1.LinkedTemplateRef {
+	var ns string
+	switch scope {
+	case scopeKindOrganization:
+		ns = testResolver.OrgNamespace(scopeName)
+	case scopeKindFolder:
+		ns = testResolver.FolderNamespace(scopeName)
+	case scopeKindProject:
+		ns = testResolver.ProjectNamespace(scopeName)
+	}
+	return &consolev1.LinkedTemplateRef{
+		Namespace:         ns,
+		Name:              name,
+		VersionConstraint: constraint,
+	}
+}
 
 // makeTemplateWithLinks creates a template ConfigMap with linked template refs.
 func makeTemplateWithLinks(ns, name string, links []*consolev1.LinkedTemplateRef) *corev1.ConfigMap {
 	type storedRef struct {
-		Scope             string `json:"scope"`
-		ScopeName         string `json:"scope_name"`
+		Namespace         string `json:"namespace"`
 		Name              string `json:"name"`
 		VersionConstraint string `json:"version_constraint,omitempty"`
 	}
 	stored := make([]storedRef, 0, len(links))
 	for _, ref := range links {
-		// HOL-619: LinkedTemplateRef.Scope / ScopeName were removed; the
-		// shim classifies the ref's namespace back to the legacy pair
-		// via the package-level default resolver installed in TestMain.
+		// Post-HOL-723: LinkedTemplateRef carries a flat namespace; the
+		// ConfigMap annotation mirrors marshalLinkedTemplates in k8s.go.
 		stored = append(stored, storedRef{
-			Scope:             scopeLabelValue(scopeshim.RefScope(ref)),
-			ScopeName:         scopeshim.RefScopeName(ref),
+			Namespace:         ref.GetNamespace(),
 			Name:              ref.GetName(),
 			VersionConstraint: ref.GetVersionConstraint(),
 		})
@@ -69,7 +86,7 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("no updates when no releases exist", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ""),
+			newLinkedRef(scopeKindOrganization, org, linkedTemplateName, ""),
 		})
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
 		handler := newTestHandler(t, fakeClient, shareUsers)
@@ -92,7 +109,7 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("no compatible update when already on latest matching", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
+			newLinkedRef(scopeKindOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Create releases: 1.0.0 and 1.1.0
 		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
@@ -122,7 +139,7 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("breaking update available", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
+			newLinkedRef(scopeKindOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Create releases: 1.0.0, 1.5.0, 2.0.0
 		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
@@ -163,7 +180,7 @@ func TestCheckUpdates(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
 			// No version constraint
-			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ""),
+			newLinkedRef(scopeKindOrganization, org, linkedTemplateName, ""),
 		})
 		// Create releases: 1.0.0, 2.0.0
 		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
@@ -193,7 +210,7 @@ func TestCheckUpdates(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
 			// No version constraint
-			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ""),
+			newLinkedRef(scopeKindOrganization, org, linkedTemplateName, ""),
 		})
 		// Single release: current == latest, no update.
 		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
@@ -256,10 +273,10 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("checks all templates when template_name omitted", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl1 := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
+			newLinkedRef(scopeKindOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		tmpl2 := makeTemplateWithLinks("prj-"+project, "api-svc", []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, "gateway", ">=1.0.0 <2.0.0"),
+			newLinkedRef(scopeKindOrganization, org, "gateway", ">=1.0.0 <2.0.0"),
 		})
 		// httproute: has breaking update (2.0.0)
 		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
@@ -291,7 +308,7 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("include_current returns entries for up-to-date linked templates", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
+			newLinkedRef(scopeKindOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Releases: 1.0.0 and 1.1.0 — already on latest compatible.
 		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
@@ -329,7 +346,7 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("include_current false preserves existing behavior", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
+			newLinkedRef(scopeKindOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Releases: 1.0.0 and 1.1.0 — already on latest compatible.
 		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")
@@ -357,7 +374,7 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("include_current with no releases returns no entries", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ""),
+			newLinkedRef(scopeKindOrganization, org, linkedTemplateName, ""),
 		})
 		fakeClient := fake.NewClientset(projectNs, orgNS(org), tmpl)
 		handler := newTestHandler(t, fakeClient, shareUsers)
@@ -382,7 +399,7 @@ func TestCheckUpdates(t *testing.T) {
 	t.Run("include_current with breaking update still reports breaking", func(t *testing.T) {
 		projectNs := projectNS(project)
 		tmpl := makeTemplateWithLinks("prj-"+project, "web-app", []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
+			newLinkedRef(scopeKindOrganization, org, linkedTemplateName, ">=1.0.0 <2.0.0"),
 		})
 		// Releases: 1.0.0, 1.5.0, 2.0.0 — breaking update exists.
 		r1 := makeReleaseCRD("org-"+org, linkedTemplateName, "1.0.0")

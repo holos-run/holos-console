@@ -7,7 +7,6 @@ import (
 	"connectrpc.com/connect"
 	"k8s.io/client-go/kubernetes/fake"
 
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -73,28 +72,27 @@ func (e *e2eDriftChecker) RecordApplied(_ context.Context, project, name string,
 
 // diffRefs is a local, compact equivalent of
 // policyresolver.DiffRenderSets — true means the two slices differ by
-// (scope, scope_name, name, version_constraint). Kept in-package so the
+// (namespace, name, version_constraint). Kept in-package so the
 // end-to-end test does not pull in the full policyresolver fixture.
 func diffRefs(applied, current []*consolev1.LinkedTemplateRef) bool {
 	type k struct {
-		scope scopeshim.Scope
-		sn    string
-		n     string
-		vc    string
+		ns string
+		n  string
+		vc string
 	}
 	as := make(map[k]struct{}, len(applied))
 	for _, r := range applied {
 		if r == nil {
 			continue
 		}
-		as[k{scopeshim.RefScope(r), scopeshim.RefScopeName(r), r.GetName(), r.GetVersionConstraint()}] = struct{}{}
+		as[k{r.GetNamespace(), r.GetName(), r.GetVersionConstraint()}] = struct{}{}
 	}
 	cs := make(map[k]struct{}, len(current))
 	for _, r := range current {
 		if r == nil {
 			continue
 		}
-		cs[k{scopeshim.RefScope(r), scopeshim.RefScopeName(r), r.GetName(), r.GetVersionConstraint()}] = struct{}{}
+		cs[k{r.GetNamespace(), r.GetName(), r.GetVersionConstraint()}] = struct{}{}
 	}
 	if len(as) != len(cs) {
 		return true
@@ -126,8 +124,8 @@ func TestHandler_CreateDeployment_DriftBecomesFalseAfterRecord(t *testing.T) {
 	// path) and the drift checker's currentFn (query path) return this
 	// same value so applied == current and drift is false when recorded.
 	policyOutput := []*consolev1.LinkedTemplateRef{
-		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ""),
-		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, "payments", "audit", ""),
+		&consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: "httproute"},
+		&consolev1.LinkedTemplateRef{Namespace: "holos-fld-payments", Name: "audit"},
 	}
 
 	// The AncestorTemplateProvider stub returns the policy-resolved set as

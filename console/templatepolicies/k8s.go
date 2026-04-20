@@ -31,7 +31,6 @@ import (
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -260,8 +259,7 @@ func protoRulesToCRD(rules []*consolev1.TemplatePolicyRule) []templatesv1alpha1.
 		}
 		if tmpl != nil {
 			rule.Template = templatesv1alpha1.LinkedTemplateRef{
-				Scope:             templateScopeLabel(scopeshim.RefScope(tmpl)),
-				ScopeName:         scopeshim.RefScopeName(tmpl),
+				Namespace:         tmpl.GetNamespace(),
 				Name:              tmpl.GetName(),
 				VersionConstraint: tmpl.GetVersionConstraint(),
 			}
@@ -283,12 +281,11 @@ func CRDRulesToProto(rules []templatesv1alpha1.TemplatePolicyRule) []*consolev1.
 		r := &rules[i]
 		rule := &consolev1.TemplatePolicyRule{
 			Kind: crdKindToProto(r.Kind),
-			Template: scopeshim.NewLinkedTemplateRef(
-				scopeFromTemplateLabel(r.Template.Scope),
-				r.Template.ScopeName,
-				r.Template.Name,
-				r.Template.VersionConstraint,
-			),
+			Template: &consolev1.LinkedTemplateRef{
+				Namespace:         r.Template.Namespace,
+				Name:              r.Template.Name,
+				VersionConstraint: r.Template.VersionConstraint,
+			},
 		}
 		out = append(out, rule)
 	}
@@ -319,32 +316,3 @@ func crdKindToProto(k templatesv1alpha1.TemplatePolicyKind) consolev1.TemplatePo
 	}
 }
 
-// templateScopeLabel mirrors templatepolicies.templateScopeLabel but lives
-// here so this package does not import console/templates (avoiding a
-// dependency cycle with the render-time resolver wiring in HOL-567).
-func templateScopeLabel(scope scopeshim.Scope) string {
-	switch scope {
-	case scopeshim.ScopeOrganization:
-		return v1alpha2.TemplateScopeOrganization
-	case scopeshim.ScopeFolder:
-		return v1alpha2.TemplateScopeFolder
-	case scopeshim.ScopeProject:
-		return v1alpha2.TemplateScopeProject
-	default:
-		return ""
-	}
-}
-
-// scopeFromTemplateLabel is the inverse of templateScopeLabel.
-func scopeFromTemplateLabel(label string) scopeshim.Scope {
-	switch label {
-	case v1alpha2.TemplateScopeOrganization:
-		return scopeshim.ScopeOrganization
-	case v1alpha2.TemplateScopeFolder:
-		return scopeshim.ScopeFolder
-	case v1alpha2.TemplateScopeProject:
-		return scopeshim.ScopeProject
-	default:
-		return scopeshim.ScopeUnspecified
-	}
-}

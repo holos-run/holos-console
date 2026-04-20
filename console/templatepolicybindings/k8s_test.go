@@ -30,13 +30,13 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	crdmgrtesting "github.com/holos-run/holos-console/console/crdmgr/testing"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
 // newTestResolver is the canonical resolver used by every test in this
 // package. Namespace prefixes match the defaults production wires so
-// namespace strings round-trip through scopeshim.FromNamespace in tests.
+// namespace strings round-trip through resolver.ResourceTypeFromNamespace
+// in tests.
 func newTestResolver() *resolver.Resolver {
 	return &resolver.Resolver{
 		NamespacePrefix:    "holos-",
@@ -49,7 +49,7 @@ func newTestResolver() *resolver.Resolver {
 // samplePolicyRef returns a minimal valid proto policy ref suitable for
 // fixtures.
 func samplePolicyRef() *consolev1.LinkedTemplatePolicyRef {
-	return scopeshim.NewLinkedTemplatePolicyRef(scopeshim.ScopeOrganization, "acme", "require-http-route")
+	return &consolev1.LinkedTemplatePolicyRef{Namespace: "holos-org-acme", Name: "require-http-route"}
 }
 
 // sampleTargetRef returns a minimal valid proto target ref suitable for
@@ -206,7 +206,7 @@ func TestListBindings(t *testing.T) {
 					Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
 						DisplayName: "A",
 						PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
-							Scope: "organization", ScopeName: "acme", Name: "require-http-route",
+							Namespace: "holos-org-acme", Name: "require-http-route",
 						},
 						TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{
 							{
@@ -223,7 +223,7 @@ func TestListBindings(t *testing.T) {
 					Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
 						DisplayName: "Other",
 						PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
-							Scope: "organization", ScopeName: "acme", Name: "require-http-route",
+							Namespace: "holos-org-acme", Name: "require-http-route",
 						},
 						TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{
 							{
@@ -277,7 +277,7 @@ func TestGetBinding(t *testing.T) {
 			DisplayName: "Bind A",
 			Description: "Describe me",
 			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
-				Scope: "organization", ScopeName: "acme", Name: "require-http-route",
+				Namespace: "holos-org-acme", Name: "require-http-route",
 			},
 			TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{
 				{
@@ -414,7 +414,7 @@ func TestUpdateBinding(t *testing.T) {
 			DisplayName: "Before",
 			Description: "before-desc",
 			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
-				Scope: "organization", ScopeName: "acme", Name: "require-http-route",
+				Namespace: "holos-org-acme", Name: "require-http-route",
 			},
 			TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{
 				{
@@ -454,12 +454,12 @@ func TestUpdateBinding(t *testing.T) {
 	eventuallyGetBindingAtResourceVersion(t, k, ns, "bind", got.ResourceVersion)
 
 	// Replace policy_ref.
-	newPolicyRef := scopeshim.NewLinkedTemplatePolicyRef(scopeshim.ScopeFolder, "payments", "new-policy")
+	newPolicyRef := &consolev1.LinkedTemplatePolicyRef{Namespace: "holos-fld-payments", Name: "new-policy"}
 	got2, err := k.UpdateBinding(context.Background(), ns, "bind", nil, nil, newPolicyRef, true, nil, false)
 	if err != nil {
 		t.Fatalf("UpdateBinding replace policy_ref: %v", err)
 	}
-	if got2.Spec.PolicyRef.Name != "new-policy" || got2.Spec.PolicyRef.Scope != "folder" {
+	if got2.Spec.PolicyRef.Name != "new-policy" || got2.Spec.PolicyRef.Namespace != "holos-fld-payments" {
 		t.Errorf("policy_ref not replaced: %+v", got2.Spec.PolicyRef)
 	}
 	eventuallyGetBindingAtResourceVersion(t, k, ns, "bind", got2.ResourceVersion)
@@ -511,7 +511,7 @@ func TestDeleteBinding(t *testing.T) {
 		Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
 			DisplayName: "Goner",
 			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
-				Scope: "organization", ScopeName: "acme", Name: "require-http-route",
+				Namespace: "holos-org-acme", Name: "require-http-route",
 			},
 			TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{
 				{

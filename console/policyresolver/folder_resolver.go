@@ -6,7 +6,6 @@ import (
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -141,10 +140,10 @@ func NewFolderResolverWithBindings(
 // CreateTemplatePolicy/UpdateTemplatePolicy; at resolve time EXCLUDE only
 // removes templates that REQUIRE added.
 //
-// Dedup key for the final slice is `(scope, scope_name, name)`. Two
-// explicit-ref entries that share a key are kept as the first-seen
-// occurrence so the resolver never silently drops a version constraint that
-// the caller set deliberately.
+// Dedup key for the final slice is `(namespace, name)`. Two explicit-ref
+// entries that share a key are kept as the first-seen occurrence so the
+// resolver never silently drops a version constraint that the caller set
+// deliberately.
 //
 // When any dependency is nil the resolver degrades to returning explicitRefs
 // unchanged and logs a warning. This mirrors the noopResolver behavior so a
@@ -182,8 +181,8 @@ func (r *folderResolver) Resolve(
 	}
 
 	// Collect every TemplatePolicy declared in a folder or organization
-	// namespace on the ancestor chain, bundled with the (scope, scope_name,
-	// name) triple a binding uses to reference a specific policy. The
+	// namespace on the ancestor chain, keyed by (namespace, name) so a
+	// binding's policy_ref can select a specific policy. The
 	// ancestor-policy lister handles the HOL-554 storage-isolation skip
 	// (project namespaces are never read) and per-namespace list errors.
 	// The returned slice preserves closest-ancestor-first order so REQUIRE
@@ -231,11 +230,6 @@ func (r *folderResolver) Resolve(
 		if !bindingAppliesTo(b, project, targetKind, targetName) {
 			continue
 		}
-		// HOL-619 collapsed scope_ref into a flat (namespace, name) pair on
-		// LinkedTemplatePolicyRef. Classify the carried namespace back into
-		// (scope, scopeName) via the shim so the rest of this loop (and the
-		// storage layer it feeds) keeps working until HOL-621/HOL-622
-		// rewrite them.
 		if b.PolicyRef.GetNamespace() == "" {
 			slog.WarnContext(ctx, "template policy binding has no policy_ref namespace; treating as no-op",
 				slog.String("bindingNamespace", b.Namespace),
@@ -244,8 +238,7 @@ func (r *folderResolver) Resolve(
 			continue
 		}
 		coveredPolicies[policyKey{
-			scope:     scopeshim.PolicyRefScope(b.PolicyRef),
-			scopeName: scopeshim.PolicyRefScopeName(b.PolicyRef),
+			namespace: b.PolicyRef.GetNamespace(),
 			name:      b.PolicyRef.GetName(),
 		}] = struct{}{}
 	}
@@ -259,13 +252,12 @@ func (r *folderResolver) Resolve(
 		if p == nil {
 			continue
 		}
-		existingPolicyKeys[policyKey{scope: p.Scope, scopeName: p.ScopeName, name: p.Name}] = struct{}{}
+		existingPolicyKeys[policyKey{namespace: p.Namespace, name: p.Name}] = struct{}{}
 	}
 	for key := range coveredPolicies {
 		if _, ok := existingPolicyKeys[key]; !ok {
 			slog.WarnContext(ctx, "template policy binding references a policy that does not exist in the ancestor chain; treating as no-op",
-				slog.String("policyScope", key.scope.String()),
-				slog.String("policyScopeName", key.scopeName),
+				slog.String("policyNamespace", key.namespace),
 				slog.String("policyName", key.name),
 			)
 		}
@@ -282,7 +274,7 @@ func (r *folderResolver) Resolve(
 		if p == nil {
 			continue
 		}
-		if _, covered := coveredPolicies[policyKey{scope: p.Scope, scopeName: p.ScopeName, name: p.Name}]; !covered {
+		if _, covered := coveredPolicies[policyKey{namespace: p.Namespace, name: p.Name}]; !covered {
 			continue
 		}
 		for _, rule := range p.Rules {
@@ -312,16 +304,15 @@ func (r *folderResolver) Resolve(
 		if tmpl == nil || tmpl.GetName() == "" {
 			continue
 		}
-		key := keyForTemplateRef(scopeshim.RefScope(tmpl), scopeshim.RefScopeName(tmpl), tmpl.GetName())
+		key := keyForTemplateRef(tmpl.GetNamespace(), tmpl.GetName())
 		if _, ok := effectiveSet[key]; ok {
 			continue
 		}
-		ref := scopeshim.NewLinkedTemplateRef(
-			scopeshim.RefScope(tmpl),
-			scopeshim.RefScopeName(tmpl),
-			tmpl.GetName(),
-			tmpl.GetVersionConstraint(),
-		)
+		ref := &consolev1.LinkedTemplateRef{
+			Namespace:         tmpl.GetNamespace(),
+			Name:              tmpl.GetName(),
+			VersionConstraint: tmpl.GetVersionConstraint(),
+		}
 		effective = append(effective, ref)
 		effectiveSet[key] = ref
 	}
@@ -351,7 +342,7 @@ func (r *folderResolver) Resolve(
 			if tmpl == nil {
 				continue
 			}
-			if keyForTemplateRef(scopeshim.RefScope(tmpl), scopeshim.RefScopeName(tmpl), tmpl.GetName()) == key {
+			if keyForTemplateRef(tmpl.GetNamespace(), tmpl.GetName()) == key {
 				excluded = true
 				break
 			}
@@ -364,12 +355,11 @@ func (r *folderResolver) Resolve(
 }
 
 // policyKey is the lookup key a binding's policy_ref resolves to: the
-// (scope, scope_name, name) triple derived from the owning policy's
-// namespace + metadata.name. The resolver uses it to decide which policies
-// are covered by at least one matching binding for a render target.
+// (namespace, name) pair identifying a TemplatePolicy CRD. The resolver
+// uses it to decide which policies are covered by at least one matching
+// binding for a render target.
 type policyKey struct {
-	scope     scopeshim.Scope
-	scopeName string
+	namespace string
 	name      string
 }
 
@@ -422,32 +412,30 @@ func bindingAppliesTo(b *ResolvedBinding, project string, targetKind TargetKind,
 
 // RefKey is the dedup/comparison key for a LinkedTemplateRef. Exposed so
 // other packages (tests, drift-detection helpers) can reason about set
-// membership without re-implementing the triple.
+// membership without re-implementing the pair.
 type RefKey struct {
-	Scope     scopeshim.Scope
-	ScopeName string
+	Namespace string
 	Name      string
 }
 
 // keyForRefProto is the package-internal dedup key (not exported).
 func keyForRefProto(r *consolev1.LinkedTemplateRef) RefKey {
 	return RefKey{
-		Scope:     scopeshim.RefScope(r),
-		ScopeName: scopeshim.RefScopeName(r),
+		Namespace: r.GetNamespace(),
 		Name:      r.GetName(),
 	}
 }
 
-// keyForTemplateRef builds a RefKey from raw scope/name fields. Used when
+// keyForTemplateRef builds a RefKey from raw namespace/name fields. Used when
 // materializing a REQUIRE rule's template ref into an effective entry.
-func keyForTemplateRef(scope scopeshim.Scope, scopeName, name string) RefKey {
-	return RefKey{Scope: scope, ScopeName: scopeName, Name: name}
+func keyForTemplateRef(namespace, name string) RefKey {
+	return RefKey{Namespace: namespace, Name: name}
 }
 
 // dedupRefs returns (deduped, deduped-set, explicit-set). deduped preserves
-// first-seen order; deduped-set indexes deduped by its `(scope, scopeName,
-// name)` triple. explicit-set is a snapshot of the keys in deduped before
-// REQUIRE injection, so EXCLUDE can tell which refs the owner chose.
+// first-seen order; deduped-set indexes deduped by its `(namespace, name)`
+// pair. explicit-set is a snapshot of the keys in deduped before REQUIRE
+// injection, so EXCLUDE can tell which refs the owner chose.
 func dedupRefs(refs []*consolev1.LinkedTemplateRef) ([]*consolev1.LinkedTemplateRef, map[RefKey]*consolev1.LinkedTemplateRef, map[RefKey]struct{}) {
 	out := make([]*consolev1.LinkedTemplateRef, 0, len(refs))
 	set := make(map[RefKey]*consolev1.LinkedTemplateRef, len(refs))

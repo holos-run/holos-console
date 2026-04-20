@@ -59,22 +59,14 @@ type TemplateDefaults struct {
 	Description string `json:"description,omitempty"`
 }
 
-// LinkedTemplateRef is a scope-qualified reference to another Template used
-// in the explicit linking list. The `scope` / `scopeName` pair is retained
-// on the stored CRD shape for compatibility with persisted data and with
-// the Go storage adapters; the proto wire shape is already namespace-only
-// (HOL-619). A future migration collapses this to a single (namespace,
-// name) pair in lockstep with rewriting the storage adapters that still
-// read and write the discriminator.
+// LinkedTemplateRef is a (namespace, name) reference to another Template
+// used in the explicit linking list. The namespace's
+// `console.holos.run/resource-type` label classifies the linked template's
+// hierarchy kind at render time — callers supply the namespace only.
 type LinkedTemplateRef struct {
-	// Scope identifies the hierarchy level of the linked template.
-	// Valid values: "organization", "folder", "project".
-	// +kubebuilder:validation:Enum=organization;folder;project
-	Scope string `json:"scope"`
-	// ScopeName is the organization, folder, or project name owning the
-	// linked template.
+	// Namespace is the Kubernetes namespace that owns the linked template.
 	// +kubebuilder:validation:MinLength=1
-	ScopeName string `json:"scopeName"`
+	Namespace string `json:"namespace"`
 	// Name is the linked template's DNS label slug.
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`

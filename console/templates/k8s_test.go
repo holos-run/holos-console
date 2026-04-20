@@ -31,22 +31,34 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	crdmgrtesting "github.com/holos-run/holos-console/console/crdmgr/testing"
 	"github.com/holos-run/holos-console/console/policyresolver"
-	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
-// testResolver returns the canonical resolver every test in this package
-// shares. Namespace prefixes match the defaults used in production wiring so
-// namespace strings round-trip through scopeshim.FromNamespace in tests.
-func testResolver() *resolver.Resolver {
-	return &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-}
+// The canonical testResolver for every test in this package is defined as
+// a package-level var in main_test.go. Namespace prefixes match the
+// defaults used in production wiring so namespace strings round-trip
+// through resolver.ResourceTypeFromNamespace in tests.
 
 var (
-	orgScope    = scopeshim.ScopeOrganization
-	folderScope = scopeshim.ScopeFolder
+	orgScope    = scopeKindOrganization
+	folderScope = scopeKindFolder
 )
+
+// scopeLabelValue maps a scopeKind to the v1alpha2 LabelTemplateScope
+// value used on template ConfigMap / Template CR fixtures. Replaces the
+// retired scopeshim helper of the same name.
+func scopeLabelValue(s scopeKind) string {
+	switch s {
+	case scopeKindOrganization:
+		return v1alpha2.TemplateScopeOrganization
+	case scopeKindFolder:
+		return v1alpha2.TemplateScopeFolder
+	case scopeKindProject:
+		return v1alpha2.TemplateScopeProject
+	default:
+		return ""
+	}
+}
 
 // orgNS / folderNS / projectNS build v1alpha2-labeled Namespace fixtures so
 // fake.Clientset reads and the render-time ancestor walker agree on the
@@ -95,7 +107,7 @@ func projectNS(project string) *corev1.Namespace {
 // compile. HOL-661 rewrote the storage substrate but kept these fixture
 // helpers intact; the testhelpers_test.go bridge converts them into Template
 // CRDs for the rewritten K8sClient.
-func templateConfigMap(scope scopeshim.Scope, scopePrefix, scopeName, name, displayName, description, cueTemplate string) *corev1.ConfigMap {
+func templateConfigMap(scope scopeKind, scopePrefix, scopeName, name, displayName, description, cueTemplate string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -118,14 +130,14 @@ func templateConfigMap(scope scopeshim.Scope, scopePrefix, scopeName, name, disp
 }
 
 func projectTemplateConfigMap(project, name, displayName, description, cueTemplate string) *corev1.ConfigMap {
-	return templateConfigMap(scopeshim.ScopeProject, "prj-", project, name, displayName, description, cueTemplate)
+	return templateConfigMap(scopeKindProject, "prj-", project, name, displayName, description, cueTemplate)
 }
 
 // orgTemplateConfigMap builds a fixture for an org-scope template. The first
 // boolean was the pre-HOL-565 "mandatory" toggle and is ignored; the second
 // controls the enabled annotation.
 func orgTemplateConfigMap(org, name, displayName, description, cueTemplate string, _ bool, enabled bool) *corev1.ConfigMap {
-	cm := templateConfigMap(scopeshim.ScopeOrganization, "org-", org, name, displayName, description, cueTemplate)
+	cm := templateConfigMap(scopeKindOrganization, "org-", org, name, displayName, description, cueTemplate)
 	cm.Annotations[v1alpha2.AnnotationEnabled] = boolStr(enabled)
 	return cm
 }
@@ -133,7 +145,7 @@ func orgTemplateConfigMap(org, name, displayName, description, cueTemplate strin
 // folderTemplateConfigMap builds a fixture for a folder-scope template. See
 // orgTemplateConfigMap for the first-boolean rationale.
 func folderTemplateConfigMap(folder, name, displayName, description, cueTemplate string, _ bool, enabled bool) *corev1.ConfigMap {
-	cm := templateConfigMap(scopeshim.ScopeFolder, "fld-", folder, name, displayName, description, cueTemplate)
+	cm := templateConfigMap(scopeKindFolder, "fld-", folder, name, displayName, description, cueTemplate)
 	cm.Annotations[v1alpha2.AnnotationEnabled] = boolStr(enabled)
 	return cm
 }
@@ -167,7 +179,7 @@ func newEnvtestK8sClient(t *testing.T) (*crdmgrtesting.Env, *K8sClient) {
 		// propagate the skip to the caller.
 		t.SkipNow()
 	}
-	return env, NewK8sClient(env.Client, testResolver())
+	return env, NewK8sClient(env.Client, testResolver)
 }
 
 // ensureNamespace creates a namespace if it does not already exist.
@@ -390,7 +402,7 @@ func TestCreateTemplate(t *testing.T) {
 			cueTemplate:  "package holos\n",
 			enabled:      true,
 			linkedTemplates: []*consolev1.LinkedTemplateRef{
-				scopeshim.NewLinkedTemplateRef(orgScope, "acme", "httproute", ""),
+				newLinkedRef(orgScope, "acme", "httproute", ""),
 			},
 		},
 	}
@@ -617,7 +629,7 @@ func (s *stubHierarchyWalker) WalkAncestors(_ context.Context, _ string) ([]*cor
 
 // folderLinkedRefWithConstraint builds a folder-scope LinkedTemplateRef with a version constraint.
 func folderLinkedRefWithConstraint(folder, name, constraint string) *consolev1.LinkedTemplateRef {
-	return scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, folder, name, constraint)
+	return newLinkedRef(scopeKindFolder, folder, name, constraint)
 }
 
 // TestListEffectiveTemplateSources exercises the unified ancestor-source
@@ -631,7 +643,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 	fullAncestors := []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj}
 
 	t.Run("nil walker returns no sources", func(t *testing.T) {
-		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj), testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj), testResolver)
 
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, nil, policyresolver.NewNoopResolver())
 		if err != nil {
@@ -645,11 +657,11 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 	t.Run("folder-only linked refs resolves from folder namespace", func(t *testing.T) {
 		folderCue := "// folder payments policy"
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", folderCue, false, true)
-		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver)
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(folderScope, "payments", "payments-policy", ""),
+			newLinkedRef(folderScope, "payments", "payments-policy", ""),
 		}
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
@@ -668,12 +680,12 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		orgCM := orgTemplateConfigMap("my-org", "httproute", "HTTPRoute", "", orgCue, false, true)
 		folderCue := "// folder payments policy"
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", folderCue, false, true)
-		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM), testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM), testResolver)
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(orgScope, "my-org", "httproute", ""),
-			scopeshim.NewLinkedTemplateRef(folderScope, "payments", "payments-policy", ""),
+			newLinkedRef(orgScope, "my-org", "httproute", ""),
+			newLinkedRef(folderScope, "payments", "payments-policy", ""),
 		}
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
@@ -687,7 +699,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 	t.Run("folder template with legacy mandatory annotation is NOT auto-included", func(t *testing.T) {
 		mandatoryCue := "// mandatory folder template"
 		fldCM := folderTemplateConfigMap("payments", "audit-policy", "Audit Policy", "", mandatoryCue, true, true)
-		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver)
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, walker, policyresolver.NewNoopResolver())
@@ -701,11 +713,11 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 
 	t.Run("disabled folder template excluded even when linked", func(t *testing.T) {
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", "// disabled", false, false)
-		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver)
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(folderScope, "payments", "payments-policy", ""),
+			newLinkedRef(folderScope, "payments", "payments-policy", ""),
 		}
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
@@ -721,7 +733,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		releaseCue := "// folder release 1.0.0"
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", liveCue, false, true)
 		releaseCRD := makeReleaseCRDWithData("fld-payments", "payments-policy", "1.0.0", releaseCue, "")
-		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver(), releaseCRD)
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver, releaseCRD)
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
@@ -740,11 +752,11 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 	})
 
 	t.Run("walker failure degrades gracefully with empty sources", func(t *testing.T) {
-		k8s := newTestK8sClient(t, fake.NewClientset(), testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(), testResolver)
 		walker := &stubHierarchyWalker{err: fmt.Errorf("walk failed")}
 
 		refs := []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(folderScope, "payments", "payments-policy", ""),
+			newLinkedRef(folderScope, "payments", "payments-policy", ""),
 		}
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
@@ -757,7 +769,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 
 	t.Run("no linked refs and no mandatory templates returns empty", func(t *testing.T) {
 		fldCM := folderTemplateConfigMap("payments", "optional", "Optional", "", "// optional", false, true)
-		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver)
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, walker, policyresolver.NewNoopResolver())
@@ -775,12 +787,12 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		folderCue := "// folder shared"
 		orgCM := orgTemplateConfigMap("my-org", sharedName, "OrgShared", "", orgCue, false, true)
 		fldCM := folderTemplateConfigMap("payments", sharedName, "FolderShared", "", folderCue, false, true)
-		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM), testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM), testResolver)
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(orgScope, "my-org", sharedName, ""),
-			scopeshim.NewLinkedTemplateRef(folderScope, "payments", sharedName, ""),
+			newLinkedRef(orgScope, "my-org", sharedName, ""),
+			newLinkedRef(folderScope, "payments", sharedName, ""),
 		}
 		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
 		if err != nil {
@@ -800,11 +812,11 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		orgCM := orgTemplateConfigMap("my-org", "httproute", "HTTPRoute", "", orgCue, false, true)
 		folderCue := "// folder payments policy"
 		fldCM := folderTemplateConfigMap("payments", "payments-policy", "Payments Policy", "", folderCue, true, true)
-		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM), testResolver())
+		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM), testResolver)
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
 		refs := []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(orgScope, "my-org", "httproute", ""),
+			newLinkedRef(orgScope, "my-org", "httproute", ""),
 		}
 
 		deploymentSources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
@@ -841,8 +853,8 @@ func TestLinkedTemplatesAnnotation(t *testing.T) {
 
 	t.Run("CreateTemplate stores linked refs in spec", func(t *testing.T) {
 		linked := []*consolev1.LinkedTemplateRef{
-			scopeshim.NewLinkedTemplateRef(orgScope, "acme", "httproute", ""),
-			scopeshim.NewLinkedTemplateRef(orgScope, "acme", "policy-floor", ""),
+			newLinkedRef(orgScope, "acme", "httproute", ""),
+			newLinkedRef(orgScope, "acme", "policy-floor", ""),
 		}
 		tmpl, err := k.CreateTemplate(ctx, ns, "web-app", "Web App", "desc", "package holos\n", nil, false, linked)
 		if err != nil {
@@ -882,7 +894,7 @@ func TestTemplateCRDToProto_PropagatesVersion(t *testing.T) {
 			Version:     "1.2.3",
 		},
 	}
-	got := templateCRDToProto(tmpl, scopeshim.ScopeProject)
+	got := templateCRDToProto(tmpl, true)
 	if got.Version != "1.2.3" {
 		t.Errorf("Version=%q want 1.2.3", got.Version)
 	}

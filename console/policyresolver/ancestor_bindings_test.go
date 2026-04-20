@@ -7,7 +7,6 @@ import (
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -220,11 +219,8 @@ func TestAncestorBindingLister_DecodesPolicyRefAndTargets(t *testing.T) {
 	if rb.PolicyRef == nil || rb.PolicyRef.GetNamespace() == "" {
 		t.Fatalf("expected decoded policy ref; got %+v", rb.PolicyRef)
 	}
-	if scopeshim.PolicyRefScope(rb.PolicyRef) != scopeshim.ScopeFolder {
-		t.Errorf("expected folder scope; got %v", scopeshim.PolicyRefScope(rb.PolicyRef))
-	}
-	if scopeshim.PolicyRefScopeName(rb.PolicyRef) != "eng" {
-		t.Errorf("expected scope_name=eng; got %q", scopeshim.PolicyRefScopeName(rb.PolicyRef))
+	if rb.PolicyRef.GetNamespace() != "holos-fld-eng" {
+		t.Errorf("expected namespace=holos-fld-eng; got %q", rb.PolicyRef.GetNamespace())
 	}
 	if rb.PolicyRef.GetName() != "eng-audit" {
 		t.Errorf("expected policy name=eng-audit; got %q", rb.PolicyRef.GetName())

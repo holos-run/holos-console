@@ -14,7 +14,6 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -112,13 +111,10 @@ func (c *AppliedRenderStateClient) FolderNamespaceForProject(ctx context.Context
 	return "", fmt.Errorf("no folder or organization ancestor for project namespace %q", projectNs)
 }
 
-// storedLinkedRef is the JSON wire shape for applied-render-set entries. The
-// `scope` field uses the same string values as the LabelTemplateScope label
-// (organization/folder/project) so records can be inspected with `kubectl`
-// without a proto decoder.
+// storedLinkedRef is the JSON wire shape for applied-render-set entries.
+// Records can be inspected with `kubectl` without a proto decoder.
 type storedLinkedRef struct {
-	Scope             string `json:"scope"`
-	ScopeName         string `json:"scope_name"`
+	Namespace         string `json:"namespace"`
 	Name              string `json:"name"`
 	VersionConstraint string `json:"version_constraint,omitempty"`
 }
@@ -134,8 +130,7 @@ func MarshalAppliedRenderSet(refs []*consolev1.LinkedTemplateRef) ([]byte, error
 			continue
 		}
 		stored = append(stored, storedLinkedRef{
-			Scope:             scopeLabelValue(scopeshim.RefScope(r)),
-			ScopeName:         scopeshim.RefScopeName(r),
+			Namespace:         r.GetNamespace(),
 			Name:              r.GetName(),
 			VersionConstraint: r.GetVersionConstraint(),
 		})
@@ -156,12 +151,11 @@ func UnmarshalAppliedRenderSet(raw string) ([]*consolev1.LinkedTemplateRef, erro
 	}
 	refs := make([]*consolev1.LinkedTemplateRef, 0, len(stored))
 	for _, s := range stored {
-		refs = append(refs, scopeshim.NewLinkedTemplateRef(
-			scopeFromLabel(s.Scope),
-			s.ScopeName,
-			s.Name,
-			s.VersionConstraint,
-		))
+		refs = append(refs, &consolev1.LinkedTemplateRef{
+			Namespace:         s.Namespace,
+			Name:              s.Name,
+			VersionConstraint: s.VersionConstraint,
+		})
 	}
 	return refs, nil
 }
@@ -358,53 +352,24 @@ func renderStateConfigMapName(kind TargetKind, project, target string) string {
 	return fmt.Sprintf("render-state-%s-%s-%s", renderTargetKindLabel(kind), project, target)
 }
 
-// scopeLabelValue maps a TemplateScope enum to the canonical scope label
-// value. Kept package-private to avoid conflicting with templates.scopeLabelValue.
-func scopeLabelValue(scope scopeshim.Scope) string {
-	switch scope {
-	case scopeshim.ScopeOrganization:
-		return v1alpha2.TemplateScopeOrganization
-	case scopeshim.ScopeFolder:
-		return v1alpha2.TemplateScopeFolder
-	case scopeshim.ScopeProject:
-		return v1alpha2.TemplateScopeProject
-	default:
-		return ""
-	}
-}
-
-// scopeFromLabel is the inverse of scopeLabelValue.
-func scopeFromLabel(label string) scopeshim.Scope {
-	switch label {
-	case v1alpha2.TemplateScopeOrganization:
-		return scopeshim.ScopeOrganization
-	case v1alpha2.TemplateScopeFolder:
-		return scopeshim.ScopeFolder
-	case v1alpha2.TemplateScopeProject:
-		return scopeshim.ScopeProject
-	default:
-		return scopeshim.ScopeUnspecified
-	}
-}
-
 // DiffRenderSets classifies refs as (added, removed, drifted) given a prior
 // applied set and a newly resolved set. Ordering is normalized: added holds
 // refs present in current but not applied; removed holds refs present in
 // applied but not current. `drifted` is true iff added or removed is
 // non-empty.
 //
-// The comparison key is `(scope, scope_name, name, version_constraint)` —
-// two refs that differ only by version constraint are treated as distinct
-// because tightening a version constraint is itself drift worth surfacing.
+// The comparison key is `(namespace, name, version_constraint)` — two refs
+// that differ only by version constraint are treated as distinct because
+// tightening a version constraint is itself drift worth surfacing.
 //
 // Key asymmetry with the resolver's dedup: the resolver deduplicates on the
-// `(scope, scope_name, name)` triple only (see RefKey in folder_resolver.go),
-// so when an explicit (owner-linked) ref and a REQUIRE rule name the same
-// template with different version constraints, the explicit ref wins and the
-// REQUIRE rule's constraint is dropped. Consequently, a REQUIRE-only change
-// to a version constraint (same template name) will not surface as drift if
-// the template is also explicitly linked on the target. This is intentional
-// per TestFolderResolver_DedupRespectsExplicit — the owner's choice is
+// `(namespace, name)` pair only (see RefKey in folder_resolver.go), so when
+// an explicit (owner-linked) ref and a REQUIRE rule name the same template
+// with different version constraints, the explicit ref wins and the REQUIRE
+// rule's constraint is dropped. Consequently, a REQUIRE-only change to a
+// version constraint (same template name) will not surface as drift if the
+// template is also explicitly linked on the target. This is intentional per
+// TestFolderResolver_DedupRespectsExplicit — the owner's choice is
 // authoritative. REQUIRE-only constraint changes on non-explicit refs and
 // any change to an explicit ref's constraint both surface here correctly.
 func DiffRenderSets(applied, current []*consolev1.LinkedTemplateRef) (added, removed []*consolev1.LinkedTemplateRef, drifted bool) {
@@ -438,16 +403,14 @@ func DiffRenderSets(applied, current []*consolev1.LinkedTemplateRef) (added, rem
 
 // refKey normalizes a LinkedTemplateRef to its comparison tuple.
 type refKey struct {
-	scope             scopeshim.Scope
-	scopeName         string
+	namespace         string
 	name              string
 	versionConstraint string
 }
 
 func keyForRef(r *consolev1.LinkedTemplateRef) refKey {
 	return refKey{
-		scope:             scopeshim.RefScope(r),
-		scopeName:         scopeshim.RefScopeName(r),
+		namespace:         r.GetNamespace(),
 		name:              r.GetName(),
 		versionConstraint: r.GetVersionConstraint(),
 	}

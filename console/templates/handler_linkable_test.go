@@ -13,7 +13,6 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -32,20 +31,20 @@ func (s *stubFolderGrantResolver) GetFolderGrants(_ context.Context, _ string) (
 // folder scope. HOL-619 collapsed the TemplateScopeRef enum; the namespace
 // is now the sole scope discriminator on request / proto messages.
 func folderScopeRef(folder string) string {
-	return scopeshim.DefaultResolver().FolderNamespace(folder)
+	return testResolver.FolderNamespace(folder)
 }
 
 // enabledTemplateCMForScope creates an enabled template ConfigMap in the given
 // namespace with a scope-appropriate LabelTemplateScope value. Used by tests
 // that need same-scope (non-org) templates such as folder-owned templates.
-func enabledTemplateCMForScope(ns, name, displayName, description string, scope scopeshim.Scope) *corev1.ConfigMap {
+func enabledTemplateCMForScope(ns, name, displayName, description string, scope scopeKind) *corev1.ConfigMap {
 	var scopeLabel string
 	switch scope {
-	case scopeshim.ScopeOrganization:
+	case scopeKindOrganization:
 		scopeLabel = v1alpha2.TemplateScopeOrganization
-	case scopeshim.ScopeFolder:
+	case scopeKindFolder:
 		scopeLabel = v1alpha2.TemplateScopeFolder
-	case scopeshim.ScopeProject:
+	case scopeKindProject:
 		scopeLabel = v1alpha2.TemplateScopeProject
 	}
 	return &corev1.ConfigMap{
@@ -355,11 +354,11 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 	orgNsObj := orgNS(org)
 	folderNsObj := folderNS(folder)
 
-	orgTemplate := enabledTemplateCMForScope("org-"+org, "org-httproute", "OrgHTTPRoute", "org-owned", scopeshim.ScopeOrganization)
-	folderTemplate := enabledTemplateCMForScope("fld-"+folder, "folder-gateway", "FolderGateway", "folder-owned", scopeshim.ScopeFolder)
+	orgTemplate := enabledTemplateCMForScope("org-"+org, "org-httproute", "OrgHTTPRoute", "org-owned", scopeKindOrganization)
+	folderTemplate := enabledTemplateCMForScope("fld-"+folder, "folder-gateway", "FolderGateway", "folder-owned", scopeKindFolder)
 
 	// Build a fresh handler per subtest so fakeClient state is isolated.
-	makeHandler := func(scope scopeshim.Scope, ancestors []*corev1.Namespace) *Handler {
+	makeHandler := func(scope scopeKind, ancestors []*corev1.Namespace) *Handler {
 		fakeClient := fake.NewClientset(orgNsObj, folderNsObj, orgTemplate, folderTemplate)
 		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
 		k8s := newTestK8sClient(t, fakeClient, r)
@@ -368,9 +367,9 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 		// Wire whichever grant resolver matches the request scope so
 		// checkAccess passes.
 		switch scope {
-		case scopeshim.ScopeOrganization:
+		case scopeKindOrganization:
 			handler.WithOrgGrantResolver(&stubOrgGrantResolver{users: orgUsers})
-		case scopeshim.ScopeFolder:
+		case scopeKindFolder:
 			handler.WithFolderGrantResolver(&stubFolderGrantResolver{users: folderUsers})
 		}
 		return handler
@@ -385,7 +384,7 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 	tests := []struct {
 		description      string
 		scope            string
-		requestScope     scopeshim.Scope
+		requestScope     scopeKind
 		ancestors        []*corev1.Namespace
 		includeSelfScope bool
 		want             want
@@ -393,7 +392,7 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 		{
 			description:      "org scope with include_self_scope=false returns empty (no ancestors)",
 			scope:            orgScopeRef(org),
-			requestScope:     scopeshim.ScopeOrganization,
+			requestScope:     scopeKindOrganization,
 			ancestors:        []*corev1.Namespace{orgNsObj},
 			includeSelfScope: false,
 			want: want{
@@ -403,7 +402,7 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 		{
 			description:      "org scope with include_self_scope=true returns org templates",
 			scope:            orgScopeRef(org),
-			requestScope:     scopeshim.ScopeOrganization,
+			requestScope:     scopeKindOrganization,
 			ancestors:        []*corev1.Namespace{orgNsObj},
 			includeSelfScope: true,
 			want: want{
@@ -413,7 +412,7 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 		{
 			description:      "folder scope with include_self_scope=false returns only ancestor (org) templates",
 			scope:            folderScopeRef(folder),
-			requestScope:     scopeshim.ScopeFolder,
+			requestScope:     scopeKindFolder,
 			ancestors:        []*corev1.Namespace{folderNsObj, orgNsObj},
 			includeSelfScope: false,
 			want: want{
@@ -423,7 +422,7 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 		{
 			description:      "folder scope with include_self_scope=true returns both folder and org templates",
 			scope:            folderScopeRef(folder),
-			requestScope:     scopeshim.ScopeFolder,
+			requestScope:     scopeKindFolder,
 			ancestors:        []*corev1.Namespace{folderNsObj, orgNsObj},
 			includeSelfScope: true,
 			want: want{

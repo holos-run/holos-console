@@ -9,8 +9,6 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/holos-run/holos-console/console/policyresolver"
-	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -20,7 +18,7 @@ import (
 // the fake controller-runtime client that backs the release CRUD path.
 func newOrgTestHandler(t *testing.T, fakeClient *fake.Clientset, shareUsers map[string]string, extra ...ctrlclient.Object) *Handler {
 	t.Helper()
-	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
+	r := testResolver
 	k8s := newTestK8sClient(t, fakeClient, r, extra...)
 	handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
 	handler.WithOrgGrantResolver(&stubOrgGrantResolver{users: shareUsers})
@@ -39,11 +37,12 @@ func (s *stubOrgGrantResolver) GetOrgGrants(_ context.Context, _ string) (map[st
 }
 
 // orgScopeRef returns the Kubernetes namespace string for the named
-// organization scope. HOL-619 collapsed the TemplateScopeRef enum so the
-// helper now emits a namespace string the handler will classify via the
-// scopeshim resolver.
+// organization scope. HOL-619 collapsed the TemplateScopeRef enum and
+// HOL-723 retired scopeshim, so the helper now emits a namespace string
+// produced by the package-level testResolver; the handler classifies it
+// back via resolver.ResourceTypeFromNamespace.
 func orgScopeRef(org string) string {
-	return scopeshim.DefaultResolver().OrgNamespace(org)
+	return testResolver.OrgNamespace(org)
 }
 
 func TestCreateRelease(t *testing.T) {

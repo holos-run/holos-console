@@ -131,13 +131,13 @@ func templatePolicyAcceptedCondition(pol *v1alpha1.TemplatePolicy) metav1.Condit
 	}
 	seen := make(map[string]struct{}, len(pol.Spec.Rules))
 	for i, rule := range pol.Spec.Rules {
-		key := fmt.Sprintf("%s|%s|%s|%s", rule.Kind, rule.Template.Scope, rule.Template.ScopeName, rule.Template.Name)
+		key := fmt.Sprintf("%s|%s|%s", rule.Kind, rule.Template.Namespace, rule.Template.Name)
 		if _, dup := seen[key]; dup {
 			return metav1.Condition{
 				Type:    v1alpha1.TemplatePolicyConditionAccepted,
 				Status:  metav1.ConditionFalse,
 				Reason:  v1alpha1.TemplatePolicyReasonInvalidRules,
-				Message: fmt.Sprintf("spec.rules[%d] duplicates an earlier rule with kind=%s, template=%s/%s/%s", i, rule.Kind, rule.Template.Scope, rule.Template.ScopeName, rule.Template.Name),
+				Message: fmt.Sprintf("spec.rules[%d] duplicates an earlier rule with kind=%s, template=%s/%s", i, rule.Kind, rule.Template.Namespace, rule.Template.Name),
 			}
 		}
 		seen[key] = struct{}{}

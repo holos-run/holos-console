@@ -18,7 +18,6 @@ import (
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rpc"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -116,7 +115,7 @@ type fakeTemplateResolver struct {
 	calls  int
 }
 
-func (f *fakeTemplateResolver) TemplateExists(_ context.Context, _ scopeshim.Scope, _, _ string) (bool, error) {
+func (f *fakeTemplateResolver) TemplateExists(_ context.Context, _, _ string) (bool, error) {
 	f.calls++
 	if f.err != nil {
 		return false, f.err
@@ -175,20 +174,19 @@ func getPolicyCR(t *testing.T, c client.Client, namespace, name string) *templat
 
 // newFolderScope and newOrgScope are short constructors for the namespace
 // strings used in every table-driven case below. HOL-619 removed
-// TemplateScopeRef from proto, so the helpers now return the Kubernetes
-// namespace the scope resolves to. The request-time namespace field is
-// the canonical scope discriminator; tests still classify it back to
-// (scope, scopeName) inside the handler via the scopeshim resolver.
+// TemplateScopeRef from proto; HOL-723 retired scopeshim. The helpers now
+// emit a namespace string produced by newTestResolver(); the handler
+// classifies it back via resolver.ResourceTypeFromNamespace.
 func newFolderScope(name string) string {
-	return scopeshim.DefaultResolver().FolderNamespace(name)
+	return newTestResolver().FolderNamespace(name)
 }
 
 func newOrgScope(name string) string {
-	return scopeshim.DefaultResolver().OrgNamespace(name)
+	return newTestResolver().OrgNamespace(name)
 }
 
 func newProjectScope(name string) string {
-	return scopeshim.DefaultResolver().ProjectNamespace(name)
+	return newTestResolver().ProjectNamespace(name)
 }
 
 // basicPolicy builds a policy whose namespace matches the supplied request
@@ -324,7 +322,7 @@ func TestCreatePolicyValidation(t *testing.T) {
 				Rules: []*consolev1.TemplatePolicyRule{
 					{
 						Kind: consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_UNSPECIFIED,
-						Template: scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "t", ""),
+						Template: &consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: "t"},
 					},
 				},
 			},
@@ -337,7 +335,7 @@ func TestCreatePolicyValidation(t *testing.T) {
 				Rules: []*consolev1.TemplatePolicyRule{
 					{
 						Kind: consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE,
-						Template: scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "", ""),
+						Template: &consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: ""},
 					},
 				},
 			},
@@ -350,6 +348,19 @@ func TestCreatePolicyValidation(t *testing.T) {
 				Rules: []*consolev1.TemplatePolicyRule{sampleRule()},
 			},
 			wantMsg: "valid DNS label",
+		},
+		{
+			name: "foreign template namespace",
+			policy: &consolev1.TemplatePolicy{
+				Name: "foreign-ref",
+				Rules: []*consolev1.TemplatePolicyRule{
+					{
+						Kind:     consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE,
+						Template: &consolev1.LinkedTemplateRef{Namespace: "default", Name: "t"},
+					},
+				},
+			},
+			wantMsg: "not a console-managed",
 		},
 	}
 	for _, tt := range tests {
@@ -728,8 +739,8 @@ func TestListPoliciesReturnsStoredRules(t *testing.T) {
 	if len(got.GetRules()) != 1 {
 		t.Fatalf("expected 1 rule, got %d", len(got.GetRules()))
 	}
-	if gotScope, _, err := scopeshim.FromNamespace(scopeshim.DefaultResolver(), got.GetNamespace()); err != nil || gotScope != scopeshim.ScopeFolder {
-		t.Errorf("expected folder scope from namespace %q, got scope=%v err=%v", got.GetNamespace(), gotScope, err)
+	if gotScope, _ := classifyNamespace(newTestResolver(), got.GetNamespace()); gotScope != scopeKindFolder {
+		t.Errorf("expected folder scope from namespace %q, got scope=%v", got.GetNamespace(), gotScope)
 	}
 
 	// List directly via the fake ctrlclient to verify no project-namespace

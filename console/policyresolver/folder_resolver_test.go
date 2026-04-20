@@ -17,7 +17,6 @@ import (
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -195,14 +194,27 @@ func policyCRD(namespace, name string, rules []templatesv1alpha1.TemplatePolicyR
 	}
 }
 
+// scopeToNamespace maps the (scope-label, scopeName) pair used by pre-
+// HOL-723 tests into the flat namespace identifier the CRD carries now.
+func scopeToNamespace(scope, scopeName string) string {
+	switch scope {
+	case v1alpha2.TemplateScopeOrganization:
+		return "holos-org-" + scopeName
+	case v1alpha2.TemplateScopeFolder:
+		return "holos-fld-" + scopeName
+	case v1alpha2.TemplateScopeProject:
+		return "holos-prj-" + scopeName
+	}
+	return ""
+}
+
 // requireRuleCRD builds a REQUIRE-kind CRD rule. Bindings select which
 // render targets the rule applies to.
 func requireRuleCRD(scope, scopeName, name string) templatesv1alpha1.TemplatePolicyRule {
 	return templatesv1alpha1.TemplatePolicyRule{
 		Kind: templatesv1alpha1.TemplatePolicyKindRequire,
 		Template: templatesv1alpha1.LinkedTemplateRef{
-			Scope:     scope,
-			ScopeName: scopeName,
+			Namespace: scopeToNamespace(scope, scopeName),
 			Name:      name,
 		},
 	}
@@ -213,8 +225,7 @@ func excludeRuleCRD(scope, scopeName, name string) templatesv1alpha1.TemplatePol
 	return templatesv1alpha1.TemplatePolicyRule{
 		Kind: templatesv1alpha1.TemplatePolicyKindExclude,
 		Template: templatesv1alpha1.LinkedTemplateRef{
-			Scope:     scope,
-			ScopeName: scopeName,
+			Namespace: scopeToNamespace(scope, scopeName),
 			Name:      name,
 		},
 	}
@@ -222,13 +233,14 @@ func excludeRuleCRD(scope, scopeName, name string) templatesv1alpha1.TemplatePol
 
 // orgTemplateRef / folderTemplateRef build proto template refs used as
 // explicit refs in resolver inputs. Keep them tiny so each test case reads
-// clearly.
+// clearly. Namespaces mirror the canonical HOL-567 fixture resolver
+// (holos-org-/fld- prefixes).
 func orgTemplateRef(name string) *consolev1.LinkedTemplateRef {
-	return scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", name, "")
+	return &consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: name}
 }
 
 func folderTemplateRef(folder, name string) *consolev1.LinkedTemplateRef {
-	return scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, folder, name, "")
+	return &consolev1.LinkedTemplateRef{Namespace: "holos-fld-" + folder, Name: name}
 }
 
 func TestFolderResolver_Resolve(t *testing.T) {
@@ -736,7 +748,7 @@ func TestFolderResolver_DedupRespectsExplicit(t *testing.T) {
 	walker := &resolver.Walker{Client: client, Resolver: r}
 
 	explicit := []*consolev1.LinkedTemplateRef{
-		scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", ">=1.0.0"),
+		{Namespace: "holos-org-acme", Name: "httproute", VersionConstraint: ">=1.0.0"},
 	}
 	policies := map[string][]templatesv1alpha1.TemplatePolicy{
 		ns["org"]: {
@@ -744,8 +756,7 @@ func TestFolderResolver_DedupRespectsExplicit(t *testing.T) {
 				{
 					Kind: templatesv1alpha1.TemplatePolicyKindRequire,
 					Template: templatesv1alpha1.LinkedTemplateRef{
-						Scope:             v1alpha2.TemplateScopeOrganization,
-						ScopeName:         "acme",
+						Namespace:         "holos-org-acme",
 						Name:              "httproute",
 						VersionConstraint: "<2.0.0",
 					},

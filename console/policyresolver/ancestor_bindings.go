@@ -7,7 +7,6 @@ import (
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -165,14 +164,13 @@ func (a *AncestorBindingLister) ListBindings(ctx context.Context, startNs string
 // LinkedTemplatePolicyRef. Mirrors templatepolicybindings.CRDPolicyRefToProto;
 // duplicated here to avoid an import cycle with console/templatepolicybindings.
 func crdPolicyRefToProto(ref templatesv1alpha1.LinkedTemplatePolicyRef) *consolev1.LinkedTemplatePolicyRef {
-	if ref.Name == "" && ref.ScopeName == "" && ref.Scope == "" {
+	if ref.Name == "" && ref.Namespace == "" {
 		return nil
 	}
-	return scopeshim.NewLinkedTemplatePolicyRef(
-		scopeFromPolicyRefLabel(ref.Scope),
-		ref.ScopeName,
-		ref.Name,
-	)
+	return &consolev1.LinkedTemplatePolicyRef{
+		Namespace: ref.Namespace,
+		Name:      ref.Name,
+	}
 }
 
 // crdTargetRefsToProto converts the CRD's target_refs spec field into proto
@@ -192,17 +190,6 @@ func crdTargetRefsToProto(refs []templatesv1alpha1.TemplatePolicyBindingTargetRe
 		})
 	}
 	return out
-}
-
-func scopeFromPolicyRefLabel(label string) scopeshim.Scope {
-	switch label {
-	case "organization":
-		return scopeshim.ScopeOrganization
-	case "folder":
-		return scopeshim.ScopeFolder
-	default:
-		return scopeshim.ScopeUnspecified
-	}
 }
 
 func targetKindCRDToProto(k templatesv1alpha1.TemplatePolicyBindingTargetKind) consolev1.TemplatePolicyBindingTargetKind {

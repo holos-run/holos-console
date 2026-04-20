@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -13,8 +12,8 @@ import (
 // is introduced: the noopResolver must return the caller's explicit refs
 // verbatim regardless of target kind, project namespace, or target name.
 func TestNoopResolver_ReturnsInputsUnchanged(t *testing.T) {
-	orgRef := scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", "")
-	folderRef := scopeshim.NewLinkedTemplateRef(scopeshim.ScopeFolder, "payments", "audit-policy", "")
+	orgRef := &consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: "httproute"}
+	folderRef := &consolev1.LinkedTemplateRef{Namespace: "holos-fld-payments", Name: "audit-policy"}
 
 	tests := []struct {
 		name         string
@@ -77,7 +76,7 @@ func TestNoopResolver_ReturnsInputsUnchanged(t *testing.T) {
 // starts mutating the input slice. The contract is clear: return a new or
 // aliasing slice, but never modify the caller's.
 func TestNoopResolver_DoesNotMutateInput(t *testing.T) {
-	orgRef := scopeshim.NewLinkedTemplateRef(scopeshim.ScopeOrganization, "acme", "httproute", "")
+	orgRef := &consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: "httproute"}
 	input := []*consolev1.LinkedTemplateRef{orgRef}
 	original := make([]*consolev1.LinkedTemplateRef, len(input))
 	copy(original, input)

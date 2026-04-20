@@ -82,25 +82,16 @@ spec:
                       slug.
                     minLength: 1
                     type: string
-                  scope:
+                  namespace:
                     description: |-
-                      Scope identifies the hierarchy level owning the referenced policy.
-                      Only "organization" and "folder" are valid — TemplatePolicy cannot
-                      live at project scope.
-                    enum:
-                    - organization
-                    - folder
-                    type: string
-                  scopeName:
-                    description: |-
-                      ScopeName is the organization or folder name owning the referenced
-                      policy.
+                      Namespace is the Kubernetes namespace that owns the referenced
+                      TemplatePolicy. Must be an organization or folder namespace —
+                      TemplatePolicy cannot live in a project namespace.
                     minLength: 1
                     type: string
                 required:
                 - name
-                - scope
-                - scopeName
+                - namespace
                 type: object
               targetRefs:
                 description: |-

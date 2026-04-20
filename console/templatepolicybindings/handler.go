@@ -16,7 +16,6 @@ import (
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -26,6 +25,53 @@ const auditResourceType = "template-policy-binding"
 // dnsLabelRe validates binding names as DNS labels (mirrors
 // console/templatepolicies).
 var dnsLabelRe = regexp.MustCompile(`^[a-z][a-z0-9-]*[a-z0-9]$`)
+
+// scopeKind is a local discriminator for RBAC routing. The namespace is
+// authoritative for storage; this discriminator classifies the namespace for
+// access-check cascades and ancestor-chain validation.
+type scopeKind int
+
+const (
+	scopeKindUnspecified scopeKind = iota
+	scopeKindOrganization
+	scopeKindFolder
+	scopeKindProject
+)
+
+// String returns a short label for audit logs and error messages.
+func (s scopeKind) String() string {
+	switch s {
+	case scopeKindOrganization:
+		return v1alpha2.ResourceTypeOrganization
+	case scopeKindFolder:
+		return v1alpha2.ResourceTypeFolder
+	case scopeKindProject:
+		return v1alpha2.ResourceTypeProject
+	default:
+		return "unspecified"
+	}
+}
+
+// classifyNamespace returns the scopeKind and logical name for a Kubernetes
+// namespace via the resolver's prefix scheme.
+func classifyNamespace(r *resolver.Resolver, ns string) (scopeKind, string) {
+	if r == nil || ns == "" {
+		return scopeKindUnspecified, ""
+	}
+	kind, name, err := r.ResourceTypeFromNamespace(ns)
+	if err != nil {
+		return scopeKindUnspecified, ""
+	}
+	switch kind {
+	case v1alpha2.ResourceTypeOrganization:
+		return scopeKindOrganization, name
+	case v1alpha2.ResourceTypeFolder:
+		return scopeKindFolder, name
+	case v1alpha2.ResourceTypeProject:
+		return scopeKindProject, name
+	}
+	return scopeKindUnspecified, ""
+}
 
 // PolicyExistsResolver reports whether a TemplatePolicy exists at a given
 // scope. The handler calls this to validate a binding's policy_ref points
@@ -47,7 +93,7 @@ var dnsLabelRe = regexp.MustCompile(`^[a-z][a-z0-9-]*[a-z0-9]$`)
 // avoid an import cycle; the policyresolver package consumes bindings
 // transitively via HOL-596.
 type PolicyExistsResolver interface {
-	PolicyExists(ctx context.Context, scope scopeshim.Scope, scopeName, name string) (bool, error)
+	PolicyExists(ctx context.Context, namespace, name string) (bool, error)
 }
 
 // AncestorChainResolver reports whether a target namespace is on the
@@ -77,7 +123,7 @@ type AncestorChainResolver interface {
 // A nil resolver disables the per-target project existence check (tests
 // that only cover the non-target-validation paths may skip the wiring).
 type ProjectExistsResolver interface {
-	ProjectExists(ctx context.Context, scope scopeshim.Scope, scopeName, projectName string) (bool, error)
+	ProjectExists(ctx context.Context, parentNamespace, projectName string) (bool, error)
 }
 
 // Handler implements the TemplatePolicyBindingService.
@@ -257,14 +303,14 @@ func (h *Handler) CreateTemplatePolicyBinding(
 	// rather than silently no-op'ing at render time. The check runs AFTER
 	// checkAccess so an unauthorized caller can't use the error to probe
 	// which policies exist in which scope.
-	if err := h.validatePolicyRefReachable(ctx, scope, scopeName, binding.GetPolicyRef()); err != nil {
+	if err := h.validatePolicyRefReachable(ctx, scope, scopeName, req.Msg.GetNamespace(), binding.GetPolicyRef()); err != nil {
 		return nil, err
 	}
 
 	// HOL-595: every target_ref's project_name must reference a real
 	// project under the binding's owning scope. Runs AFTER checkAccess
 	// for the same probe-oracle reason as the policy-ref check.
-	if err := h.validateTargetProjects(ctx, scope, scopeName, binding.GetTargetRefs()); err != nil {
+	if err := h.validateTargetProjects(ctx, scope, scopeName, req.Msg.GetNamespace(), binding.GetTargetRefs()); err != nil {
 		return nil, err
 	}
 
@@ -354,10 +400,10 @@ func (h *Handler) UpdateTemplatePolicyBinding(
 		return nil, mapK8sError(err)
 	}
 
-	if err := h.validatePolicyRefReachable(ctx, scope, scopeName, binding.GetPolicyRef()); err != nil {
+	if err := h.validatePolicyRefReachable(ctx, scope, scopeName, req.Msg.GetNamespace(), binding.GetPolicyRef()); err != nil {
 		return nil, err
 	}
-	if err := h.validateTargetProjects(ctx, scope, scopeName, binding.GetTargetRefs()); err != nil {
+	if err := h.validateTargetProjects(ctx, scope, scopeName, req.Msg.GetNamespace(), binding.GetTargetRefs()); err != nil {
 		return nil, err
 	}
 
@@ -455,26 +501,23 @@ func (h *Handler) DeleteTemplatePolicyBinding(
 // names the project namespace so operators can debug misrouted clients. The
 // same rejection applies on read and write so probing a project namespace
 // cannot leak data.
-func (h *Handler) extractBindingScope(namespace string) (scopeshim.Scope, string, error) {
+func (h *Handler) extractBindingScope(namespace string) (scopeKind, string, error) {
 	if namespace == "" {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace is required"))
+		return scopeKindUnspecified, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace is required"))
 	}
 	if h.resolver == nil {
-		return 0, "", connect.NewError(connect.CodeInternal, fmt.Errorf("namespace resolver not wired"))
+		return scopeKindUnspecified, "", connect.NewError(connect.CodeInternal, fmt.Errorf("namespace resolver not wired"))
 	}
-	scope, scopeName, err := scopeshim.FromNamespace(h.resolver, namespace)
-	if err != nil {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	if scope == scopeshim.ScopeProject {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument,
+	scope, scopeName := classifyNamespace(h.resolver, namespace)
+	if scope == scopeKindProject {
+		return scopeKindUnspecified, "", connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("template policy bindings cannot be stored in project namespace %q; use an organization or folder scope", namespace))
 	}
-	if scope == scopeshim.ScopeUnspecified {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace must classify as organization or folder"))
+	if scope == scopeKindUnspecified {
+		return scopeKindUnspecified, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace must classify as organization or folder"))
 	}
 	if scopeName == "" {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope name is required"))
+		return scopeKindUnspecified, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope name is required"))
 	}
 	return scope, scopeName, nil
 }
@@ -532,16 +575,12 @@ func (h *Handler) validatePolicyRef(ref *consolev1.LinkedTemplatePolicyRef) erro
 	if h.resolver == nil {
 		return connect.NewError(connect.CodeInternal, fmt.Errorf("namespace resolver not wired"))
 	}
-	scope, scopeName, err := scopeshim.FromNamespace(h.resolver, ref.GetNamespace())
-	if err != nil {
-		return connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("binding.policy_ref.namespace: %w", err))
-	}
-	if scope == scopeshim.ScopeProject {
+	scope, scopeName := classifyNamespace(h.resolver, ref.GetNamespace())
+	if scope == scopeKindProject {
 		return connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("binding.policy_ref.namespace cannot be a project namespace; template policies live at organization or folder scope"))
 	}
-	if scope == scopeshim.ScopeUnspecified || scopeName == "" {
+	if scope == scopeKindUnspecified || scopeName == "" {
 		return connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("binding.policy_ref.namespace must classify as organization or folder"))
 	}
@@ -612,8 +651,9 @@ func validateTargetRefs(refs []*consolev1.TemplatePolicyBindingTargetRef) error 
 // consulted when the policy lives in a different scope.
 func (h *Handler) validatePolicyRefReachable(
 	ctx context.Context,
-	scope scopeshim.Scope,
+	scope scopeKind,
 	scopeName string,
+	bindingNamespace string,
 	ref *consolev1.LinkedTemplatePolicyRef,
 ) error {
 	if ref == nil {
@@ -622,34 +662,32 @@ func (h *Handler) validatePolicyRefReachable(
 		// points in the future.
 		return nil
 	}
-	refScope := scopeshim.PolicyRefScope(ref)
-	refScopeName := scopeshim.PolicyRefScopeName(ref)
+	refNs := ref.GetNamespace()
 
 	// First, confirm the policy exists. A missing policy is a definitive
 	// authoring-time error regardless of whether the binding and policy
 	// share a scope.
 	if h.policyResolver != nil {
-		exists, err := h.policyResolver.PolicyExists(ctx, refScope, refScopeName, ref.GetName())
+		exists, err := h.policyResolver.PolicyExists(ctx, refNs, ref.GetName())
 		if err != nil {
 			slog.WarnContext(ctx, "policy existence probe failed; rejecting binding",
-				slog.String("policy_scope", refScope.String()),
-				slog.String("policy_scope_name", refScopeName),
+				slog.String("policy_namespace", refNs),
 				slog.String("policy_name", ref.GetName()),
 				slog.Any("error", err),
 			)
 			return connect.NewError(connect.CodeInternal,
-				fmt.Errorf("resolving policy %s/%s/%s: %w", refScope, refScopeName, ref.GetName(), err))
+				fmt.Errorf("resolving policy %s/%s: %w", refNs, ref.GetName(), err))
 		}
 		if !exists {
 			return connect.NewError(connect.CodeInvalidArgument,
-				fmt.Errorf("binding.policy_ref points at unknown policy %s/%s/%s",
-					refScope, refScopeName, ref.GetName()))
+				fmt.Errorf("binding.policy_ref points at unknown policy %s/%s",
+					refNs, ref.GetName()))
 		}
 	}
 
-	// Same scope means the binding trivially reaches the policy via the
-	// zero-length ancestor path — no resolver call needed.
-	if refScope == scope && refScopeName == scopeName {
+	// Same namespace means the binding trivially reaches the policy via
+	// the zero-length ancestor path — no resolver call needed.
+	if refNs == bindingNamespace {
 		return nil
 	}
 
@@ -657,24 +695,15 @@ func (h *Handler) validatePolicyRefReachable(
 		return nil
 	}
 
-	startNs, err := h.scopeNamespace(scope, scopeName)
-	if err != nil {
-		return err
-	}
-	wantNs, err := h.scopeNamespace(refScope, refScopeName)
-	if err != nil {
-		return err
-	}
-
-	contained, err := h.ancestorResolver.AncestorChainContains(ctx, startNs, wantNs)
+	contained, err := h.ancestorResolver.AncestorChainContains(ctx, bindingNamespace, refNs)
 	if err != nil {
 		return connect.NewError(connect.CodeInternal,
 			fmt.Errorf("resolving ancestor chain for binding scope %s/%s: %w", scope, scopeName, err))
 	}
 	if !contained {
 		return connect.NewError(connect.CodeFailedPrecondition,
-			fmt.Errorf("binding.policy_ref scope %s/%s is not reachable from binding scope %s/%s via ancestor chain",
-				refScope, refScopeName, scope, scopeName))
+			fmt.Errorf("binding.policy_ref namespace %q is not reachable from binding namespace %q via ancestor chain",
+				refNs, bindingNamespace))
 	}
 	return nil
 }
@@ -688,8 +717,9 @@ func (h *Handler) validatePolicyRefReachable(
 // project_name so the UI can highlight the bad row.
 func (h *Handler) validateTargetProjects(
 	ctx context.Context,
-	scope scopeshim.Scope,
+	scope scopeKind,
 	scopeName string,
+	parentNamespace string,
 	refs []*consolev1.TemplatePolicyBindingTargetRef,
 ) error {
 	if h.projectResolver == nil {
@@ -706,7 +736,7 @@ func (h *Handler) validateTargetProjects(
 		if checked[project] {
 			continue
 		}
-		exists, err := h.projectResolver.ProjectExists(ctx, scope, scopeName, project)
+		exists, err := h.projectResolver.ProjectExists(ctx, parentNamespace, project)
 		if err != nil {
 			return connect.NewError(connect.CodeInternal,
 				fmt.Errorf("target_refs[%d]: resolving project %q: %w", i, project, err))
@@ -719,23 +749,6 @@ func (h *Handler) validateTargetProjects(
 		checked[project] = true
 	}
 	return nil
-}
-
-// scopeNamespace derives the Kubernetes namespace name from a (scope,
-// scopeName) pair so the handler's ancestor-chain validation can translate
-// between the legacy scope model and the CRD's namespace-keyed identity.
-// Project scope is refused here as defense-in-depth; extractBindingScope
-// already rejects project namespaces up front.
-func (h *Handler) scopeNamespace(scope scopeshim.Scope, scopeName string) (string, error) {
-	switch scope {
-	case scopeshim.ScopeOrganization:
-		return h.resolver.OrgNamespace(scopeName), nil
-	case scopeshim.ScopeFolder:
-		return h.resolver.FolderNamespace(scopeName), nil
-	default:
-		return "", connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("unsupported scope %v for binding storage", scope))
-	}
 }
 
 // templatePolicyBindingCRDToProto converts a TemplatePolicyBinding CRD into

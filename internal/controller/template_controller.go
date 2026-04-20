@@ -236,7 +236,7 @@ func templateLinkedRefsCondition(tmpl *v1alpha1.Template) metav1.Condition {
 				Type:    v1alpha1.TemplateConditionLinkedRefsResolved,
 				Status:  metav1.ConditionFalse,
 				Reason:  v1alpha1.TemplateReasonLinkedRefVersionMismatch,
-				Message: fmt.Sprintf("linkedTemplates[%s/%s].versionConstraint is not a valid semver constraint: %v", ref.ScopeName, ref.Name, err),
+				Message: fmt.Sprintf("linkedTemplates[%s/%s].versionConstraint is not a valid semver constraint: %v", ref.Namespace, ref.Name, err),
 			}
 		}
 	}

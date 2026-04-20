@@ -179,7 +179,7 @@ func TestFolderResolver_MultiPodFreshness(t *testing.T) {
 		},
 		Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
 			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
-				Scope: v1alpha2.TemplateScopeOrganization, ScopeName: "mp-acme", Name: "audit",
+				Namespace: "holos-org-mp-acme", Name: "audit",
 			},
 			TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{
 				{
@@ -250,7 +250,7 @@ func TestFolderResolver_MultiPodFreshness(t *testing.T) {
 		},
 		Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
 			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
-				Scope: v1alpha2.TemplateScopeFolder, ScopeName: "mp-eng", Name: "net",
+				Namespace: "holos-fld-mp-eng", Name: "net",
 			},
 			TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{
 				{

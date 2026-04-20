@@ -304,8 +304,7 @@ func TestCRDRoundTrip_Template(t *testing.T) {
 					},
 					LinkedTemplates: []v1alpha1.LinkedTemplateRef{
 						{
-							Scope:             "organization",
-							ScopeName:         "acme",
+							Namespace:         "holos-org-acme",
 							Name:              "istio-gateway",
 							VersionConstraint: ">=1.0.0 <2.0.0",
 						},
@@ -340,8 +339,7 @@ func TestCRDRoundTrip_TemplatePolicy(t *testing.T) {
 				{
 					Kind: v1alpha1.TemplatePolicyKindRequire,
 					Template: v1alpha1.LinkedTemplateRef{
-						Scope:     "organization",
-						ScopeName: "acme",
+						Namespace: "holos-org-acme",
 						Name:      "istio-gateway",
 					},
 				},
@@ -364,8 +362,7 @@ func TestCRDRoundTrip_TemplatePolicyBinding(t *testing.T) {
 		Spec: v1alpha1.TemplatePolicyBindingSpec{
 			DisplayName: "Bind one",
 			PolicyRef: v1alpha1.LinkedTemplatePolicyRef{
-				Scope:     "folder",
-				ScopeName: "roundtrip-binding",
+				Namespace: "holos-fld-roundtrip-binding",
 				Name:      "require-one",
 			},
 			TargetRefs: []v1alpha1.TemplatePolicyBindingTargetRef{
@@ -551,7 +548,7 @@ func TestAdmission_FolderOrOrgOnly(t *testing.T) {
 						Rules: []v1alpha1.TemplatePolicyRule{{
 							Kind: v1alpha1.TemplatePolicyKindRequire,
 							Template: v1alpha1.LinkedTemplateRef{
-								Scope: "organization", ScopeName: "acme", Name: "t",
+								Namespace: "holos-org-acme", Name: "t",
 							},
 						}},
 					},
@@ -570,7 +567,7 @@ func TestAdmission_FolderOrOrgOnly(t *testing.T) {
 						Rules: []v1alpha1.TemplatePolicyRule{{
 							Kind: v1alpha1.TemplatePolicyKindRequire,
 							Template: v1alpha1.LinkedTemplateRef{
-								Scope: "organization", ScopeName: "acme", Name: "t",
+								Namespace: "holos-org-acme", Name: "t",
 							},
 						}},
 					},
@@ -589,7 +586,7 @@ func TestAdmission_FolderOrOrgOnly(t *testing.T) {
 						Rules: []v1alpha1.TemplatePolicyRule{{
 							Kind: v1alpha1.TemplatePolicyKindRequire,
 							Template: v1alpha1.LinkedTemplateRef{
-								Scope: "organization", ScopeName: "acme", Name: "t",
+								Namespace: "holos-org-acme", Name: "t",
 							},
 						}},
 					},
@@ -606,7 +603,7 @@ func TestAdmission_FolderOrOrgOnly(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: ns},
 					Spec: v1alpha1.TemplatePolicyBindingSpec{
 						PolicyRef: v1alpha1.LinkedTemplatePolicyRef{
-							Scope: "organization", ScopeName: "acme", Name: "p",
+							Namespace: "holos-org-acme", Name: "p",
 						},
 						TargetRefs: []v1alpha1.TemplatePolicyBindingTargetRef{{
 							Kind:        v1alpha1.TemplatePolicyBindingTargetKindDeployment,
@@ -626,7 +623,7 @@ func TestAdmission_FolderOrOrgOnly(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: ns},
 					Spec: v1alpha1.TemplatePolicyBindingSpec{
 						PolicyRef: v1alpha1.LinkedTemplatePolicyRef{
-							Scope: "organization", ScopeName: "acme", Name: "p",
+							Namespace: "holos-org-acme", Name: "p",
 						},
 						TargetRefs: []v1alpha1.TemplatePolicyBindingTargetRef{{
 							Kind:        v1alpha1.TemplatePolicyBindingTargetKindDeployment,
@@ -646,7 +643,7 @@ func TestAdmission_FolderOrOrgOnly(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: ns},
 					Spec: v1alpha1.TemplatePolicyBindingSpec{
 						PolicyRef: v1alpha1.LinkedTemplatePolicyRef{
-							Scope: "organization", ScopeName: "acme", Name: "p",
+							Namespace: "holos-org-acme", Name: "p",
 						},
 						TargetRefs: []v1alpha1.TemplatePolicyBindingTargetRef{{
 							Kind:        v1alpha1.TemplatePolicyBindingTargetKindDeployment,

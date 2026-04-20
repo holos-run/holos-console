@@ -9,8 +9,7 @@ spec:
   displayName: Bind sample-require-istio-gateway to the gateway deployments
   description: Attaches the require-istio-gateway policy to the gateway deployment in project api.
   policyRef:
-    scope: organization
-    scopeName: acme
+    namespace: holos-org-acme
     name: sample-require-istio-gateway
   targetRefs:
   - kind: Deployment

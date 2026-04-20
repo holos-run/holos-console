@@ -56,7 +56,6 @@ import (
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -66,17 +65,64 @@ const auditResourceType = "template-policy"
 // dnsLabelRe validates policy names as DNS labels (mirrors console/templates).
 var dnsLabelRe = regexp.MustCompile(`^[a-z][a-z0-9-]*[a-z0-9]$`)
 
-// TemplateExistsResolver reports whether a template exists at a given scope.
-// The handler calls this as a best-effort check when a policy references a
-// template so obviously broken policies (typos, wrong scope) fail fast; the
-// check is advisory, and transient Kubernetes errors are logged but do not
-// block the write.
+// scopeKind is a local discriminator for RBAC routing. The namespace is
+// authoritative for storage; this discriminator classifies the namespace for
+// access-check cascades.
+type scopeKind int
+
+const (
+	scopeKindUnspecified scopeKind = iota
+	scopeKindOrganization
+	scopeKindFolder
+	scopeKindProject
+)
+
+// String returns a short label for audit logs and error messages.
+func (s scopeKind) String() string {
+	switch s {
+	case scopeKindOrganization:
+		return v1alpha2.ResourceTypeOrganization
+	case scopeKindFolder:
+		return v1alpha2.ResourceTypeFolder
+	case scopeKindProject:
+		return v1alpha2.ResourceTypeProject
+	default:
+		return "unspecified"
+	}
+}
+
+// classifyNamespace returns the scopeKind and logical name (org/folder/project
+// slug) for a Kubernetes namespace via the resolver's prefix scheme.
+func classifyNamespace(r *resolver.Resolver, ns string) (scopeKind, string) {
+	if r == nil || ns == "" {
+		return scopeKindUnspecified, ""
+	}
+	kind, name, err := r.ResourceTypeFromNamespace(ns)
+	if err != nil {
+		return scopeKindUnspecified, ""
+	}
+	switch kind {
+	case v1alpha2.ResourceTypeOrganization:
+		return scopeKindOrganization, name
+	case v1alpha2.ResourceTypeFolder:
+		return scopeKindFolder, name
+	case v1alpha2.ResourceTypeProject:
+		return scopeKindProject, name
+	}
+	return scopeKindUnspecified, ""
+}
+
+// TemplateExistsResolver reports whether a template exists in the given
+// Kubernetes namespace. The handler calls this as a best-effort check when a
+// policy references a template so obviously broken policies (typos, wrong
+// namespace) fail fast; the check is advisory, and transient Kubernetes errors
+// are logged but do not block the write.
 //
 // This interface lets the handler decouple from console/templates to avoid an
 // import cycle; console/templates consumes this package transitively via
 // policyresolver for the render-time resolver wired in HOL-567.
 type TemplateExistsResolver interface {
-	TemplateExists(ctx context.Context, scope scopeshim.Scope, scopeName, name string) (bool, error)
+	TemplateExists(ctx context.Context, namespace, name string) (bool, error)
 }
 
 // Handler implements the TemplatePolicyService.
@@ -220,7 +266,7 @@ func (h *Handler) CreateTemplatePolicy(
 	if err := validatePolicyName(policy.GetName()); err != nil {
 		return nil, err
 	}
-	if err := validatePolicyRules(policy.GetRules()); err != nil {
+	if err := validatePolicyRules(h.resolver, policy.GetRules()); err != nil {
 		return nil, err
 	}
 
@@ -285,7 +331,7 @@ func (h *Handler) UpdateTemplatePolicy(
 	if name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
 	}
-	if err := validatePolicyRules(policy.GetRules()); err != nil {
+	if err := validatePolicyRules(h.resolver, policy.GetRules()); err != nil {
 		return nil, err
 	}
 
@@ -395,26 +441,23 @@ func (h *Handler) DeleteTemplatePolicy(
 // the project namespace so operators can debug misrouted clients. The same
 // rejection applies on read and write so probing a project namespace cannot
 // leak data.
-func (h *Handler) extractPolicyScope(namespace string) (scopeshim.Scope, string, error) {
+func (h *Handler) extractPolicyScope(namespace string) (scopeKind, string, error) {
 	if namespace == "" {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace is required"))
+		return scopeKindUnspecified, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace is required"))
 	}
 	if h.resolver == nil {
-		return 0, "", connect.NewError(connect.CodeInternal, fmt.Errorf("namespace resolver not wired"))
+		return scopeKindUnspecified, "", connect.NewError(connect.CodeInternal, fmt.Errorf("namespace resolver not wired"))
 	}
-	scope, scopeName, err := scopeshim.FromNamespace(h.resolver, namespace)
-	if err != nil {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	if scope == scopeshim.ScopeProject {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument,
+	scope, scopeName := classifyNamespace(h.resolver, namespace)
+	if scope == scopeKindProject {
+		return scopeKindUnspecified, "", connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("template policies cannot be stored in project namespace %q; use an organization or folder scope", namespace))
 	}
-	if scope == scopeshim.ScopeUnspecified {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace must classify as organization or folder"))
+	if scope == scopeKindUnspecified {
+		return scopeKindUnspecified, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("namespace must classify as organization or folder"))
 	}
 	if scopeName == "" {
-		return 0, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope name is required"))
+		return scopeKindUnspecified, "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope name is required"))
 	}
 	return scope, scopeName, nil
 }
@@ -459,7 +502,14 @@ func validatePolicyName(name string) error {
 // deployment_pattern) was removed in HOL-600 — TemplatePolicyBinding objects
 // now own render-target selection, so a policy's rules carry only the
 // (kind, template) tuple the binding will inject.
-func validatePolicyRules(rules []*consolev1.TemplatePolicyRule) error {
+//
+// When the resolver is non-nil, `template.namespace` must classify as an
+// organization/folder/project namespace. HOL-619 collapsed the scope enum and
+// HOL-723 retired the scopeshim; this check preserves the guardrail the old
+// (scope, scopeName) enum gave us for free — render-time resolution only
+// searches console-managed ancestor namespaces, so a rule naming `default`
+// or any other foreign namespace would silently never apply.
+func validatePolicyRules(r *resolver.Resolver, rules []*consolev1.TemplatePolicyRule) error {
 	if len(rules) == 0 {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("policy must have at least one rule"))
 	}
@@ -479,13 +529,16 @@ func validatePolicyRules(rules []*consolev1.TemplatePolicyRule) error {
 			return connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("rule %d: template.name is required", i))
 		}
-		if scopeshim.RefScope(tmpl) == scopeshim.ScopeUnspecified {
+		ns := tmpl.GetNamespace()
+		if ns == "" {
 			return connect.NewError(connect.CodeInvalidArgument,
-				fmt.Errorf("rule %d: template.scope is required", i))
+				fmt.Errorf("rule %d: template.namespace is required", i))
 		}
-		if scopeshim.RefScopeName(tmpl) == "" {
-			return connect.NewError(connect.CodeInvalidArgument,
-				fmt.Errorf("rule %d: template.scope_name is required", i))
+		if r != nil {
+			if kind, _ := classifyNamespace(r, ns); kind == scopeKindUnspecified {
+				return connect.NewError(connect.CodeInvalidArgument,
+					fmt.Errorf("rule %d: template.namespace %q is not a console-managed organization, folder, or project namespace", i, ns))
+			}
 		}
 	}
 	return nil
@@ -506,12 +559,10 @@ func (h *Handler) probeReferencedTemplates(ctx context.Context, rules []*console
 		if tmpl == nil {
 			continue
 		}
-		exists, err := h.templateResolver.TemplateExists(ctx, scopeshim.RefScope(tmpl), scopeshim.RefScopeName(tmpl), tmpl.GetName())
+		exists, err := h.templateResolver.TemplateExists(ctx, tmpl.GetNamespace(), tmpl.GetName())
 		if err != nil {
 			slog.WarnContext(ctx, "template existence probe failed; continuing",
 				slog.Int("rule_index", i),
-				slog.String("template_scope", scopeshim.RefScope(tmpl).String()),
-				slog.String("template_scope_name", scopeshim.RefScopeName(tmpl)),
 				slog.String("template_namespace", tmpl.GetNamespace()),
 				slog.String("template_name", tmpl.GetName()),
 				slog.Any("error", err),
@@ -521,8 +572,6 @@ func (h *Handler) probeReferencedTemplates(ctx context.Context, rules []*console
 		if !exists {
 			slog.WarnContext(ctx, "policy references template that does not currently exist",
 				slog.Int("rule_index", i),
-				slog.String("template_scope", scopeshim.RefScope(tmpl).String()),
-				slog.String("template_scope_name", scopeshim.RefScopeName(tmpl)),
 				slog.String("template_namespace", tmpl.GetNamespace()),
 				slog.String("template_name", tmpl.GetName()),
 			)

@@ -17,7 +17,6 @@ import (
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rpc"
-	"github.com/holos-run/holos-console/console/scopeshim"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -60,7 +59,7 @@ type stubPolicyResolver struct {
 	calls  int
 }
 
-func (s *stubPolicyResolver) PolicyExists(_ context.Context, _ scopeshim.Scope, _, _ string) (bool, error) {
+func (s *stubPolicyResolver) PolicyExists(_ context.Context, _, _ string) (bool, error) {
 	s.calls++
 	if s.err != nil {
 		return false, s.err
@@ -92,7 +91,7 @@ type stubProjectResolver struct {
 	calls  int
 }
 
-func (s *stubProjectResolver) ProjectExists(_ context.Context, _ scopeshim.Scope, _, project string) (bool, error) {
+func (s *stubProjectResolver) ProjectExists(_ context.Context, _, project string) (bool, error) {
 	s.calls++
 	if s.err != nil {
 		return false, s.err
@@ -156,18 +155,37 @@ func getBindingCR(t *testing.T, c client.Client, namespace, name string) *templa
 
 // newFolderScopeRef, newOrgScopeRef, and newProjectScopeRef are short
 // constructors that return the Kubernetes namespace string for the named
-// scope. HOL-619 collapsed the TemplateScopeRef enum; the namespace is
-// now the sole scope discriminator on request / proto messages.
+// scope. HOL-619 collapsed the TemplateScopeRef enum and HOL-723 retired
+// scopeshim; the namespace is now the sole scope discriminator on request
+// / proto messages, produced here by the package-level newTestResolver().
 func newFolderScopeRef(name string) string {
-	return scopeshim.DefaultResolver().FolderNamespace(name)
+	return newTestResolver().FolderNamespace(name)
 }
 
 func newOrgScopeRef(name string) string {
-	return scopeshim.DefaultResolver().OrgNamespace(name)
+	return newTestResolver().OrgNamespace(name)
 }
 
 func newProjectScopeRef(name string) string {
-	return scopeshim.DefaultResolver().ProjectNamespace(name)
+	return newTestResolver().ProjectNamespace(name)
+}
+
+// newLinkedPolicyRef builds a proto LinkedTemplatePolicyRef keyed by the
+// Kubernetes namespace the (scope, scopeName) pair resolves to under
+// newTestResolver(). Mirrors the retired scopeshim.NewLinkedTemplatePolicyRef
+// helper.
+func newLinkedPolicyRef(scope scopeKind, scopeName, name string) *consolev1.LinkedTemplatePolicyRef {
+	r := newTestResolver()
+	var ns string
+	switch scope {
+	case scopeKindOrganization:
+		ns = r.OrgNamespace(scopeName)
+	case scopeKindFolder:
+		ns = r.FolderNamespace(scopeName)
+	case scopeKindProject:
+		ns = r.ProjectNamespace(scopeName)
+	}
+	return &consolev1.LinkedTemplatePolicyRef{Namespace: ns, Name: name}
 }
 
 // basicBinding builds a binding whose namespace matches the supplied
@@ -181,8 +199,8 @@ func basicBinding(namespace string) *consolev1.TemplatePolicyBinding {
 		DisplayName: "Bind reference grant",
 		Description: "Attach reference-grant policy to payments-web",
 		Namespace:   namespace,
-		PolicyRef: scopeshim.NewLinkedTemplatePolicyRef(
-			scopeshim.ScopeOrganization,
+		PolicyRef: newLinkedPolicyRef(
+			scopeKindOrganization,
 			"acme",
 			"require-reference-grant",
 		),
@@ -834,8 +852,7 @@ func TestUpdatePreservesImmutableFields(t *testing.T) {
 			DisplayName: "Existing Display",
 			Description: "Existing Description",
 			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
-				Scope:     "organization",
-				ScopeName: "acme",
+				Namespace: "holos-org-acme",
 				Name:      "old-policy",
 			},
 			TargetRefs: nil,
@@ -956,8 +973,7 @@ func TestGetRoundTripsAnnotations(t *testing.T) {
 			DisplayName: "Existing",
 			Description: "Desc",
 			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
-				Scope:     "organization",
-				ScopeName: "acme",
+				Namespace: "holos-org-acme",
 				Name:      "require-reference-grant",
 			},
 			TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{
@@ -1013,8 +1029,7 @@ func TestListReturnsOnlyBindings(t *testing.T) {
 		Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
 			DisplayName: "A",
 			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
-				Scope:     "folder",
-				ScopeName: "payments",
+				Namespace: "holos-fld-payments",
 				Name:      "local-policy",
 			},
 			TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{

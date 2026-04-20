@@ -1,11 +1,8 @@
-// main_test.go wires a package-level scopeshim.DefaultResolver for the
-// tests in this package. HOL-619 replaced the proto-level TemplateScopeRef
-// with a namespace field backed by the shim's default resolver; test
-// helpers (orgScopeRef / folderScopeRef / projectScopeRef) call
-// DefaultResolver().*Namespace directly, which panics when no resolver
-// has been installed. Registering the same resolver the fake K8sClient
-// uses keeps the tests honest — the namespace strings the helpers emit
-// round-trip through scopeshim.FromNamespace exactly as production does.
+// main_test.go exposes a package-level testResolver used by test helpers
+// such as orgScopeRef / folderScopeRef / projectScopeRef. Post-HOL-723
+// the handler speaks in Kubernetes namespace directly, so the test
+// helpers also resolve namespaces by calling methods on this resolver
+// rather than a package-global scopeshim registry.
 package templates
 
 import (
@@ -14,15 +11,21 @@ import (
 
 	crdmgrtesting "github.com/holos-run/holos-console/console/crdmgr/testing"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/scopeshim"
 )
 
+// testResolver mirrors the resolver the fake K8sClient uses so the
+// namespace strings the helpers emit round-trip through
+// resolver.ResourceTypeFromNamespace exactly as production does. The
+// existing fixtures in k8s_test.go use bare `org-`, `fld-`, `prj-`
+// prefixes (no `holos-` NamespacePrefix) — keeping the resolver consistent
+// with those fixtures avoids a cross-file rename.
+var testResolver = &resolver.Resolver{
+	OrganizationPrefix: "org-",
+	FolderPrefix:       "fld-",
+	ProjectPrefix:      "prj-",
+}
+
 func TestMain(m *testing.M) {
-	scopeshim.SetDefaultResolver(&resolver.Resolver{
-		OrganizationPrefix: "org-",
-		FolderPrefix:       "fld-",
-		ProjectPrefix:      "prj-",
-	})
 	// Wrap m.Run through crdmgrtesting.RunTestsWithSharedEnv so the
 	// process-singleton envtest Environment is Stop()'d after the last
 	// test in this package, rather than being reaped on os.Exit and
