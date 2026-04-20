@@ -74,7 +74,14 @@ build-console: | console/dist ## Build the holos-console executable.
 	go build -trimpath -o bin/$(BIN_NAME) -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd/holos-console
 
 .PHONY: build-injector
-build-injector: ## Build the holos-secret-injector executable.
+# build-injector depends on console/dist because cmd/secret-injector imports
+# github.com/holos-run/holos-console/console for GetVersion(), and
+# console/console.go has `//go:embed all:dist`. Without the prerequisite,
+# `make build-injector` and `make -j build` would fail on fresh checkouts
+# before the frontend has been generated. When M0 phase HOL-689 splits the
+# injector onto its own Dockerfile, the in-container build can use a
+# no-UI-prereq variant similar to build-binary.
+build-injector: | console/dist ## Build the holos-secret-injector executable.
 	@echo "building ${INJECTOR_BIN_NAME} ${VERSION}"
 	@echo "GOPATH=${GOPATH}"
 	go build -trimpath -o bin/$(INJECTOR_BIN_NAME) -ldflags $(LD_FLAGS) $(REPO_PATH)/cmd/secret-injector
