@@ -22,6 +22,22 @@ jobs:
       packages: write
       attestations: write
       id-token: write
+    # Matrix publishes both the web-console image (holos-console) and the
+    # secret-injection controller image (holos-console-secret-injector) from
+    # the same job, mirroring the Makefile's docker-buildx-console /
+    # docker-buildx-injector split. ADR 031 keeps the two binaries on
+    # disjoint source trees; this workflow is the CI counterpart that keeps
+    # their container images aligned on tag/SHA.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: holos-console
+            image: ghcr.io/holos-run/holos-console
+            dockerfile: Dockerfile.console
+          - name: holos-secret-injector
+            image: ghcr.io/holos-run/holos-console-secret-injector
+            dockerfile: Dockerfile.secret-injector
     steps:
       - name: Set tag from trigger event
         id: opts
@@ -64,16 +80,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push container images
+      - name: Build and push ${{ matrix.name }}
         id: build-and-push
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/holos-run/holos-console:${{ steps.tags.outputs.tag }}
-            ghcr.io/holos-run/holos-console:${{ steps.sha.outputs.sha }}${{ steps.tags.outputs.suffix }}
+            ${{ matrix.image }}:${{ steps.tags.outputs.tag }}
+            ${{ matrix.image }}:${{ steps.sha.outputs.sha }}${{ steps.tags.outputs.suffix }}
 
       - name: Setup Cosign to sign container images
         uses: sigstore/cosign-installer@v3.7.0
@@ -82,8 +99,8 @@ jobs:
         env:
           DIGEST: ${{ steps.build-and-push.outputs.digest }}
         run: |
-          cosign sign --yes ghcr.io/holos-run/holos-console:${{ steps.tags.outputs.tag }}@${DIGEST}
-          cosign sign --yes ghcr.io/holos-run/holos-console:${{ steps.sha.outputs.sha }}${{ steps.tags.outputs.suffix }}@${DIGEST}
+          cosign sign --yes ${{ matrix.image }}:${{ steps.tags.outputs.tag }}@${DIGEST}
+          cosign sign --yes ${{ matrix.image }}:${{ steps.sha.outputs.sha }}${{ steps.tags.outputs.suffix }}@${DIGEST}
 
     outputs:
       tag: ${{ steps.tags.outputs.tag }}

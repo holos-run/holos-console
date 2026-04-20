@@ -153,3 +153,9 @@ jobs:
 
       - name: Go vet
         run: make vet
+
+      # check-imports enforces the ADR 031 disjoint-tree invariant: no
+      # cross-imports between internal/controller and internal/secretinjector.
+      # Run in CI so a PR cannot silently merge a violation.
+      - name: Check disjoint-tree invariant
+        run: make check-imports
