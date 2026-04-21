@@ -74,7 +74,6 @@ func TestDocsSyncSnippets(t *testing.T) {
 	cueCtx := cuecontext.New()
 
 	for _, path := range cueFiles {
-		path := path // capture for t.Run
 		name := filepath.ToSlash(path)
 		t.Run(name, func(t *testing.T) {
 			src, err := os.ReadFile(path)
