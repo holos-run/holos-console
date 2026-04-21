@@ -162,9 +162,7 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/routes/_authenticated/projects/$projectName/deployments/-$deploymentName.test.tsx` | Deployment detail: image/tag, replicas, conditions, logs, re-deploy/delete, RBAC, tab layout (Status/Logs) with legacy `?tab=template` degrading to Status, App URL row sourced from `statusSummary.output.url` |
 | `src/routes/_authenticated/projects/$projectName/deployments/-new.test.tsx` | Create deployment page: form fields (display name, slug, description, template, image, tag, command, args, env vars, port), Combobox template selector, defaults pre-fill (name/description from CUE defaults), RBAC |
 | `src/routes/_authenticated/orgs/$orgName/settings/-settings.test.tsx` | Org settings page: display name, description, sharing, default sharing, delete |
-| `src/routes/_authenticated/orgs/$orgName/settings/-org-templates.test.tsx` | Platform templates list and detail: names, descriptions, mandatory badge, RBAC (owner/viewer), skeleton, error state |
 | `src/routes/_authenticated/projects/-$projectName.test.tsx` | ProjectLayout: sets selected project from URL param |
-| `src/routes/_authenticated/orgs/$orgName/projects/-index.test.tsx` | Org projects page: list, navigate to project |
 | `src/routes/-_authenticated.test.tsx` | Auth layout: silent renewal, OIDC redirect |
 | `src/lib/isOwner.test.ts` | RBAC owner check logic |
 | `src/lib/org-context.test.tsx` | Org context: persistence, reset, filtering |

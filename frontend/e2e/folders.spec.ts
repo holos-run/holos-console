@@ -29,12 +29,17 @@ test.describe('Folder list page', () => {
     await apiCreateOrg(page, orgName)
     await apiCreateFolder(page, folderName, orgName, 1, orgName)
 
-    // Navigate to the org's folders page
-    await page.goto(`/orgs/${orgName}/folders`)
+    // Navigate to the org's unified Resources listing (folders + projects)
+    await page.goto(`/orgs/${orgName}/resources`)
     await page.waitForLoadState('networkidle')
 
-    // Folder should appear in the list (target the display-name column span to avoid strict mode violations)
-    await expect(page.locator('span.font-medium', { hasText: folderName })).toBeVisible({ timeout: 10000 })
+    // The Resources page renders each leaf resource as a link in the Path
+    // column (display name) and again in the Name column (slug). Matching
+    // by the link role avoids strict-mode violations regardless of which
+    // column the name appears in.
+    await expect(
+      page.getByRole('link', { name: folderName }).first(),
+    ).toBeVisible({ timeout: 10000 })
 
     // Cleanup
     await apiDeleteFolder(page, folderName, orgName)
@@ -47,11 +52,16 @@ test.describe('Folder list page', () => {
     const orgName = `e2e-no-folders-${Date.now()}`
     await apiCreateOrg(page, orgName)
 
-    await page.goto(`/orgs/${orgName}/folders`)
+    await page.goto(`/orgs/${orgName}/resources`)
     await page.waitForLoadState('networkidle')
 
-    // A new org auto-creates a "Default" folder — verify it appears
-    await expect(page.locator('span.font-medium', { hasText: 'Default' })).toBeVisible({ timeout: 10000 })
+    // A new org auto-creates a "Default" folder — verify the folder link
+    // appears in the Resources list. The Default folder's slug and display
+    // name are both "Default", so match by link role to avoid strict mode
+    // violations across the Path and Name columns.
+    await expect(
+      page.getByRole('link', { name: 'Default' }).first(),
+    ).toBeVisible({ timeout: 10000 })
 
     await apiDeleteOrg(page, orgName)
   })
@@ -97,10 +107,12 @@ test.describe('Nested folder workflow', () => {
     // Create child folder under parent folder
     await apiCreateFolder(page, childFolder, orgName, 2, parentFolder)
 
-    // Navigate to org's top-level folders page — only parent folder should appear
-    await page.goto(`/orgs/${orgName}/folders`)
+    // Navigate to org's unified Resources listing — only parent folder should appear as a top-level entry
+    await page.goto(`/orgs/${orgName}/resources`)
     await page.waitForLoadState('networkidle')
-    await expect(page.locator('span.font-medium', { hasText: parentFolder })).toBeVisible({ timeout: 10000 })
+    await expect(
+      page.getByRole('link', { name: parentFolder }).first(),
+    ).toBeVisible({ timeout: 10000 })
 
     // Navigate to parent folder index page — card title should show the folder name
     await page.goto(`/folders/${parentFolder}`)

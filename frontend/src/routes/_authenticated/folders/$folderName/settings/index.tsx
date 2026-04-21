@@ -290,8 +290,8 @@ export function FolderDetailPage({
                   {orgName}
                 </Link>
                 {' / '}
-                <Link to="/orgs/$orgName/folders" params={{ orgName }} className="hover:underline">
-                  Folders
+                <Link to="/orgs/$orgName/resources" params={{ orgName }} className="hover:underline">
+                  Resources
                 </Link>
                 {' / '}
                 <Link to="/folders/$folderName/settings" params={{ folderName }} className="hover:underline">
@@ -593,7 +593,7 @@ export function FolderDetailPage({
                 try {
                   setDeleteOpen(false)
                   navigate?.({
-                    to: '/orgs/$orgName/folders',
+                    to: '/orgs/$orgName/resources',
                     params: { orgName },
                   })
                 } catch (err) {

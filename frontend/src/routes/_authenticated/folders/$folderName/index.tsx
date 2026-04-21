@@ -100,11 +100,11 @@ export function FolderIndexPage({
               </Link>
               {' / '}
               <Link
-                to="/orgs/$orgName/folders"
+                to="/orgs/$orgName/resources"
                 params={{ orgName }}
                 className="hover:underline"
               >
-                Folders
+                Resources
               </Link>
               {' / '}
               {folderName}
@@ -341,13 +341,14 @@ function ProjectsSection({
       emptyText="No projects in this folder."
       viewAll={
         // No folder-scoped projects index exists yet (HOL-755); "View all"
-        // falls back to the org-wide list. The aria-label makes the
-        // fallback explicit so a screen-reader user is not surprised by
-        // the wider scope after activating the link.
+        // falls back to the org-wide Resources listing, which contains both
+        // folders and projects in a single unified table. The aria-label
+        // makes the wider scope explicit so a screen-reader user is not
+        // surprised by it after activating the link.
         <Link
-          to="/orgs/$orgName/projects"
+          to="/orgs/$orgName/resources"
           params={{ orgName }}
-          aria-label="View all projects in the organization"
+          aria-label="View all resources in the organization"
         >
           <Button variant="outline" size="sm">
             View all

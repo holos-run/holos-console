@@ -51,8 +51,6 @@ function typeBadge(type: ResourceType) {
 // stays SPA. Slugs surface via `title` so colliding display names can be
 // disambiguated.
 function PathCell({ resource }: { resource: Resource }) {
-  const org = resource.path[0]
-  const orgName = org?.name ?? ''
   const leafDisplay = resource.displayName || resource.name
 
   return (
@@ -72,8 +70,8 @@ function PathCell({ resource }: { resource: Resource }) {
               </Link>
             ) : (
               <Link
-                to="/orgs/$orgName/folders/$folderName"
-                params={{ orgName, folderName: element.name }}
+                to="/folders/$folderName"
+                params={{ folderName: element.name }}
                 title={element.name}
                 className="hover:underline text-muted-foreground"
               >
@@ -86,8 +84,8 @@ function PathCell({ resource }: { resource: Resource }) {
       })}
       {resource.type === ResourceType.FOLDER ? (
         <Link
-          to="/orgs/$orgName/folders/$folderName"
-          params={{ orgName, folderName: resource.name }}
+          to="/folders/$folderName"
+          params={{ folderName: resource.name }}
           title={resource.name}
           className="hover:underline font-medium"
         >
