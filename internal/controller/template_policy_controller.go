@@ -33,7 +33,7 @@ import (
 
 // TemplatePolicyReconciler reconciles a TemplatePolicy object. Unlike the
 // Template reconciler, the policy surface HOL-620 validates is much smaller:
-// the admission policy in config/admission/ rejects creates in
+// the admission policy in config/holos-console/admission/ rejects creates in
 // project-labeled namespaces and the CRD validation enforces the
 // `+kubebuilder:validation:MinItems=1` on .spec.rules. The reconciler here
 // surfaces the "Accepted" status for any residual post-admission check

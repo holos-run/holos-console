@@ -115,7 +115,7 @@ type TemplatePolicyBindingStatus struct {
 // only in namespaces whose `console.holos.run/resource-type` label is
 // `organization` or `folder`; creation in a project-annotated namespace is
 // rejected by the ValidatingAdmissionPolicy shipped alongside this CRD
-// (see config/admission/).
+// (see config/holos-console/admission/).
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced,shortName=tpb,categories=holos

@@ -82,7 +82,7 @@ type TemplatePolicyStatus struct {
 // Policies live only in namespaces whose `console.holos.run/resource-type`
 // label is `organization` or `folder`; creation in a project-annotated
 // namespace is rejected by the ValidatingAdmissionPolicy shipped alongside
-// this CRD (see config/admission/).
+// this CRD (see config/holos-console/admission/).
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced,shortName=tpol,categories=holos

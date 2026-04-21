@@ -146,7 +146,7 @@ type RenderStateStatus struct {
 // — write a fake `RenderState` matching the live render output, and the
 // drift checker would report no drift even after a policy revoked a
 // required template. The ValidatingAdmissionPolicy shipped in
-// `config/admission/renderstate-folder-or-org-only.yaml` enforces the
+// `config/holos-console/admission/renderstate-folder-or-org-only.yaml` enforces the
 // invariant at the API server.
 //
 // +kubebuilder:object:root=true

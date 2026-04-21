@@ -5,9 +5,9 @@
 #
 # Apply order (locked in ADR 030):
 #   1. DNS + k3d cluster + mkcert root CA
-#   2. kubectl apply -f config/crd/
-#   3. kubectl apply -f config/admission/
-#   4. kubectl apply -f config/rbac/
+#   2. kubectl apply -f config/holos-console/crd/
+#   3. kubectl apply -f config/holos-console/admission/
+#   4. kubectl apply -f config/holos-console/rbac/
 #   5. holos-console deployment rollout
 #
 # The ordering matters: CRDs must exist before admission policies reference
@@ -34,9 +34,9 @@ echo ">>> (3/5) scripts/local-ca"
 ./scripts/local-ca
 
 echo ">>> (4/5) kubectl apply CRDs, admission policies, RBAC"
-kubectl apply -f "${REPO_ROOT}/config/crd/"
-kubectl apply -f "${REPO_ROOT}/config/admission/"
-kubectl apply -f "${REPO_ROOT}/config/rbac/"
+kubectl apply -f "${REPO_ROOT}/config/holos-console/crd/"
+kubectl apply -f "${REPO_ROOT}/config/holos-console/admission/"
+kubectl apply -f "${REPO_ROOT}/config/holos-console/rbac/"
 
 echo ">>> (5/5) roll holos-console deployment"
 if [[ -n "${HOLOS_CONSOLE_ROLLOUT:-}" ]]; then

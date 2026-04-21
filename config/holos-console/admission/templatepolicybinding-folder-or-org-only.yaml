@@ -4,7 +4,7 @@
 # that contract at API-server admission time so the handler-side guard can be
 # removed later without reopening the hole.
 #
-# See config/admission/templatepolicy-folder-or-org-only.yaml for the full
+# See config/holos-console/admission/templatepolicy-folder-or-org-only.yaml for the full
 # rationale on namespace classification and the
 # `console.holos.run/resource-type` label.
 apiVersion: admissionregistration.k8s.io/v1

@@ -197,8 +197,8 @@ manifests: ## Generate CRD, RBAC, and deepcopy sources for the templates group f
 		object:headerFile="hack/boilerplate.go.txt" \
 		paths="./api/templates/..." \
 		paths="./internal/controller/..." \
-		output:crd:artifacts:config=config/crd \
-		output:rbac:artifacts:config=config/rbac
+		output:crd:artifacts:config=config/holos-console/crd \
+		output:rbac:artifacts:config=config/holos-console/rbac
 
 .PHONY: manifests-secrets
 # manifests-secrets generates the secrets group CRDs, RBAC, and deepcopy

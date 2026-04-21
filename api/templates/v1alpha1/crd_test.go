@@ -68,7 +68,7 @@ func setupEnvTest(t *testing.T) *envtestSuite {
 	}
 
 	env := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join(repoRoot, "config", "crd")},
+		CRDDirectoryPaths:     []string{filepath.Join(repoRoot, "config", "holos-console", "crd")},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -97,7 +97,7 @@ func setupEnvTest(t *testing.T) *envtestSuite {
 	// ships to production clusters, keeping the admission regression suite
 	// in lockstep with the actual policy surface.
 	ctx := context.Background()
-	admissionDir := filepath.Join(repoRoot, "config", "admission")
+	admissionDir := filepath.Join(repoRoot, "config", "holos-console", "admission")
 	if err := envtesthelpers.ApplyYAMLFilesInDir(ctx, c, admissionDir); err != nil {
 		t.Fatalf("applying admission policies: %v", err)
 	}
@@ -377,7 +377,7 @@ func emptyFor(obj client.Object) client.Object {
 
 // TestAdmissionPolicy_TemplatePolicy_ProjectNamespace_Rejected and
 // TestAdmissionPolicy_TemplatePolicyBinding_ProjectNamespace_Rejected exercise
-// the CEL ValidatingAdmissionPolicy shipped in config/admission. Table-driven
+// the CEL ValidatingAdmissionPolicy shipped in config/holos-console/admission. Table-driven
 // by (kind, namespace-kind) pairs: creation in a project-labeled namespace
 // rejects with a CEL-originated admission error; creation in a folder- or
 // org-labeled namespace succeeds.

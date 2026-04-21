@@ -141,7 +141,7 @@ project, targetName)` and returns
 `render-state-{kind-segment}-{project}-{target}` where
 `kind-segment` is `deployment` or `project-template`. The HOL-554
 storage-isolation invariant is enforced at admission by
-`config/admission/renderstate-folder-or-org-only.yaml` (CEL rule
+`config/holos-console/admission/renderstate-folder-or-org-only.yaml` (CEL rule
 mirroring the TemplatePolicy admission policy).
 
 The seven `api/v1alpha2` constants encoding the ConfigMap layout
@@ -230,8 +230,8 @@ the call site rather than to switch the entire client.
   fresh aggregation. Per HOL-615 the pre-release migration policy is
   "no backwards compatibility"; the next render of each target
   rewrites the applied set into the new CRD shape.
-- New CRD manifest ships in `config/crd/`; new VAP manifest ships in
-  `config/admission/`. Both regenerate via `make manifests`.
+- New CRD manifest ships in `config/holos-console/crd/`; new VAP manifest ships in
+  `config/holos-console/admission/`. Both regenerate via `make manifests`.
 - `console/policyresolver/applied_state_test.go` moves from
   fake-clientset ConfigMap fixtures to the controller-runtime fake
   client builder seeded with `RenderState` CRs. The fake client backs
