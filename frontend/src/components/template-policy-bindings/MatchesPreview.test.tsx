@@ -244,6 +244,86 @@ describe('MatchesPreview', () => {
     )
   })
 
+  it('folder-scoped binding: literal out-of-folder project is excluded from preview', async () => {
+    // HOL-773 codex follow-up on PR #1084: under folder scope, only
+    // projects inside the folder are reachable. A target that points at
+    // a literal project outside the folder must NOT show matches (the
+    // backend rejects it with "project ... does not exist under binding
+    // scope ...").
+    stubLists({
+      projects: [{ name: 'in-folder', displayName: 'In Folder' }],
+      perProjectTemplates: {
+        'in-folder': [
+          {
+            name: 'ingress',
+            displayName: 'Ingress',
+            namespace: namespaceForProject('in-folder'),
+          },
+        ],
+        // "out-of-folder" has a template, but the folder's project list
+        // doesn't include it — the preview should ignore the data.
+        'out-of-folder': [
+          {
+            name: 'ingress',
+            displayName: 'Ingress',
+            namespace: namespaceForProject('out-of-folder'),
+          },
+        ],
+      },
+    })
+    render(
+      <MatchesPreview
+        organization="test-org"
+        parentScope={{ kind: 'folder', folderName: 'team' }}
+        targets={[
+          {
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: 'out-of-folder',
+            name: 'ingress',
+          },
+        ]}
+      />,
+    )
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('matches-preview-empty'),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('folder-scoped binding: literal in-folder project still reports a match', async () => {
+    stubLists({
+      projects: [{ name: 'in-folder', displayName: 'In Folder' }],
+      perProjectTemplates: {
+        'in-folder': [
+          {
+            name: 'ingress',
+            displayName: 'Ingress',
+            namespace: namespaceForProject('in-folder'),
+          },
+        ],
+      },
+    })
+    render(
+      <MatchesPreview
+        organization="test-org"
+        parentScope={{ kind: 'folder', folderName: 'team' }}
+        targets={[
+          {
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: 'in-folder',
+            name: 'ingress',
+          },
+        ]}
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('matches-preview-toggle')).toHaveTextContent(
+        /Matches 1 target/i,
+      )
+    })
+  })
+
   it('literal/literal row is verified against the project list (no over-reporting)', async () => {
     // HOL-773 codex review on PR #1084: the preview used to short-circuit
     // literal/literal pairs without checking that the resource actually

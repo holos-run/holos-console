@@ -192,17 +192,23 @@ export function MatchesPreview({
   // the top of the component so hook order is invariant across renders.
   // Both hooks are passed empty strings when not applicable which short-
   // circuits via `enabled: !!organization` inside the hooks themselves.
-  const anyRowWildcardsProject = useMemo(
-    () => targets.some((t) => t.projectName === WILDCARD),
-    [targets],
-  )
+  //
+  // Folder-scoped bindings must *always* enumerate the folder's projects —
+  // not just when a wildcard row is present — because literal project
+  // names still need to be filtered through the scope ceiling. Otherwise
+  // the preview would happily probe an out-of-folder project and claim
+  // matches the backend will reject with "project ... does not exist
+  // under binding scope ..." (codex review on PR #1084).
+  const needsScopeProjectList =
+    parentScope.kind === 'folder' ||
+    targets.some((t) => t.projectName === WILDCARD)
   const orgProjectsQuery = useListProjects(
-    parentScope.kind === 'organization' && anyRowWildcardsProject
+    parentScope.kind === 'organization' && needsScopeProjectList
       ? organization
       : '',
   )
   const folderProjectsQuery = useListProjectsByParent(
-    parentScope.kind === 'folder' && anyRowWildcardsProject ? organization : '',
+    parentScope.kind === 'folder' && needsScopeProjectList ? organization : '',
     parentScope.kind === 'folder' ? ParentType.FOLDER : undefined,
     parentScope.kind === 'folder' ? parentScope.folderName : undefined,
   )
@@ -214,8 +220,15 @@ export function MatchesPreview({
     return (folderProjectsQuery.data ?? []).map((p) => p.name)
   }, [parentScope.kind, orgProjectsQuery.data, folderProjectsQuery.data])
 
+  // Folder scope is the only kind that hard-limits literal project names.
+  // Org scope lets a binding reach every project the caller can see, so
+  // an org-scoped literal only needs existence verification (which happens
+  // below via the per-project probe). For folder scope we additionally
+  // check membership in `enumeratedProjects`.
+  const scopeEnforcesFolderMembership = parentScope.kind === 'folder'
+
   const enumeratedProjectsPending =
-    anyRowWildcardsProject &&
+    needsScopeProjectList &&
     ((parentScope.kind === 'organization' && orgProjectsQuery.isLoading) ||
       (parentScope.kind === 'folder' && folderProjectsQuery.isLoading))
 
@@ -223,18 +236,34 @@ export function MatchesPreview({
   // projectName) pair that a per-project probe component owns one hook
   // call for. De-duplicating at this layer avoids issuing the same
   // useListTemplates/useListDeployments twice for the same project.
+  //
+  // Literal projects are filtered through the scope's project list when
+  // the scope enforces membership (folder). An out-of-scope literal gets
+  // an empty projects array which drops its contribution to the match
+  // set — the panel's empty-state warning then tells the author the row
+  // will attach to nothing, which matches the backend's behavior.
   const rowPlans = useMemo(() => {
+    const scopeSet = new Set(enumeratedProjects)
     return targets.map((t) => {
       const projectIsWildcard = t.projectName === WILDCARD
       const hasLiteralProject = !!t.projectName && !projectIsWildcard
-      const projects: string[] = projectIsWildcard
-        ? enumeratedProjects
-        : hasLiteralProject
-          ? [t.projectName]
-          : []
-      return { target: t, projects, projectIsWildcard }
+      let projects: string[]
+      let outOfScope = false
+      if (projectIsWildcard) {
+        projects = enumeratedProjects
+      } else if (hasLiteralProject) {
+        if (scopeEnforcesFolderMembership && !scopeSet.has(t.projectName)) {
+          projects = []
+          outOfScope = true
+        } else {
+          projects = [t.projectName]
+        }
+      } else {
+        projects = []
+      }
+      return { target: t, projects, projectIsWildcard, outOfScope }
     })
-  }, [targets, enumeratedProjects])
+  }, [targets, enumeratedProjects, scopeEnforcesFolderMembership])
 
   const probeSpecs = useMemo(() => {
     const seen = new Set<string>()
@@ -279,6 +308,19 @@ export function MatchesPreview({
         continue
       }
 
+      // Folder-scope literal with enumeration still loading: pending, not
+      // empty — avoids a flash-of-empty before the scope list resolves.
+      if (
+        !plan.projectIsWildcard &&
+        scopeEnforcesFolderMembership &&
+        enumeratedProjectsPending &&
+        plan.projects.length === 0 &&
+        !plan.outOfScope
+      ) {
+        pending += 1
+        continue
+      }
+
       for (const projectName of plan.projects) {
         const probeKey = `${t.kind}/${projectName}`
         const probe = probeData[probeKey]
@@ -307,7 +349,7 @@ export function MatchesPreview({
       }
     }
     return { matches: Array.from(seen.values()), pendingCount: pending }
-  }, [rowPlans, probeData, enumeratedProjectsPending])
+  }, [rowPlans, probeData, enumeratedProjectsPending, scopeEnforcesFolderMembership])
 
   const [open, setOpen] = useState(true)
   const isEmpty = matches.length === 0
