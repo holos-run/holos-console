@@ -113,10 +113,19 @@ type Loader interface {
 
 // SecretLoader is the production [Loader] implementation backed by a
 // controller-runtime client.Client. The zero value is not usable; callers
-// construct one via [NewSecretLoader]. Reads go through the supplied
-// client, which in a running manager is the cache-backed client — so a
-// steady-state Active/Get is an in-memory map lookup, not an API server
-// round trip.
+// construct one via [NewSecretLoader].
+//
+// The supplied client MUST be a non-cached direct client (built with
+// client.New, not mgr.GetClient()). The controller-runtime ClusterRole
+// shipped with this binary grants `get` on core/v1 Secret only — not
+// `list` or `watch` — because enumeration of Secrets is the class of
+// vulnerability this service is designed to close (see
+// config/secret-injector/rbac/cluster/role.yaml and ADR 031). A
+// cache-backed client would lazily start a Secret informer on the
+// first Get and require `list`/`watch`, which real RBAC forbids. The
+// Credential reconciler (HOL-751) constructs the direct client for
+// this purpose; the fake client used by unit tests mimics the direct
+// client's Get-by-name shape.
 //
 // The loader holds no pepper bytes in its own fields. Every call fetches
 // the current state of the backing Secret and parses it, which means an
@@ -134,9 +143,13 @@ type SecretLoader struct {
 }
 
 // NewSecretLoader constructs a [SecretLoader] that reads from the pinned
-// [PepperSecretName] Secret in the supplied namespace. The client is the
-// cache-backed client.Client obtained from the controller-runtime manager
-// (see [Manager.GetClient]); callers in tests can pass a fake client.
+// [PepperSecretName] Secret in the supplied namespace. The client MUST be
+// a non-cached direct client — see the [SecretLoader] GoDoc for why a
+// cache-backed client would violate the shipped ClusterRole (no
+// list/watch on core/v1 Secret). Production callers in HOL-751
+// construct the direct client via client.New(cfg, client.Options{})
+// from the same rest.Config the manager uses. Tests supply a fake
+// client whose Get shape matches the direct client.
 //
 // namespace MUST be non-empty. Callers typically obtain it from
 // [ControllerNamespace].
