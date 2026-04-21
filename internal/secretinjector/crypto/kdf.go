@@ -58,20 +58,20 @@ const EnvelopeSchemaVersion = 1
 type Params struct {
 	// Time is the argon2id pass count (RFC 9106 §4 `t`). Ignored by
 	// PBKDF2-HMAC-SHA512.
-	Time uint32 `json:"time,omitempty"`
+	Time uint32 `json:"time"`
 	// Memory is the argon2id memory cost in KiB (RFC 9106 §4 `m`). Ignored
 	// by PBKDF2-HMAC-SHA512.
-	Memory uint32 `json:"memory,omitempty"`
+	Memory uint32 `json:"memory"`
 	// Parallelism is the argon2id lane count (RFC 9106 §4 `p`). Ignored
 	// by PBKDF2-HMAC-SHA512.
-	Parallelism uint8 `json:"parallelism,omitempty"`
+	Parallelism uint8 `json:"parallelism"`
 	// KeyLength is the derived-hash length in bytes. All bindings honor
 	// this field. argon2id's RFC 9106 recommendation is 32.
-	KeyLength uint32 `json:"keyLength,omitempty"`
+	KeyLength uint32 `json:"keyLength"`
 	// Iterations is the PBKDF2 iteration count. Ignored by argon2id. The
 	// field is present so an -fips binary's PBKDF2 binding can use the
 	// same [Params] struct.
-	Iterations uint32 `json:"iterations,omitempty"`
+	Iterations uint32 `json:"iterations"`
 }
 
 // Envelope is the self-describing record the Credential reconciler (HOL-751)
