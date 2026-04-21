@@ -3,7 +3,6 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { StringListInput } from '@/components/string-list-input'
 import { EnvVarEditor, filterEnvVars } from '@/components/env-var-editor'
-import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,19 +35,18 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { ArrowLeft, CheckCircle2, Copy, ExternalLink, Info, TriangleAlert, XCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, ExternalLink, Info, TriangleAlert, XCircle } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import type { EnvVar, Event, ContainerStatus, Link as DeploymentLink } from '@/gen/holos/console/v1/deployments_pb'
-import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentRenderPreview, useGetDeploymentPolicyState, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
-import { namespaceForProject } from '@/lib/scope-labels'
+import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentPolicyState, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 import { isSafeHttpUrl } from '@/lib/url'
 import { PolicySection } from '@/components/policy-drift/PolicySection'
 
-type DeploymentTab = 'status' | 'logs' | 'template'
+type DeploymentTab = 'status' | 'logs'
 
 function validateTab(value: unknown): DeploymentTab {
-  if (value === 'logs' || value === 'template') return value
+  if (value === 'logs') return value
   return 'status'
 }
 
@@ -196,7 +194,7 @@ function DeploymentLinkRow({
  *
  * Sourced from `deployment.statusSummary.output.links` so live-resource
  * link annotations harvested by the HOL-573 / HOL-574 aggregator surface
- * here, not just template-evaluated links from the render preview.
+ * here.
  *
  * The primary URL is intentionally NOT included here — it continues to
  * render in its own dedicated "App URL" row above the Links section so
@@ -259,7 +257,6 @@ export function DeploymentDetailPage({
   const { data: deployment, isPending, error } = useGetDeployment(projectName, deploymentName)
   const { data: status } = useGetDeploymentStatus(projectName, deploymentName, { refetchInterval: 5000 })
   const { data: project } = useGetProject(projectName)
-  const { data: preview, isPending: isPreviewPending } = useGetDeploymentRenderPreview(projectName, deploymentName)
   const { data: policyState, isPending: isPolicyPending, error: policyError } = useGetDeploymentPolicyState(projectName, deploymentName)
 
   const [tailLines, setTailLines] = useState<number>(100)
@@ -283,7 +280,7 @@ export function DeploymentDetailPage({
   // Local tab state initialised from the URL search param so that the component
   // responds immediately to tab clicks without waiting for a navigation cycle.
   // The URL is kept in sync via navigate so tabs are deep-linkable.
-  const [activeTab, setActiveTab] = useState<DeploymentTab>(() => routeSearch.tab ?? 'status')
+  const [activeTab, setActiveTab] = useState<DeploymentTab>(() => validateTab(routeSearch.tab))
 
   const handleTabChange = (next: string) => {
     const tab = validateTab(next)
@@ -441,7 +438,6 @@ export function DeploymentDetailPage({
             <TabsList>
               <TabsTrigger value="status">Status</TabsTrigger>
               <TabsTrigger value="logs">Logs</TabsTrigger>
-              <TabsTrigger value="template">Template</TabsTrigger>
             </TabsList>
 
             {/* Status tab — replicas, conditions, pods, environment variables */}
@@ -450,34 +446,19 @@ export function DeploymentDetailPage({
                 <h3 className="text-sm font-medium">Status</h3>
                 <Separator />
                 {/*
-                  App URL row — surfaces the deployment's primary URL.
-                  Prefers the live aggregator's promoted URL on
+                  App URL row — surfaces the deployment's primary URL
+                  from the live aggregator on
                   `deployment.statusSummary.output.url` (set by the
                   HOL-574 path when a `console.holos.run/primary-url`
-                  annotation is present on an owned resource), falling
-                  back to the template-evaluated render preview
-                  (`preview.output.url`) when no live URL is available.
-                  This ordering matters: a deployment whose primary URL
-                  is published via a controller-stamped annotation must
-                  still render its App URL row, otherwise the Status tab
-                  could show secondary links but omit the canonical
-                  primary one (HOL-575 round-2 review finding P1).
-                  Both candidate URLs are gated through `isSafeHttpUrl`
-                  so non-HTTP(S) schemes (javascript:, data:, vbscript:,
-                  file:) cannot reach an anchor href. While the preview
-                  is pending and no live URL has been observed yet,
-                  nothing renders (deliberate: avoids a flash on first
-                  load).
+                  annotation is present on an owned resource). Gated
+                  through `isSafeHttpUrl` so non-HTTP(S) schemes
+                  (javascript:, data:, vbscript:, file:) cannot reach
+                  an anchor href. When no live URL has been observed
+                  yet, nothing renders.
                 */}
                 {(() => {
                   const liveURL = deployment?.statusSummary?.output?.url
-                  const previewURL = !isPreviewPending ? preview?.output?.url : ''
-                  const primaryURL =
-                    (liveURL && isSafeHttpUrl(liveURL))
-                      ? liveURL
-                      : (previewURL && isSafeHttpUrl(previewURL))
-                        ? previewURL
-                        : ''
+                  const primaryURL = liveURL && isSafeHttpUrl(liveURL) ? liveURL : ''
                   if (!primaryURL) return null
                   return (
                     <div
@@ -502,12 +483,7 @@ export function DeploymentDetailPage({
                   aggregated from `console.holos.run/external-link.*` and
                   `link.argocd.argoproj.io/*` annotations on owned resources.
                   Sourced from `deployment.statusSummary.output.links`
-                  (populated by the HOL-573 / HOL-574 aggregator) so live
-                  resource-annotation links surface here even when they were
-                  added after the original render. The render-preview path
-                  only contains template-evaluated links and would miss
-                  anything harvested from a controller-stamped Service or
-                  Ingress annotation.
+                  (populated by the HOL-573 / HOL-574 aggregator).
                   Each anchor is gated through `isSafeHttpUrl` so unsafe
                   schemes (javascript:, data:, vbscript:, file:) cannot
                   reach an `href`; the section is hidden entirely when no
@@ -747,91 +723,6 @@ export function DeploymentDetailPage({
               <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto max-h-[70vh] whitespace-pre-wrap">
                 {logs || 'No logs available.'}
               </pre>
-            </TabsContent>
-
-            {/* Template tab — read-only CUE editor and API access helpers */}
-            <TabsContent value="template" className="mt-4 space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-sm font-medium">Template Preview</h3>
-                <Separator />
-                {isPreviewPending ? (
-                  <div className="space-y-4">
-                    <Skeleton className="h-5 w-48" />
-                    <Skeleton className="h-64 w-full" />
-                  </div>
-                ) : preview ? (
-                  <CueTemplateEditor
-                    cueTemplate={preview.cueTemplate}
-                    onChange={() => {}}
-                    readOnly={true}
-                    defaultPlatformInput={preview.cuePlatformInput}
-                    defaultProjectInput={preview.cueProjectInput}
-                    namespace={namespaceForProject(projectName)}
-                  />
-                ) : null}
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-sm font-medium">API Access</h3>
-                <Separator />
-                <p className="text-xs text-muted-foreground">
-                  Call this RPC from the command line. Set{' '}
-                  <code className="font-mono">$HOLOS_ID_TOKEN</code> first — see the API Access
-                  section on your{' '}
-                  <Link to="/profile" className="underline">
-                    profile page
-                  </Link>
-                  .
-                </p>
-                <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                    curl (Connect protocol — recommended)
-                  </p>
-                  <div className="relative">
-                    <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
-                      {`curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" \\\n  ${typeof window !== 'undefined' ? window.location.origin : 'https://localhost:8443'}/holos.console.v1.DeploymentService/GetDeploymentRenderPreview \\\n  -H "Content-Type: application/json" \\\n  -H "Connect-Protocol-Version: 1" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}'`}
-                    </pre>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Copy curl command"
-                      className="absolute top-2 right-2 h-7 w-7"
-                      onClick={() => {
-                        const origin = typeof window !== 'undefined' ? window.location.origin : 'https://localhost:8443'
-                        const cmd = `curl -s --cacert "$(mkcert -CAROOT)/rootCA.pem" \\\n  ${origin}/holos.console.v1.DeploymentService/GetDeploymentRenderPreview \\\n  -H "Content-Type: application/json" \\\n  -H "Connect-Protocol-Version: 1" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}'`
-                        navigator.clipboard.writeText(cmd)
-                        toast.success('Copied to clipboard')
-                      }}
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-wider text-muted-foreground">
-                    grpcurl (gRPC backward compatibility)
-                  </p>
-                  <div className="relative">
-                    <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
-                      {`grpcurl -cacert "$(mkcert -CAROOT)/rootCA.pem" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  ${typeof window !== 'undefined' ? window.location.host : 'localhost:8443'} \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`}
-                    </pre>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Copy grpcurl command"
-                      className="absolute top-2 right-2 h-7 w-7"
-                      onClick={() => {
-                        const host = typeof window !== 'undefined' ? window.location.host : 'localhost:8443'
-                        const cmd = `grpcurl -cacert "$(mkcert -CAROOT)/rootCA.pem" \\\n  -H "Authorization: Bearer $HOLOS_ID_TOKEN" \\\n  -d '{"project": "${projectName}", "name": "${deploymentName}"}' \\\n  ${host} \\\n  holos.console.v1.DeploymentService/GetDeploymentRenderPreview`
-                        navigator.clipboard.writeText(cmd)
-                        toast.success('Copied to clipboard')
-                      }}
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
             </TabsContent>
           </Tabs>
         </CardContent>

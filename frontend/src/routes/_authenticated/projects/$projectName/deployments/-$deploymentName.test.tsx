@@ -31,7 +31,6 @@ vi.mock('@/queries/deployments', () => ({
   useDeleteDeployment: vi.fn(),
   useListNamespaceSecrets: vi.fn(),
   useListNamespaceConfigMaps: vi.fn(),
-  useGetDeploymentRenderPreview: vi.fn(),
   useGetDeploymentPolicyState: vi.fn(),
 }))
 
@@ -39,15 +38,10 @@ vi.mock('@/queries/projects', () => ({
   useGetProject: vi.fn(),
 }))
 
-vi.mock('@/queries/templates', () => ({
-  useRenderTemplate: vi.fn(),
-}))
-
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps, useGetDeploymentRenderPreview, useGetDeploymentPolicyState } from '@/queries/deployments'
+import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps, useGetDeploymentPolicyState } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
-import { useRenderTemplate } from '@/queries/templates'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentPhase } from '@/gen/holos/console/v1/deployments_pb'
 import { DeploymentDetailPage } from './$deploymentName'
@@ -162,15 +156,6 @@ const mockStatusWithHealthyContainers = {
 
 const mockLogs = '2024-01-15T10:30:01Z Starting server...\n2024-01-15T10:30:02Z Listening on :8080'
 
-const mockPreview = {
-  cueTemplate: 'input: #ProjectInput\nplatform: #PlatformInput\n',
-  cuePlatformInput: 'platform: {\n  project: "test-project"\n  namespace: "holos-prj-test-project"\n}',
-  cueProjectInput: 'input: {\n  name: "api"\n  image: "ghcr.io/org/api"\n  tag: "v1.2.3"\n  port: 8080\n}',
-  renderedYaml: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: api\n',
-  renderedJson: '[]',
-  output: undefined as { url: string } | undefined,
-}
-
 function setupMocks(userRole = Role.OWNER) {
   ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
   ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatus, isPending: false, error: null })
@@ -180,9 +165,7 @@ function setupMocks(userRole = Role.OWNER) {
   ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
   ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
   ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
-  ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
   ;(useGetDeploymentPolicyState as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
-  ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: mockPreview.renderedYaml, renderedJson: '' }, error: null, isFetching: false })
 }
 
 describe('DeploymentDetailPage', () => {
@@ -493,7 +476,6 @@ describe('DeploymentDetailPage', () => {
     ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
     ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
     ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
-    ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
     render(<DeploymentDetailPage />)
     fireEvent.click(screen.getByRole('button', { name: /re-?deploy/i }))
     // The env var name input should be pre-populated
@@ -526,15 +508,17 @@ describe('DeploymentDetailPage', () => {
     expect(screen.getByText(/Starting server/)).toBeInTheDocument()
   })
 
-  it('switches to Template tab when clicked and shows CUE editor', async () => {
-    const user = userEvent.setup()
+  it('does not render a Template tab trigger (HOL-611)', () => {
     setupMocks()
     render(<DeploymentDetailPage />)
-    await user.click(screen.getByRole('tab', { name: /template/i }))
-    const editor = screen.getByLabelText('CUE Template') as HTMLTextAreaElement
-    expect(editor).toBeInTheDocument()
-    expect(editor.readOnly).toBe(true)
-    expect(editor.value).toContain('#ProjectInput')
+    expect(screen.queryByRole('tab', { name: /template/i })).not.toBeInTheDocument()
+  })
+
+  it('does not render the Template Preview panel (HOL-611)', () => {
+    setupMocks()
+    render(<DeploymentDetailPage />)
+    expect(screen.queryByText('Template Preview')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('CUE Template')).not.toBeInTheDocument()
   })
 
   it('keeps Re-deploy and Delete buttons visible on all tabs', async () => {
@@ -550,11 +534,6 @@ describe('DeploymentDetailPage', () => {
     await user.click(screen.getByRole('tab', { name: /logs/i }))
     expect(screen.getByRole('button', { name: /re-?deploy/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /delete deployment/i })).toBeInTheDocument()
-
-    // Visible on Template tab
-    await user.click(screen.getByRole('tab', { name: /template/i }))
-    expect(screen.getByRole('button', { name: /re-?deploy/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /delete deployment/i })).toBeInTheDocument()
   })
 
   it('activates Logs tab when URL has ?tab=logs', () => {
@@ -566,12 +545,15 @@ describe('DeploymentDetailPage', () => {
     expect(screen.getByText(/Starting server/)).toBeInTheDocument()
   })
 
-  it('activates Template tab when URL has ?tab=template', () => {
+  it('falls back to Status tab when URL has ?tab=template (HOL-611)', () => {
+    // Template tab no longer exists. An inbound deep-link with the legacy
+    // value should degrade to Status rather than producing an orphaned
+    // "unknown tab" state, so existing bookmarks do not break.
     mockUseSearch.mockReturnValue({ tab: 'template' })
     setupMocks()
     render(<DeploymentDetailPage />)
-    const templateTab = screen.getByRole('tab', { name: /template/i })
-    expect(templateTab).toHaveAttribute('data-state', 'active')
+    const statusTab = screen.getByRole('tab', { name: /status/i })
+    expect(statusTab).toHaveAttribute('data-state', 'active')
   })
 
   it('log viewer does not have max-h-96 class (uses larger height)', async () => {
@@ -582,191 +564,6 @@ describe('DeploymentDetailPage', () => {
     // The log <pre> should not be capped at max-h-96
     const logPre = screen.getByText(/Starting server/).closest('pre')
     expect(logPre).not.toHaveClass('max-h-96')
-  })
-
-  describe('Template tab section', () => {
-    beforeEach(() => {
-      setupMocks()
-    })
-
-    it('renders Template tab trigger', () => {
-      render(<DeploymentDetailPage />)
-      expect(screen.getByRole('tab', { name: /template/i })).toBeInTheDocument()
-    })
-
-    it('renders CUE template source in read-only editor after clicking Template tab', async () => {
-      const user = userEvent.setup()
-      render(<DeploymentDetailPage />)
-      await user.click(screen.getByRole('tab', { name: /template/i }))
-      const editor = screen.getByLabelText('CUE Template') as HTMLTextAreaElement
-      expect(editor).toBeInTheDocument()
-      expect(editor.readOnly).toBe(true)
-      expect(editor.value).toContain('#ProjectInput')
-    })
-
-    it('renders API Access section after clicking Template tab', async () => {
-      const user = userEvent.setup()
-      render(<DeploymentDetailPage />)
-      await user.click(screen.getByRole('tab', { name: /template/i }))
-      expect(screen.getByText('API Access')).toBeInTheDocument()
-    })
-
-    it('renders a working curl command using HOLOS_ID_TOKEN after clicking Template tab', async () => {
-      const user = userEvent.setup()
-      render(<DeploymentDetailPage />)
-      await user.click(screen.getByRole('tab', { name: /template/i }))
-      const curl = screen.getByText(/curl -s --cacert/)
-      expect(curl.textContent).toContain('Connect-Protocol-Version: 1')
-      expect(curl.textContent).toContain('$HOLOS_ID_TOKEN')
-      expect(curl.textContent).toContain('holos.console.v1.DeploymentService/GetDeploymentRenderPreview')
-      expect(curl.textContent).toContain('"project": "test-project"')
-      expect(curl.textContent).toContain('"name": "api"')
-      expect(curl.textContent).not.toContain('-k')
-    })
-
-    it('renders a grpcurl command using HOLOS_ID_TOKEN after clicking Template tab', async () => {
-      const user = userEvent.setup()
-      render(<DeploymentDetailPage />)
-      await user.click(screen.getByRole('tab', { name: /template/i }))
-      const grpcurl = screen.getByText(/grpcurl -cacert/)
-      expect(grpcurl.textContent).toContain('$HOLOS_ID_TOKEN')
-      expect(grpcurl.textContent).toContain('holos.console.v1.DeploymentService/GetDeploymentRenderPreview')
-      expect(grpcurl.textContent).not.toContain('-insecure')
-    })
-
-    it('does not render the broken grpcurl -plaintext form', async () => {
-      const user = userEvent.setup()
-      render(<DeploymentDetailPage />)
-      await user.click(screen.getByRole('tab', { name: /template/i }))
-      expect(screen.queryByText(/grpcurl -plaintext/)).not.toBeInTheDocument()
-    })
-
-    it('copy button for curl command copies correct command after clicking Template tab', async () => {
-      const writeText = vi.fn().mockResolvedValue(undefined)
-      // userEvent intercepts clipboard; wire up the spy on the userEvent clipboard mock
-      const user = userEvent.setup({ writeToClipboard: true })
-      Object.defineProperty(navigator, 'clipboard', {
-        value: { writeText },
-        configurable: true,
-      })
-      render(<DeploymentDetailPage />)
-      await user.click(screen.getByRole('tab', { name: /template/i }))
-      await user.click(screen.getByLabelText(/copy curl command/i))
-      await waitFor(() => expect(writeText).toHaveBeenCalled())
-      const copied = writeText.mock.calls[0][0] as string
-      expect(copied).toContain('Connect-Protocol-Version: 1')
-      expect(copied).toContain('$HOLOS_ID_TOKEN')
-      expect(copied).toContain('GetDeploymentRenderPreview')
-      expect(copied).toContain('test-project')
-      expect(copied).toContain('api')
-    })
-
-    it('copy button for grpcurl command copies correct command after clicking Template tab', async () => {
-      const writeText = vi.fn().mockResolvedValue(undefined)
-      const user = userEvent.setup({ writeToClipboard: true })
-      Object.defineProperty(navigator, 'clipboard', {
-        value: { writeText },
-        configurable: true,
-      })
-      render(<DeploymentDetailPage />)
-      await user.click(screen.getByRole('tab', { name: /template/i }))
-      await user.click(screen.getByLabelText(/copy grpcurl command/i))
-      await waitFor(() => expect(writeText).toHaveBeenCalled())
-      const copied = writeText.mock.calls[0][0] as string
-      expect(copied).toContain('-cacert')
-      expect(copied).not.toContain('-insecure')
-      expect(copied).toContain('$HOLOS_ID_TOKEN')
-      expect(copied).toContain('GetDeploymentRenderPreview')
-      expect(copied).toContain('test-project')
-      expect(copied).toContain('api')
-    })
-
-    it('shows skeleton while preview is loading after clicking Template tab', async () => {
-      const user = userEvent.setup()
-      ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
-      ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatus, isPending: false, error: null })
-      ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })
-      ;(useUpdateDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn() })
-      ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null, reset: vi.fn() })
-      ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
-      ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
-      ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: undefined, isPending: true, error: null })
-      render(<DeploymentDetailPage />)
-      await user.click(screen.getByRole('tab', { name: /template/i }))
-      const skeletons = document.querySelectorAll('[data-slot="skeleton"]')
-      expect(skeletons.length).toBeGreaterThan(0)
-    })
-  })
-
-  describe('Template tab per-collection resource display', () => {
-    it('shows both platform and project resource sections when per-collection fields are present', async () => {
-      const user = userEvent.setup()
-      setupMocks()
-      ;(useRenderTemplate as Mock).mockReturnValue({
-        data: {
-          renderedYaml: 'unified-yaml',
-          renderedJson: '',
-          platformResourcesYaml: 'apiVersion: v1\nkind: ReferenceGrant',
-          platformResourcesJson: '',
-          projectResourcesYaml: 'apiVersion: apps/v1\nkind: Deployment',
-          projectResourcesJson: '',
-        },
-        error: null,
-        isFetching: false,
-      })
-      render(<DeploymentDetailPage />)
-      await user.click(screen.getByRole('tab', { name: /template/i }))
-      // Switch to preview sub-tab inside CueTemplateEditor
-      await user.click(screen.getByRole('tab', { name: /preview/i }))
-
-      expect(screen.getByText('Platform Resources')).toBeInTheDocument()
-      expect(screen.getByText('Project Resources')).toBeInTheDocument()
-      expect(screen.getByLabelText('Platform Resources YAML')).toHaveTextContent('ReferenceGrant')
-      expect(screen.getByLabelText('Project Resources YAML')).toHaveTextContent('Deployment')
-    })
-
-    it('shows empty-state message when platform resources are empty but project resources exist', async () => {
-      const user = userEvent.setup()
-      setupMocks()
-      ;(useRenderTemplate as Mock).mockReturnValue({
-        data: {
-          renderedYaml: 'unified-yaml',
-          renderedJson: '',
-          platformResourcesYaml: '',
-          platformResourcesJson: '',
-          projectResourcesYaml: 'apiVersion: apps/v1\nkind: Service',
-          projectResourcesJson: '',
-        },
-        error: null,
-        isFetching: false,
-      })
-      render(<DeploymentDetailPage />)
-      await user.click(screen.getByRole('tab', { name: /template/i }))
-      await user.click(screen.getByRole('tab', { name: /preview/i }))
-
-      expect(screen.getByText('Platform Resources')).toBeInTheDocument()
-      expect(screen.getByText('Project Resources')).toBeInTheDocument()
-      expect(screen.getByText('No platform resources rendered by this template.')).toBeInTheDocument()
-      expect(screen.getByLabelText('Project Resources YAML')).toHaveTextContent('Service')
-    })
-
-    it('falls back to unified renderedYaml when no per-collection fields present', async () => {
-      const user = userEvent.setup()
-      setupMocks()
-      ;(useRenderTemplate as Mock).mockReturnValue({
-        data: { renderedYaml: 'apiVersion: v1\nkind: ConfigMap', renderedJson: '' },
-        error: null,
-        isFetching: false,
-      })
-      render(<DeploymentDetailPage />)
-      await user.click(screen.getByRole('tab', { name: /template/i }))
-      await user.click(screen.getByRole('tab', { name: /preview/i }))
-
-      expect(screen.getByText('Rendered YAML')).toBeInTheDocument()
-      expect(screen.getByLabelText('Rendered YAML')).toHaveTextContent('ConfigMap')
-      expect(screen.queryByText('Platform Resources')).not.toBeInTheDocument()
-    })
   })
 
   describe('Logs tab section', () => {
@@ -807,8 +604,6 @@ describe('DeploymentDetailPage', () => {
       ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
       ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
       ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
-      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
     }
 
     it('renders events table with correct columns', () => {
@@ -878,8 +673,6 @@ describe('DeploymentDetailPage', () => {
       ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
       ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
       ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
-      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
     }
 
     it('renders container name and state', () => {
@@ -913,8 +706,6 @@ describe('DeploymentDetailPage', () => {
       ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
       ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
       ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
-      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
       render(<DeploymentDetailPage />)
       const runningBadge = screen.getByText(/running/i, { selector: '[data-testid="container-state-badge"]' })
       expect(runningBadge.className).toMatch(/green/)
@@ -929,8 +720,6 @@ describe('DeploymentDetailPage', () => {
       ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
       ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
       ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
-      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
       render(<DeploymentDetailPage />)
       // The container's image should be displayed
       expect(screen.getByText('ghcr.io/org/app:bad')).toBeInTheDocument()
@@ -960,8 +749,6 @@ describe('DeploymentDetailPage', () => {
       ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
       ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
       ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
-      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
       render(<DeploymentDetailPage />)
       const terminatedBadge = screen.getByText(/terminated/i, { selector: '[data-testid="container-state-badge"]' })
       // Completed (normal exit) should get green, not red
@@ -1011,8 +798,6 @@ describe('DeploymentDetailPage', () => {
       ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
       ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
       ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: mockPreview, isPending: false, error: null })
-      ;(useRenderTemplate as Mock).mockReturnValue({ data: { renderedYaml: '', renderedJson: '' }, error: null, isFetching: false })
       render(<DeploymentDetailPage />)
       expect(screen.getByText('api-pod-1')).toBeInTheDocument()
       expect(screen.getByText('api-pod-2')).toBeInTheDocument()
@@ -1022,22 +807,48 @@ describe('DeploymentDetailPage', () => {
 
   // ── Output URL row tests ─────────────────────────────────────────────────
   //
-  // The Status tab surfaces the template-authored deployment URL from the
-  // render preview response (`output.url`). The URL row is visible when the
-  // preview has resolved and `output.url` is a non-empty string; otherwise
-  // nothing is rendered. This mirrors the acceptance criteria on HOL-546.
+  // The Status tab surfaces the deployment's primary URL from the live
+  // aggregator on `deployment.statusSummary.output.url` (HOL-574). The row
+  // is visible only when that field is a safe http:/https: URL; otherwise
+  // nothing is rendered. Since HOL-611 removed the Template Preview panel
+  // from this page, the `useGetDeploymentRenderPreview` fallback is gone —
+  // the primary URL comes exclusively from `statusSummary.output.url`.
+
+  /** Builds a Deployment fixture with the supplied statusSummary.output.url. */
+  function deploymentWithPrimaryURL(url: string | undefined) {
+    if (url === undefined) {
+      return { ...mockDeployment, statusSummary: undefined }
+    }
+    return {
+      ...mockDeployment,
+      statusSummary: {
+        $typeName: 'holos.console.v1.DeploymentStatusSummary',
+        phase: DeploymentPhase.RUNNING,
+        readyReplicas: 1,
+        desiredReplicas: 1,
+        availableReplicas: 1,
+        updatedReplicas: 1,
+        observedGeneration: 0n,
+        message: '',
+        output: {
+          $typeName: 'holos.console.v1.DeploymentOutput',
+          url,
+          links: [],
+        },
+      },
+    }
+  }
 
   describe('Output URL row', () => {
-    it('renders an App URL link when preview.output.url is a non-empty string', async () => {
+    it('renders an App URL link when statusSummary.output.url is a non-empty https URL', () => {
       setupMocks()
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
-        data: { ...mockPreview, output: { url: 'https://example.com/app' } },
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: deploymentWithPrimaryURL('https://example.com/app'),
         isPending: false,
         error: null,
       })
       render(<DeploymentDetailPage />)
-      const link = await screen.findByRole('link', { name: /https:\/\/example\.com\/app/ })
-      expect(link).toBeInTheDocument()
+      const link = screen.getByRole('link', { name: /https:\/\/example\.com\/app/ })
       expect(link.getAttribute('href')).toBe('https://example.com/app')
       expect(link.getAttribute('target')).toBe('_blank')
       const rel = link.getAttribute('rel') ?? ''
@@ -1046,10 +857,10 @@ describe('DeploymentDetailPage', () => {
       expect(screen.getByText(/^App URL$/i)).toBeInTheDocument()
     })
 
-    it('does not render the App URL row when preview.output is undefined', () => {
+    it('does not render the App URL row when statusSummary is undefined', () => {
       setupMocks()
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
-        data: { ...mockPreview, output: undefined },
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: deploymentWithPrimaryURL(undefined),
         isPending: false,
         error: null,
       })
@@ -1058,10 +869,10 @@ describe('DeploymentDetailPage', () => {
       expect(screen.queryByText(/^App URL$/i)).not.toBeInTheDocument()
     })
 
-    it('does not render the App URL row when preview.output.url is an empty string', () => {
+    it('does not render the App URL row when statusSummary.output.url is an empty string', () => {
       setupMocks()
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
-        data: { ...mockPreview, output: { url: '' } },
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: deploymentWithPrimaryURL(''),
         isPending: false,
         error: null,
       })
@@ -1070,24 +881,11 @@ describe('DeploymentDetailPage', () => {
       expect(screen.queryByText(/^App URL$/i)).not.toBeInTheDocument()
     })
 
-    it('does not render the App URL row while the preview query is pending', () => {
-      setupMocks()
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
-        data: undefined,
-        isPending: true,
-        error: null,
-      })
-      render(<DeploymentDetailPage />)
-      expect(screen.queryByTestId('deployment-output-url')).not.toBeInTheDocument()
-      expect(screen.queryByText(/^App URL$/i)).not.toBeInTheDocument()
-    })
-
-    // Security: the render preview carries template-authored data. A malicious
-    // or buggy template could set `output.url` to a scheme like `javascript:`,
-    // `data:`, `vbscript:`, or `file:`. Rendering such a value into an anchor
-    // href would let a click execute script or load attacker-controlled content
-    // in the console UI context. The component must validate the URL scheme
-    // and drop the row entirely when the scheme is not http: or https:.
+    // Security: a compromised or buggy controller annotation could publish a
+    // scheme like `javascript:`, `data:`, `vbscript:`, or `file:`. Rendering
+    // such a value into an anchor href would let a click execute script or
+    // load attacker-controlled content in the console UI context. The row
+    // must be dropped entirely when the scheme is not http: or https:.
     it.each([
       ['javascript: scheme', 'javascript:alert(1)'],
       ['data: scheme', 'data:text/html,<script>alert(1)</script>'],
@@ -1097,15 +895,14 @@ describe('DeploymentDetailPage', () => {
       ['mailto: scheme', 'mailto:user@example.com'],
     ])('does not render the App URL link for unsafe or malformed URLs (%s)', (_label, url) => {
       setupMocks()
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
-        data: { ...mockPreview, output: { url } },
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: deploymentWithPrimaryURL(url),
         isPending: false,
         error: null,
       })
       render(<DeploymentDetailPage />)
       expect(screen.queryByTestId('deployment-output-url')).not.toBeInTheDocument()
       expect(screen.queryByText(/^App URL$/i)).not.toBeInTheDocument()
-      // Also verify the raw value is not leaked into any href attribute.
       const anchors = document.querySelectorAll('a')
       anchors.forEach((a) => {
         expect(a.getAttribute('href')).not.toBe(url)
@@ -1114,131 +911,14 @@ describe('DeploymentDetailPage', () => {
 
     it('renders the App URL link for an http: scheme', () => {
       setupMocks()
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
-        data: { ...mockPreview, output: { url: 'http://example.com/app' } },
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: deploymentWithPrimaryURL('http://example.com/app'),
         isPending: false,
         error: null,
       })
       render(<DeploymentDetailPage />)
       const link = screen.getByRole('link', { name: /http:\/\/example\.com\/app/ })
       expect(link.getAttribute('href')).toBe('http://example.com/app')
-    })
-
-    // HOL-575 round-2 review finding P1: the App URL row must also pick up
-    // the live aggregator's promoted primary URL on
-    // `deployment.statusSummary.output.url`. Without this, deployments
-    // whose primary URL is published only via a
-    // `console.holos.run/primary-url` annotation on a live resource (and
-    // not present in the render preview) would render secondary links
-    // but no App URL — losing the canonical primary link.
-    it('renders the App URL from statusSummary.output.url when preview has no URL', () => {
-      setupMocks()
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
-        data: { ...mockPreview, output: { url: '' } },
-        isPending: false,
-        error: null,
-      })
-      ;(useGetDeployment as Mock).mockReturnValue({
-        data: {
-          ...mockDeployment,
-          statusSummary: {
-            $typeName: 'holos.console.v1.DeploymentStatusSummary',
-            phase: DeploymentPhase.RUNNING,
-            readyReplicas: 1,
-            desiredReplicas: 1,
-            availableReplicas: 1,
-            updatedReplicas: 1,
-            observedGeneration: 0n,
-            message: '',
-            output: {
-              $typeName: 'holos.console.v1.DeploymentOutput',
-              url: 'https://promoted.example.com',
-              links: [],
-            },
-          },
-        },
-        isPending: false,
-        error: null,
-      })
-      render(<DeploymentDetailPage />)
-      const link = screen.getByRole('link', { name: /https:\/\/promoted\.example\.com/ })
-      expect(link.getAttribute('href')).toBe('https://promoted.example.com')
-    })
-
-    it('prefers statusSummary.output.url over preview.output.url when both are present', () => {
-      // The live aggregator wins because the primary-url annotation is a
-      // deliberate per-resource override of whatever the template
-      // initially evaluated to. Mirrors the backend precedence in
-      // applyAggregatedLinks (HOL-574).
-      setupMocks()
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
-        data: { ...mockPreview, output: { url: 'https://from-template.example.com' } },
-        isPending: false,
-        error: null,
-      })
-      ;(useGetDeployment as Mock).mockReturnValue({
-        data: {
-          ...mockDeployment,
-          statusSummary: {
-            $typeName: 'holos.console.v1.DeploymentStatusSummary',
-            phase: DeploymentPhase.RUNNING,
-            readyReplicas: 1,
-            desiredReplicas: 1,
-            availableReplicas: 1,
-            updatedReplicas: 1,
-            observedGeneration: 0n,
-            message: '',
-            output: {
-              $typeName: 'holos.console.v1.DeploymentOutput',
-              url: 'https://promoted.example.com',
-              links: [],
-            },
-          },
-        },
-        isPending: false,
-        error: null,
-      })
-      render(<DeploymentDetailPage />)
-      const link = screen.getByRole('link', { name: /https:\/\/promoted\.example\.com/ })
-      expect(link.getAttribute('href')).toBe('https://promoted.example.com')
-      expect(screen.queryByRole('link', { name: /from-template/ })).not.toBeInTheDocument()
-    })
-
-    it('falls back to preview.output.url when statusSummary URL fails the scheme allowlist', () => {
-      // Defense-in-depth: even if a live annotation publishes an unsafe
-      // scheme, the App URL row falls back to a safe template URL rather
-      // than dropping the row entirely.
-      setupMocks()
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
-        data: { ...mockPreview, output: { url: 'https://safe.example.com' } },
-        isPending: false,
-        error: null,
-      })
-      ;(useGetDeployment as Mock).mockReturnValue({
-        data: {
-          ...mockDeployment,
-          statusSummary: {
-            $typeName: 'holos.console.v1.DeploymentStatusSummary',
-            phase: DeploymentPhase.RUNNING,
-            readyReplicas: 1,
-            desiredReplicas: 1,
-            availableReplicas: 1,
-            updatedReplicas: 1,
-            observedGeneration: 0n,
-            message: '',
-            output: {
-              $typeName: 'holos.console.v1.DeploymentOutput',
-              url: 'javascript:alert(1)',
-              links: [],
-            },
-          },
-        },
-        isPending: false,
-        error: null,
-      })
-      render(<DeploymentDetailPage />)
-      const link = screen.getByRole('link', { name: /https:\/\/safe\.example\.com/ })
-      expect(link.getAttribute('href')).toBe('https://safe.example.com')
     })
   })
 
@@ -1300,14 +980,10 @@ describe('DeploymentDetailPage', () => {
     })
 
     it('renders only the primary App URL when statusSummary has no links (backwards-compat)', () => {
-      // Primary URL still surfaces via the existing App URL row sourced
-      // from the render preview; the Links section stays hidden.
+      // Primary URL surfaces via the App URL row sourced from
+      // statusSummary.output.url; the Links section stays hidden when
+      // output.links is empty.
       setupMocks()
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
-        data: { ...mockPreview, output: { url: 'https://app.example.com' } },
-        isPending: false,
-        error: null,
-      })
       ;(useGetDeployment as Mock).mockReturnValue({
         data: deploymentWithOutput({ url: 'https://app.example.com', links: [] }),
         isPending: false,
@@ -1376,11 +1052,6 @@ describe('DeploymentDetailPage', () => {
       // sits below and walks `output.links` in the order the backend
       // supplied (the aggregator already sorts by (name, source)).
       setupMocks()
-      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
-        data: { ...mockPreview, output: { url: 'https://app.example.com' } },
-        isPending: false,
-        error: null,
-      })
       ;(useGetDeployment as Mock).mockReturnValue({
         data: deploymentWithOutput({
           url: 'https://app.example.com',
