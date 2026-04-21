@@ -8,8 +8,8 @@ import { useGetProject } from '@/queries/projects'
 
 // HOL-607 retired the scope-specific project-template editor. This route is a
 // redirect shim that resolves the owning organization from the project record,
-// then navigates to the consolidated editor. Cleanup (HOL-612) may remove it
-// once links settle.
+// then navigates to the consolidated editor. HOL-612 confirmed it must stay —
+// several active pages still link here.
 export const Route = createFileRoute(
   '/_authenticated/projects/$projectName/templates/$templateName',
 )({

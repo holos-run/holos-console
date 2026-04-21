@@ -122,3 +122,17 @@ export function useUpdateFolderDefaultSharing(organization: string, name: string
     },
   })
 }
+
+export function useDeleteFolder(organization: string) {
+  const transport = useTransport()
+  const client = useMemo(() => createClient(FolderService, transport), [transport])
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: { name: string }) =>
+      client.deleteFolder({ organization, ...params }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: folderListKey(organization) })
+      queryClient.invalidateQueries({ queryKey: ['folders', 'get'] })
+    },
+  })
+}

@@ -24,6 +24,7 @@ vi.mock('@/queries/folders', () => ({
   useListFolders: vi.fn(),
   useUpdateFolderSharing: vi.fn(),
   useUpdateFolderDefaultSharing: vi.fn(),
+  useDeleteFolder: vi.fn(),
 }))
 
 vi.mock('@/queries/organizations', () => ({
@@ -32,7 +33,7 @@ vi.mock('@/queries/organizations', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders, useUpdateFolderSharing, useUpdateFolderDefaultSharing } from '@/queries/folders'
+import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders, useUpdateFolderSharing, useUpdateFolderDefaultSharing, useDeleteFolder } from '@/queries/folders'
 import { useGetOrganization } from '@/queries/organizations'
 import { FolderDetailPage } from '@/routes/_authenticated/folders/$folderName/settings/index'
 
@@ -97,6 +98,10 @@ function setupMocks(overrides: { folder?: Partial<typeof mockFolder>; org?: Part
     isPending: false,
   })
   ;(useUpdateFolderDefaultSharing as Mock).mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue({}),
+    isPending: false,
+  })
+  ;(useDeleteFolder as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
   })

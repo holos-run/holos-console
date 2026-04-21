@@ -31,7 +31,7 @@ import { Check, Pencil, X, Table2, Braces } from 'lucide-react'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { RawView } from '@/components/raw-view'
-import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders, useUpdateFolderSharing, useUpdateFolderDefaultSharing } from '@/queries/folders'
+import { useGetFolder, useGetFolderRaw, useUpdateFolder, useListFolders, useUpdateFolderSharing, useUpdateFolderDefaultSharing, useDeleteFolder } from '@/queries/folders'
 import { useGetOrganization } from '@/queries/organizations'
 import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
@@ -78,6 +78,7 @@ export function FolderDetailPage({
   const { data: allFolders } = useListFolders(orgName)
   const updateFolderSharing = useUpdateFolderSharing(orgName, folderName)
   const updateFolderDefaultSharing = useUpdateFolderDefaultSharing(orgName, folderName)
+  const deleteFolderMutation = useDeleteFolder(orgName)
 
   // View mode: data or raw
   const [viewMode, setViewMode] = useState<'data' | 'raw'>('data')
@@ -589,8 +590,10 @@ export function FolderDetailPage({
             </Button>
             <Button
               variant="destructive"
+              disabled={deleteFolderMutation.isPending}
               onClick={async () => {
                 try {
+                  await deleteFolderMutation.mutateAsync({ name: folderName })
                   setDeleteOpen(false)
                   navigate?.({
                     to: '/orgs/$orgName/resources',
