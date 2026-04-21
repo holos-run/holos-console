@@ -121,6 +121,12 @@ type Manager struct {
 	// skipPepperBootstrap mirrors the Options field; see the GoDoc
 	// there for the narrow test-only use case.
 	skipPepperBootstrap bool
+	// credentialReconciler is the M2 Credential anchor. Start() injects
+	// the pepper Loader into this pointer once the direct client has
+	// been built — the pointer lets Reconcile observe the late-bound
+	// Loader without a read/write race because the assignment happens
+	// before mgr.Start returns control to any Runnable.
+	credentialReconciler *CredentialReconciler
 }
 
 // NewManager constructs a Manager from the provided rest config and Options.
@@ -185,7 +191,28 @@ func NewManager(cfg *rest.Config, opts Options) (*Manager, error) {
 		return nil, fmt.Errorf("controller.NewManager: registering UpstreamSecretReconciler: %w", err)
 	}
 
+	// CredentialReconciler wiring — M2 anchor (HOL-751). The pepper
+	// Loader is constructed lazily in Start() against a direct client
+	// because the manager's cache is not yet synced at NewManager time
+	// and because the shipped ClusterRole deliberately withholds
+	// list/watch on core/v1 Secret. The reconciler is wired here with
+	// a KDF from sicrypto.Default() and a nil Loader placeholder; Start
+	// replaces the Loader once the direct client is built. Hot-path
+	// reconciles before Start() completes are impossible because
+	// controller-runtime only dispatches events after mgr.Start returns
+	// from its Runnable init.
+	credReconciler := &CredentialReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("credential-controller"),
+		KDF:      sicrypto.Default(),
+	}
+	if err := credReconciler.SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering CredentialReconciler: %w", err)
+	}
+
 	return &Manager{
+		credentialReconciler: credReconciler,
 		mgr:                 mgr,
 		cacheSyncTimeout:    cacheSyncTimeout,
 		logger:              logger,
@@ -232,6 +259,28 @@ func (m *Manager) Start(ctx context.Context) error {
 		if err := m.bootstrapPepper(ctx); err != nil {
 			return err
 		}
+	}
+
+	// Wire the pepper Loader into the Credential reconciler now that the
+	// direct client is ready. Done after Bootstrap so the first
+	// reconcile after cache sync observes a non-empty pepper Secret; the
+	// Loader itself does no caching so a later rotation takes effect on
+	// its next Active() call without a manager restart. Skipped together
+	// with bootstrap when the test-only SkipPepperBootstrap is set.
+	if !m.skipPepperBootstrap && m.credentialReconciler != nil {
+		ns := m.controllerNamespace
+		if ns == "" {
+			ns = sicrypto.ControllerNamespace()
+		}
+		directClient, err := client.New(m.cfg, client.Options{Scheme: Scheme})
+		if err != nil {
+			return fmt.Errorf("secret-injector controller manager: building pepper-loader client: %w", err)
+		}
+		loader, err := sicrypto.NewSecretLoader(directClient, ns)
+		if err != nil {
+			return fmt.Errorf("secret-injector controller manager: wiring pepper Loader: %w", err)
+		}
+		m.credentialReconciler.Pepper = loader
 	}
 
 	watchCtx, cancelWatch := context.WithCancel(ctx)
