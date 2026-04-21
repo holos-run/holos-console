@@ -30,13 +30,24 @@ limitations under the License.
 //   - CRUD on security.istio.io AuthorizationPolicy because the M2
 //     SecretInjectionPolicyBinding reconciler synthesises AP objects that
 //     enforce the caller allow-list at the mesh layer.
-//   - `get` ONLY on core/v1 Secret. Enumeration (list/watch) is the
-//     vulnerability this service is meant to close — the reconciler
-//     resolves refs by name+namespace, never by listing. Broader CUD on
-//     core/v1 Secret for controller-owned hash-material objects is granted
-//     via a namespace-scoped Role (config/secret-injector/rbac/
-//     secrets-namespace-role.yaml) so it cannot escape the controller's
-//     own namespace.
+//   - `get` ONLY on core/v1 Secret at the cluster-role level. Enumeration
+//     (list/watch) is the vulnerability this service is meant to close —
+//     the reconciler resolves refs by name+namespace, never by listing.
+//     Broader CUD on core/v1 Secret for controller-owned hash-material
+//     objects is granted via a namespace-scoped Role
+//     (config/secret-injector/rbac/secrets-namespace-role.yaml) so it
+//     cannot escape the controller's own namespace.
+//
+//     HOL-751 note: the Credential reconciler creates and maintains a
+//     sibling hash v1.Secret per Credential in the Credential's OWN
+//     namespace via an ownerReference. The cluster-role grants `get` so
+//     the reconciler can probe existence before (re-)materialising; the
+//     create/update/delete verbs it needs for the hash Secret come from a
+//     namespace-scoped RoleBinding that follows the Credential's
+//     namespace, and the ownerReference (controller=true,
+//     blockOwnerDeletion=true) guarantees the hash Secret is
+//     garbage-collected atomically when the Credential is deleted. No
+//     cluster-wide Secret enumeration path is opened by this design.
 //   - `get/list/watch` on Namespace so the reconciler can resolve the
 //     hierarchy labels the admission policies enforce against.
 //   - `create/patch` on Event so the reconciler can emit standard

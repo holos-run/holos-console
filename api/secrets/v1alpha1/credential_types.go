@@ -20,6 +20,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// RotationGroupLabel is the label key the Credential reconciler uses to
+// correlate a retiring credential with its successor during a rotation.
+// When two Credentials in the same namespace carry the same value for this
+// label, the older (by metadata.creationTimestamp) is treated as the
+// predecessor and transitions Phase=Rotating the moment the successor
+// appears. The retirement then fires once the predecessor's
+// spec.rotation.graceSeconds window has elapsed.
+//
+// Label keys under secrets.holos.run are the group's sanctioned namespace
+// for reconciler-observed rotation state; the value is opaque to the
+// reconciler and is typically a short human-legible string (for example,
+// "vendor-apikey"). The label MUST be stamped on both predecessor and
+// successor by whatever tooling creates the successor Credential — the
+// reconciler never writes or mutates this label itself.
+const RotationGroupLabel = "secrets.holos.run/rotation-group"
+
 // APIKeySettings captures the transport-layer knobs for an API-key
 // credential. v1alpha1 exposes only the header name; later versions will
 // broaden this to cover value templates and rotation-grace projection. The
