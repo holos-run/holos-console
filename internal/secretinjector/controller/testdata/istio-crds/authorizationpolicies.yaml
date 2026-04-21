@@ -1,0 +1,61 @@
+# Minimal envtest-only CustomResourceDefinition for the
+# security.istio.io/v1 AuthorizationPolicy kind.
+#
+# This file exists SO the envtest cross-reconciler suite can install the
+# AuthorizationPolicy CRD without depending on a vendored copy of the
+# upstream Istio release bundle (which we do not pull into this repo —
+# see the HOL-752 tradeoff note in internal/secretinjector/controller/manager.go).
+# The schema is intentionally open: we preserve unknown fields and set a
+# permissive x-kubernetes-preserve-unknown-fields so the
+# SecretInjectionPolicyBindingReconciler's builder emits a structurally
+# valid object without the envtest API server rejecting fields the real
+# Istio CRD would validate more strictly.
+#
+# DO NOT ship this CRD into a production cluster. A real deployment
+# installs the upstream Istio security.istio.io CRDs, which carry the
+# proper validation schema and documentation.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: authorizationpolicies.security.istio.io
+spec:
+  group: security.istio.io
+  names:
+    kind: AuthorizationPolicy
+    listKind: AuthorizationPolicyList
+    plural: authorizationpolicies
+    singular: authorizationpolicy
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        x-kubernetes-preserve-unknown-fields: true
+        properties:
+          spec:
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+          status:
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+    subresources:
+      status: {}
+  - name: v1beta1
+    served: true
+    storage: false
+    schema:
+      openAPIV3Schema:
+        type: object
+        x-kubernetes-preserve-unknown-fields: true
+        properties:
+          spec:
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+          status:
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+    subresources:
+      status: {}
