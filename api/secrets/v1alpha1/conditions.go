@@ -132,16 +132,16 @@ const (
 
 // SecretInjectionPolicyBinding condition reasons.
 const (
-	SecretInjectionPolicyBindingReasonAccepted                      = "Accepted"
-	SecretInjectionPolicyBindingReasonInvalidSpec                   = "InvalidSpec"
-	SecretInjectionPolicyBindingReasonResolvedRefs                  = "ResolvedRefs"
-	SecretInjectionPolicyBindingReasonPolicyNotFound                = "PolicyNotFound"
-	SecretInjectionPolicyBindingReasonInvalidTargetKind             = "InvalidTargetKind"
-	SecretInjectionPolicyBindingReasonProgrammed                    = "Programmed"
+	SecretInjectionPolicyBindingReasonAccepted                       = "Accepted"
+	SecretInjectionPolicyBindingReasonInvalidSpec                    = "InvalidSpec"
+	SecretInjectionPolicyBindingReasonResolvedRefs                   = "ResolvedRefs"
+	SecretInjectionPolicyBindingReasonPolicyNotFound                 = "PolicyNotFound"
+	SecretInjectionPolicyBindingReasonInvalidTargetKind              = "InvalidTargetKind"
+	SecretInjectionPolicyBindingReasonProgrammed                     = "Programmed"
 	SecretInjectionPolicyBindingReasonAuthorizationPolicyWriteFailed = "AuthorizationPolicyWriteFailed"
-	SecretInjectionPolicyBindingReasonWaypointNotFound              = "WaypointNotFound"
-	SecretInjectionPolicyBindingReasonReady                         = "Ready"
-	SecretInjectionPolicyBindingReasonNotReady                      = "NotReady"
+	SecretInjectionPolicyBindingReasonWaypointNotFound               = "WaypointNotFound"
+	SecretInjectionPolicyBindingReasonReady                          = "Ready"
+	SecretInjectionPolicyBindingReasonNotReady                       = "NotReady"
 )
 
 // Finalizer is the finalizer key used by reconcilers for the
