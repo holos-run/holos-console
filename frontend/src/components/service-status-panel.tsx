@@ -62,7 +62,7 @@ function StatusRow({
       <TooltipTrigger asChild>
         <button
           type="button"
-          className="cursor-help border-b border-dotted border-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded bg-transparent p-0 font-inherit text-inherit"
+          className="cursor-help border-b border-dotted border-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded bg-transparent p-0"
         >
           {name}
         </button>
