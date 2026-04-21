@@ -44,6 +44,9 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
           namespace={namespace}
           organization={project?.organization ?? ''}
           projectName={projectName}
+          // Project-scope create is intentionally available to all project roles;
+          // only the linking section is OWNER-gated via canLink. Mirrors the pre-HOL-816
+          // behavior. Server-side RBAC remains the source of truth on submit.
           canWrite={true}
           canLink={canLink}
           isPending={createMutation.isPending}

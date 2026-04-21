@@ -1,0 +1,75 @@
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { vi } from 'vitest'
+import type { Mock } from 'vitest'
+import React from 'react'
+
+const mockNavigate = vi.fn()
+
+vi.mock('@tanstack/react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-router')>()
+  return {
+    ...actual,
+    createFileRoute: () => () => ({ useParams: () => ({ orgName: 'my-org' }) }),
+    Link: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+      <a href="#" className={className}>{children}</a>
+    ),
+    useNavigate: () => mockNavigate,
+  }
+})
+
+vi.mock('@/queries/templates', () => ({
+  useCreateTemplate: vi.fn(),
+  useRenderTemplate: vi.fn().mockReturnValue({ data: null, isPending: false, error: null }),
+  useListLinkableTemplates: vi.fn().mockReturnValue({ data: [], isPending: false }),
+  useListTemplateExamples: vi.fn().mockReturnValue({ data: [], isPending: false }),
+  linkableKey: (namespace: string | undefined, name: string) => `${namespace ?? ''}/${name}`,
+  parseLinkableKey: (key: string) => {
+    const slash = key.indexOf('/')
+    if (slash < 0) return { namespace: '', name: key }
+    return { namespace: key.slice(0, slash), name: key.slice(slash + 1) }
+  },
+}))
+
+vi.mock('@/queries/organizations', () => ({ useGetOrganization: vi.fn() }))
+vi.mock('@/lib/scope-labels', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/scope-labels')>()
+  return { ...actual, namespaceForOrg: () => 'holos-org-my-org' }
+})
+vi.mock('@/hooks/use-debounced-value', () => ({
+  useDebouncedValue: vi.fn((value: unknown) => value),
+}))
+
+import { useCreateTemplate } from '@/queries/templates'
+import { useGetOrganization } from '@/queries/organizations'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { CreateOrgTemplatePage } from './new'
+
+const mutateAsync = vi.fn()
+
+beforeEach(() => {
+  mockNavigate.mockReset()
+  mutateAsync.mockReset().mockResolvedValue({})
+  ;(useCreateTemplate as unknown as Mock).mockReturnValue({ mutateAsync, isPending: false })
+  ;(useGetOrganization as unknown as Mock).mockReturnValue({
+    data: { name: 'my-org', userRole: Role.OWNER },
+  })
+})
+
+test('org wrapper navigates to template detail after create', async () => {
+  render(<CreateOrgTemplatePage orgName="my-org" />)
+  fireEvent.change(screen.getByLabelText('Display Name'), {
+    target: { value: 'My Template' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
+
+  await waitFor(() => {
+    expect(mutateAsync).toHaveBeenCalledTimes(1)
+  })
+  expect(mutateAsync.mock.calls[0][0]).toMatchObject({ name: 'my-template' })
+  await waitFor(() => {
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: '/orgs/$orgName/templates/$namespace/$name',
+      params: { orgName: 'my-org', namespace: 'holos-org-my-org', name: 'my-template' },
+    })
+  })
+})
