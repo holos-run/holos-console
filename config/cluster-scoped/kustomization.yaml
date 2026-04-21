@@ -1,0 +1,13 @@
+# Consolidated cluster-scoped overlay for both holos-console and
+# holos-secret-injector. Installs CRDs, VAPs + VAPBs, and ClusterRoles
+# for templates.holos.run and secrets.holos.run.
+#
+#   kubectl apply -k config/cluster-scoped/
+#
+# Apply config/namespace-scoped/ first so the controller ServiceAccount
+# exists before the ClusterRoleBindings bind it.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../holos-console/cluster-scoped
+- ../secret-injector/cluster-scoped
