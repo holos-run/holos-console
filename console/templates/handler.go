@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sort"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -23,6 +24,7 @@ import (
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
+	"github.com/holos-run/holos-console/console/templates/examples"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -1891,4 +1893,44 @@ func (h *Handler) GetProjectTemplatePolicyState(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(&consolev1.GetProjectTemplatePolicyStateResponse{State: state}), nil
+}
+
+// ListTemplateExamples returns the built-in CUE example templates embedded in
+// the server binary, sorted by name ascending. The handler delegates to
+// examples.Examples() and marshals the results — no Kubernetes I/O, no RBAC
+// check (the examples are public, read-only, and hard-coded in the binary).
+// Introduced in HOL-797.
+func (h *Handler) ListTemplateExamples(
+	ctx context.Context,
+	_ *connect.Request[consolev1.ListTemplateExamplesRequest],
+) (*connect.Response[consolev1.ListTemplateExamplesResponse], error) {
+	exs, err := examples.Examples()
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to load built-in template examples", slog.Any("error", err))
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("loading template examples: %w", err))
+	}
+
+	// Sort by name ascending so the UI can rely on a stable order.
+	sort.Slice(exs, func(i, j int) bool {
+		return exs[i].Name < exs[j].Name
+	})
+
+	result := make([]*consolev1.TemplateExample, 0, len(exs))
+	for _, ex := range exs {
+		result = append(result, &consolev1.TemplateExample{
+			Name:        ex.Name,
+			DisplayName: ex.DisplayName,
+			Description: ex.Description,
+			CueTemplate: ex.CueTemplate,
+		})
+	}
+
+	slog.InfoContext(ctx, "template examples listed",
+		slog.String("action", "template_examples_list"),
+		slog.Int("count", len(result)),
+	)
+
+	return connect.NewResponse(&consolev1.ListTemplateExamplesResponse{
+		Examples: result,
+	}), nil
 }

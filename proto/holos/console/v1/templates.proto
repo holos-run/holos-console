@@ -111,6 +111,16 @@ service TemplateService {
   // template's owning namespace so the UI can render a flat, sortable table
   // across scopes without issuing N per-namespace calls.
   rpc SearchTemplates(SearchTemplatesRequest) returns (SearchTemplatesResponse);
+
+  // ListTemplateExamples returns the built-in CUE example templates embedded
+  // in the server binary. The UI picker uses this RPC to offer drop-in
+  // starting points when creating a new template without hard-coding any
+  // content on the frontend. Introduced in HOL-797.
+  //
+  // The request is intentionally empty — a filter string may be added in a
+  // future revision. The response list is sorted by name ascending so the UI
+  // can rely on a stable order without re-sorting.
+  rpc ListTemplateExamples(ListTemplateExamplesRequest) returns (ListTemplateExamplesResponse);
 }
 
 // TemplateDefaults carries optional default values that a template provides
@@ -569,4 +579,31 @@ message SearchTemplatesResponse {
   // templates lists the matching templates in no guaranteed order. The
   // handler is free to page or truncate; this phase defines no cursor.
   repeated Template templates = 1;
+}
+
+// TemplateExample is a single built-in CUE example template returned by
+// ListTemplateExamples. Each example provides enough information for the UI
+// picker to display a card and seed the template editor with a working
+// starting point.
+message TemplateExample {
+  // name is the URL-safe slug identifier (e.g. "httproute-v1").
+  string name = 1;
+  // display_name is the human-readable name shown in the UI picker card.
+  string display_name = 2;
+  // description is a short sentence describing what the example produces.
+  string description = 3;
+  // cue_template is the full CUE source the user will see in the editor when
+  // they select this example.
+  string cue_template = 4;
+}
+
+// ListTemplateExamplesRequest is intentionally empty. A filter string field
+// may be added in a future revision without breaking existing callers.
+message ListTemplateExamplesRequest {}
+
+// ListTemplateExamplesResponse carries the list of built-in example templates
+// sorted by name ascending.
+message ListTemplateExamplesResponse {
+  // examples lists all built-in example templates, sorted by name ascending.
+  repeated TemplateExample examples = 1;
 }

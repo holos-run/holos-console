@@ -1236,6 +1236,87 @@ export declare type SearchTemplatesResponse = Message<"holos.console.v1.SearchTe
 export declare const SearchTemplatesResponseSchema: GenMessage<SearchTemplatesResponse>;
 
 /**
+ * TemplateExample is a single built-in CUE example template returned by
+ * ListTemplateExamples. Each example provides enough information for the UI
+ * picker to display a card and seed the template editor with a working
+ * starting point.
+ *
+ * @generated from message holos.console.v1.TemplateExample
+ */
+export declare type TemplateExample = Message<"holos.console.v1.TemplateExample"> & {
+  /**
+   * name is the URL-safe slug identifier (e.g. "httproute-v1").
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * display_name is the human-readable name shown in the UI picker card.
+   *
+   * @generated from field: string display_name = 2;
+   */
+  displayName: string;
+
+  /**
+   * description is a short sentence describing what the example produces.
+   *
+   * @generated from field: string description = 3;
+   */
+  description: string;
+
+  /**
+   * cue_template is the full CUE source the user will see in the editor when
+   * they select this example.
+   *
+   * @generated from field: string cue_template = 4;
+   */
+  cueTemplate: string;
+};
+
+/**
+ * Describes the message holos.console.v1.TemplateExample.
+ * Use `create(TemplateExampleSchema)` to create a new message.
+ */
+export declare const TemplateExampleSchema: GenMessage<TemplateExample>;
+
+/**
+ * ListTemplateExamplesRequest is intentionally empty. A filter string field
+ * may be added in a future revision without breaking existing callers.
+ *
+ * @generated from message holos.console.v1.ListTemplateExamplesRequest
+ */
+export declare type ListTemplateExamplesRequest = Message<"holos.console.v1.ListTemplateExamplesRequest"> & {
+};
+
+/**
+ * Describes the message holos.console.v1.ListTemplateExamplesRequest.
+ * Use `create(ListTemplateExamplesRequestSchema)` to create a new message.
+ */
+export declare const ListTemplateExamplesRequestSchema: GenMessage<ListTemplateExamplesRequest>;
+
+/**
+ * ListTemplateExamplesResponse carries the list of built-in example templates
+ * sorted by name ascending.
+ *
+ * @generated from message holos.console.v1.ListTemplateExamplesResponse
+ */
+export declare type ListTemplateExamplesResponse = Message<"holos.console.v1.ListTemplateExamplesResponse"> & {
+  /**
+   * examples lists all built-in example templates, sorted by name ascending.
+   *
+   * @generated from field: repeated holos.console.v1.TemplateExample examples = 1;
+   */
+  examples: TemplateExample[];
+};
+
+/**
+ * Describes the message holos.console.v1.ListTemplateExamplesResponse.
+ * Use `create(ListTemplateExamplesResponseSchema)` to create a new message.
+ */
+export declare const ListTemplateExamplesResponseSchema: GenMessage<ListTemplateExamplesResponse>;
+
+/**
  * TemplateService is the single unified service for managing CUE-based templates
  * at every hierarchy level (organization, folder, project). It replaces the
  * separate DeploymentTemplateService and OrgTemplateService from v1alpha1
@@ -1454,6 +1535,23 @@ export declare const TemplateService: GenService<{
     methodKind: "unary";
     input: typeof SearchTemplatesRequestSchema;
     output: typeof SearchTemplatesResponseSchema;
+  },
+  /**
+   * ListTemplateExamples returns the built-in CUE example templates embedded
+   * in the server binary. The UI picker uses this RPC to offer drop-in
+   * starting points when creating a new template without hard-coding any
+   * content on the frontend. Introduced in HOL-797.
+   *
+   * The request is intentionally empty — a filter string may be added in a
+   * future revision. The response list is sorted by name ascending so the UI
+   * can rely on a stable order without re-sorting.
+   *
+   * @generated from rpc holos.console.v1.TemplateService.ListTemplateExamples
+   */
+  listTemplateExamples: {
+    methodKind: "unary";
+    input: typeof ListTemplateExamplesRequestSchema;
+    output: typeof ListTemplateExamplesResponseSchema;
   },
 }>;
 
