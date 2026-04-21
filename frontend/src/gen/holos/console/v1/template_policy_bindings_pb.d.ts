@@ -63,18 +63,27 @@ export declare type TemplatePolicyBindingTargetRef = Message<"holos.console.v1.T
   kind: TemplatePolicyBindingTargetKind;
 
   /**
-   * name is the target's DNS label slug within project_name.
+   * name is the target's DNS label slug within project_name, or the literal
+   * string "*" to match every resource of this kind within the binding's
+   * reachable scope (i.e., every resource in every project reachable via the
+   * storage-scope ancestor-walk). Duplicate detection treats "*" as a literal
+   * string: two entries with identical (kind, project_name, name="*") triples
+   * are still duplicates and MUST be rejected by handlers (HOL-767 / ADR 029).
    *
    * @generated from field: string name = 2;
    */
   name: string;
 
   /**
-   * project_name is the project that owns the target. Required for
-   * both PROJECT_TEMPLATE and DEPLOYMENT kinds — project-scope
-   * resources are disambiguated by (project_name, name). Left empty
-   * only on zero-valued UNSPECIFIED placeholders, which handlers MUST
-   * reject; UNSPECIFIED is not a legal resting state.
+   * project_name is the project that owns the target, or the literal string
+   * "*" to match targets across every project reachable via the binding's
+   * storage-scope ancestor-walk. Required (non-empty, non-wildcard) for both
+   * PROJECT_TEMPLATE and DEPLOYMENT kinds when naming a specific project;
+   * set to "*" when the intent is to apply the policy to every project in the
+   * binding's reachable scope. Left empty only on zero-valued UNSPECIFIED
+   * placeholders, which handlers MUST reject; UNSPECIFIED is not a legal
+   * resting state. Duplicate detection treats "*" as a literal string (HOL-767
+   * / ADR 029).
    *
    * @generated from field: string project_name = 3;
    */
@@ -139,13 +148,18 @@ export declare type TemplatePolicyBinding = Message<"holos.console.v1.TemplatePo
   policyRef?: LinkedTemplatePolicyRef;
 
   /**
-   * target_refs enumerates every render target the referenced policy
-   * applies to. Order is not significant; duplicates MUST be rejected
-   * by handlers. A "duplicate" is two entries with identical
-   * (kind, project_name, name) triples. Two entries that share
-   * (project_name, name) but differ in kind (e.g., a PROJECT_TEMPLATE
-   * and a DEPLOYMENT with the same slug inside the same project) are
-   * permitted — they name distinct resources.
+   * target_refs enumerates every render target the referenced policy applies
+   * to. Order is not significant; duplicates MUST be rejected by handlers. A
+   * "duplicate" is two entries with identical (kind, project_name, name)
+   * triples — the literal string "*" is treated as a literal value for
+   * duplicate detection purposes. Two entries that share (project_name, name)
+   * but differ in kind (e.g., a PROJECT_TEMPLATE and a DEPLOYMENT with the
+   * same slug inside the same project) are permitted — they name distinct
+   * resources. The literal string "*" is a supported wildcard value on both
+   * `name` and `project_name` fields (HOL-767 / ADR 029 amendment): a
+   * project_name of "*" fans out to every project reachable via the binding's
+   * ancestor-walk; a name of "*" fans out to every resource of the given kind
+   * within the matched project(s).
    *
    * @generated from field: repeated holos.console.v1.TemplatePolicyBindingTargetRef target_refs = 6;
    */
@@ -433,11 +447,13 @@ export declare const TemplatePolicyBindingTargetKindSchema: GenEnum<TemplatePoli
 
 /**
  * TemplatePolicyBindingService manages TemplatePolicyBinding resources, the
- * explicit, non-glob successor to TemplatePolicy's target-selector rules
- * (ADR 029 / HOL-590). A TemplatePolicyBinding names a single policy and
- * enumerates the project templates and deployments that policy applies to
- * via explicit TemplatePolicyBindingTargetRef entries — no wildcards, no
- * glob semantics. TemplatePolicy continues to declare the REQUIRE/EXCLUDE
+ * explicit successor to TemplatePolicy's target-selector rules (ADR 029 /
+ * HOL-590). A TemplatePolicyBinding names a single policy and enumerates the
+ * project templates and deployments that policy applies to via
+ * TemplatePolicyBindingTargetRef entries. The literal string "*" is supported
+ * as a wildcard on both `name` and `project_name` fields (HOL-767 / ADR 029
+ * amendment), meaning "match every resource of this kind within the binding's
+ * reachable scope." TemplatePolicy continues to declare the REQUIRE/EXCLUDE
  * rules; TemplatePolicyBinding declares the set of targets those rules apply
  * to.
  *

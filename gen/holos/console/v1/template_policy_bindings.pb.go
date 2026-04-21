@@ -154,13 +154,22 @@ type TemplatePolicyBindingTargetRef struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// kind discriminates between PROJECT_TEMPLATE and DEPLOYMENT targets.
 	Kind TemplatePolicyBindingTargetKind `protobuf:"varint,1,opt,name=kind,proto3,enum=holos.console.v1.TemplatePolicyBindingTargetKind" json:"kind,omitempty"`
-	// name is the target's DNS label slug within project_name.
+	// name is the target's DNS label slug within project_name, or the literal
+	// string "*" to match every resource of this kind within the binding's
+	// reachable scope (i.e., every resource in every project reachable via the
+	// storage-scope ancestor-walk). Duplicate detection treats "*" as a literal
+	// string: two entries with identical (kind, project_name, name="*") triples
+	// are still duplicates and MUST be rejected by handlers (HOL-767 / ADR 029).
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	// project_name is the project that owns the target. Required for
-	// both PROJECT_TEMPLATE and DEPLOYMENT kinds — project-scope
-	// resources are disambiguated by (project_name, name). Left empty
-	// only on zero-valued UNSPECIFIED placeholders, which handlers MUST
-	// reject; UNSPECIFIED is not a legal resting state.
+	// project_name is the project that owns the target, or the literal string
+	// "*" to match targets across every project reachable via the binding's
+	// storage-scope ancestor-walk. Required (non-empty, non-wildcard) for both
+	// PROJECT_TEMPLATE and DEPLOYMENT kinds when naming a specific project;
+	// set to "*" when the intent is to apply the policy to every project in the
+	// binding's reachable scope. Left empty only on zero-valued UNSPECIFIED
+	// placeholders, which handlers MUST reject; UNSPECIFIED is not a legal
+	// resting state. Duplicate detection treats "*" as a literal string (HOL-767
+	// / ADR 029).
 	ProjectName   string `protobuf:"bytes,3,opt,name=project_name,json=projectName,proto3" json:"project_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -240,13 +249,18 @@ type TemplatePolicyBinding struct {
 	// binding references exactly one policy; use multiple bindings to
 	// attach multiple policies to overlapping target sets.
 	PolicyRef *LinkedTemplatePolicyRef `protobuf:"bytes,5,opt,name=policy_ref,json=policyRef,proto3" json:"policy_ref,omitempty"`
-	// target_refs enumerates every render target the referenced policy
-	// applies to. Order is not significant; duplicates MUST be rejected
-	// by handlers. A "duplicate" is two entries with identical
-	// (kind, project_name, name) triples. Two entries that share
-	// (project_name, name) but differ in kind (e.g., a PROJECT_TEMPLATE
-	// and a DEPLOYMENT with the same slug inside the same project) are
-	// permitted — they name distinct resources.
+	// target_refs enumerates every render target the referenced policy applies
+	// to. Order is not significant; duplicates MUST be rejected by handlers. A
+	// "duplicate" is two entries with identical (kind, project_name, name)
+	// triples — the literal string "*" is treated as a literal value for
+	// duplicate detection purposes. Two entries that share (project_name, name)
+	// but differ in kind (e.g., a PROJECT_TEMPLATE and a DEPLOYMENT with the
+	// same slug inside the same project) are permitted — they name distinct
+	// resources. The literal string "*" is a supported wildcard value on both
+	// `name` and `project_name` fields (HOL-767 / ADR 029 amendment): a
+	// project_name of "*" fans out to every project reachable via the binding's
+	// ancestor-walk; a name of "*" fans out to every resource of the given kind
+	// within the matched project(s).
 	TargetRefs []*TemplatePolicyBindingTargetRef `protobuf:"bytes,6,rep,name=target_refs,json=targetRefs,proto3" json:"target_refs,omitempty"`
 	// creator_email is the email address of the user who created this
 	// binding. Server-populated from the authenticated caller on Create;
