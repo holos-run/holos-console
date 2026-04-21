@@ -194,9 +194,16 @@ func getPepperSecret(ctx context.Context, c client.Client, key types.NamespacedN
 
 // existingResult derives the BootstrapResult for a Secret that already
 // exists. Returns an error if the Secret is present but carries no
-// valid "pepper-<N>" rows — this is an unrecoverable state because the
-// reconciler cannot hash, and Bootstrap refuses to silently re-seed
-// version 1 on top of operator-edited material.
+// valid "pepper-<N>" rows, or if the active (highest-numbered) row is
+// zero-length. Either condition is unrecoverable because the reconciler
+// cannot hash against an absent or empty pepper, and Bootstrap refuses
+// to report success on an unusable Secret — the "pepper bootstrap
+// complete" log line must only appear when Hash can actually run.
+//
+// Bootstrap also refuses to silently re-seed version 1 on top of
+// operator-edited material: an operator who wiped .data must clear up
+// the mess deliberately rather than get a fresh pepper substituted
+// under them.
 func existingResult(s *corev1.Secret) (BootstrapResult, error) {
 	versions := parsePepperData(s.Data)
 	if len(versions) == 0 {
@@ -204,6 +211,16 @@ func existingResult(s *corev1.Secret) (BootstrapResult, error) {
 			ErrNoPepperVersions, s.Namespace, s.Name)
 	}
 	active := activeVersion(versions)
+	if len(versions[active]) == 0 {
+		// The highest-numbered row is present but empty. Loader.Active
+		// would reject it on the first reconcile; fail at Bootstrap
+		// time instead so the manager never reports readiness on an
+		// unusable pepper. The version counter is safe to include in
+		// the error (it is telemetry-safe shape); the bytes stay off
+		// the wire because there are none.
+		return BootstrapResult{}, fmt.Errorf("crypto: Bootstrap: existing pepper Secret %s/%s row for version %d is empty",
+			s.Namespace, s.Name, active)
+	}
 	return BootstrapResult{
 		ActiveVersion: active,
 		Created:       false,

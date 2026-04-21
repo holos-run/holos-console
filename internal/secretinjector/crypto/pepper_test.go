@@ -226,6 +226,32 @@ func TestBootstrapNilClientRejected(t *testing.T) {
 	}
 }
 
+// TestBootstrapExistingSecretWithEmptyActiveRow fails Bootstrap when
+// the highest-numbered row exists but is zero-length. An empty row is
+// the ambiguous case that would otherwise produce a "pepper bootstrap
+// complete" log line for a pepper the loader will refuse on the first
+// reconcile; Bootstrap catches it up front so readiness never flips
+// for an unusable pepper.
+func TestBootstrapExistingSecretWithEmptyActiveRow(t *testing.T) {
+	ctx := context.Background()
+	c := newFakeClient(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: testNamespace,
+			Name:      PepperSecretName,
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			"pepper-1": bytes.Repeat([]byte{0x01}, PepperSeedLength),
+			"pepper-2": {},
+		},
+	})
+
+	_, err := Bootstrap(ctx, c, testNamespace)
+	if err == nil {
+		t.Fatalf("Bootstrap: nil error, want rejection of empty active row")
+	}
+}
+
 // TestBootstrapExistingSecretWithNoValidRows returns
 // ErrNoPepperVersions so an operator who truncates .data sees a loud
 // error on manager restart rather than Bootstrap silently re-sealing
