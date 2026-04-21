@@ -299,7 +299,6 @@ func (r *CredentialReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		target.Status.CredentialID = ksuid.New().String()
 	}
 
-	var hashMaterialized metav1.Condition
 	if target.Status.HashSecretRef == nil || !r.hashSecretExists(ctx, target) {
 		pepperVersion, envelope, err := r.materialiseHashEnvelope(ctx, target)
 		if err != nil {
@@ -307,7 +306,7 @@ func (r *CredentialReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			// as HashMaterialized=False so operators see the Reason and
 			// return the error so controller-runtime backs off on retry.
 			target.Status.Phase = secretsv1alpha1.PhaseActive
-			hashMaterialized = metav1.Condition{
+			hashMaterialized := metav1.Condition{
 				Type:    secretsv1alpha1.CredentialConditionHashMaterialized,
 				Status:  metav1.ConditionFalse,
 				Reason:  secretsv1alpha1.CredentialReasonHashSecretMissing,
@@ -335,7 +334,7 @@ func (r *CredentialReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	target.Status.Phase = secretsv1alpha1.PhaseActive
-	hashMaterialized = metav1.Condition{
+	hashMaterialized := metav1.Condition{
 		Type:    secretsv1alpha1.CredentialConditionHashMaterialized,
 		Status:  metav1.ConditionTrue,
 		Reason:  secretsv1alpha1.CredentialReasonHashMaterialized,
@@ -524,11 +523,13 @@ func (r *CredentialReconciler) hashSecretExists(ctx context.Context, cred *secre
 // A not-found response is tolerated — the Credential may have been
 // observed before any Secret was materialised, or the Secret may have
 // been garbage-collected already.
+//
+// When Status.HashSecretRef is nil (no materialisation has been recorded
+// yet, or a previous revocation reconcile already cleared it) the helper
+// still falls back to the deterministic Secret name — this closes the
+// window where a revocation races an in-flight materialisation that
+// already wrote the Secret but has not yet stamped HashSecretRef.
 func (r *CredentialReconciler) deleteHashSecret(ctx context.Context, cred *secretsv1alpha1.Credential) error {
-	if cred.Status.HashSecretRef == nil {
-		// Fall through to the deterministic-name delete so a revocation
-		// that races an in-flight materialisation still cleans up.
-	}
 	name := cred.Name + credentialHashSecretSuffix
 	if cred.Status.HashSecretRef != nil {
 		name = cred.Status.HashSecretRef.Name

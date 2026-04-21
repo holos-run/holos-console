@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/clock"
 	clocktesting "k8s.io/utils/clock/testing"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -691,5 +690,4 @@ func TestCredential_ClockHelper(t *testing.T) {
 	if got := r.now(); got.IsZero() {
 		t.Errorf("now() with nil Clock returned zero Time; want real wall clock")
 	}
-	_ = clock.PassiveClock(nil) // reference to keep the import in one place
 }
