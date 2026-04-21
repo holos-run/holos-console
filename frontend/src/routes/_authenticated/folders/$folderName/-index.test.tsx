@@ -157,7 +157,7 @@ describe('FolderIndexPage', () => {
       name: 'View all template policies',
     })
     const projectsLink = screen.getByRole('link', {
-      name: 'View all resources in the organization',
+      name: 'View all projects',
     })
     // Position compareDocumentPosition returns a bitmask where bit 0x04
     // ("following") is set when `other` appears after `this` in the DOM.
@@ -329,9 +329,9 @@ describe('FolderIndexPage', () => {
     render(<FolderIndexPage folderName="payments" />)
     // Each "View all" link carries a section-specific aria-label so
     // the three buttons are distinguishable in a screen-reader link
-    // list. The Projects link additionally signals that the fallback
-    // destination widens scope to the whole org's Resources listing
-    // (HOL-755 will swap this for a folder-scoped projects index).
+    // list. All three now target folder-scoped indexes (HOL-755 added
+    // the folder-scoped projects index so the Projects link no longer
+    // widens scope to the org-wide Resources listing).
     expect(
       screen.getByRole('link', { name: 'View all templates' }),
     ).toHaveAttribute('href', '/folders/payments/templates')
@@ -339,8 +339,8 @@ describe('FolderIndexPage', () => {
       screen.getByRole('link', { name: 'View all template policies' }),
     ).toHaveAttribute('href', '/folders/payments/template-policies')
     expect(
-      screen.getByRole('link', { name: 'View all resources in the organization' }),
-    ).toHaveAttribute('href', '/orgs/test-org/resources')
+      screen.getByRole('link', { name: 'View all projects' }),
+    ).toHaveAttribute('href', '/folders/payments/projects')
   })
 
   it('renders per-section error alerts when a single list query fails', () => {
