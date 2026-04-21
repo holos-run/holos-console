@@ -33,7 +33,16 @@ import (
 var (
 	logLevel            string
 	controllerNamespace string
+	meshTrustDomain     string
 )
+
+// MeshTrustDomainEnv is the environment variable the CLI reads when the
+// --mesh-trust-domain flag is left unset. Operators typically set this in
+// the controller Deployment manifest so the injector picks up the mesh's
+// MeshConfig.trustDomain without a rebuild. Empty flag and empty env var
+// together fall back to the upstream Istio default (`cluster.local`) via
+// [controller.Options.MeshTrustDomain].
+const MeshTrustDomainEnv = "HOLOS_SECRETINJECTOR_MESH_TRUST_DOMAIN"
 
 // Command returns the root cobra command for the holos-secret-injector CLI.
 //
@@ -92,6 +101,17 @@ func Command() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&controllerNamespace, "controller-namespace", "",
 		"Namespace the controller treats as its own (pepper bootstrap target). Defaults to $POD_NAMESPACE.")
 
+	// Mesh trust domain. The SecretInjectionPolicyBindingReconciler stamps
+	// this value into every emitted AuthorizationPolicy's source.principals
+	// entry (`<trust-domain>/ns/<ns>/sa/<name>`). Operators running a
+	// re-pegged mesh MUST set this to MeshConfig.trustDomain — otherwise the
+	// emitted allow-lists reference the wrong SPIFFE identity and
+	// ServiceAccount bindings silently fail to match. Leave the flag unset
+	// to fall back to $HOLOS_SECRETINJECTOR_MESH_TRUST_DOMAIN; leave both
+	// unset to use the upstream Istio default (`cluster.local`).
+	cmd.PersistentFlags().StringVar(&meshTrustDomain, "mesh-trust-domain", "",
+		fmt.Sprintf("SPIFFE trust domain stamped into emitted AuthorizationPolicy source.principals. Defaults to $%s or cluster.local.", MeshTrustDomainEnv))
+
 	return cmd
 }
 
@@ -125,6 +145,7 @@ func Run(cmd *cobra.Command, args []string) error {
 	mgr, err := sicontroller.NewManager(cfg, sicontroller.Options{
 		Logger:              slog.Default(),
 		ControllerNamespace: controllerNamespace,
+		MeshTrustDomain:     resolveMeshTrustDomain(meshTrustDomain),
 	})
 	if err != nil {
 		return fmt.Errorf("constructing manager: %w", err)
@@ -133,6 +154,20 @@ func Run(cmd *cobra.Command, args []string) error {
 	slog.Info("starting holos-secret-injector",
 		"version", console.GetVersion())
 	return mgr.Start(ctx)
+}
+
+// resolveMeshTrustDomain returns the effective mesh trust domain for the
+// controller. The flag value wins if set; otherwise the CLI reads
+// [MeshTrustDomainEnv]. An empty return signals
+// [controller.Options.MeshTrustDomain] to fall back to its upstream Istio
+// default (`cluster.local`), so this helper never returns the constant
+// itself — the single source of truth for the default lives inside the
+// controller package.
+func resolveMeshTrustDomain(flag string) string {
+	if flag != "" {
+		return flag
+	}
+	return os.Getenv(MeshTrustDomainEnv)
 }
 
 // parseLogLevel converts a string log level to slog.Level.
