@@ -47,43 +47,54 @@ function stubLists({
   projects = [],
   perProjectTemplates = {},
   perProjectDeployments = {},
+  perProjectTemplatesError = {},
+  perProjectDeploymentsError = {},
+  listProjectsError = null,
 }: {
   projects?: Project[]
   perProjectTemplates?: Record<string, Template[]>
   perProjectDeployments?: Record<string, Deployment[]>
+  perProjectTemplatesError?: Record<string, unknown>
+  perProjectDeploymentsError?: Record<string, unknown>
+  listProjectsError?: unknown
 }) {
   ;(useListProjects as Mock).mockImplementation((org: string) => ({
-    data: org ? { projects } : undefined,
+    data: org && !listProjectsError ? { projects } : undefined,
     isLoading: false,
     isPending: false,
-    error: null,
+    error: org ? listProjectsError : null,
   }))
   ;(useListProjectsByParent as Mock).mockImplementation(
     (org: string, _pt: unknown, parent: string | undefined) => ({
-      data: org && parent ? projects : undefined,
+      data:
+        org && parent && !listProjectsError ? projects : undefined,
       isLoading: false,
       isPending: false,
-      error: null,
+      error: org && parent ? listProjectsError : null,
     }),
   )
   ;(useListTemplates as Mock).mockImplementation((namespace: string) => {
     if (!namespace) return { data: [], isLoading: false, error: null }
-    // namespace-to-project-name reverse lookup: the fixture keys by project
-    // name so the test controls per-project shape.
     const entry = Object.entries(perProjectTemplates).find(
       ([p]) => namespaceForProject(p) === namespace,
     )
+    const errEntry = Object.entries(perProjectTemplatesError).find(
+      ([p]) => namespaceForProject(p) === namespace,
+    )
     return {
-      data: entry ? entry[1] : [],
+      data: errEntry ? undefined : entry ? entry[1] : [],
       isLoading: false,
-      error: null,
+      error: errEntry ? errEntry[1] : null,
     }
   })
   ;(useListDeployments as Mock).mockImplementation((project: string) => {
+    if (!project) return { data: [], isLoading: false, error: null }
     return {
-      data: project ? (perProjectDeployments[project] ?? []) : [],
+      data: perProjectDeploymentsError[project]
+        ? undefined
+        : (perProjectDeployments[project] ?? []),
       isLoading: false,
-      error: null,
+      error: perProjectDeploymentsError[project] ?? null,
     }
   })
 }
@@ -395,6 +406,68 @@ describe('MatchesPreview', () => {
     expect(screen.getByTestId('matches-preview-list')).toHaveTextContent(
       'proj-a/ingress',
     )
+  })
+
+  it('renders the probe error banner when a per-project probe fails', async () => {
+    // HOL-773 codex follow-up on PR #1084: if useListTemplates fails for
+    // a project the preview must NOT collapse to the empty-state warning.
+    // It must surface an explicit error banner so the author knows the
+    // match count is incomplete.
+    stubLists({
+      projects: [{ name: 'proj-a', displayName: 'Project A' }],
+      perProjectTemplates: {},
+      perProjectTemplatesError: {
+        'proj-a': new Error('transient connect error'),
+      },
+    })
+    render(
+      <MatchesPreview
+        organization="test-org"
+        parentScope={{ kind: 'organization' }}
+        targets={[
+          {
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: '*',
+            name: '*',
+          },
+        ]}
+      />,
+    )
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('matches-preview-error'),
+      ).toBeInTheDocument()
+    })
+    // Empty-state warning must NOT appear when a probe errored —
+    // "No targets match" is reserved for a complete, zero-result preview.
+    expect(
+      screen.queryByTestId('matches-preview-empty'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('renders the scope-enumeration error banner when useListProjects fails', async () => {
+    stubLists({
+      projects: [],
+      listProjectsError: new Error('transient connect error'),
+    })
+    render(
+      <MatchesPreview
+        organization="test-org"
+        parentScope={{ kind: 'organization' }}
+        targets={[
+          {
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: '*',
+            name: '*',
+          },
+        ]}
+      />,
+    )
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('matches-preview-error'),
+      ).toBeInTheDocument()
+    })
   })
 
   it('folder-scoped preview enumerates via useListProjectsByParent', async () => {

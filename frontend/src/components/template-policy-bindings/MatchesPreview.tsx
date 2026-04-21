@@ -77,6 +77,15 @@ export type MatchesPreviewProps = {
 type ProbeValue = {
   matches: MatchEntry[]
   pending: boolean
+  /**
+   * Non-null if the underlying list query failed. The preview surfaces
+   * failed probes as an error banner instead of silently collapsing to
+   * an empty match set (codex follow-up on PR #1084). An error leaves
+   * `matches` empty and `pending` false for this probe; the parent
+   * reducer counts them separately so the author can distinguish
+   * "no matches" from "unknown — probe failed".
+   */
+  error?: unknown
 }
 
 type ProbeStore = {
@@ -118,6 +127,7 @@ function useProbeStore(): ProbeStore {
       if (
         prev &&
         prev.pending === value.pending &&
+        prev.error === value.error &&
         sameMatchList(prev.matches, value.matches)
       ) {
         return
@@ -286,10 +296,21 @@ export function MatchesPreview({
   const store = useProbeStore()
   const probeData = useProbeSnapshot(store)
 
+  // Aggregate parent-scope project enumeration error too — if the org or
+  // folder listing itself fails, we cannot honestly render anything.
+  const scopeEnumerationError =
+    parentScope.kind === 'organization'
+      ? orgProjectsQuery.error
+      : folderProjectsQuery.error
+
   // Reduce row plans + live probe data to a dedup'd list of matches.
-  const { matches, pendingCount } = useMemo(() => {
+  // `errorCount` counts probes that failed so the UI can surface an
+  // explicit "some probes failed" state instead of collapsing to the
+  // empty-state warning (codex follow-up on PR #1084).
+  const { matches, pendingCount, errorCount } = useMemo(() => {
     const seen = new Map<string, MatchEntry>()
     let pending = 0
+    let errors = 0
     if (enumeratedProjectsPending) pending += 1
 
     for (const plan of rowPlans) {
@@ -329,6 +350,12 @@ export function MatchesPreview({
           continue
         }
         if (probe.pending) pending += 1
+        if (probe.error) {
+          // Failed probe: count it and move on. Do not contribute to the
+          // match set — we do not know what is in this project.
+          errors += 1
+          continue
+        }
         if (nameIsWildcard) {
           for (const m of probe.matches) {
             const k = entryKey(m)
@@ -348,12 +375,17 @@ export function MatchesPreview({
         }
       }
     }
-    return { matches: Array.from(seen.values()), pendingCount: pending }
+    return {
+      matches: Array.from(seen.values()),
+      pendingCount: pending,
+      errorCount: errors,
+    }
   }, [rowPlans, probeData, enumeratedProjectsPending, scopeEnforcesFolderMembership])
 
   const [open, setOpen] = useState(true)
   const isEmpty = matches.length === 0
   const isResolved = pendingCount === 0
+  const hasProbeError = errorCount > 0 || !!scopeEnumerationError
 
   return (
     <div className="space-y-2" data-testid="matches-preview">
@@ -370,7 +402,22 @@ export function MatchesPreview({
         />
       ))}
 
-      {isEmpty && isResolved && targets.length > 0 ? (
+      {hasProbeError && (
+        // Explicit error banner: a probe RPC failed (or the parent-scope
+        // project list failed). The match list is unreliable in this
+        // state, so we tell the author — never silently collapse to the
+        // "No targets match" warning (codex follow-up on PR #1084).
+        <Alert variant="destructive" data-testid="matches-preview-error">
+          <AlertTitle>Preview unavailable for some projects</AlertTitle>
+          <AlertDescription>
+            {scopeEnumerationError
+              ? 'We could not enumerate the projects in this scope. The binding may still be valid — retry, or check your access.'
+              : `${errorCount} probe${errorCount === 1 ? '' : 's'} failed. The match count below excludes those projects.`}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {!hasProbeError && isEmpty && isResolved && targets.length > 0 ? (
         <Alert variant="default" data-testid="matches-preview-empty">
           <AlertTitle>No targets match</AlertTitle>
           <AlertDescription>
@@ -538,8 +585,14 @@ function Probe({
   const deployments = useListDeployments(isDeployment ? projectName : '')
 
   const pending = isDeployment ? !!deployments.isLoading : !!templates.isLoading
+  const error = isDeployment ? deployments.error : templates.error
 
   const matches: MatchEntry[] = useMemo(() => {
+    // When the probe failed we publish an empty match list with the
+    // error set — the parent reducer uses `error` (not matches.length)
+    // to drive the error banner, so we do not conflate "probe failed"
+    // with "probe returned zero entries".
+    if (error) return []
     if (isDeployment) {
       return (deployments.data ?? []).map((d) => ({
         kind,
@@ -550,11 +603,12 @@ function Probe({
     return (templates.data ?? [])
       .filter((t) => scopeLabelFromNamespace(t.namespace) === 'project')
       .map((t) => ({ kind, projectName, name: t.name }))
-  }, [isDeployment, kind, projectName, templates.data, deployments.data])
+  }, [error, isDeployment, kind, projectName, templates.data, deployments.data])
 
   // Publish during render. The store dedupes on equal values so this does
-  // not loop; changes to `matches` / `pending` produce a single notify().
-  store.publish(probeKey, { matches, pending })
+  // not loop; changes to `matches` / `pending` / `error` produce a single
+  // notify().
+  store.publish(probeKey, { matches, pending, error: error ?? undefined })
 
   return null
 }
