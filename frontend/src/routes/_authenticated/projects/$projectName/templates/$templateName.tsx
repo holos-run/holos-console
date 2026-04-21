@@ -19,11 +19,11 @@ export const Route = createFileRoute(
 export function ProjectTemplateRedirect() {
   const { projectName, templateName } = Route.useParams()
   const navigate = useNavigate()
-  const { data: project, error } = useGetProject(projectName)
+  const { data: project, isPending, error } = useGetProject(projectName)
   const orgName = project?.organization ?? ''
 
   useEffect(() => {
-    if (!orgName) return
+    if (isPending || !orgName) return
     navigate({
       to: '/orgs/$orgName/templates/$namespace/$name',
       params: {
@@ -33,7 +33,7 @@ export function ProjectTemplateRedirect() {
       },
       replace: true,
     })
-  }, [orgName, projectName, templateName, navigate])
+  }, [isPending, orgName, projectName, templateName, navigate])
 
   if (error) {
     return (
