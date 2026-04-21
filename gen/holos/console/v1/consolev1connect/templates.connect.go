@@ -81,6 +81,9 @@ const (
 	// TemplateServiceSearchTemplatesProcedure is the fully-qualified name of the TemplateService's
 	// SearchTemplates RPC.
 	TemplateServiceSearchTemplatesProcedure = "/holos.console.v1.TemplateService/SearchTemplates"
+	// TemplateServiceListTemplateExamplesProcedure is the fully-qualified name of the TemplateService's
+	// ListTemplateExamples RPC.
+	TemplateServiceListTemplateExamplesProcedure = "/holos.console.v1.TemplateService/ListTemplateExamples"
 )
 
 // TemplateServiceClient is a client for the holos.console.v1.TemplateService service.
@@ -162,6 +165,15 @@ type TemplateServiceClient interface {
 	// template's owning namespace so the UI can render a flat, sortable table
 	// across scopes without issuing N per-namespace calls.
 	SearchTemplates(context.Context, *connect.Request[v1.SearchTemplatesRequest]) (*connect.Response[v1.SearchTemplatesResponse], error)
+	// ListTemplateExamples returns the built-in CUE example templates embedded
+	// in the server binary. The UI picker uses this RPC to offer drop-in
+	// starting points when creating a new template without hard-coding any
+	// content on the frontend. Introduced in HOL-797.
+	//
+	// The request is intentionally empty — a filter string may be added in a
+	// future revision. The response list is sorted by name ascending so the UI
+	// can rely on a stable order without re-sorting.
+	ListTemplateExamples(context.Context, *connect.Request[v1.ListTemplateExamplesRequest]) (*connect.Response[v1.ListTemplateExamplesResponse], error)
 }
 
 // NewTemplateServiceClient constructs a client for the holos.console.v1.TemplateService service. By
@@ -271,6 +283,12 @@ func NewTemplateServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(templateServiceMethods.ByName("SearchTemplates")),
 			connect.WithClientOptions(opts...),
 		),
+		listTemplateExamples: connect.NewClient[v1.ListTemplateExamplesRequest, v1.ListTemplateExamplesResponse](
+			httpClient,
+			baseURL+TemplateServiceListTemplateExamplesProcedure,
+			connect.WithSchema(templateServiceMethods.ByName("ListTemplateExamples")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -292,6 +310,7 @@ type templateServiceClient struct {
 	getTemplateDefaults           *connect.Client[v1.GetTemplateDefaultsRequest, v1.GetTemplateDefaultsResponse]
 	getProjectTemplatePolicyState *connect.Client[v1.GetProjectTemplatePolicyStateRequest, v1.GetProjectTemplatePolicyStateResponse]
 	searchTemplates               *connect.Client[v1.SearchTemplatesRequest, v1.SearchTemplatesResponse]
+	listTemplateExamples          *connect.Client[v1.ListTemplateExamplesRequest, v1.ListTemplateExamplesResponse]
 }
 
 // ListTemplates calls holos.console.v1.TemplateService.ListTemplates.
@@ -375,6 +394,11 @@ func (c *templateServiceClient) SearchTemplates(ctx context.Context, req *connec
 	return c.searchTemplates.CallUnary(ctx, req)
 }
 
+// ListTemplateExamples calls holos.console.v1.TemplateService.ListTemplateExamples.
+func (c *templateServiceClient) ListTemplateExamples(ctx context.Context, req *connect.Request[v1.ListTemplateExamplesRequest]) (*connect.Response[v1.ListTemplateExamplesResponse], error) {
+	return c.listTemplateExamples.CallUnary(ctx, req)
+}
+
 // TemplateServiceHandler is an implementation of the holos.console.v1.TemplateService service.
 type TemplateServiceHandler interface {
 	// ListTemplates returns all templates the user can see in the given
@@ -454,6 +478,15 @@ type TemplateServiceHandler interface {
 	// template's owning namespace so the UI can render a flat, sortable table
 	// across scopes without issuing N per-namespace calls.
 	SearchTemplates(context.Context, *connect.Request[v1.SearchTemplatesRequest]) (*connect.Response[v1.SearchTemplatesResponse], error)
+	// ListTemplateExamples returns the built-in CUE example templates embedded
+	// in the server binary. The UI picker uses this RPC to offer drop-in
+	// starting points when creating a new template without hard-coding any
+	// content on the frontend. Introduced in HOL-797.
+	//
+	// The request is intentionally empty — a filter string may be added in a
+	// future revision. The response list is sorted by name ascending so the UI
+	// can rely on a stable order without re-sorting.
+	ListTemplateExamples(context.Context, *connect.Request[v1.ListTemplateExamplesRequest]) (*connect.Response[v1.ListTemplateExamplesResponse], error)
 }
 
 // NewTemplateServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -559,6 +592,12 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 		connect.WithSchema(templateServiceMethods.ByName("SearchTemplates")),
 		connect.WithHandlerOptions(opts...),
 	)
+	templateServiceListTemplateExamplesHandler := connect.NewUnaryHandler(
+		TemplateServiceListTemplateExamplesProcedure,
+		svc.ListTemplateExamples,
+		connect.WithSchema(templateServiceMethods.ByName("ListTemplateExamples")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.TemplateService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TemplateServiceListTemplatesProcedure:
@@ -593,6 +632,8 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 			templateServiceGetProjectTemplatePolicyStateHandler.ServeHTTP(w, r)
 		case TemplateServiceSearchTemplatesProcedure:
 			templateServiceSearchTemplatesHandler.ServeHTTP(w, r)
+		case TemplateServiceListTemplateExamplesProcedure:
+			templateServiceListTemplateExamplesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -664,4 +705,8 @@ func (UnimplementedTemplateServiceHandler) GetProjectTemplatePolicyState(context
 
 func (UnimplementedTemplateServiceHandler) SearchTemplates(context.Context, *connect.Request[v1.SearchTemplatesRequest]) (*connect.Response[v1.SearchTemplatesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.SearchTemplates is not implemented"))
+}
+
+func (UnimplementedTemplateServiceHandler) ListTemplateExamples(context.Context, *connect.Request[v1.ListTemplateExamplesRequest]) (*connect.Response[v1.ListTemplateExamplesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.ListTemplateExamples is not implemented"))
 }
