@@ -5,20 +5,22 @@
 #
 # Apply order (locked in ADR 030):
 #   1. DNS + k3d cluster + mkcert root CA
-#   2. kubectl apply -k config/holos-console/crd/
-#   3. kubectl apply -k config/holos-console/admission/
-#   4. kubectl apply -k config/holos-console/rbac/
-#   5. holos-console deployment rollout
+#   2. kubectl apply -k config/namespace-scoped/
+#   3. kubectl apply -k config/cluster-scoped/
+#   4. holos-console deployment rollout
 #
-# The ordering matters: CRDs must exist before admission policies reference
-# them; admission policies must exist before the first policy/binding is
-# created; RBAC must exist before the console pod starts (reconcilers need
-# list/watch permissions at manager startup).
+# The ordering matters: namespace-scoped resources (including the controller
+# ServiceAccounts in holos-system) must exist before the cluster-scoped
+# ClusterRoleBindings bind them. The cluster-scoped overlay installs CRDs,
+# ValidatingAdmissionPolicies, and ClusterRoles for both templates.holos.run
+# and secrets.holos.run; CRDs are installed before any policy/binding that
+# references them, and RBAC is in place before the console pod starts
+# (reconcilers need list/watch permissions at manager startup).
 #
 # The rolling deployment step is intentionally a hook (HOLOS_CONSOLE_ROLLOUT).
 # The container image lifecycle lives in the user's own workflow — this script
-# only guarantees the CRD / admission / RBAC surface is installed before that
-# hook runs.
+# only guarantees the namespace-scoped and cluster-scoped manifests are
+# installed before that hook runs.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -33,10 +35,15 @@ echo ">>> (2/5) scripts/local-k3d"
 echo ">>> (3/5) scripts/local-ca"
 ./scripts/local-ca
 
-echo ">>> (4/5) kubectl apply CRDs, admission policies, RBAC"
-kubectl apply -k "${REPO_ROOT}/config/holos-console/crd/"
-kubectl apply -k "${REPO_ROOT}/config/holos-console/admission/"
-kubectl apply -k "${REPO_ROOT}/config/holos-console/rbac/"
+echo ">>> (4/5) kubectl apply namespace-scoped then cluster-scoped overlays"
+# The namespace-scoped overlay installs the holos-secret-injector
+# ServiceAccount + Role + RoleBinding in holos-system. Kustomize overlays
+# do not declare the Namespace itself (M1 deferral; see
+# config/secret-injector/namespace-scoped/README.md), so create it first
+# server-side and idempotently so a fresh k3d cluster bootstraps cleanly.
+kubectl create namespace holos-system --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -k "${REPO_ROOT}/config/namespace-scoped/"
+kubectl apply -k "${REPO_ROOT}/config/cluster-scoped/"
 
 echo ">>> (5/5) roll holos-console deployment"
 if [[ -n "${HOLOS_CONSOLE_ROLLOUT:-}" ]]; then

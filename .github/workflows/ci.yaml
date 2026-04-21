@@ -90,15 +90,24 @@ jobs:
       # The controller-runtime manager embedded in holos-console (HOL-620) starts
       # informers over templates.holos.run/v1alpha1 at boot. The manager fails
       # its initial cache sync — and the console treats that as fatal — when
-      # the target cluster does not have the CRDs installed. Apply the CRDs,
-      # admission policies, and RBAC here, in the same order scripts/kind-up
-      # uses for local clusters (ADR 030). Order matters: CRDs first so the
-      # ValidatingAdmissionPolicies can reference templates.holos.run kinds.
-      - name: Install holos-console CRDs, admission policies, and RBAC
+      # the target cluster does not have the CRDs installed. Apply the
+      # consolidated namespace-scoped and cluster-scoped overlays here, in the
+      # same order scripts/kind-up uses for local clusters (ADR 030). Order
+      # matters: namespace-scoped resources (ServiceAccounts in holos-system)
+      # must exist before the cluster-scoped ClusterRoleBindings bind them,
+      # and the cluster-scoped overlay installs the CRDs before the
+      # ValidatingAdmissionPolicies reference them.
+      - name: Install holos-console and secret-injector manifests
         run: |
-          kubectl apply -k config/holos-console/crd/
-          kubectl apply -k config/holos-console/admission/
-          kubectl apply -k config/holos-console/rbac/
+          # The namespace-scoped overlay installs the holos-secret-injector
+          # ServiceAccount in holos-system. Kustomize overlays do not declare
+          # the Namespace itself (M1 deferral; see
+          # config/secret-injector/namespace-scoped/README.md), so create it
+          # idempotently before applying so CI bootstraps cleanly on a fresh
+          # k3s cluster.
+          kubectl create namespace holos-system --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -k config/namespace-scoped/
+          kubectl apply -k config/cluster-scoped/
 
       - name: Install Playwright browsers
         run: |
