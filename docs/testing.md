@@ -156,12 +156,16 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/routes/_authenticated/projects/$projectName/settings/-settings.test.tsx` | Project settings page: display name, description, sharing, default secret sharing, delete |
 | `src/routes/_authenticated/projects/$projectName/settings/-settings-deployments.test.tsx` | Project settings — Features section: deployments toggle, RBAC (owner/editor/viewer) |
 | `src/routes/_authenticated/projects/$projectName/templates/-index.test.tsx` | Deployment templates list: template names, create/delete buttons, RBAC, empty/error state |
-| `src/routes/_authenticated/projects/$projectName/templates/-$templateName.test.tsx` | Deployment template detail: CUE editor, save/delete, RBAC, skeleton, error state |
+| `src/routes/_authenticated/projects/$projectName/templates/-$templateName.test.tsx` | Project-scoped template redirect shim: sr-only status, error alert, deferred navigation until project resolves, navigates to consolidated editor under `prj-*` namespace |
 | `src/routes/_authenticated/projects/$projectName/templates/-new.test.tsx` | Create template page: form fields (display name, slug, description, CUE), slug auto-derivation, validation, cancel link |
 | `src/routes/_authenticated/projects/$projectName/deployments/-index.test.tsx` | Deployments list: names, image/tag, status badges, create/delete, RBAC, empty/error state |
 | `src/routes/_authenticated/projects/$projectName/deployments/-$deploymentName.test.tsx` | Deployment detail: image/tag, replicas, conditions, logs, re-deploy/delete, RBAC, tab layout (Status/Logs) with legacy `?tab=template` degrading to Status, App URL row sourced from `statusSummary.output.url` |
 | `src/routes/_authenticated/projects/$projectName/deployments/-new.test.tsx` | Create deployment page: form fields (display name, slug, description, template, image, tag, command, args, env vars, port), Combobox template selector, defaults pre-fill (name/description from CUE defaults), RBAC |
 | `src/routes/_authenticated/orgs/$orgName/settings/-settings.test.tsx` | Org settings page: display name, description, sharing, default sharing, delete |
+| `src/routes/_authenticated/orgs/$orgName/templates/-index.test.tsx` | Org templates list: loading skeleton, error alert, empty state, cross-scope rows (org/folder/project namespaces), links to consolidated editor, search by display name/namespace/slug, Create Template button RBAC, empty-state OWNER vs non-OWNER prompts |
+| `src/routes/_authenticated/orgs/$orgName/templates/-new.test.tsx` | Create org template page: page heading, Display Name/Name/Description/CUE fields, Enabled switch, Create and Cancel controls, slug auto-derivation, validation, form submission |
+| `src/routes/_authenticated/orgs/$orgName/templates/-$namespace.$name.test.tsx` | Consolidated template editor: loading skeleton, error alert, namespace+name display, displayName heading, save via UpdateTemplate RPC, Delete button visibility, confirmation dialog open/cancel/confirm, post-delete navigation, TemplateExamplePicker integration (load/confirm/cancel) |
+| `src/routes/_authenticated/orgs/$orgName/templates/-cross-scope.test.tsx` | Cross-scope equivalence (HOL-607): consolidated editor renders identical structure for org, folder, and project namespace prefixes |
 | `src/routes/_authenticated/projects/-$projectName.test.tsx` | ProjectLayout: sets selected project from URL param |
 | `src/routes/-_authenticated.test.tsx` | Auth layout: silent renewal, OIDC redirect |
 | `src/lib/isOwner.test.ts` | RBAC owner check logic |
@@ -173,6 +177,7 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/hooks/-use-debounced-value.test.ts` | useDebouncedValue: initial value, delay behavior, timer reset on rapid changes, default delay |
 | `src/queries/-organizations.test.ts` | Organization query hooks: get, update, sharing, default sharing, delete |
 | `src/queries/-projects.test.ts` | useListProjects and useCreateProject hooks |
+| `src/queries/-templatePolicies.test.ts` | `aggregateFanOut` helper: idle/disabled queries, pending while fetching, org-only and org+folder concatenation, partial-failure tolerance, non-Error wrapping, empty input |
 | `src/components/create-org-dialog.test.tsx` | Create organization dialog: validation, submission |
 | `src/components/create-project-dialog.test.tsx` | Create project dialog: validation, submission |
 | `src/index.test.ts` | App entry point smoke test |
