@@ -492,6 +492,13 @@ func (s *Server) Serve(ctx context.Context) error {
 		settingsPath, settingsHTTPHandler := consolev1connect.NewProjectSettingsServiceHandler(settingsHandler, protectedInterceptors)
 		mux.Handle(settingsPath, settingsHTTPHandler)
 
+		// HOL-644 / HOL-828: shared gateway-namespace resolver used by both the
+		// deployments handler (project→org→annotation) and the template-preview
+		// handler (org/folder→annotation). Constructed here so both handlers
+		// share the same instance without duplicating the resolution logic.
+		// orgsK8s and projectResolver are already available at this point.
+		gatewayResolver := organizations.NewGatewayNamespaceResolver(orgsK8s, projectResolver)
+
 		// Unified TemplateService handler — manages templates at org, folder, and
 		// project scopes in a single service (ADR 021).
 		folderGrantResolver := folders.NewFolderGrantResolver(foldersK8s)
@@ -500,7 +507,8 @@ func (s *Server) Serve(ctx context.Context) error {
 			WithFolderGrantResolver(folderGrantResolver).
 			WithProjectGrantResolver(projectResolver).
 			WithAncestorWalker(nsWalker).
-			WithProjectTemplateDriftChecker(projectTemplateDriftAdapter)
+			WithProjectTemplateDriftChecker(projectTemplateDriftAdapter).
+			WithOrganizationGatewayResolver(gatewayResolver)
 		templatesPath, templatesHTTPHandler := consolev1connect.NewTemplateServiceHandler(templatesHandler, protectedInterceptors)
 		mux.Handle(templatesPath, templatesHTTPHandler)
 
@@ -583,10 +591,8 @@ func (s *Server) Serve(ctx context.Context) error {
 		// gateway-namespace annotation so PlatformInput.gatewayNamespace
 		// reflects the platform engineer's configured value (set via the
 		// Organization service in HOL-643) rather than the historical
-		// hard-coded "istio-ingress". Reuses the existing projectResolver
-		// (a *projects.ProjectGrantResolver) for the project→org lookup;
-		// the annotation read goes through orgsK8s.
-		gatewayResolver := organizations.NewGatewayNamespaceResolver(orgsK8s, projectResolver)
+		// hard-coded "istio-ingress". gatewayResolver is constructed above
+		// (shared with the templates handler, HOL-828).
 		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templates.NewProjectScopedResolver(templatesK8s), &deployments.CueRenderer{}, deploymentsApplier).
 			WithAncestorWalker(projectFolderResolver).
 			WithAncestorTemplateProvider(ancestorTemplateResolver).

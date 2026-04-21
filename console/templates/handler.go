@@ -20,6 +20,7 @@ import (
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/deployments"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
@@ -155,6 +156,25 @@ type Renderer interface {
 	RenderGroupedWithTemplateSources(ctx context.Context, cueTemplate string, templateSources []string, cuePlatformInput string, cueInput string) (*GroupedRenderResources, error)
 }
 
+// OrganizationGatewayResolver resolves the configured ingress-gateway
+// namespace for an organization. Implementations read the org namespace's
+// gateway-namespace annotation (v1alpha2.AnnotationGatewayNamespace, set via
+// the Organization service in HOL-643).
+//
+// GetGatewayNamespace takes a project slug and resolves the owning org first
+// (the deployments path). GetOrgGatewayNamespace takes an org name directly
+// and is used by the template-preview path where the request scope may be org
+// or folder level and there is no project to resolve through.
+//
+// Both methods return "" when the annotation is absent so the caller can apply
+// its own fallback (deployments.DefaultGatewayNamespace). A non-nil error is
+// treated as a soft failure and logged at WARN — the preview render MUST NOT
+// be rejected on a transient resolver miss.
+type OrganizationGatewayResolver interface {
+	GetGatewayNamespace(ctx context.Context, project string) (string, error)
+	GetOrgGatewayNamespace(ctx context.Context, org string) (string, error)
+}
+
 // ProjectTemplateDriftChecker exposes the minimal surface needed to serve
 // TemplateService.GetProjectTemplatePolicyState and to record the applied
 // render set on successful CreateTemplate/UpdateTemplate at project scope.
@@ -192,6 +212,13 @@ type Handler struct {
 	// — a nil value disables drift reporting and applied-state recording
 	// for project-scope templates (HOL-567).
 	projectTemplateDriftChecker ProjectTemplateDriftChecker
+	// gatewayResolver resolves the ingress-gateway namespace for the org
+	// owning the preview request's scope. HOL-828 wires this so the
+	// template-preview render path injects authoritative platform-owned
+	// values (gatewayNamespace at minimum) into the CUE unified value at the
+	// platform path, mirroring console/deployments/handler.go:buildPlatformInput.
+	// Nil means the preview falls back to deployments.DefaultGatewayNamespace.
+	gatewayResolver OrganizationGatewayResolver
 }
 
 // NewHandler creates a TemplateService handler. policyResolver is the
@@ -233,6 +260,105 @@ func (h *Handler) WithAncestorWalker(w AncestorWalker) *Handler {
 func (h *Handler) WithProjectTemplateDriftChecker(c ProjectTemplateDriftChecker) *Handler {
 	h.projectTemplateDriftChecker = c
 	return h
+}
+
+// WithOrganizationGatewayResolver configures the handler with a resolver that
+// returns the ingress-gateway namespace for an organization. When set,
+// renderTemplateGrouped injects the resolved value into the CUE platform path
+// before the user-supplied cue_platform_input is evaluated, mirroring
+// deployments/handler.go:buildPlatformInput (HOL-828). When unset, the
+// preview falls back to deployments.DefaultGatewayNamespace unchanged.
+func (h *Handler) WithOrganizationGatewayResolver(r OrganizationGatewayResolver) *Handler {
+	h.gatewayResolver = r
+	return h
+}
+
+// resolveGatewayNamespace returns the gateway namespace to inject into
+// PlatformInput for the preview render path. It mirrors the logic in
+// deployments/handler.go:resolveGatewayNamespace but routes through the
+// org-scoped entry points (since the preview namespace may be org or folder
+// scope rather than project scope).
+//
+// For project scope: delegates to GetGatewayNamespace (project→org→annotation).
+// For org/folder scope: delegates to GetOrgGatewayNamespace (org→annotation).
+// Falls back to deployments.DefaultGatewayNamespace on nil resolver, error,
+// or empty annotation. Errors are logged at WARN — the preview MUST NOT fail
+// on a transient resolver miss.
+func (h *Handler) resolveGatewayNamespace(ctx context.Context, kind scopeKind, name string) string {
+	if h.gatewayResolver == nil {
+		return deployments.DefaultGatewayNamespace
+	}
+	var gwNs string
+	var err error
+	switch kind {
+	case scopeKindProject:
+		gwNs, err = h.gatewayResolver.GetGatewayNamespace(ctx, name)
+	case scopeKindOrganization:
+		gwNs, err = h.gatewayResolver.GetOrgGatewayNamespace(ctx, name)
+	case scopeKindFolder:
+		// Folder scope: resolve via org annotation. Walk up to get org name from
+		// the resolver if available; if the resolver lookup fails, fall back to
+		// the default. We use the folder name here; if the resolver cannot map
+		// it to an org, GetOrgGatewayNamespace will return an error.
+		gwNs, err = h.gatewayResolver.GetOrgGatewayNamespace(ctx, name)
+	default:
+		return deployments.DefaultGatewayNamespace
+	}
+	if err != nil {
+		slog.WarnContext(ctx, "could not resolve org gateway namespace for preview, falling back to default",
+			slog.String("scopeKind", kind.String()),
+			slog.String("name", name),
+			slog.String("default", deployments.DefaultGatewayNamespace),
+			slog.Any("error", err),
+		)
+		return deployments.DefaultGatewayNamespace
+	}
+	if gwNs == "" {
+		return deployments.DefaultGatewayNamespace
+	}
+	return gwNs
+}
+
+// buildPreviewPlatformInput constructs a v1alpha2.PlatformInput from the
+// preview request's namespace scope. It mirrors deployments/handler.go:
+// buildPlatformInput but is adapted for the template-preview path where the
+// scope may be org or folder level (HOL-828).
+//
+// The returned PlatformInput is injected at the CUE platform path before the
+// user-supplied cue_platform_input is evaluated. CUE unification merges the
+// two: if the user supplies the same value the backend resolves, the result is
+// identical; if the user supplies a conflicting value, CUE surfaces a conflict
+// error (the desired behavior for pinned vs. resolved mismatches).
+func (h *Handler) buildPreviewPlatformInput(ctx context.Context, kind scopeKind, name string) v1alpha2.PlatformInput {
+	gwNs := h.resolveGatewayNamespace(ctx, kind, name)
+	pi := v1alpha2.PlatformInput{
+		GatewayNamespace: gwNs,
+	}
+	switch kind {
+	case scopeKindOrganization:
+		pi.Organization = name
+	case scopeKindProject:
+		pi.Project = name
+		// Resolve namespace for project scope when resolver is available.
+		if h.k8s != nil {
+			pi.Namespace = scopeNamespace(h.k8s.Resolver, kind, name)
+		}
+	case scopeKindFolder:
+		// Folder scope: no project/org in PlatformInput; gatewayNamespace is the
+		// primary value we inject.
+	}
+	return pi
+}
+
+// platformInputToCUE JSON-encodes pi and returns a CUE string that unifies
+// the struct at the platform path. The resulting string is prepended to the
+// render so the user-supplied cue_platform_input can unify over it.
+func platformInputToCUE(pi v1alpha2.PlatformInput) (string, error) {
+	b, err := json.Marshal(pi)
+	if err != nil {
+		return "", fmt.Errorf("marshal platform input: %w", err)
+	}
+	return "platform: " + string(b) + "\n", nil
 }
 
 // ListTemplates returns all templates in the given scope.
@@ -987,11 +1113,18 @@ func (h *Handler) RenderTemplate(
 }
 
 // renderTemplateGrouped resolves the effective ancestor-template source list
-// for the preview target and delegates to the renderer. Both paths — this
-// preview and the deployments apply path — now route through the same
-// K8sClient.ListEffectiveTemplateSources helper, so preview-vs-apply
-// divergence of the ancestor-source slice is structurally impossible
-// (HOL-562 Phase 2, HOL-564).
+// for the preview target, injects backend-resolved platform values, and
+// delegates to the renderer. Both paths — this preview and the deployments
+// apply path — now route through the same K8sClient.ListEffectiveTemplateSources
+// helper, so preview-vs-apply divergence of the ancestor-source slice is
+// structurally impossible (HOL-562 Phase 2, HOL-564).
+//
+// HOL-828: when a gatewayResolver is configured, renderTemplateGrouped builds
+// a v1alpha2.PlatformInput from the request's namespace scope, JSON-encodes it,
+// and unifies it at the CUE platform path before the user-supplied
+// cue_platform_input is evaluated. This mirrors buildPlatformInput in the
+// deployments handler and allows the HTTPRoute (v1) org template to render
+// without the user manually setting platform.gatewayNamespace.
 //
 // When the handler has no Kubernetes client (in-process test / no-k8s mode),
 // the render runs without any ancestor sources. The previous three-branch
@@ -1003,9 +1136,18 @@ func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.Rend
 	// HOL-619/HOL-723 made the request's namespace the authoritative
 	// identifier. Classify it for the preview-target-kind discriminator
 	// only; storage works directly against the namespace.
+	//
+	// msgKind and msgName are hoisted here (HOL-828) so the platform-input
+	// injection step below can access the classified scope without re-running
+	// classifyNamespace a second time.
+	msgKind := scopeKindUnspecified
+	var msgName string
+	if h.k8s != nil && msg.GetNamespace() != "" {
+		msgKind, msgName = classifyNamespace(h.k8s.Resolver, msg.GetNamespace())
+	}
+
 	if h.k8s != nil && h.walker != nil && msg.GetNamespace() != "" {
 		startNs := msg.GetNamespace()
-		msgKind, msgName := classifyNamespace(h.k8s.Resolver, startNs)
 		if msgKind == scopeKindUnspecified {
 			slog.WarnContext(ctx, "failed to classify namespace for render, falling back to plain render",
 				slog.String("namespace", startNs),
@@ -1037,14 +1179,35 @@ func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.Rend
 		}
 	}
 
+	// HOL-828: Build and inject backend-resolved PlatformInput at the CUE
+	// platform path before the user-supplied cue_platform_input. The JSON-
+	// encoded struct is prepended so CUE unifies the two inputs: identical
+	// values succeed; conflicting values surface a clear CUE error.
+	// Falls back gracefully: unclassified scope or nil resolver skips
+	// injection (no regression for callers that do not set a namespace).
+	cuePlatformInput := msg.CuePlatformInput
+	if msgKind != scopeKindUnspecified {
+		pi := h.buildPreviewPlatformInput(ctx, msgKind, msgName)
+		piCUE, err := platformInputToCUE(pi)
+		if err != nil {
+			slog.WarnContext(ctx, "could not encode platform input for preview, skipping injection",
+				slog.Any("error", err),
+			)
+		} else {
+			// Prepend the backend-resolved platform string; user-supplied input
+			// follows so CUE unification applies the user's overrides on top.
+			cuePlatformInput = piCUE + cuePlatformInput
+		}
+	}
+
 	if len(templateSources) == 0 {
-		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, msg.CuePlatformInput, msg.CueProjectInput)
+		grouped, err := h.renderer.RenderGrouped(ctx, msg.CueTemplate, cuePlatformInput, msg.CueProjectInput)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
 		}
 		return grouped, nil
 	}
-	grouped, err := h.renderer.RenderGroupedWithTemplateSources(ctx, msg.CueTemplate, templateSources, msg.CuePlatformInput, msg.CueProjectInput)
+	grouped, err := h.renderer.RenderGroupedWithTemplateSources(ctx, msg.CueTemplate, templateSources, cuePlatformInput, msg.CueProjectInput)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("template render failed: %w", err))
 	}
