@@ -34,6 +34,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -150,6 +151,12 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 	if logger == nil {
 		logger = slog.Default()
 	}
+	// Wire controller-runtime's global logger to slog so internal components
+	// (priorityqueue, cache, leader election) emit through the same pipeline
+	// as the rest of the binary. Without this, controller-runtime prints a
+	// one-shot "log.SetLogger(...) was never called" stack trace on first
+	// use (HOL-765).
+	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
 	cacheSyncTimeout := opts.CacheSyncTimeout
 	if cacheSyncTimeout == 0 {
 		// controller-runtime's default is 2 minutes. We ship a tighter
