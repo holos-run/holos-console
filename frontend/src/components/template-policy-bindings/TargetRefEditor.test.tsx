@@ -544,4 +544,171 @@ describe('TargetRefEditor', () => {
       screen.queryByRole('button', { name: /remove target 1/i }),
     ).not.toBeInTheDocument()
   })
+
+  // --- HOL-814 ProjectNamespace kind coverage ---------------------------------
+
+  it('renders the ProjectNamespace option in the kind selector', async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    })
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[makeTarget()]}
+        onChange={vi.fn()}
+      />,
+    )
+    const row = screen.getByTestId('target-ref-row-0')
+    const kindTrigger = within(row).getByRole('combobox', {
+      name: /target 1 kind/i,
+    })
+    await user.click(kindTrigger)
+    expect(
+      await screen.findByRole('option', { name: /project namespace/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('kind switch from PROJECT_TEMPLATE to PROJECT_NAMESPACE clears the name', async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    })
+    const onChange = vi.fn()
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[
+          makeTarget({
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: 'proj-a',
+            name: 'ingress',
+          }),
+        ]}
+        onChange={onChange}
+      />,
+    )
+    const row = screen.getByTestId('target-ref-row-0')
+    const kindTrigger = within(row).getByRole('combobox', {
+      name: /target 1 kind/i,
+    })
+    await user.click(kindTrigger)
+    await user.click(
+      await screen.findByRole('option', { name: /project namespace/i }),
+    )
+
+    expect(onChange).toHaveBeenCalledTimes(1)
+    const next = onChange.mock.calls[0][0] as TargetRefDraft[]
+    expect(next[0]).toMatchObject({
+      kind: TemplatePolicyBindingTargetKind.PROJECT_NAMESPACE,
+      projectName: 'proj-a',
+      name: '',
+    })
+  })
+
+  it('shows "All project namespaces (*)" wildcard when kind=PROJECT_NAMESPACE and project is literal', async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    })
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[
+          makeTarget({
+            kind: TemplatePolicyBindingTargetKind.PROJECT_NAMESPACE,
+            projectName: 'proj-a',
+            name: '',
+          }),
+        ]}
+        onChange={vi.fn()}
+      />,
+    )
+    const row = screen.getByTestId('target-ref-row-0')
+    await user.click(
+      within(row).getByRole('combobox', { name: /target 1 name/i }),
+    )
+    expect(
+      await screen.findByText(/All project namespaces \(\*\)/i),
+    ).toBeInTheDocument()
+  })
+
+  it('name picker wildcard reads "All project namespaces (*)" when kind=PROJECT_NAMESPACE', async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    })
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[
+          makeTarget({
+            kind: TemplatePolicyBindingTargetKind.PROJECT_NAMESPACE,
+            projectName: 'proj-a',
+          }),
+        ]}
+        onChange={vi.fn()}
+      />,
+    )
+    const row = screen.getByTestId('target-ref-row-0')
+    await user.click(
+      within(row).getByRole('combobox', { name: /target 1 name/i }),
+    )
+    expect(
+      await screen.findByText(/All project namespaces \(\*\)/i),
+    ).toBeInTheDocument()
+    // Deployment and template labels must not appear
+    expect(screen.queryByText(/All deployments \(\*\)/i)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/All project templates \(\*\)/i),
+    ).not.toBeInTheDocument()
+  })
+
+  it('renders PROJECT_NAMESPACE row without crashing when projectName="*"', () => {
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[
+          makeTarget({
+            kind: TemplatePolicyBindingTargetKind.PROJECT_NAMESPACE,
+            projectName: '*',
+            name: '*',
+          }),
+        ]}
+        onChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId('target-ref-row-0')).toBeInTheDocument()
+  })
+
+  it('round-trip: switching from PROJECT_NAMESPACE back to PROJECT_TEMPLATE works', async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    })
+    const onChange = vi.fn()
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[
+          makeTarget({
+            kind: TemplatePolicyBindingTargetKind.PROJECT_NAMESPACE,
+            projectName: 'proj-a',
+            name: 'proj-a',
+          }),
+        ]}
+        onChange={onChange}
+      />,
+    )
+    const row = screen.getByTestId('target-ref-row-0')
+    const kindTrigger = within(row).getByRole('combobox', {
+      name: /target 1 kind/i,
+    })
+    await user.click(kindTrigger)
+    await user.click(
+      await screen.findByRole('option', { name: /^project template$/i }),
+    )
+    expect(onChange).toHaveBeenCalledTimes(1)
+    const next = onChange.mock.calls[0][0] as TargetRefDraft[]
+    expect(next[0]).toMatchObject({
+      kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+      projectName: 'proj-a',
+      name: '',
+    })
+  })
 })

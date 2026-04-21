@@ -159,13 +159,15 @@ export function BindingForm({
         className="rounded-md border border-border p-3 text-sm text-muted-foreground"
       >
         A TemplatePolicyBinding attaches one policy to a list of project
-        templates and deployments. Use the wildcard <code>*</code> in{' '}
-        <code>project_name</code> or <code>name</code> to expand a row to every
-        match the binding's storage scope can reach — a folder-scoped binding
-        can only touch resources under that folder, an organization-scoped
-        binding can touch every project in the org. <code>kind</code> is never
-        wildcarded: use a separate row for each kind so audit logs stay
-        readable.
+        templates, deployments, or project namespaces. Use the wildcard{' '}
+        <code>*</code> in <code>project_name</code> or <code>name</code> to
+        expand a row to every match the binding's storage scope can reach — a
+        folder-scoped binding can only touch resources under that folder, an
+        organization-scoped binding can touch every project in the org.{' '}
+        <code>kind</code> is never wildcarded: use a separate row for each kind
+        so audit logs stay readable. A <code>project_namespace</code> row
+        matches the namespace created for each new project under the selected
+        ancestor when <code>project_name</code> is <code>*</code>.
       </div>
 
       <div>

@@ -37,9 +37,10 @@ function entryKey(e: MatchEntry): string {
 }
 
 function kindLabel(kind: TemplatePolicyBindingTargetKind): string {
-  return kind === TemplatePolicyBindingTargetKind.DEPLOYMENT
-    ? 'deployment'
-    : 'project_template'
+  if (kind === TemplatePolicyBindingTargetKind.DEPLOYMENT) return 'deployment'
+  if (kind === TemplatePolicyBindingTargetKind.PROJECT_NAMESPACE)
+    return 'project_namespace'
+  return 'project_template'
 }
 
 export type MatchesPreviewParentScope =
@@ -577,15 +578,27 @@ function Probe({
   store: ProbeStore
 }) {
   const isDeployment = kind === TemplatePolicyBindingTargetKind.DEPLOYMENT
+  const isProjectNamespace =
+    kind === TemplatePolicyBindingTargetKind.PROJECT_NAMESPACE
   const namespace = namespaceForProject(projectName)
-  // Both hooks are always called to satisfy React's hook-order rule. Only
+  // All hooks are always called to satisfy React's hook-order rule. Only
   // the relevant side is read; the other is short-circuited by passing '' /
   // the hook's internal enabled: !!... check.
-  const templates = useListTemplates(isDeployment ? '' : namespace)
+  const templates = useListTemplates(
+    isDeployment || isProjectNamespace ? '' : namespace,
+  )
   const deployments = useListDeployments(isDeployment ? projectName : '')
 
-  const pending = isDeployment ? !!deployments.isLoading : !!templates.isLoading
-  const error = isDeployment ? deployments.error : templates.error
+  const pending = isDeployment
+    ? !!deployments.isLoading
+    : isProjectNamespace
+      ? false
+      : !!templates.isLoading
+  const error = isDeployment
+    ? deployments.error
+    : isProjectNamespace
+      ? null
+      : templates.error
 
   const matches: MatchEntry[] = useMemo(() => {
     // When the probe failed we publish an empty match list with the
@@ -600,10 +613,17 @@ function Probe({
         name: d.name,
       }))
     }
+    if (isProjectNamespace) {
+      // A ProjectNamespace binding targets the namespace resource for the
+      // project itself. The conventional name matches the project name.
+      // There is exactly one namespace per project so we synthesize the
+      // single entry directly — no list RPC is needed.
+      return [{ kind, projectName, name: projectName }]
+    }
     return (templates.data ?? [])
       .filter((t) => scopeLabelFromNamespace(t.namespace) === 'project')
       .map((t) => ({ kind, projectName, name: t.name }))
-  }, [error, isDeployment, kind, projectName, templates.data, deployments.data])
+  }, [error, isDeployment, isProjectNamespace, kind, projectName, templates.data, deployments.data])
 
   // Publish during render. The store dedupes on equal values so this does
   // not loop; changes to `matches` / `pending` / `error` produce a single
