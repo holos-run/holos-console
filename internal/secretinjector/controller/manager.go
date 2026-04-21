@@ -143,6 +143,20 @@ func NewManager(cfg *rest.Config, opts Options) (*Manager, error) {
 		return nil, fmt.Errorf("controller.NewManager: building manager: %w", err)
 	}
 
+	// Register the secrets-group reconcilers. Each reconciler owns its own
+	// event recorder keyed by controller name so emitted events are
+	// attributable in the cluster event log. M2 lands one reconciler per
+	// kind; HOL-750 registers UpstreamSecret first so the reconciler-
+	// runtime wiring pattern is exercised in the smallest possible surface
+	// area before the Credential and Binding reconcilers land.
+	if err := (&UpstreamSecretReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("upstream-secret-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering UpstreamSecretReconciler: %w", err)
+	}
+
 	return &Manager{mgr: mgr, cacheSyncTimeout: cacheSyncTimeout, logger: logger}, nil
 }
 
