@@ -14,6 +14,13 @@ import (
 // (template + ancestor sources + raw CUE inputs) on behalf of callers that
 // supply their inputs as raw CUE strings (e.g. the RenderTemplate preview
 // path). The raw-CUE call sites go away in later phases (see HOL-562).
+//
+// The adapter also exposes RenderForProjectNamespace (see
+// render_project_namespace.go) used by the CreateProject RPC (HOL-806 /
+// ADR 034) to evaluate TemplatePolicyBinding templates whose target kind is
+// ProjectNamespace. That path constrains its inputs to platformResources
+// only and groups its output by apply order (cluster-scoped / namespace /
+// namespace-scoped) rather than by origin.
 type CueRendererAdapter struct{}
 
 // NewCueRendererAdapter creates a Renderer backed by the deployments-package
