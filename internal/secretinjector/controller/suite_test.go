@@ -44,7 +44,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -63,17 +62,17 @@ import (
 	controllerpkg "github.com/holos-run/holos-console/internal/secretinjector/controller"
 )
 
-// envSuite wraps the envtest.Environment so tests can share the
-// apiserver startup cost. Each test spins up its own Manager against
-// the same env so reconciler failure modes are fully isolated
-// test-by-test.
+// envSuite wraps the envtest.Environment and the direct client each
+// top-level test uses to talk to the apiserver. Every top-level test
+// calls startEnvSuite to boot a fresh envtest (there is no shared
+// apiserver state across tests by design) and then constructs its own
+// Manager against suite.cfg so reconciler failure modes stay fully
+// isolated test-by-test. The struct is intentionally minimal — extra
+// fields must justify themselves with a live consumer in this file.
 type envSuite struct {
 	env    *envtest.Environment
 	cfg    *rest.Config
 	client client.Client
-	// nsCounter produces unique namespace names per test so parallel
-	// subtests never collide on a label-keyed CEL predicate.
-	nsCounter atomic.Int32
 }
 
 // startEnvSuite boots the envtest API server with all four secrets.holos.run
@@ -1000,6 +999,79 @@ func TestAdmissionParity_RejectedPayloadsNeverReconciled(t *testing.T) {
 		}
 	})
 
+	t.Run("SecretInjectionPolicy_OIDCRejected", func(t *testing.T) {
+		// The secretinjectionpolicy-authn-type-apikey-only VAP refuses
+		// any CallerAuth.Type other than APIKey. Attempting OIDC here
+		// exercises the same rejection surface the admission unit tests
+		// in api/secrets/v1alpha1/crd_test.go cover, but from the
+		// envtest cross-reconciler vantage: the reject must happen
+		// *before* the reconciler observes the object. A regression
+		// that lets an OIDC policy land in etcd would silently allow
+		// the binding reconciler to emit an AuthorizationPolicy that
+		// references a caller-auth mode the injector does not
+		// implement.
+		ns := "holos-fld-sip-oidc-reject"
+		s.makeSuiteNamespace(t, ctx, ns, "folder", nil)
+		sip := &secretsv1alpha1.SecretInjectionPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: ns},
+			Spec: secretsv1alpha1.SecretInjectionPolicySpec{
+				Direction: secretsv1alpha1.DirectionIngress,
+				CallerAuth: secretsv1alpha1.CallerAuth{
+					Type: secretsv1alpha1.AuthenticationTypeOIDC,
+				},
+				UpstreamRef: secretsv1alpha1.UpstreamRef{
+					Scope:     secretsv1alpha1.UpstreamScopeProject,
+					ScopeName: "p1",
+					Name:      "u1",
+				},
+			},
+		}
+		err := s.client.Create(ctx, sip)
+		if err == nil {
+			t.Fatalf("OIDC SecretInjectionPolicy was accepted; admission regressed")
+		}
+		if !apierrors.IsInvalid(err) && !apierrors.IsForbidden(err) {
+			t.Fatalf("unexpected admission error kind: %T %v", err, err)
+		}
+		// Positive confirmation: nothing landed in etcd.
+		var check secretsv1alpha1.SecretInjectionPolicy
+		if err := s.client.Get(ctx, types.NamespacedName{Namespace: ns, Name: "p"}, &check); !apierrors.IsNotFound(err) {
+			t.Fatalf("rejected SecretInjectionPolicy leaked into cluster: %v", err)
+		}
+	})
+
+	t.Run("SecretInjectionPolicy_ProjectNamespaceRejected", func(t *testing.T) {
+		// The secretinjectionpolicy-folder-or-org-only VAP refuses
+		// any SecretInjectionPolicy created in a namespace labelled
+		// resource-type=project — policies live at the folder or
+		// organization scope so tenants share a single policy surface
+		// per scope. Coverage here closes the second SIP VAP that the
+		// suite was otherwise not exercising.
+		ns := "holos-prj-sip-scope-reject"
+		s.makeSuiteNamespace(t, ctx, ns, "project", nil)
+		sip := &secretsv1alpha1.SecretInjectionPolicy{
+			ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: ns},
+			Spec: secretsv1alpha1.SecretInjectionPolicySpec{
+				Direction: secretsv1alpha1.DirectionIngress,
+				CallerAuth: secretsv1alpha1.CallerAuth{
+					Type: secretsv1alpha1.AuthenticationTypeAPIKey,
+				},
+				UpstreamRef: secretsv1alpha1.UpstreamRef{
+					Scope:     secretsv1alpha1.UpstreamScopeProject,
+					ScopeName: "p1",
+					Name:      "u1",
+				},
+			},
+		}
+		err := s.client.Create(ctx, sip)
+		if err == nil {
+			t.Fatalf("project-namespace SecretInjectionPolicy was accepted; admission regressed")
+		}
+		if !apierrors.IsInvalid(err) && !apierrors.IsForbidden(err) {
+			t.Fatalf("unexpected admission error kind: %T %v", err, err)
+		}
+	})
+
 	t.Run("Binding_CrossTenantPolicyRefRejected", func(t *testing.T) {
 		bindingNS := "holos-fld-cross-tenant-bind"
 		otherNS := "holos-fld-cross-tenant-other"
@@ -1087,6 +1159,62 @@ func TestHotLoopGuards_HoldAcrossReconcilers(t *testing.T) {
 	waitForCRCondition(t, ctx, s.client, &secretsv1alpha1.Credential{}, credKey,
 		secretsv1alpha1.CredentialConditionReady, metav1.ConditionTrue)
 
+	// SecretInjectionPolicyBinding — the highest-risk hot-loop
+	// surface in M2. The binding reconciler emits a full
+	// AuthorizationPolicy proto on every Reconcile and diffs the
+	// previous revision via authorizationPoliciesEquivalent; a
+	// regression in that diff (for example, a field that round-trips
+	// through the apiserver in a different serialization than the
+	// builder emitted) would re-Update the AP and bump the
+	// binding's resourceVersion on every pass. Envtest is the only
+	// place in this repo where we observe a real apiserver
+	// round-trip of the Istio spec, so this subsuite is load-bearing
+	// for that assertion.
+	bindingNS := ns
+	policy := &secretsv1alpha1.SecretInjectionPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "stable-policy", Namespace: bindingNS},
+		Spec: secretsv1alpha1.SecretInjectionPolicySpec{
+			Direction:  secretsv1alpha1.DirectionIngress,
+			CallerAuth: secretsv1alpha1.CallerAuth{Type: secretsv1alpha1.AuthenticationTypeAPIKey},
+			UpstreamRef: secretsv1alpha1.UpstreamRef{
+				Scope:     secretsv1alpha1.UpstreamScopeProject,
+				ScopeName: "p1",
+				Name:      "u1",
+			},
+		},
+	}
+	// SecretInjectionPolicy only admits folder / organization
+	// namespaces; we already have the project namespace ns above
+	// for UpstreamSecret + Credential, so make a second folder
+	// namespace for the binding + policy pair.
+	bindingFld := "holos-fld-hotloop-binding"
+	s.makeSuiteNamespace(t, ctx, bindingFld, "folder", nil)
+	policy.Namespace = bindingFld
+	if err := s.client.Create(ctx, policy); err != nil {
+		t.Fatalf("create SecretInjectionPolicy: %v", err)
+	}
+	binding := &secretsv1alpha1.SecretInjectionPolicyBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "stable-binding", Namespace: bindingFld},
+		Spec: secretsv1alpha1.SecretInjectionPolicyBindingSpec{
+			PolicyRef: secretsv1alpha1.PolicyRef{
+				Scope:     secretsv1alpha1.PolicyRefScopeFolder,
+				Namespace: bindingFld,
+				Name:      policy.Name,
+			},
+			TargetRefs: []secretsv1alpha1.TargetRef{{
+				Kind:      secretsv1alpha1.TargetRefKindServiceAccount,
+				Namespace: bindingFld,
+				Name:      "api-client",
+			}},
+		},
+	}
+	if err := s.client.Create(ctx, binding); err != nil {
+		t.Fatalf("create SecretInjectionPolicyBinding: %v", err)
+	}
+	bindingKey := client.ObjectKeyFromObject(binding)
+	waitForCRCondition(t, ctx, s.client, &secretsv1alpha1.SecretInjectionPolicyBinding{}, bindingKey,
+		secretsv1alpha1.SecretInjectionPolicyBindingConditionReady, metav1.ConditionTrue)
+
 	// Capture resourceVersions after settle.
 	firstUS := &secretsv1alpha1.UpstreamSecret{}
 	if err := s.client.Get(ctx, usKey, firstUS); err != nil {
@@ -1095,6 +1223,15 @@ func TestHotLoopGuards_HoldAcrossReconcilers(t *testing.T) {
 	firstCred := &secretsv1alpha1.Credential{}
 	if err := s.client.Get(ctx, credKey, firstCred); err != nil {
 		t.Fatalf("get Credential: %v", err)
+	}
+	firstBinding := &secretsv1alpha1.SecretInjectionPolicyBinding{}
+	if err := s.client.Get(ctx, bindingKey, firstBinding); err != nil {
+		t.Fatalf("get SecretInjectionPolicyBinding: %v", err)
+	}
+	apKey := types.NamespacedName{Namespace: bindingFld, Name: binding.Name + "-secret-injector"}
+	firstAP := &istiosecurityv1.AuthorizationPolicy{}
+	if err := s.client.Get(ctx, apKey, firstAP); err != nil {
+		t.Fatalf("get AuthorizationPolicy: %v", err)
 	}
 
 	// Sleep past one watch-event round-trip. A hot-loop guard
@@ -1119,8 +1256,27 @@ func TestHotLoopGuards_HoldAcrossReconcilers(t *testing.T) {
 			firstCred.ResourceVersion, laterCred.ResourceVersion)
 	}
 
+	var laterBinding secretsv1alpha1.SecretInjectionPolicyBinding
+	if err := s.client.Get(ctx, bindingKey, &laterBinding); err != nil {
+		t.Fatalf("re-get SecretInjectionPolicyBinding: %v", err)
+	}
+	if laterBinding.ResourceVersion != firstBinding.ResourceVersion {
+		t.Errorf("SecretInjectionPolicyBinding resourceVersion advanced from %q to %q; hot-loop regressed",
+			firstBinding.ResourceVersion, laterBinding.ResourceVersion)
+	}
+
+	var laterAP istiosecurityv1.AuthorizationPolicy
+	if err := s.client.Get(ctx, apKey, &laterAP); err != nil {
+		t.Fatalf("re-get AuthorizationPolicy: %v", err)
+	}
+	if laterAP.ResourceVersion != firstAP.ResourceVersion {
+		t.Errorf("AuthorizationPolicy resourceVersion advanced from %q to %q; binding reconciler re-Updated an equivalent AP — authorizationPoliciesEquivalent regressed",
+			firstAP.ResourceVersion, laterAP.ResourceVersion)
+	}
+
 	// Final sweep.
 	assertSuiteMarshalScan(t, ctx, s.client, ns)
+	assertSuiteMarshalScan(t, ctx, s.client, bindingFld)
 }
 
 // TestPepperBootstrap_Idempotence confirms the pepper Bootstrap path
