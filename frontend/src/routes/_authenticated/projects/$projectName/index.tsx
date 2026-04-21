@@ -20,17 +20,8 @@ function ProjectIndexRoute() {
   return <ProjectIndexPage projectName={projectName} />
 }
 
-export function ProjectIndexPage({
-  projectName: propProjectName,
-}: { projectName?: string } = {}) {
-  let routeProjectName: string | undefined
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    routeProjectName = Route.useParams().projectName
-  } catch {
-    routeProjectName = undefined
-  }
-  const projectName = propProjectName ?? routeProjectName ?? ''
+export function ProjectIndexPage({ projectName }: { projectName: string }) {
+  if (!projectName) return null
 
   const {
     data: deployments = [],
@@ -47,7 +38,7 @@ export function ProjectIndexPage({
         projectName={projectName}
         deployments={deployments}
         isPending={deploymentsPending}
-        error={deploymentsError ?? null}
+        error={deploymentsError}
         canWrite={canWrite}
       />
       <QuotaPlaceholder />
