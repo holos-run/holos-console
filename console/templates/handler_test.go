@@ -1283,6 +1283,147 @@ input: #ProjectInput & {
 	}
 }
 
+// TestDeleteTemplateHandler verifies that Handler.DeleteTemplate enforces authz,
+// input validation, and storage behaviour for every code path in the handler.
+// The K8s-layer delete is covered by TestDeleteTemplate in k8s_test.go; this
+// suite focuses on the RPC handler surface: RBAC, missing-claims, empty-name
+// validation, and the not-found propagation via mapK8sError.
+//
+// The audit-log line (slog.InfoContext "template deleted") is emitted on the
+// success path and is trusted by code path rather than captured, matching the
+// precedent set by every other test in this file.
+func TestDeleteTemplateHandler(t *testing.T) {
+	const project = "my-project"
+	const ownerEmail = "platform@localhost"
+	const editorEmail = "product@localhost"
+
+	// shareUsers maps email → role; owner has PermissionTemplatesDelete,
+	// editor does not (editor only has PermissionTemplatesWrite per rbac.go).
+	shareUsers := map[string]string{
+		ownerEmail:  "owner",
+		editorEmail: "editor",
+	}
+
+	tests := []struct {
+		name      string
+		ctx       context.Context
+		namespace string
+		tmplName  string
+		// seedName, when non-empty, seeds a template with this name instead of
+		// tmplName. Used for the not-found case where we want a different
+		// template present so the scope namespace exists but the target is absent.
+		seedName string
+		wantErr  bool
+		wantCode connect.Code
+	}{
+		{
+			name:      "owner deletes existing template succeeds",
+			ctx:       authedCtx(ownerEmail, nil),
+			namespace: projectScopeRef(project),
+			tmplName:  "web-app",
+			wantErr:   false,
+		},
+		{
+			name:      "unauthenticated returns CodeUnauthenticated",
+			ctx:       context.Background(), // no claims
+			namespace: projectScopeRef(project),
+			tmplName:  "web-app",
+			wantErr:   true,
+			wantCode:  connect.CodeUnauthenticated,
+		},
+		{
+			name:      "editor without delete permission returns CodePermissionDenied",
+			ctx:       authedCtx(editorEmail, nil),
+			namespace: projectScopeRef(project),
+			tmplName:  "web-app",
+			wantErr:   true,
+			wantCode:  connect.CodePermissionDenied,
+		},
+		{
+			// The handler checks name == "" after extracting scope, so the
+			// request still needs a well-formed namespace (see Pitfalls in the
+			// issue description).
+			name:      "empty name returns CodeInvalidArgument",
+			ctx:       authedCtx(ownerEmail, nil),
+			namespace: projectScopeRef(project),
+			tmplName:  "", // empty
+			wantErr:   true,
+			wantCode:  connect.CodeInvalidArgument,
+		},
+		{
+			// Seed a different template so the namespace exists but the
+			// requested name is absent, exercising the mapK8sError(NotFound)
+			// path.
+			name:      "absent template returns CodeNotFound",
+			ctx:       authedCtx(ownerEmail, nil),
+			namespace: projectScopeRef(project),
+			tmplName:  "does-not-exist",
+			seedName:  "other-template", // present in the fake client
+			wantErr:   true,
+			wantCode:  connect.CodeNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Build the namespace object so extractScope succeeds.
+			nsObj := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{Name: "prj-" + project},
+			}
+
+			// Choose which template name to seed (if any).
+			seedName := tt.seedName
+			if seedName == "" && tt.tmplName != "" {
+				seedName = tt.tmplName
+			}
+
+			var objs []runtime.Object
+			objs = append(objs, nsObj)
+			if seedName != "" {
+				objs = append(objs, &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      seedName,
+						Namespace: "prj-" + project,
+						Labels: map[string]string{
+							v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeProject,
+						},
+					},
+					Data: map[string]string{CueTemplateKey: validCue},
+				})
+			}
+
+			fakeClient := fake.NewClientset(objs...)
+			handler, k8s := newTestHandlerAndK8s(t, fakeClient, shareUsers)
+
+			req := connect.NewRequest(&consolev1.DeleteTemplateRequest{
+				Namespace: tt.namespace,
+				Name:      tt.tmplName,
+			})
+
+			_, err := handler.DeleteTemplate(tt.ctx, req)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error with code %v, got nil", tt.wantCode)
+				}
+				if connect.CodeOf(err) != tt.wantCode {
+					t.Errorf("expected code %v, got %v (%v)", tt.wantCode, connect.CodeOf(err), err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			// Verify the template is gone from the fake client by asserting the
+			// follow-up Get surfaces NotFound.
+			_, getErr := k8s.GetTemplate(context.Background(), "prj-"+project, tt.tmplName)
+			if getErr == nil {
+				t.Fatal("expected GetTemplate to return NotFound after delete, got nil")
+			}
+		})
+	}
+}
+
 // TestGetTemplateDefaultsValidation verifies request-level input validation
 // that is independent of RBAC or storage state.
 func TestGetTemplateDefaultsValidation(t *testing.T) {
