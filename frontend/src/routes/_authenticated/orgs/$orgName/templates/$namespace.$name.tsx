@@ -23,9 +23,14 @@ import type { TemplateExample } from '@/queries/templates'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { TemplateExamplePicker } from '@/components/templates/template-example-picker'
 
-// Platform/project input defaults for the preview pane. The backend injects
-// org-owned values (e.g. gatewayNamespace — HOL-526) at render time regardless
-// of what the preview ships up, so these strings are cosmetic seed values only.
+// DEFAULT_PLATFORM_INPUT seeds the preview pane with cosmetic placeholder
+// values for the user-editable fields of #PlatformInput (project, namespace,
+// claims). The backend always injects the authoritative platform-owned fields
+// before evaluating the user-supplied input, so values like gatewayNamespace
+// (HOL-526) and organization are resolved server-side and must not be set here.
+// CUE unification merges the backend values with these seeds: fields present in
+// both must agree (identical strings unify; conflicting strings surface a CUE
+// error, which is the correct behavior for pinned vs. resolved mismatches).
 const DEFAULT_PLATFORM_INPUT = `platform: {
   project:          "example-project"
   namespace:        "prj-example-project"
