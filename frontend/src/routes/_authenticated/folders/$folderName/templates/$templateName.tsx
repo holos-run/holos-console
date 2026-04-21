@@ -19,11 +19,11 @@ export const Route = createFileRoute(
 export function FolderTemplateRedirect() {
   const { folderName, templateName } = Route.useParams()
   const navigate = useNavigate()
-  const { data: folder, error } = useGetFolder(folderName)
+  const { data: folder, isPending, error } = useGetFolder(folderName)
   const orgName = folder?.organization ?? ''
 
   useEffect(() => {
-    if (!orgName) return
+    if (isPending || !orgName) return
     navigate({
       to: '/orgs/$orgName/templates/$namespace/$name',
       params: {

@@ -8,6 +8,9 @@ import type { Mock } from 'vitest'
 // the frontend references only {namespace, name, display_name} + the CUE body.
 
 // The params vary per case, so the mock defers to a mutable holder.
+// NOTE: This relies on Vitest's default sequential execution within a single
+// file — each it.each case runs serially so mutations to currentParams are
+// isolated between cases. Do not add `concurrent` to this suite.
 let currentParams: { orgName: string; namespace: string; name: string } = {
   orgName: 'test-org',
   namespace: '',

@@ -46,6 +46,10 @@ export function OrgTemplatesIndexPage({
   const orgName = propOrgName ?? routeOrgName ?? ''
 
   const { data, isLoading, error } = useSearchTemplates({ organization: orgName })
+  // When orgName is empty the query is disabled: isLoading is false and data is
+  // undefined. Treat the disabled state the same as loading so we never render
+  // the "No templates yet" empty state for an org that hasn't resolved yet.
+  const queryDisabled = orgName === ''
   const templates = useMemo(() => data ?? [], [data])
 
   const [globalFilter, setGlobalFilter] = useState('')
@@ -100,7 +104,7 @@ export function OrgTemplatesIndexPage({
     getFilteredRowModel: getFilteredRowModel(),
   })
 
-  if (isLoading) {
+  if (isLoading || queryDisabled) {
     return (
       <Card>
         <CardHeader>
