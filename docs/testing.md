@@ -180,4 +180,14 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/queries/-templatePolicies.test.ts` | `aggregateFanOut` helper: idle/disabled queries, pending while fetching, org-only and org+folder concatenation, partial-failure tolerance, non-Error wrapping, empty input |
 | `src/components/create-org-dialog.test.tsx` | Create organization dialog: validation, submission |
 | `src/components/create-project-dialog.test.tsx` | Create project dialog: validation, submission |
+| `src/components/template-policy-bindings/BindingForm.test.tsx` | BindingForm: ProjectTemplate / Deployment / ProjectNamespace kind selection, project-name field shown/hidden, wildcard validation, submit / save paths (HOL-814) |
 | `src/index.test.ts` | App entry point smoke test |
+
+### Go test files (HOL-806)
+
+| File | What it covers |
+|---|---|
+| `console/projects/handler_project_namespace_test.go` | Four HOL-812 ACs: no bindings → typed-create path; one binding → applier path + typed-create skipped; render error → `CodeInternal`; apply timeout → `CodeDeadlineExceeded`. Uses inline fakes for all five pipeline seams. |
+| `console/projects/projectapply/applier_test.go` | Per-branch SSA semantics (cluster-scoped, namespace, namespace-scoped ordering; `DeadlineExceededError`; merge conflict detection) via `dynamicfake` client. |
+| `console/projects/projectapply/applier_envtest_test.go` | Production-only invariants against a real `envtest` apiserver: FieldManager enforcement, real namespace-controller `.status.phase` transition, end-to-end apply ordering. |
+| `console/templates/examples/examples_test.go` | Registry loads all four built-in examples; each compiles against the `v1alpha2` generated schema. |
