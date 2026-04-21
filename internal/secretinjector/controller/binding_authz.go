@@ -38,14 +38,22 @@ import (
 // exported for tests and kept in exactly one place.
 const bindingAuthzProviderName = "holos-secret-injector"
 
-// bindingAuthzTrustDomain is the SPIFFE trust domain prefix used when
-// expanding TargetRefKindServiceAccount entries into
-// source.principals strings. `cluster.local` is the upstream Istio default
-// and what every in-cluster ServiceAccount credential presents unless the
-// mesh has been re-pegged. A cluster that overrides the trust domain will
-// need a follow-up ticket to plumb the override through a binding spec —
-// tracked by the "not covered in M2" comment on WaypointNotFound below.
-const bindingAuthzTrustDomain = "cluster.local"
+// defaultBindingAuthzTrustDomain is the SPIFFE trust domain prefix used
+// when expanding TargetRefKindServiceAccount entries into
+// source.principals strings on meshes that run Istio's default
+// configuration. Operators with a re-pegged mesh (set via
+// MeshConfig.trustDomain at install time) MUST override the reconciler's
+// TrustDomain field with the actual mesh value — otherwise every emitted
+// AP will allow-list the wrong SPIFFE identity and ServiceAccount
+// bindings will silently fail to match.
+//
+// HOL-752 review round 2 promoted this from a hard-coded constant to a
+// reconciler-field knob so an operator can set it once at manager
+// construction time. A follow-up ticket (HOL-753 / HOL-754) will plumb
+// the value through a binding spec or pull it live from MeshConfig; for
+// M2 the field is the minimal surface that fixes the silent-miscompile
+// failure mode the review flagged.
+const defaultBindingAuthzTrustDomain = "cluster.local"
 
 // bindingAuthzNameSuffix is the deterministic suffix appended to the
 // binding's metadata.name when synthesising the AuthorizationPolicy's
@@ -109,12 +117,15 @@ func authorizationPolicyName(bindingName string) string {
 // this reconciler does not do a waypoint lookup, so
 // WaypointNotFound is never published — but the reason string remains
 // in conditions.go so the M3 diff stays small. See the HOL-747 plan.
-func buildAuthorizationPolicy(binding *secretsv1alpha1.SecretInjectionPolicyBinding, policy *secretsv1alpha1.SecretInjectionPolicy) (*istiosecurityv1.AuthorizationPolicy, error) {
+func buildAuthorizationPolicy(binding *secretsv1alpha1.SecretInjectionPolicyBinding, policy *secretsv1alpha1.SecretInjectionPolicy, trustDomain string) (*istiosecurityv1.AuthorizationPolicy, error) {
 	if binding == nil {
 		return nil, fmt.Errorf("binding must not be nil")
 	}
 	if policy == nil {
 		return nil, fmt.Errorf("policy must not be nil")
+	}
+	if trustDomain == "" {
+		return nil, fmt.Errorf("trustDomain must not be empty; wire SecretInjectionPolicyBindingReconciler.TrustDomain to the mesh value")
 	}
 
 	selector, err := selectorForBinding(binding)
@@ -122,7 +133,7 @@ func buildAuthorizationPolicy(binding *secretsv1alpha1.SecretInjectionPolicyBind
 		return nil, err
 	}
 
-	rules, err := rulesForBinding(binding)
+	rules, err := rulesForBinding(binding, trustDomain)
 	if err != nil {
 		return nil, err
 	}
@@ -238,8 +249,8 @@ func selectorForBinding(binding *secretsv1alpha1.SecretInjectionPolicyBinding) (
 // emitting a single empty-but-present Rule when neither principals nor
 // operations are populated, so the provider still sees the request and
 // the M3 Check path is exercised.
-func rulesForBinding(binding *secretsv1alpha1.SecretInjectionPolicyBinding) ([]*istiosecurityv1beta1.Rule, error) {
-	principals := callerPrincipals(binding)
+func rulesForBinding(binding *secretsv1alpha1.SecretInjectionPolicyBinding, trustDomain string) ([]*istiosecurityv1beta1.Rule, error) {
+	principals := callerPrincipals(binding, trustDomain)
 
 	rule := &istiosecurityv1beta1.Rule{}
 	if len(principals) > 0 {
@@ -253,14 +264,17 @@ func rulesForBinding(binding *secretsv1alpha1.SecretInjectionPolicyBinding) ([]*
 // callerPrincipals returns the SPIFFE principals derived from the
 // binding's ServiceAccount targets, sorted lexicographically for
 // determinism. Service targets do not contribute principals — they are
-// encoded via the selector instead.
-func callerPrincipals(binding *secretsv1alpha1.SecretInjectionPolicyBinding) []string {
+// encoded via the selector instead. The trustDomain argument is the
+// mesh's configured trust domain (MeshConfig.trustDomain; defaults to
+// `cluster.local` on an untouched Istio install); an empty value is a
+// programmer error the builder catches up front.
+func callerPrincipals(binding *secretsv1alpha1.SecretInjectionPolicyBinding, trustDomain string) []string {
 	seen := make(map[string]struct{}, len(binding.Spec.TargetRefs))
 	for _, t := range binding.Spec.TargetRefs {
 		if t.Kind != secretsv1alpha1.TargetRefKindServiceAccount {
 			continue
 		}
-		principal := fmt.Sprintf("%s/ns/%s/sa/%s", bindingAuthzTrustDomain, t.Namespace, t.Name)
+		principal := fmt.Sprintf("%s/ns/%s/sa/%s", trustDomain, t.Namespace, t.Name)
 		seen[principal] = struct{}{}
 	}
 	principals := make([]string, 0, len(seen))

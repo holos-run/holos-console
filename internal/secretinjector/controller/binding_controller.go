@@ -98,6 +98,22 @@ type SecretInjectionPolicyBindingReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+
+	// TrustDomain is the SPIFFE trust domain the mesh configures via
+	// MeshConfig.trustDomain. The reconciler uses it to build the
+	// source.principals strings on every emitted AuthorizationPolicy
+	// (`<trustDomain>/ns/<ns>/sa/<name>`) so ServiceAccount bindings
+	// actually match the certificates Istio presents on the hot path.
+	// An empty value is rejected by the builder — the manager wires
+	// the default (cluster.local) so plug-and-play installs work, but
+	// operators with a re-pegged mesh MUST override this field at
+	// construction time.
+	//
+	// HOL-752 review round 2 introduced this knob after a reviewer
+	// flagged the silently-wrong behaviour on non-default meshes. A
+	// follow-up ticket (HOL-753 / HOL-754) will pull the value live
+	// from MeshConfig instead of requiring operator configuration.
+	TrustDomain string
 }
 
 // SetupWithManager registers the reconciler with the supplied manager.
@@ -144,7 +160,19 @@ func (r *SecretInjectionPolicyBindingReconciler) Reconcile(ctx context.Context, 
 	// Spec failed the belt-and-braces Accepted check — skip resolution
 	// and AP emission so an InvalidSpec binding does not produce a
 	// bogus ResolvedRefs=True/Programmed=True cascade.
+	//
+	// Stale-AP cleanup (HOL-752 review round 2 CRITICAL). A binding
+	// that was once valid may have a previously-programmed
+	// AuthorizationPolicy in the cluster. Leaving that AP in place
+	// while the CR reports NotReady would silently keep enforcing
+	// stale mesh authz — the "was accepted, spec edit invalidated
+	// it" path must actively retract the programmed state. We delete
+	// the owned AP here before writing status so the data-plane
+	// effect matches the CR's NotReady verdict.
 	if accepted.Status != metav1.ConditionTrue {
+		if err := r.deleteOwnedAuthorizationPolicy(ctx, &binding); err != nil {
+			return ctrl.Result{}, fmt.Errorf("retract AuthorizationPolicy after Accepted=False: %w", err)
+		}
 		resolved := metav1.Condition{
 			Type:    secretsv1alpha1.SecretInjectionPolicyBindingConditionResolvedRefs,
 			Status:  metav1.ConditionFalse,
@@ -170,6 +198,13 @@ func (r *SecretInjectionPolicyBindingReconciler) Reconcile(ctx context.Context, 
 		return ctrl.Result{}, fmt.Errorf("resolve policyRef: %w", err)
 	}
 	if resolved.Status != metav1.ConditionTrue {
+		// ResolvedRefs=False also retracts the AP — a
+		// previously-valid policyRef that was later deleted, renamed,
+		// or moved out of the admission-allowed chain must not leave
+		// the mesh enforcing an orphan allow-list.
+		if err := r.deleteOwnedAuthorizationPolicy(ctx, &binding); err != nil {
+			return ctrl.Result{}, fmt.Errorf("retract AuthorizationPolicy after ResolvedRefs=False: %w", err)
+		}
 		programmed := metav1.Condition{
 			Type:    secretsv1alpha1.SecretInjectionPolicyBindingConditionProgrammed,
 			Status:  metav1.ConditionFalse,
@@ -463,6 +498,49 @@ func appendUnique(list []string, candidate string) []string {
 	return append(list, candidate)
 }
 
+// deleteOwnedAuthorizationPolicy removes the deterministically-named
+// AuthorizationPolicy for the binding if it exists AND is owned by the
+// binding. A NotFound on the AP is a success. An AP that exists but is
+// not controller-owned by this binding is left alone — we never clobber
+// an AP a human or a different controller created, mirroring
+// programAuthorizationPolicy's ownership-gated update.
+//
+// HOL-752 review round 2 (CRITICAL). The reconciler's earlier shape
+// skipped the Programmed path when Accepted=False or ResolvedRefs=False
+// but did NOT retract a previously-programmed AuthorizationPolicy,
+// which meant a binding that once had a valid policyRef would continue
+// to enforce stale mesh authz after the policy was deleted or the spec
+// became invalid. This helper closes that window by actively deleting
+// the owned AP so the data-plane effect matches the CR's NotReady
+// verdict.
+func (r *SecretInjectionPolicyBindingReconciler) deleteOwnedAuthorizationPolicy(ctx context.Context, binding *secretsv1alpha1.SecretInjectionPolicyBinding) error {
+	key := types.NamespacedName{
+		Namespace: binding.Namespace,
+		Name:      authorizationPolicyName(binding.Name),
+	}
+	var existing istiosecurityv1.AuthorizationPolicy
+	switch err := r.Get(ctx, key, &existing); {
+	case apierrors.IsNotFound(err):
+		return nil
+	case err != nil:
+		return fmt.Errorf("get AuthorizationPolicy %s: %w", key, err)
+	}
+	if !isOwnedByBinding(&existing, binding) {
+		// Refuse to delete an AP this reconciler does not own. An
+		// operator-installed or human-authored AP sitting at the
+		// reconciler's deterministic name is a cluster-config
+		// anomaly — the Programmed path surfaces this via
+		// AuthorizationPolicyWriteFailed; the retract path mirrors
+		// the same policy and returns nil so the caller still
+		// publishes NotReady.
+		return nil
+	}
+	if err := r.Delete(ctx, &existing); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("delete AuthorizationPolicy %s: %w", key, err)
+	}
+	return nil
+}
+
 // programAuthorizationPolicy builds the AuthorizationPolicy for the
 // (binding, policy) pair, sets the controller-owned ownerReference, and
 // Create-or-Update-in-place-s it. Returns the Programmed condition so
@@ -474,7 +552,7 @@ func appendUnique(list []string, candidate string) []string {
 // not paper over). A hot-loop where the AP churns on every Reconcile is
 // prevented by comparing Spec/Labels before calling Update.
 func (r *SecretInjectionPolicyBindingReconciler) programAuthorizationPolicy(ctx context.Context, binding *secretsv1alpha1.SecretInjectionPolicyBinding, policy *secretsv1alpha1.SecretInjectionPolicy) metav1.Condition {
-	desired, err := buildAuthorizationPolicy(binding, policy)
+	desired, err := buildAuthorizationPolicy(binding, policy, r.TrustDomain)
 	if err != nil {
 		return metav1.Condition{
 			Type:    secretsv1alpha1.SecretInjectionPolicyBindingConditionProgrammed,
@@ -687,15 +765,26 @@ func authorizationPoliciesEquivalent(existing, desired *istiosecurityv1.Authoriz
 	return authorizationPolicySpecEqual(&existing.Spec, &desired.Spec)
 }
 
-// authorizationPolicySpecEqual compares the subset of
-// AuthorizationPolicy.spec fields this reconciler sets. The helper
-// avoids reflect.DeepEqual of the whole proto struct because
-// proto-internal bookkeeping (`state`, `sizeCache`, `unknownFields`)
-// makes a naive DeepEqual unstable across serialisation boundaries —
-// for example, a policy round-tripped through the apiserver can grow
-// unknown fields or carry a different state value than the locally
-// constructed one. Comparing by field name gives a stable, intent-
-// level equality the Update hot-loop guard can rely on.
+// authorizationPolicySpecEqual compares every operator-meaningful field
+// on AuthorizationPolicy.spec. The helper avoids reflect.DeepEqual of
+// the whole proto struct because proto-internal bookkeeping (`state`,
+// `sizeCache`, `unknownFields`) makes a naive DeepEqual unstable across
+// serialisation boundaries — for example, a policy round-tripped
+// through the apiserver can grow unknown fields or carry a different
+// state value than the locally constructed one. Comparing by field name
+// gives a stable, intent-level equality the Update hot-loop guard can
+// rely on.
+//
+// HOL-752 review round 2 (CRITICAL). Earlier revisions of this helper
+// only compared the subset of fields the reconciler itself populates.
+// That left a drift window: a mutating admission webhook, an operator
+// with Update RBAC on AuthorizationPolicy, or a malicious actor could
+// mutate TargetRef / TargetRefs (alternate attachment), augment a
+// Source with RequestPrincipals / Namespaces / IpBlocks (widening the
+// allow-list), or flip the Action — and the reconciler's drift check
+// would report the AP as equivalent and skip the Update. The comparator
+// now treats every spec-level field as significant so any drift is
+// corrected on the next Reconcile.
 func authorizationPolicySpecEqual(a, b *istiosecurityv1beta1.AuthorizationPolicy) bool {
 	if a == nil || b == nil {
 		return a == b
@@ -710,6 +799,16 @@ func authorizationPolicySpecEqual(a, b *istiosecurityv1beta1.AuthorizationPolicy
 		return false
 	}
 	if !rulesEqual(a.Rules, b.Rules) {
+		return false
+	}
+	// TargetRef + TargetRefs are alternative attachment modes to
+	// Selector. The reconciler never populates them, but a webhook
+	// could — a TargetRef that pins the AP at a Gateway would detach
+	// the mesh enforcement from the intended workload.
+	if !reflect.DeepEqual(a.TargetRef, b.TargetRef) {
+		return false
+	}
+	if !reflect.DeepEqual(a.TargetRefs, b.TargetRefs) {
 		return false
 	}
 	return true
@@ -808,13 +907,55 @@ func tosEqual(a, b []*istiosecurityv1beta1.Rule_To) bool {
 	return true
 }
 
-// sourceEqual compares two *Source values by the subset of fields the
-// reconciler populates: Principals. Every other Source field remains
-// nil on the builder side, so any apiserver-echoed value that would
-// not survive a round-trip is treated as distinct.
+// sourceEqual compares every field of a *Source. The reconciler only
+// populates Principals, but any other Source field that is set on a
+// live AP — RequestPrincipals, Namespaces, NotNamespaces, IpBlocks,
+// NotIpBlocks, NotPrincipals, RemoteIpBlocks, NotRemoteIpBlocks,
+// NotRequestPrincipals — is an augmentation that would widen the
+// allow-list beyond what the binding spec declared. HOL-752 review
+// round 2 flagged the previous Principals-only comparator as a
+// CRITICAL drift-detection gap. Treat any non-zero value on those
+// fields as distinct so the reconciler reasserts its intended Source
+// envelope on the next Update.
 func sourceEqual(a, b *istiosecurityv1beta1.Source) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	return reflect.DeepEqual(a.Principals, b.Principals)
+	if !reflect.DeepEqual(a.Principals, b.Principals) {
+		return false
+	}
+	if !reflect.DeepEqual(a.NotPrincipals, b.NotPrincipals) {
+		return false
+	}
+	if !reflect.DeepEqual(a.RequestPrincipals, b.RequestPrincipals) {
+		return false
+	}
+	if !reflect.DeepEqual(a.NotRequestPrincipals, b.NotRequestPrincipals) {
+		return false
+	}
+	if !reflect.DeepEqual(a.Namespaces, b.Namespaces) {
+		return false
+	}
+	if !reflect.DeepEqual(a.NotNamespaces, b.NotNamespaces) {
+		return false
+	}
+	if !reflect.DeepEqual(a.ServiceAccounts, b.ServiceAccounts) {
+		return false
+	}
+	if !reflect.DeepEqual(a.NotServiceAccounts, b.NotServiceAccounts) {
+		return false
+	}
+	if !reflect.DeepEqual(a.IpBlocks, b.IpBlocks) {
+		return false
+	}
+	if !reflect.DeepEqual(a.NotIpBlocks, b.NotIpBlocks) {
+		return false
+	}
+	if !reflect.DeepEqual(a.RemoteIpBlocks, b.RemoteIpBlocks) {
+		return false
+	}
+	if !reflect.DeepEqual(a.NotRemoteIpBlocks, b.NotRemoteIpBlocks) {
+		return false
+	}
+	return true
 }

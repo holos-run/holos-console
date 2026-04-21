@@ -108,6 +108,17 @@ type Options struct {
 	// exist. Production callers MUST leave this false; the reconciler
 	// cannot hash without a pepper.
 	SkipPepperBootstrap bool
+
+	// MeshTrustDomain is the SPIFFE trust domain the installed mesh
+	// presents on ServiceAccount certificates. The
+	// SecretInjectionPolicyBindingReconciler stamps this value into
+	// every emitted AuthorizationPolicy's source.principals entry
+	// (`<MeshTrustDomain>/ns/<ns>/sa/<name>`). Leave empty to use the
+	// upstream Istio default (`cluster.local`); operators with a
+	// re-pegged mesh MUST set MeshConfig.trustDomain here. HOL-752
+	// review round 2 introduced this knob after flagging the hard-coded
+	// default as silently-wrong on non-default meshes.
+	MeshTrustDomain string
 }
 
 // Manager wraps a sigs.k8s.io/controller-runtime manager.Manager plus a
@@ -229,14 +240,20 @@ func NewManager(cfg *rest.Config, opts Options) (*Manager, error) {
 	// The reconciler resolves spec.policyRef along the admission-validated
 	// three-path rule (same namespace / parent label / organization label)
 	// and emits a controller-owned security.istio.io/v1 AuthorizationPolicy
-	// that declares the ext_authz allow-list for the named provider. No
-	// options are needed beyond the manager client + scheme; the provider
-	// name is a package-local constant so every binding emits the same
-	// holos-secret-injector reference for M3.
+	// that declares the ext_authz allow-list for the named provider. The
+	// provider name is a package-local constant so every binding emits the
+	// same holos-secret-injector reference for M3; the trust domain
+	// defaults to the upstream Istio value (cluster.local) but operators
+	// with a re-pegged mesh set opts.MeshTrustDomain to override.
+	meshTrustDomain := opts.MeshTrustDomain
+	if meshTrustDomain == "" {
+		meshTrustDomain = defaultBindingAuthzTrustDomain
+	}
 	if err := (&SecretInjectionPolicyBindingReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("secretinjectionpolicybinding-controller"),
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Recorder:    mgr.GetEventRecorderFor("secretinjectionpolicybinding-controller"),
+		TrustDomain: meshTrustDomain,
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("controller.NewManager: registering SecretInjectionPolicyBindingReconciler: %w", err)
 	}

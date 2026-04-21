@@ -152,8 +152,9 @@ func newBindingTestReconciler(t *testing.T, objs ...client.Object) (*SecretInjec
 		WithStatusSubresource(&secretsv1alpha1.SecretInjectionPolicyBinding{}).
 		Build()
 	r := &SecretInjectionPolicyBindingReconciler{
-		Client: cli,
-		Scheme: s,
+		Client:      cli,
+		Scheme:      s,
+		TrustDomain: defaultBindingAuthzTrustDomain,
 	}
 	return r, cli
 }
@@ -173,8 +174,9 @@ func newBindingTestReconcilerWithInterceptor(t *testing.T, funcs interceptor.Fun
 		WithInterceptorFuncs(funcs).
 		Build()
 	r := &SecretInjectionPolicyBindingReconciler{
-		Client: cli,
-		Scheme: s,
+		Client:      cli,
+		Scheme:      s,
+		TrustDomain: defaultBindingAuthzTrustDomain,
 	}
 	return r, cli
 }
@@ -660,7 +662,7 @@ func TestBinding_BuildAuthorizationPolicy_ServiceAccount(t *testing.T) {
 	}, bindingTestNamespace, "p")
 	policy := validPolicy("p", bindingTestNamespace)
 
-	ap, err := buildAuthorizationPolicy(binding, policy)
+	ap, err := buildAuthorizationPolicy(binding, policy, defaultBindingAuthzTrustDomain)
 	if err != nil {
 		t.Fatalf("buildAuthorizationPolicy: %v", err)
 	}
@@ -699,7 +701,7 @@ func TestBinding_BuildAuthorizationPolicy_Service(t *testing.T) {
 	}, bindingTestNamespace, "p")
 	policy := validPolicy("p", bindingTestNamespace)
 
-	ap, err := buildAuthorizationPolicy(binding, policy)
+	ap, err := buildAuthorizationPolicy(binding, policy, defaultBindingAuthzTrustDomain)
 	if err != nil {
 		t.Fatalf("buildAuthorizationPolicy: %v", err)
 	}
@@ -729,7 +731,7 @@ func TestBinding_BuildAuthorizationPolicy_WorkloadSelector(t *testing.T) {
 	}
 	policy := validPolicy("p", bindingTestNamespace)
 
-	ap, err := buildAuthorizationPolicy(binding, policy)
+	ap, err := buildAuthorizationPolicy(binding, policy, defaultBindingAuthzTrustDomain)
 	if err != nil {
 		t.Fatalf("buildAuthorizationPolicy: %v", err)
 	}
