@@ -30,6 +30,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 vi.mock('@/queries/templates', () => ({
   useGetTemplate: vi.fn(),
   useUpdateTemplate: vi.fn(),
+  useListTemplateExamples: vi.fn().mockReturnValue({ data: [], isPending: false, error: null }),
   useRenderTemplate: vi.fn().mockReturnValue({
     data: undefined,
     error: null,

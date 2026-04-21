@@ -6,7 +6,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { useGetTemplate, useUpdateTemplate } from '@/queries/templates'
+import type { TemplateExample } from '@/queries/templates'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
+import { TemplateExamplePicker } from '@/components/templates/template-example-picker'
 
 // Platform/project input defaults for the preview pane. The backend injects
 // org-owned values (e.g. gatewayNamespace — HOL-526) at render time regardless
@@ -80,6 +82,18 @@ export function ConsolidatedTemplateEditorPage({
     }
   }, [template?.cueTemplate])
 
+  const handleSelectExample = (example: TemplateExample) => {
+    if (
+      cueTemplate.trim().length > 0 &&
+      !window.confirm(
+        'Replace the current CUE template with the selected example? This cannot be undone until you save.',
+      )
+    ) {
+      return
+    }
+    setCueTemplate(example.cueTemplate)
+  }
+
   const handleSave = async () => {
     try {
       await updateMutation.mutateAsync({
@@ -149,7 +163,10 @@ export function ConsolidatedTemplateEditorPage({
         </div>
 
         <div className="space-y-4">
-          <h3 className="text-sm font-medium">CUE Template</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">CUE Template</h3>
+            <TemplateExamplePicker onSelect={handleSelectExample} />
+          </div>
           <Separator />
           <CueTemplateEditor
             cueTemplate={cueTemplate}

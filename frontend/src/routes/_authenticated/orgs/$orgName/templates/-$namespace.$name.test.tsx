@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
@@ -21,6 +21,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 vi.mock('@/queries/templates', () => ({
   useGetTemplate: vi.fn(),
   useUpdateTemplate: vi.fn(),
+  useListTemplateExamples: vi.fn(),
   useRenderTemplate: vi.fn().mockReturnValue({
     data: undefined,
     error: null,
@@ -36,8 +37,22 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
-import { useGetTemplate, useUpdateTemplate } from '@/queries/templates'
+import { useGetTemplate, useUpdateTemplate, useListTemplateExamples } from '@/queries/templates'
 import { ConsolidatedTemplateEditorPage } from './$namespace.$name'
+
+const EXAMPLE_HTTPROUTE = {
+  name: 'httproute-v1',
+  displayName: 'HTTPRoute Ingress',
+  description: 'Provides an HTTPRoute for the org-configured ingress gateway.',
+  cueTemplate: '// example CUE\nplatformResources: {}\n',
+}
+
+const EXAMPLE_SECOND = {
+  name: 'configmap-v1',
+  displayName: 'ConfigMap Starter',
+  description: 'A minimal ConfigMap scaffold.',
+  cueTemplate: '// another example\nprojectResources: {}\n',
+}
 
 function setupMocks(
   template: {
@@ -57,6 +72,7 @@ function setupMocks(
     enabled: true,
     linkedTemplates: [],
   },
+  examples: typeof EXAMPLE_HTTPROUTE[] = [EXAMPLE_HTTPROUTE, EXAMPLE_SECOND],
 ) {
   ;(useGetTemplate as Mock).mockReturnValue({
     data: template,
@@ -66,6 +82,11 @@ function setupMocks(
   ;(useUpdateTemplate as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
+  })
+  ;(useListTemplateExamples as Mock).mockReturnValue({
+    data: examples,
+    isPending: false,
+    error: null,
   })
 }
 
@@ -151,6 +172,11 @@ describe('ConsolidatedTemplateEditorPage', () => {
       error: null,
     })
     ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync, isPending: false })
+    ;(useListTemplateExamples as Mock).mockReturnValue({
+      data: [EXAMPLE_HTTPROUTE],
+      isPending: false,
+      error: null,
+    })
 
     const user = userEvent.setup()
     render(<ConsolidatedTemplateEditorPage />)
@@ -167,6 +193,66 @@ describe('ConsolidatedTemplateEditorPage', () => {
           enabled: true,
         }),
       )
+    })
+  })
+
+  // HOL-799: TemplateExamplePicker is wired into the consolidated editor so
+  // authors can browse and load examples. Because the editor always starts with
+  // an existing CUE body, selecting an example prompts for confirmation first.
+  describe('TemplateExamplePicker integration', () => {
+    it('renders the Load Example picker trigger', () => {
+      setupMocks()
+      render(<ConsolidatedTemplateEditorPage />)
+      expect(screen.getByRole('combobox', { name: /load example/i })).toBeInTheDocument()
+    })
+
+    it('selecting an example with confirmation replaces the CUE template', async () => {
+      setupMocks({
+        name: 'web',
+        namespace: 'prj-billing',
+        displayName: 'Web Service',
+        cueTemplate: '// original cue body',
+        enabled: true,
+        linkedTemplates: [],
+      })
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+      render(<ConsolidatedTemplateEditorPage />)
+
+      fireEvent.click(screen.getByRole('combobox', { name: /load example/i }))
+      const item = await screen.findByText(EXAMPLE_HTTPROUTE.displayName)
+      fireEvent.click(item)
+
+      await waitFor(() => {
+        // The CUE editor in CueTemplateEditor renders a textarea. Find it by
+        // its accessible label.
+        const textarea = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
+        expect(textarea.value).toBe(EXAMPLE_HTTPROUTE.cueTemplate)
+      })
+    })
+
+    it('cancelling the confirm dialog leaves the CUE template unchanged', async () => {
+      const originalCue = '// original cue body'
+      setupMocks({
+        name: 'web',
+        namespace: 'prj-billing',
+        displayName: 'Web Service',
+        cueTemplate: originalCue,
+        enabled: true,
+        linkedTemplates: [],
+      })
+      vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+      render(<ConsolidatedTemplateEditorPage />)
+
+      fireEvent.click(screen.getByRole('combobox', { name: /load example/i }))
+      const item = await screen.findByText(EXAMPLE_HTTPROUTE.displayName)
+      fireEvent.click(item)
+
+      await waitFor(() => {
+        const textarea = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
+        expect(textarea.value).toBe(originalCue)
+      })
     })
   })
 })

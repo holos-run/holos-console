@@ -24,6 +24,7 @@ vi.mock('@/queries/templates', () => ({
   useCreateTemplate: vi.fn(),
   useRenderTemplate: vi.fn(),
   useListLinkableTemplates: vi.fn().mockReturnValue({ data: [], isPending: false }),
+  useListTemplateExamples: vi.fn(),
   linkableKey: (namespace: string | undefined, name: string) =>
     `${namespace ?? ''}/${name}`,
   parseLinkableKey: (key: string) => {
@@ -47,17 +48,32 @@ vi.mock('@/hooks/use-debounced-value', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates } from '@/queries/templates'
+import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates, useListTemplateExamples } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { CreateTemplatePage } from './new'
+
+const EXAMPLE_HTTPBIN = {
+  name: 'httpbin-v1',
+  displayName: 'go-httpbin Deployment',
+  description: 'Deploys go-httpbin with a ServiceAccount, Deployment, and Service.',
+  cueTemplate: '// httpbin CUE\nprojectResources: {}\n',
+}
+
+const EXAMPLE_SECOND = {
+  name: 'minimal-v1',
+  displayName: 'Minimal Starter',
+  description: 'A minimal scaffold for project-scope templates.',
+  cueTemplate: '// minimal CUE\nprojectResources: {namespacedResources: {}}\n',
+}
 
 function setupMocks(
   mutateAsync = vi.fn().mockResolvedValue({}),
   renderData?: { renderedJson?: string },
   renderError?: Error,
   userRole = Role.OWNER,
+  examples: typeof EXAMPLE_HTTPBIN[] = [EXAMPLE_HTTPBIN, EXAMPLE_SECOND],
 ) {
   ;(useCreateTemplate as Mock).mockReturnValue({
     mutateAsync,
@@ -76,6 +92,11 @@ function setupMocks(
   })
   ;(useGetOrganization as Mock).mockReturnValue({
     data: { name: 'test-org', gatewayNamespace: '' },
+    isPending: false,
+    error: null,
+  })
+  ;(useListTemplateExamples as Mock).mockReturnValue({
+    data: examples,
     isPending: false,
     error: null,
   })
@@ -206,7 +227,7 @@ describe('CreateTemplatePage', () => {
     })
   })
 
-  it('shows CUE template has default content', () => {
+  it('shows CUE template has default scaffold content', () => {
     render(<CreateTemplatePage />)
     const cueEditor = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
     expect(cueEditor.value).toContain('projectResources')
@@ -234,28 +255,39 @@ describe('CreateTemplatePage', () => {
     expect(projectInput).not.toContain('namespace:')
   })
 
-  describe('Load httpbin Example button', () => {
-    it('renders Load httpbin Example button', () => {
+  // HOL-799: the inline "Load httpbin Example" button and hard-coded CUE body
+  // were replaced by the reusable TemplateExamplePicker backed by
+  // ListTemplateExamples. The picker is the single source of example content.
+  describe('TemplateExamplePicker integration', () => {
+    it('renders the Load Example picker trigger', () => {
       render(<CreateTemplatePage />)
-      expect(screen.getByRole('button', { name: /load httpbin example/i })).toBeInTheDocument()
+      expect(screen.getByRole('combobox', { name: /load example/i })).toBeInTheDocument()
     })
 
-    it('clicking Load httpbin Example changes the CUE textarea content', () => {
+    it('no longer renders a plain "Load httpbin Example" push button', () => {
       render(<CreateTemplatePage />)
-      const cueEditor = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
-      const initialContent = cueEditor.value
-      fireEvent.click(screen.getByRole('button', { name: /load httpbin example/i }))
-      expect(cueEditor.value).not.toBe(initialContent)
-      expect(cueEditor.value).toContain('go-httpbin')
+      expect(
+        screen.queryByRole('button', { name: /load httpbin example/i }),
+      ).not.toBeInTheDocument()
     })
 
-    it('httpbin example CUE contains ServiceAccount, Deployment, and Service', () => {
+    it('selecting an example populates all four form fields in one action', async () => {
       render(<CreateTemplatePage />)
-      fireEvent.click(screen.getByRole('button', { name: /load httpbin example/i }))
+      fireEvent.click(screen.getByRole('combobox', { name: /load example/i }))
+
+      const item = await screen.findByText(EXAMPLE_HTTPBIN.displayName)
+      fireEvent.click(item)
+
+      await waitFor(() => {
+        const displayNameInput = screen.getByLabelText(/display name/i) as HTMLInputElement
+        expect(displayNameInput.value).toBe(EXAMPLE_HTTPBIN.displayName)
+      })
+      const nameInput = screen.getByLabelText(/name slug/i) as HTMLInputElement
+      expect(nameInput.value).toBe(EXAMPLE_HTTPBIN.name)
+      const descriptionInput = screen.getByLabelText(/description/i) as HTMLInputElement
+      expect(descriptionInput.value).toBe(EXAMPLE_HTTPBIN.description)
       const cueEditor = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
-      expect(cueEditor.value).toContain('ServiceAccount')
-      expect(cueEditor.value).toContain('Deployment')
-      expect(cueEditor.value).toContain('Service')
+      expect(cueEditor.value).toBe(EXAMPLE_HTTPBIN.cueTemplate)
     })
   })
 
