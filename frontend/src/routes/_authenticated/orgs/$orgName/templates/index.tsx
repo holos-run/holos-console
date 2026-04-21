@@ -7,6 +7,7 @@ import {
   flexRender,
   createColumnHelper,
 } from '@tanstack/react-table'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -19,7 +20,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useSearchTemplates } from '@/queries/templates'
+import { useGetOrganization } from '@/queries/organizations'
 import type { Template } from '@/gen/holos/console/v1/templates_pb'
 
 export const Route = createFileRoute('/_authenticated/orgs/$orgName/templates/')({
@@ -46,11 +49,15 @@ export function OrgTemplatesIndexPage({
   const orgName = propOrgName ?? routeOrgName ?? ''
 
   const { data, isLoading, error } = useSearchTemplates({ organization: orgName })
+  const { data: org } = useGetOrganization(orgName)
   // When orgName is empty the query is disabled: isLoading is false and data is
   // undefined. Treat the disabled state the same as loading so we never render
   // the "No templates yet" empty state for an org that hasn't resolved yet.
   const queryDisabled = orgName === ''
   const templates = useMemo(() => data ?? [], [data])
+
+  const userRole = org?.userRole ?? Role.VIEWER
+  const canWrite = userRole === Role.OWNER
 
   const [globalFilter, setGlobalFilter] = useState('')
 
@@ -135,15 +142,22 @@ export function OrgTemplatesIndexPage({
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <CardTitle>Templates</CardTitle>
+        {canWrite && (
+          <Link to="/orgs/$orgName/templates/new" params={{ orgName }}>
+            <Button size="sm">Create Template</Button>
+          </Link>
+        )}
       </CardHeader>
       <CardContent>
         {templates.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-8 text-center">
             <p className="text-muted-foreground">
-              No templates yet. Create one from an organization, folder, or
-              project scope.
+              No templates yet.
+              {canWrite
+                ? ' Create one to get started.'
+                : ' Ask an organization owner to create one.'}
             </p>
           </div>
         ) : (

@@ -42,7 +42,13 @@ vi.mock('@/queries/templates', () => ({
   useSearchTemplates: vi.fn(),
 }))
 
+vi.mock('@/queries/organizations', () => ({
+  useGetOrganization: vi.fn(),
+}))
+
 import { useSearchTemplates } from '@/queries/templates'
+import { useGetOrganization } from '@/queries/organizations'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { OrgTemplatesIndexPage } from './index'
 
 type Template = {
@@ -51,10 +57,15 @@ type Template = {
   displayName: string
 }
 
-function setup(templates: Template[] = []) {
+function setup(templates: Template[] = [], userRole: Role = Role.OWNER) {
   ;(useSearchTemplates as Mock).mockReturnValue({
     data: templates,
     isLoading: false,
+    error: null,
+  })
+  ;(useGetOrganization as Mock).mockReturnValue({
+    data: { name: 'test-org', userRole },
+    isPending: false,
     error: null,
   })
 }
@@ -62,6 +73,11 @@ function setup(templates: Template[] = []) {
 describe('OrgTemplatesIndexPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    ;(useGetOrganization as Mock).mockReturnValue({
+      data: { name: 'test-org', userRole: Role.OWNER },
+      isPending: false,
+      error: null,
+    })
   })
 
   it('renders loading skeletons while the query is pending', () => {
@@ -167,6 +183,37 @@ describe('OrgTemplatesIndexPage', () => {
     const rows = screen.getAllByRole('row')
     expect(rows).toHaveLength(2)
     expect(within(rows[1]).getByText('Web Service')).toBeInTheDocument()
+  })
+
+  it('renders the Create Template button for org OWNERs', () => {
+    setup([], Role.OWNER)
+    render(<OrgTemplatesIndexPage />)
+    const link = screen.getByRole('link', { name: /create template/i })
+    expect(link).toHaveAttribute('href', '/orgs/test-org/templates/new')
+  })
+
+  it('hides the Create Template button for non-OWNER users', () => {
+    setup([], Role.VIEWER)
+    render(<OrgTemplatesIndexPage />)
+    expect(
+      screen.queryByRole('link', { name: /create template/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('empty state prompts OWNERs to create a template', () => {
+    setup([], Role.OWNER)
+    render(<OrgTemplatesIndexPage />)
+    expect(
+      screen.getByText(/no templates yet\. create one to get started/i),
+    ).toBeInTheDocument()
+  })
+
+  it('empty state directs non-OWNERs to ask an owner', () => {
+    setup([], Role.VIEWER)
+    render(<OrgTemplatesIndexPage />)
+    expect(
+      screen.getByText(/ask an organization owner to create one/i),
+    ).toBeInTheDocument()
   })
 
   it('filters rows by slug name', () => {
