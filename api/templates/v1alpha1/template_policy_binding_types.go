@@ -38,11 +38,12 @@ type LinkedTemplatePolicyRef struct {
 	Name string `json:"name"`
 }
 
-// TemplatePolicyBindingTargetKind discriminates between the two explicit
+// TemplatePolicyBindingTargetKind discriminates between the three explicit
 // render targets a binding can name: a project-scope template (shared by
-// every deployment in a project) or a single deployment.
+// every deployment in a project), a single deployment, or a project
+// namespace (the to-be-created namespace for a new project).
 //
-// +kubebuilder:validation:Enum=ProjectTemplate;Deployment
+// +kubebuilder:validation:Enum=ProjectTemplate;Deployment;ProjectNamespace
 type TemplatePolicyBindingTargetKind string
 
 const (
@@ -54,6 +55,16 @@ const (
 	// Name is the deployment's DNS label slug within its owning project;
 	// ProjectName is the project that owns the deployment.
 	TemplatePolicyBindingTargetKindDeployment TemplatePolicyBindingTargetKind = "Deployment"
+	// TemplatePolicyBindingTargetKindProjectNamespace targets the namespace
+	// that will be created for a new project (HOL-806 / ADR 034). The
+	// binding lives in an org/folder namespace and is matched against the
+	// incoming project's namespace during CreateProject. ProjectName
+	// accepts the literal wildcard "*" (HOL-767) to match every new project
+	// reachable via the binding's ancestor-walk; Name is the namespace slug
+	// (typically the project name). Resolver behavior for this kind is
+	// wired in a later phase; the constant is defined here so downstream
+	// code has a typed value to reference.
+	TemplatePolicyBindingTargetKindProjectNamespace TemplatePolicyBindingTargetKind = "ProjectNamespace"
 )
 
 // TemplatePolicyBindingTargetRef identifies one explicit render target a

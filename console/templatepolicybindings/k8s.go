@@ -301,6 +301,8 @@ func targetKindProtoToCRD(k consolev1.TemplatePolicyBindingTargetKind) templates
 		return templatesv1alpha1.TemplatePolicyBindingTargetKindProjectTemplate
 	case consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT:
 		return templatesv1alpha1.TemplatePolicyBindingTargetKindDeployment
+	case consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_NAMESPACE:
+		return templatesv1alpha1.TemplatePolicyBindingTargetKindProjectNamespace
 	default:
 		return ""
 	}
@@ -312,6 +314,8 @@ func targetKindCRDToProto(k templatesv1alpha1.TemplatePolicyBindingTargetKind) c
 		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE
 	case templatesv1alpha1.TemplatePolicyBindingTargetKindDeployment:
 		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT
+	case templatesv1alpha1.TemplatePolicyBindingTargetKindProjectNamespace:
+		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_NAMESPACE
 	default:
 		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_UNSPECIFIED
 	}
