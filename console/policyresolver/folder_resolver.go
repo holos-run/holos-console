@@ -434,7 +434,8 @@ func bindingAppliesTo(b *ResolvedBinding, project string, targetKind TargetKind,
 // nameMatches returns true when the ref-side value selects the target value.
 // The literal WildcardAny ("*") matches any *non-empty* target value. Exact
 // string equality covers every other case. Both arguments are compared as-is
-// — no glob, regex, or case folding (ADR 029).
+// — only the single-token wildcard "*" is supported; partial patterns such as
+// "prefix-*" are not (ADR 029).
 //
 // The non-empty requirement is load-bearing: when Resolve cannot derive a
 // project slug from the render-target namespace (e.g., an org- or folder-

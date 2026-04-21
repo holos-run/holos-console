@@ -112,7 +112,7 @@ describe('BindingForm', () => {
     stubQueries({})
   })
 
-  it('info box explains the scoped-wildcard model and no longer mentions "no glob patterns"', () => {
+  it('info box explains the scoped-wildcard model and uses updated wildcard copy', () => {
     render(
       <BindingForm
         mode="create"
@@ -127,10 +127,9 @@ describe('BindingForm', () => {
       />,
     )
     const info = screen.getByTestId('binding-form-info')
-    // The HOL-773 info-box rewrite drops the legacy "no glob patterns" copy
-    // entirely — matching it would be a smoke-test that the author forgot
-    // to swap phrasing after Phases 1–3 landed.
-    expect(info.textContent ?? '').not.toMatch(/no glob patterns/i)
+    // The HOL-773 info-box rewrite replaced the pre-wildcard flat-enumeration
+    // copy with language that explains the scoped-wildcard model (HOL-767).
+    expect(info.textContent ?? '').not.toMatch(/every target is named directly/i)
     // New copy mentions wildcard expansion within the binding's storage
     // scope and the kind-never-wildcarded rule.
     expect(info.textContent ?? '').toMatch(/wildcard/i)

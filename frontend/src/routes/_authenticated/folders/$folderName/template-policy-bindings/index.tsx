@@ -109,9 +109,10 @@ export function FolderTemplatePolicyBindingsIndexPage({
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Bindings attach a single TemplatePolicy to an explicit list of project
-          templates and deployments. Every target is named directly — no glob
-          patterns. Bindings live only at folder or organization scope.
+          Bindings attach a single TemplatePolicy to project templates and
+          deployments. Use <code>*</code> in a target row to match every
+          resource of that kind within the binding's storage scope. Bindings
+          live only at folder or organization scope.
         </p>
         <Separator />
         {bindings && bindings.length > 0 ? (

@@ -10,15 +10,15 @@ import { TemplatePolicyKind } from '@/queries/templatePolicies'
 import { linkableKey } from '@/queries/templates'
 import { namespaceForFolder, namespaceForOrg } from '@/lib/scope-labels'
 
-// HOL-598: The rule draft is no longer a vehicle for glob Target authoring.
+// HOL-598: The rule draft is no longer a vehicle for Target authoring.
 // Attachment is expressed exclusively via TemplatePolicyBinding. These tests
-// pin the new contract: `newEmptyRule()` does not carry glob fields,
-// `ruleDraftToProto` emits a rule with `target` unset, `ruleProtoToDraft`
-// discards any legacy populated Target, and `validateRuleDraft` no longer
-// gates on glob patterns.
+// pin the new contract: `newEmptyRule()` does not carry the legacy
+// `projectPattern`/`deploymentPattern` fields, `ruleDraftToProto` emits a
+// rule with `target` unset, `ruleProtoToDraft` discards any legacy populated
+// Target, and `validateRuleDraft` no longer gates on those legacy fields.
 describe('rule-draft (HOL-598)', () => {
   describe('newEmptyRule', () => {
-    it('returns a draft with no glob pattern fields', () => {
+    it('returns a draft without legacy projectPattern/deploymentPattern fields', () => {
       const draft = newEmptyRule()
       expect(draft).toEqual({
         kind: TemplatePolicyKind.REQUIRE,
@@ -66,7 +66,7 @@ describe('rule-draft (HOL-598)', () => {
   })
 
   describe('ruleProtoToDraft', () => {
-    it('produces a draft with no glob pattern fields even when the proto Target was populated', () => {
+    it('produces a draft without legacy projectPattern/deploymentPattern fields even when the proto Target was populated', () => {
       // Cast through `unknown` so the test stays readable without hand-rolling
       // the `$typeName` brand fields required by protobuf-es Message types.
       const draft = ruleProtoToDraft({
@@ -101,7 +101,7 @@ describe('rule-draft (HOL-598)', () => {
       expect(validateRuleDraft(draft)).toMatch(/template/i)
     })
 
-    it('passes when a template is selected and no glob fields exist', () => {
+    it('passes when a template is selected and no legacy target fields exist', () => {
       const draft: RuleDraft = {
         kind: TemplatePolicyKind.REQUIRE,
         templateKey: linkableKey(namespaceForOrg('acme'), 'httproute'),
