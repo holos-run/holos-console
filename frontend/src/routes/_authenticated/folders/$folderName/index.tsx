@@ -137,7 +137,7 @@ export function FolderIndexPage({
         error={policiesQuery.error as Error | null}
       />
       <ProjectsSection
-        orgName={orgName}
+        folderName={folderName}
         projects={projectsQuery.data}
         isPending={projectsQuery.isPending}
         error={projectsQuery.error as Error | null}
@@ -320,12 +320,12 @@ function TemplatePoliciesSection({
 }
 
 function ProjectsSection({
-  orgName,
+  folderName,
   projects,
   isPending,
   error,
 }: {
-  orgName: string
+  folderName: string
   projects: Project[] | undefined
   isPending: boolean
   error: Error | null
@@ -340,15 +340,10 @@ function ProjectsSection({
       error={error}
       emptyText="No projects in this folder."
       viewAll={
-        // No folder-scoped projects index exists yet (HOL-755); "View all"
-        // falls back to the org-wide Resources listing, which contains both
-        // folders and projects in a single unified table. The aria-label
-        // makes the wider scope explicit so a screen-reader user is not
-        // surprised by it after activating the link.
         <Link
-          to="/orgs/$orgName/resources"
-          params={{ orgName }}
-          aria-label="View all resources in the organization"
+          to="/folders/$folderName/projects"
+          params={{ folderName }}
+          aria-label="View all projects"
         >
           <Button variant="outline" size="sm">
             View all
