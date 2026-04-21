@@ -110,7 +110,10 @@ describe('ResourcesIndexPage', () => {
     expect(rows).toHaveLength(3)
 
     expect(within(rows[1]).getByText('Folder')).toBeInTheDocument()
+    expect(within(rows[1]).getByTestId('resource-type-icon-folder')).toBeInTheDocument()
+
     expect(within(rows[2]).getByText('Project')).toBeInTheDocument()
+    expect(within(rows[2]).getByTestId('resource-type-icon-project')).toBeInTheDocument()
   })
 
   it('renders clickable path elements with correct hrefs and slug titles', () => {
@@ -122,13 +125,20 @@ describe('ResourcesIndexPage', () => {
     expect(orgLink).toHaveAttribute('href', '/orgs/test-org')
     expect(orgLink).toHaveAttribute('title', 'test-org')
 
-    const folderLink = screen.getByRole('link', { name: 'Team A' })
+    const folderLink = screen.getByRole('link', { name: /Team A/ })
     expect(folderLink).toHaveAttribute('href', '/folders/team-a')
     expect(folderLink).toHaveAttribute('title', 'team-a')
+    // Folder ancestor link shows the folder icon; org root (UNSPECIFIED) does not
+    expect(within(folderLink).getByTestId('resource-type-icon-folder')).toBeInTheDocument()
+    expect(screen.queryByTestId('resource-type-icon-folder')).toBeInTheDocument()
 
     const leafLink = screen.getByRole('link', { name: 'Web App' })
     expect(leafLink).toHaveAttribute('href', '/projects/web')
     expect(leafLink).toHaveAttribute('title', 'web')
+
+    // Org root link should NOT contain any resource-type icon (UNSPECIFIED → null)
+    expect(within(orgLink).queryByTestId('resource-type-icon-folder')).not.toBeInTheDocument()
+    expect(within(orgLink).queryByTestId('resource-type-icon-project')).not.toBeInTheDocument()
   })
 
   it('routes folder leaves to the canonical folder detail URL', () => {
