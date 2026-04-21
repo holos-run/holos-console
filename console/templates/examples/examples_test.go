@@ -22,8 +22,8 @@ func TestExamples(t *testing.T) {
 		t.Fatalf("Examples() error: %v", err)
 	}
 
-	// There must be exactly two examples.
-	if got, want := len(list), 2; got != want {
+	// There must be exactly four examples.
+	if got, want := len(list), 4; got != want {
 		t.Fatalf("Examples() returned %d examples, want %d", got, want)
 	}
 
@@ -33,7 +33,12 @@ func TestExamples(t *testing.T) {
 		byName[ex.Name] = ex
 	}
 
-	wantNames := []string{"httproute-v1", "allowed-project-resource-kinds-v1"}
+	wantNames := []string{
+		"httproute-v1",
+		"allowed-project-resource-kinds-v1",
+		"project-namespace-description-annotation-v1",
+		"project-namespace-reference-grant-v1",
+	}
 	for _, name := range wantNames {
 		ex, ok := byName[name]
 		if !ok {
