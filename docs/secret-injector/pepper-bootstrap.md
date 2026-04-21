@@ -67,7 +67,8 @@ precisely to prevent the losing replica from overwriting the winning pepper.
 Bootstrap returns an error and the manager refuses to start if:
 
 - The namespace is empty (the `POD_NAMESPACE` downward-API variable was not
-  set on the Deployment — see `config/secret-injector/deployment/deployment.yaml`).
+  set on the Deployment — see `cmd/secret-injector/` for the binary entrypoint
+  and `config/secret-injector/rbac/namespace/` for the namespace-scoped wiring).
 - The Secret exists but carries no `pepper-<N>` data rows (an operator
   manually cleared `.data`).
 - The highest-numbered row is empty.
@@ -141,8 +142,7 @@ None of these fields contain or hint at the pepper bytes themselves.
 
 ## Testing
 
-- `internal/secretinjector/crypto/pepper_test.go` — `SecretLoader` unit tests
-- `internal/secretinjector/crypto/pepper_bootstrap.go` — `Bootstrap` unit tests (same file)
+- `internal/secretinjector/crypto/pepper_test.go` — `SecretLoader` unit tests and `Bootstrap` unit tests (cold-start, warm-restart, and race-on-create paths)
 - The cross-reconciler envtest suite wires a test pepper seed via
   `suite_test.go` and verifies that no pepper bytes appear on any CR via
   the marshal-scan gate.
