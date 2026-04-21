@@ -16,6 +16,7 @@ import (
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -1182,5 +1183,506 @@ func TestMapK8sError(t *testing.T) {
 				t.Errorf("code=%v want %v (err=%v)", cerr.Code(), tc.want, tc.err)
 			}
 		})
+	}
+}
+
+// TestCreateAcceptsWildcardTargetRefs covers HOL-772: the handler must
+// accept the wildcard sentinel policyresolver.WildcardAny in either or
+// both of target_refs[*].name and target_refs[*].project_name. Every
+// combination of `{literal, *}` on `{name, project_name}` is exercised
+// with both PROJECT_TEMPLATE and DEPLOYMENT kinds so a future regression
+// in validateTargetRefs surfaces as a specific row failure rather than a
+// global one. A wildcard project_name must also succeed even when the
+// wired ProjectExistsResolver would have rejected a literal lookup — the
+// existence probe is supposed to be skipped for wildcard refs.
+func TestCreateAcceptsWildcardTargetRefs(t *testing.T) {
+	tests := []struct {
+		name       string
+		targetRef  *consolev1.TemplatePolicyBindingTargetRef
+		bindingKey string
+	}{
+		{
+			name: "literal name and project_name",
+			targetRef: &consolev1.TemplatePolicyBindingTargetRef{
+				Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+				Name:        "api",
+				ProjectName: "payments-web",
+			},
+			bindingKey: "bind-literal-literal",
+		},
+		{
+			name: "wildcard name, literal project_name",
+			targetRef: &consolev1.TemplatePolicyBindingTargetRef{
+				Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+				Name:        policyresolver.WildcardAny,
+				ProjectName: "payments-web",
+			},
+			bindingKey: "bind-wild-literal",
+		},
+		{
+			name: "literal name, wildcard project_name",
+			targetRef: &consolev1.TemplatePolicyBindingTargetRef{
+				Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE,
+				Name:        "web",
+				ProjectName: policyresolver.WildcardAny,
+			},
+			bindingKey: "bind-literal-wild",
+		},
+		{
+			name: "wildcard name and project_name",
+			targetRef: &consolev1.TemplatePolicyBindingTargetRef{
+				Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE,
+				Name:        policyresolver.WildcardAny,
+				ProjectName: policyresolver.WildcardAny,
+			},
+			bindingKey: "bind-wild-wild",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			h, fakeClient := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
+			// ProjectExistsResolver is wired to reject every literal lookup,
+			// so the "wildcard project_name" rows pin that the wildcard
+			// bypasses the probe rather than passing it. Literal rows still
+			// need a reachable project, so seed payments-web.
+			h = h.
+				WithPolicyExistsResolver(&stubPolicyResolver{exists: true}).
+				WithProjectExistsResolver(&stubProjectResolver{exists: map[string]bool{"payments-web": true}})
+			ctx := authedCtx("owner@example.com", nil)
+
+			folder := newFolderScopeRef("payments")
+			binding := &consolev1.TemplatePolicyBinding{
+				Name:      tc.bindingKey,
+				Namespace: folder,
+				PolicyRef: &consolev1.LinkedTemplatePolicyRef{
+					Namespace: folder,
+					Name:      "local-policy",
+				},
+				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{tc.targetRef},
+			}
+
+			_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
+				Namespace: folder,
+				Binding:   binding,
+			}))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			stored := getBindingCR(t, fakeClient, "holos-fld-payments", tc.bindingKey)
+			if stored == nil {
+				t.Fatal("expected binding to be created")
+			}
+			if len(stored.Spec.TargetRefs) != 1 {
+				t.Fatalf("expected 1 target_ref, got %d", len(stored.Spec.TargetRefs))
+			}
+			if got := stored.Spec.TargetRefs[0].Name; got != tc.targetRef.GetName() {
+				t.Errorf("stored name = %q, want %q", got, tc.targetRef.GetName())
+			}
+			if got := stored.Spec.TargetRefs[0].ProjectName; got != tc.targetRef.GetProjectName() {
+				t.Errorf("stored project_name = %q, want %q", got, tc.targetRef.GetProjectName())
+			}
+		})
+	}
+}
+
+// TestUpdateAcceptsWildcardTargetRefs is the Update-path mirror of
+// TestCreateAcceptsWildcardTargetRefs. Every wildcard combination must
+// round-trip through UpdateTemplatePolicyBinding too, because UI flows
+// that edit an existing binding re-submit the full target_refs list.
+func TestUpdateAcceptsWildcardTargetRefs(t *testing.T) {
+	tests := []struct {
+		name      string
+		targetRef *consolev1.TemplatePolicyBindingTargetRef
+	}{
+		{
+			name: "literal name and project_name",
+			targetRef: &consolev1.TemplatePolicyBindingTargetRef{
+				Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+				Name:        "api",
+				ProjectName: "payments-web",
+			},
+		},
+		{
+			name: "wildcard name, literal project_name",
+			targetRef: &consolev1.TemplatePolicyBindingTargetRef{
+				Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+				Name:        policyresolver.WildcardAny,
+				ProjectName: "payments-web",
+			},
+		},
+		{
+			name: "literal name, wildcard project_name",
+			targetRef: &consolev1.TemplatePolicyBindingTargetRef{
+				Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE,
+				Name:        "web",
+				ProjectName: policyresolver.WildcardAny,
+			},
+		},
+		{
+			name: "wildcard name and project_name",
+			targetRef: &consolev1.TemplatePolicyBindingTargetRef{
+				Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE,
+				Name:        policyresolver.WildcardAny,
+				ProjectName: policyresolver.WildcardAny,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			existing := &templatesv1alpha1.TemplatePolicyBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "bind-update-wild",
+					Namespace: "holos-fld-payments",
+					Labels: map[string]string{
+						v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+						v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicyBinding,
+					},
+					Annotations: map[string]string{
+						v1alpha2.AnnotationCreatorEmail: "original@example.com",
+					},
+				},
+				Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
+					DisplayName: "orig",
+					PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
+						Namespace: "holos-fld-payments",
+						Name:      "local-policy",
+					},
+					TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{{
+						Kind:        templatesv1alpha1.TemplatePolicyBindingTargetKindDeployment,
+						Name:        "api",
+						ProjectName: "payments-web",
+					}},
+				},
+			}
+			fakeClient := newFakeCtrlClient(t, existing)
+			r := newTestResolver()
+			k := NewK8sClient(fakeClient, r)
+			h := NewHandler(k, r).
+				WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{"owner@example.com": "owner"}}).
+				WithFolderGrantResolver(&stubFolderGrantResolver{users: map[string]string{"owner@example.com": "owner"}}).
+				WithPolicyExistsResolver(&stubPolicyResolver{exists: true}).
+				WithProjectExistsResolver(&stubProjectResolver{exists: map[string]bool{"payments-web": true}})
+			ctx := authedCtx("owner@example.com", nil)
+
+			folder := newFolderScopeRef("payments")
+			inbound := &consolev1.TemplatePolicyBinding{
+				Name:      "bind-update-wild",
+				Namespace: folder,
+				PolicyRef: &consolev1.LinkedTemplatePolicyRef{
+					Namespace: folder,
+					Name:      "local-policy",
+				},
+				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{tc.targetRef},
+			}
+
+			_, err := h.UpdateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyBindingRequest{
+				Namespace: folder,
+				Binding:   inbound,
+			}))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			stored := getBindingCR(t, fakeClient, "holos-fld-payments", "bind-update-wild")
+			if stored == nil {
+				t.Fatal("expected binding to exist after update")
+			}
+			if len(stored.Spec.TargetRefs) != 1 {
+				t.Fatalf("expected 1 target_ref after update, got %d", len(stored.Spec.TargetRefs))
+			}
+			if got := stored.Spec.TargetRefs[0].Name; got != tc.targetRef.GetName() {
+				t.Errorf("stored name = %q, want %q", got, tc.targetRef.GetName())
+			}
+			if got := stored.Spec.TargetRefs[0].ProjectName; got != tc.targetRef.GetProjectName() {
+				t.Errorf("stored project_name = %q, want %q", got, tc.targetRef.GetProjectName())
+			}
+		})
+	}
+}
+
+// TestCreateRejectsDuplicateWildcardTargetRefs pins the dedup-key
+// invariant: the wildcard sentinel does NOT short-circuit the duplicate
+// detector. Two identical {kind, "*", "*"} rows remain a user error and
+// must be rejected with CodeInvalidArgument, naming target_refs[0] so the
+// UI can highlight the offender.
+func TestCreateRejectsDuplicateWildcardTargetRefs(t *testing.T) {
+	h, fakeClient := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
+	h = h.
+		WithPolicyExistsResolver(&stubPolicyResolver{exists: true}).
+		WithProjectExistsResolver(&stubProjectResolver{})
+	ctx := authedCtx("owner@example.com", nil)
+
+	folder := newFolderScopeRef("payments")
+	binding := &consolev1.TemplatePolicyBinding{
+		Name:      "bind-dup-wild",
+		Namespace: folder,
+		PolicyRef: &consolev1.LinkedTemplatePolicyRef{
+			Namespace: folder,
+			Name:      "local-policy",
+		},
+		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{
+			{
+				Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+				Name:        policyresolver.WildcardAny,
+				ProjectName: policyresolver.WildcardAny,
+			},
+			{
+				Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+				Name:        policyresolver.WildcardAny,
+				ProjectName: policyresolver.WildcardAny,
+			},
+		},
+	}
+
+	_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
+		Namespace: folder,
+		Binding:   binding,
+	}))
+	if err == nil {
+		t.Fatal("expected duplicate wildcard target_refs to be rejected")
+	}
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("expected CodeInvalidArgument, got %v: %v", connect.CodeOf(err), err)
+	}
+	if !containsString(err.Error(), "duplicate of target_refs[0]") {
+		t.Errorf("expected dedup message referencing target_refs[0], got %v", err)
+	}
+
+	if items := listBindings(t, fakeClient, "holos-fld-payments"); len(items) != 0 {
+		t.Errorf("expected no bindings stored on duplicate rejection, got %d", len(items))
+	}
+}
+
+// TestCreateWildcardProjectBypassesProjectExistsResolver pins the second
+// handler contract under HOL-772: when project_name is the wildcard
+// sentinel, validateTargetProjects must skip ProjectExistsResolver. The
+// stub resolver in this test returns false for every literal lookup; the
+// Create must still succeed because the wildcard ref declares "every
+// reachable project" and there is no single slug to probe.
+func TestCreateWildcardProjectBypassesProjectExistsResolver(t *testing.T) {
+	projectStub := &stubProjectResolver{exists: map[string]bool{}}
+	h, fakeClient := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
+	h = h.
+		WithPolicyExistsResolver(&stubPolicyResolver{exists: true}).
+		WithProjectExistsResolver(projectStub)
+	ctx := authedCtx("owner@example.com", nil)
+
+	folder := newFolderScopeRef("payments")
+	binding := &consolev1.TemplatePolicyBinding{
+		Name:      "bind-wild-project",
+		Namespace: folder,
+		PolicyRef: &consolev1.LinkedTemplatePolicyRef{
+			Namespace: folder,
+			Name:      "local-policy",
+		},
+		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{{
+			Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE,
+			Name:        "web",
+			ProjectName: policyresolver.WildcardAny,
+		}},
+	}
+
+	_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
+		Namespace: folder,
+		Binding:   binding,
+	}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if projectStub.calls != 0 {
+		t.Errorf("ProjectExistsResolver should not have been called for wildcard project_name; got %d calls", projectStub.calls)
+	}
+
+	if got := getBindingCR(t, fakeClient, "holos-fld-payments", "bind-wild-project"); got == nil {
+		t.Error("expected wildcard-project binding to be stored")
+	}
+}
+
+// TestCreateWildcardRejectsEmptyStrings guards the handler's empty-value
+// rule: even with wildcard support, empty name / project_name remain
+// invalid. The resolver's nameMatches guard (HOL-770) treats wildcard
+// refs as non-matching when the target value is empty, so allowing an
+// empty stored value would silently produce a binding that matches
+// nothing.
+func TestCreateWildcardRejectsEmptyStrings(t *testing.T) {
+	h, _ := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
+	h = h.
+		WithPolicyExistsResolver(&stubPolicyResolver{exists: true}).
+		WithProjectExistsResolver(&stubProjectResolver{})
+	ctx := authedCtx("owner@example.com", nil)
+
+	folder := newFolderScopeRef("payments")
+	tests := []struct {
+		name    string
+		ref     *consolev1.TemplatePolicyBindingTargetRef
+		wantMsg string
+	}{
+		{
+			name: "empty name",
+			ref: &consolev1.TemplatePolicyBindingTargetRef{
+				Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+				Name:        "",
+				ProjectName: "payments-web",
+			},
+			wantMsg: "name is required",
+		},
+		{
+			name: "empty project_name",
+			ref: &consolev1.TemplatePolicyBindingTargetRef{
+				Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+				Name:        "api",
+				ProjectName: "",
+			},
+			wantMsg: "project_name is required",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			binding := &consolev1.TemplatePolicyBinding{
+				Name:      "bind-empty",
+				Namespace: folder,
+				PolicyRef: &consolev1.LinkedTemplatePolicyRef{
+					Namespace: folder,
+					Name:      "local-policy",
+				},
+				TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{tc.ref},
+			}
+			_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
+				Namespace: folder,
+				Binding:   binding,
+			}))
+			if err == nil {
+				t.Fatal("expected rejection")
+			}
+			if connect.CodeOf(err) != connect.CodeInvalidArgument {
+				t.Errorf("expected CodeInvalidArgument, got %v: %v", connect.CodeOf(err), err)
+			}
+			if !containsString(err.Error(), tc.wantMsg) {
+				t.Errorf("expected error to contain %q, got %v", tc.wantMsg, err)
+			}
+		})
+	}
+}
+
+// TestCreateWildcardTargetRefsRBACDenial re-runs the permission-gate
+// contract from TestCreateRBACDenial against a request whose target_refs
+// are all wildcards. The trust-boundary argument for letting wildcards
+// into storage explicitly depends on h.checkAccess /
+// PermissionTemplatePoliciesWrite still rejecting unauthorized callers
+// — a regression here would turn wildcards into a privilege-escalation
+// gadget.
+func TestCreateWildcardTargetRefsRBACDenial(t *testing.T) {
+	h, fakeClient := newTestHandler(t, map[string]string{}) // no grants
+	h = h.
+		WithPolicyExistsResolver(&stubPolicyResolver{exists: true}).
+		WithProjectExistsResolver(&stubProjectResolver{})
+	ctx := authedCtx("nobody@example.com", nil)
+
+	folder := newFolderScopeRef("payments")
+	binding := &consolev1.TemplatePolicyBinding{
+		Name:      "bind-wild-denied",
+		Namespace: folder,
+		PolicyRef: &consolev1.LinkedTemplatePolicyRef{
+			Namespace: folder,
+			Name:      "local-policy",
+		},
+		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{{
+			Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE,
+			Name:        policyresolver.WildcardAny,
+			ProjectName: policyresolver.WildcardAny,
+		}},
+	}
+	_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
+		Namespace: folder,
+		Binding:   binding,
+	}))
+	if err == nil {
+		t.Fatal("expected permission denied on wildcard target_refs")
+	}
+	if connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("expected CodePermissionDenied, got %v: %v", connect.CodeOf(err), err)
+	}
+	if items := listBindings(t, fakeClient, "holos-fld-payments"); len(items) != 0 {
+		t.Errorf("expected no bindings on RBAC denial, got %d", len(items))
+	}
+}
+
+// TestUpdateWildcardTargetRefsRBACDenial mirrors the Create case against
+// the Update path. PermissionTemplatePoliciesWrite gates Update at
+// handler.go:388 today; a caller without the grant must not be able to
+// swap a stored binding's target_refs for a wildcard set.
+func TestUpdateWildcardTargetRefsRBACDenial(t *testing.T) {
+	existing := &templatesv1alpha1.TemplatePolicyBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "bind-wild-update-denied",
+			Namespace: "holos-fld-payments",
+			Labels: map[string]string{
+				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicyBinding,
+			},
+			Annotations: map[string]string{
+				v1alpha2.AnnotationCreatorEmail: "original@example.com",
+			},
+		},
+		Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
+			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
+				Namespace: "holos-fld-payments",
+				Name:      "local-policy",
+			},
+			TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{{
+				Kind:        templatesv1alpha1.TemplatePolicyBindingTargetKindDeployment,
+				Name:        "api",
+				ProjectName: "payments-web",
+			}},
+		},
+	}
+	fakeClient := newFakeCtrlClient(t, existing)
+	r := newTestResolver()
+	k := NewK8sClient(fakeClient, r)
+	h := NewHandler(k, r).
+		WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{}}).
+		WithFolderGrantResolver(&stubFolderGrantResolver{users: map[string]string{}}).
+		WithPolicyExistsResolver(&stubPolicyResolver{exists: true}).
+		WithProjectExistsResolver(&stubProjectResolver{})
+	ctx := authedCtx("nobody@example.com", nil)
+
+	folder := newFolderScopeRef("payments")
+	inbound := &consolev1.TemplatePolicyBinding{
+		Name:      "bind-wild-update-denied",
+		Namespace: folder,
+		PolicyRef: &consolev1.LinkedTemplatePolicyRef{
+			Namespace: folder,
+			Name:      "local-policy",
+		},
+		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{{
+			Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE,
+			Name:        policyresolver.WildcardAny,
+			ProjectName: policyresolver.WildcardAny,
+		}},
+	}
+	_, err := h.UpdateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyBindingRequest{
+		Namespace: folder,
+		Binding:   inbound,
+	}))
+	if err == nil {
+		t.Fatal("expected permission denied on wildcard Update")
+	}
+	if connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("expected CodePermissionDenied, got %v: %v", connect.CodeOf(err), err)
+	}
+	// Confirm the stored binding was not mutated.
+	stored := getBindingCR(t, fakeClient, "holos-fld-payments", "bind-wild-update-denied")
+	if stored == nil {
+		t.Fatal("expected existing binding to remain")
+	}
+	if len(stored.Spec.TargetRefs) != 1 || stored.Spec.TargetRefs[0].Name != "api" {
+		t.Errorf("stored target_refs mutated on denied update: %+v", stored.Spec.TargetRefs)
 	}
 }
