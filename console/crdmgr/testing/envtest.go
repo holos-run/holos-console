@@ -403,9 +403,7 @@ func applyAdmissionDoc(ctx context.Context, c ctrlclient.Client, doc []byte) err
 		}
 		return nil
 	default:
-		// Skip non-admission documents (e.g. kustomization.yaml Kustomization
-		// resources co-located in the same directory).
-		return nil
+		return fmt.Errorf("unsupported admission kind %q", kindProbe.Kind)
 	}
 }
 
