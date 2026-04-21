@@ -218,6 +218,12 @@ The annotation key constants — `AnnotationExternalLinkPrefix`,
 `AnnotationPrimaryURL`, `AnnotationAggregatedLinks`,
 `AnnotationArgoCDLinkPrefix` — live in `api/v1alpha2/annotations.go`.
 
+## ADR Open Questions
+
+When an ADR defers a decision to a later ticket, open a placeholder Linear issue for it, link it from the ADR's "Open Questions" section, and close both the issue and the ADR open question when the work ships. This keeps deferred design questions tracked and prevents prose rot.
+
+Example trail: HOL-664 (ADR-029 open question on wildcards) → HOL-767 (implementation umbrella) → Phases 1–5.
+
 ## Commit Messages
 
 All commit messages must follow this format and include the root-cause analysis for why the issue happened, with citations to sources (for example, deep links to GitHub issues that describe the problem and its cause):
