@@ -111,8 +111,9 @@ type Envelope struct {
 }
 
 // KDF is the pluggability seam. The default non-FIPS build binds
-// [Argon2id]; the -fips build variant will bind a PBKDF2-HMAC-SHA512
-// implementation under pbkdf2.go. Reconcilers depend on the interface only.
+// [Argon2id] via [Default]; the -fips build variant will bind a
+// PBKDF2-HMAC-SHA512 implementation by swapping [Default] in a
+// build-tagged file. Reconcilers depend on the interface only.
 //
 // Implementations MUST:
 //
@@ -120,8 +121,13 @@ type Envelope struct {
 //     (see [ErrEmptyPlaintext], [ErrEmptySalt], [ErrNilPepper]). The KDF
 //     refuses rather than defaulting so a forgotten pepper lookup fails
 //     loudly.
-//   - Stamp [Envelope.KDFParams] with the effective parameters used so a
-//     later Verify can reject parameter drift via [ErrParamMismatch].
+//   - Stamp [Envelope.KDFParams] with the effective parameters used so
+//     the caller can observe what cost they paid, and so Verify can
+//     reject parameter drift via [ErrParamMismatch].
+//   - Reject a Verify call whose caller-supplied wantParams differ from
+//     [Envelope.KDFParams], before touching the primitive. A silent
+//     parameter bump would be a security regression; the interface
+//     denies this path.
 //   - Compare hashes in constant time on Verify (see [CompareHash]) to
 //     deny timing side channels.
 //   - Never log plaintext, pepper, salt, or hash bytes — not even at
@@ -142,20 +148,19 @@ type KDF interface {
 	// pepper bytes on future calls.
 	Hash(plaintext, salt, pepper []byte, pepperVersion string, params Params) (Envelope, error)
 
-	// Verify checks that plaintext + salt + pepper under params derives
-	// the hash bytes in envelope. Verify returns nil on match,
-	// [ErrHashMismatch] on a constant-time mismatch, or one of the
-	// validation errors when the inputs are unusable.
-	Verify(plaintext, pepper []byte, envelope Envelope) error
-}
-
-// Default returns the non-FIPS default KDF used by every reconciler. The
-// return type is the interface so a caller cannot accidentally rely on a
-// concrete type that changes when the -fips build variant swaps the
-// binding. A -fips build override lands alongside the PBKDF2 primitive in
-// pbkdf2.go.
-func Default() KDF {
-	return Argon2id{}
+	// Verify checks that plaintext + envelope.Salt + pepper derives
+	// envelope.Hash under wantParams. The method MUST reject an
+	// envelope whose [Envelope.KDFParams] differ from wantParams with
+	// [ErrParamMismatch] before touching the primitive: drift rejection
+	// is part of the interface contract, not a concrete-only extra. To
+	// re-hash an old-parameter envelope during a migration, a caller
+	// invokes Hash with the new params and writes the new envelope;
+	// Verify is never permissive about cost.
+	//
+	// Returns nil on match, [ErrHashMismatch] on a constant-time
+	// mismatch, or one of the validation errors when the inputs are
+	// unusable.
+	Verify(plaintext, pepper []byte, envelope Envelope, wantParams Params) error
 }
 
 // Errors returned by this package. They are sentinel values so callers can

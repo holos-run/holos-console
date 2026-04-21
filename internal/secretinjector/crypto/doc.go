@@ -25,12 +25,21 @@ limitations under the License.
 //
 // [KDF] is a small interface with two methods: [KDF.Hash] derives an
 // encoded-hash [Envelope] from (plaintext, salt, pepper, params), and
-// [KDF.Verify] checks an envelope against a candidate plaintext in constant
-// time. The default non-FIPS build binds [Argon2id] via [Default] and is the
-// only implementation M2 ships. A future -fips build variant will bind a
-// PBKDF2-HMAC-SHA512 implementation into pbkdf2.go without touching
-// reconciler code — reconcilers depend on the interface, not the concrete
-// type.
+// [KDF.Verify] checks an envelope against a candidate plaintext under
+// caller-supplied wantParams in constant time. The default non-FIPS
+// build binds [Argon2id] via [Default] (defined in default_nofips.go
+// behind the !fips build tag) and is the only implementation M2 ships.
+// A future -fips build variant will bind a PBKDF2-HMAC-SHA512
+// implementation into pbkdf2.go and supply its own [Default] under the
+// fips tag — reconcilers depend on the interface, not the concrete type.
+// An -fips build that forgets to land the override fails at link time on
+// the missing [Default] symbol rather than silently reverting to argon2id.
+//
+// [KDF.Verify] enforces parameter-drift rejection on the interface path
+// itself: if envelope.KDFParams differ from wantParams, Verify returns
+// [ErrParamMismatch] before touching the primitive. Drift is never
+// silently accepted — migrating a cost bump requires an explicit re-hash
+// via [KDF.Hash] with the new Params.
 //
 // # Pepper discipline
 //

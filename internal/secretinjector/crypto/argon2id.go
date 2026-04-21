@@ -100,14 +100,23 @@ func (a Argon2id) Hash(plaintext, salt, pepper []byte, pepperVersion string, par
 // Verify re-derives the hash from plaintext + envelope.Salt + pepper
 // under envelope.KDFParams and compares to envelope.Hash in constant
 // time. Verify rejects a KDF-identifier mismatch, a schema-version
-// mismatch, and a [Params] drift before touching the primitive — the
-// goal is that a silent parameter bump is impossible to verify against.
-func (a Argon2id) Verify(plaintext, pepper []byte, envelope Envelope) error {
+// mismatch, and a [Params] drift (envelope.KDFParams != wantParams)
+// before touching the primitive — the goal is that a silent parameter
+// bump is impossible to verify against from the pluggable seam alone.
+//
+// To re-hash an envelope that was stored under old parameters during a
+// cost-bump migration, the caller invokes [Argon2id.Hash] with the new
+// Params and writes the new envelope verbatim to v1.Secret.data["hash"].
+// Verify never silently accepts drift.
+func (a Argon2id) Verify(plaintext, pepper []byte, envelope Envelope, wantParams Params) error {
 	if envelope.SchemaVersion != EnvelopeSchemaVersion {
 		return fmt.Errorf("%w: got %d, want %d", ErrUnknownSchemaVersion, envelope.SchemaVersion, EnvelopeSchemaVersion)
 	}
 	if envelope.KDF != KDFArgon2id {
 		return fmt.Errorf("%w: envelope KDF %q, verifier %q", ErrKDFMismatch, envelope.KDF, KDFArgon2id)
+	}
+	if !paramsEqual(envelope.KDFParams, wantParams) {
+		return ErrParamMismatch
 	}
 	if err := validateInputs(plaintext, envelope.Salt, pepper); err != nil {
 		return err
@@ -129,18 +138,6 @@ func (a Argon2id) Verify(plaintext, pepper []byte, envelope Envelope) error {
 		return ErrHashMismatch
 	}
 	return nil
-}
-
-// VerifyWithParams is the strict verification entry point the reconciler
-// uses when it has a caller-expected [Params] and wants to refuse to
-// verify against an envelope whose stored params drifted. The helper
-// compares [Envelope.KDFParams] to want before delegating to
-// [Argon2id.Verify] so a silent parameter change cannot pass.
-func (a Argon2id) VerifyWithParams(plaintext, pepper []byte, envelope Envelope, want Params) error {
-	if !paramsEqual(envelope.KDFParams, want) {
-		return fmt.Errorf("%w", ErrParamMismatch)
-	}
-	return a.Verify(plaintext, pepper, envelope)
 }
 
 // validateArgon2idParams rejects params the argon2id primitive cannot

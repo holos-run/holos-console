@@ -92,15 +92,15 @@ func TestArgon2idHashDeterministic(t *testing.T) {
 }
 
 // TestArgon2idRoundTrip covers the contract the Credential reconciler
-// relies on: Hash → Verify returns nil, the envelope round-trips through
-// JSON, and a re-hash with identical inputs produces identical bytes.
+// relies on: Hash → Verify returns nil under matching wantParams, and a
+// re-hash with identical inputs produces identical bytes.
 func TestArgon2idRoundTrip(t *testing.T) {
 	k := Argon2id{}
 	env, err := k.Hash(fixturePlaintext, fixtureSalt, fixturePepper, fixturePepperVersion, Argon2idDefault)
 	if err != nil {
 		t.Fatalf("Hash: %v", err)
 	}
-	if err := k.Verify(fixturePlaintext, fixturePepper, env); err != nil {
+	if err := k.Verify(fixturePlaintext, fixturePepper, env, Argon2idDefault); err != nil {
 		t.Fatalf("Verify against matching plaintext: unexpected error %v", err)
 	}
 	// Re-hashing with identical inputs produces identical bytes (argon2id
@@ -125,7 +125,7 @@ func TestArgon2idVerifyRejectsWrongPlaintext(t *testing.T) {
 	}
 	wrong := append([]byte{}, fixturePlaintext...)
 	wrong[0] ^= 0x01
-	err = k.Verify(wrong, fixturePepper, env)
+	err = k.Verify(wrong, fixturePepper, env, Argon2idDefault)
 	if !errors.Is(err, ErrHashMismatch) {
 		t.Fatalf("Verify(wrong plaintext): got %v, want ErrHashMismatch", err)
 	}
@@ -143,7 +143,7 @@ func TestArgon2idVerifyRejectsWrongPepper(t *testing.T) {
 	}
 	wrongPepper := append([]byte{}, fixturePepper...)
 	wrongPepper[0] ^= 0x01
-	err = k.Verify(fixturePlaintext, wrongPepper, env)
+	err = k.Verify(fixturePlaintext, wrongPepper, env, Argon2idDefault)
 	if !errors.Is(err, ErrHashMismatch) {
 		t.Fatalf("Verify(wrong pepper): got %v, want ErrHashMismatch", err)
 	}
@@ -167,7 +167,7 @@ func TestArgon2idNilPepperRejection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Hash (setup): %v", err)
 	}
-	if err := k.Verify(fixturePlaintext, nil, env); !errors.Is(err, ErrNilPepper) {
+	if err := k.Verify(fixturePlaintext, nil, env, Argon2idDefault); !errors.Is(err, ErrNilPepper) {
 		t.Errorf("Verify(nil pepper): got %v, want ErrNilPepper", err)
 	}
 }
@@ -231,9 +231,9 @@ func TestArgon2idParamsValidation(t *testing.T) {
 // TestArgon2idParamDriftRejection is the security-critical case cited in
 // the HOL-748 acceptance criteria: a hash encoded at time=2 must NOT
 // verify under a verifier that insists on time=3 (or any other mutated
-// field). The Verify helper alone is permissive because it reads the
-// params back out of the envelope, so the ticket specifically wants the
-// strict variant to reject drift.
+// field). Drift rejection is part of the [KDF.Verify] contract on the
+// interface itself, so the reconciler's pluggable-seam call site cannot
+// silently accept a parameter bump.
 func TestArgon2idParamDriftRejection(t *testing.T) {
 	k := Argon2id{}
 	env, err := k.Hash(fixturePlaintext, fixtureSalt, fixturePepper, fixturePepperVersion, Argon2idDefault)
@@ -263,11 +263,29 @@ func TestArgon2idParamDriftRejection(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := k.VerifyWithParams(fixturePlaintext, fixturePepper, env, tc.want)
+			err := k.Verify(fixturePlaintext, fixturePepper, env, tc.want)
 			if !errors.Is(err, ErrParamMismatch) {
-				t.Fatalf("VerifyWithParams: got %v, want ErrParamMismatch", err)
+				t.Fatalf("Verify: got %v, want ErrParamMismatch", err)
 			}
 		})
+	}
+}
+
+// TestArgon2idParamDriftRejectionViaInterface is the reviewer-requested
+// cousin: the reconciler's call site only has a [KDF] interface, so drift
+// rejection must be reachable without a concrete-type assertion. This
+// test holds Verify through the interface and confirms ErrParamMismatch
+// still surfaces.
+func TestArgon2idParamDriftRejectionViaInterface(t *testing.T) {
+	var kdf KDF = Argon2id{}
+	env, err := kdf.Hash(fixturePlaintext, fixtureSalt, fixturePepper, fixturePepperVersion, Argon2idDefault)
+	if err != nil {
+		t.Fatalf("Hash (via interface): %v", err)
+	}
+	bumped := Argon2idDefault
+	bumped.Time++
+	if err := kdf.Verify(fixturePlaintext, fixturePepper, env, bumped); !errors.Is(err, ErrParamMismatch) {
+		t.Fatalf("Verify via KDF interface: got %v, want ErrParamMismatch", err)
 	}
 }
 
@@ -284,7 +302,7 @@ func TestArgon2idVerifyRejectsForeignKDF(t *testing.T) {
 		Salt:          fixtureSalt,
 		Hash:          bytes.Repeat([]byte{0}, int(Argon2idDefault.KeyLength)),
 	}
-	err := Argon2id{}.Verify(fixturePlaintext, fixturePepper, env)
+	err := Argon2id{}.Verify(fixturePlaintext, fixturePepper, env, Argon2idDefault)
 	if !errors.Is(err, ErrKDFMismatch) {
 		t.Fatalf("Verify(foreign KDF): got %v, want ErrKDFMismatch", err)
 	}
@@ -299,7 +317,7 @@ func TestArgon2idVerifyRejectsUnknownSchemaVersion(t *testing.T) {
 		t.Fatalf("Hash: %v", err)
 	}
 	env.SchemaVersion = EnvelopeSchemaVersion + 1
-	err = Argon2id{}.Verify(fixturePlaintext, fixturePepper, env)
+	err = Argon2id{}.Verify(fixturePlaintext, fixturePepper, env, Argon2idDefault)
 	if !errors.Is(err, ErrUnknownSchemaVersion) {
 		t.Fatalf("Verify(unknown schema): got %v, want ErrUnknownSchemaVersion", err)
 	}
@@ -326,7 +344,7 @@ func TestEnvelopeJSONRoundTrip(t *testing.T) {
 	}
 	// The round-tripped envelope must still verify.
 	k := Argon2id{}
-	if err := k.Verify(fixturePlaintext, fixturePepper, decoded); err != nil {
+	if err := k.Verify(fixturePlaintext, fixturePepper, decoded, Argon2idDefault); err != nil {
 		t.Fatalf("Verify(round-tripped envelope): unexpected error %v", err)
 	}
 }
@@ -406,7 +424,8 @@ func TestCompareHashConstantTimeSemantics(t *testing.T) {
 // TestDefaultBindsArgon2id pins the package-level [Default] contract: the
 // non-FIPS build wires the argon2id implementation, not any future
 // primitive. The -fips build variant overrides this in its own
-// build-tagged file.
+// build-tagged file, so this test lives under the implicit !fips tag
+// (default_nofips.go).
 func TestDefaultBindsArgon2id(t *testing.T) {
 	k := Default()
 	if k.ID() != KDFArgon2id {
@@ -444,7 +463,7 @@ func TestHashDoesNotAliasCallerSalt(t *testing.T) {
 	}
 	// Verify still works because the envelope has its own salt copy.
 	k := Argon2id{}
-	if err := k.Verify(fixturePlaintext, fixturePepper, env); err != nil {
+	if err := k.Verify(fixturePlaintext, fixturePepper, env, Argon2idDefault); err != nil {
 		t.Fatalf("Verify after caller salt mutation: unexpected error %v", err)
 	}
 }
