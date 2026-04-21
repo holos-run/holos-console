@@ -33,6 +33,7 @@ review boundary matches the `CODEOWNERS` boundary in this repository.
 | [031](031-secret-injection-service.md) | Secret Injection Service — Architecture Pre-Decisions (HOL-674) | Accepted | `holos-secret-injector` |
 | [032](032-template-release-crd.md) | TemplateRelease as a sibling CRD (HOL-693) | Accepted | `holos-console` |
 | [033](033-render-state-crd.md) | RenderState as a sibling CRD (HOL-694) | Accepted | `holos-console` |
+| [034](034-namespace-template-policy-binding-for-new-projects.md) | Namespace TemplatePolicyBinding for new Projects (HOL-806) | Accepted | `holos-console` |
 
 ## Why colocate?
 
