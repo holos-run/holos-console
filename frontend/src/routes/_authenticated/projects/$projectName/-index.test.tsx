@@ -230,14 +230,15 @@ describe('ProjectIndexPage', () => {
   it('makes the dependency tooltip triggers keyboard-focusable', () => {
     setup([])
     render(<ProjectIndexPage projectName="my-project" />)
-    // The dependency rows use role=button triggers so keyboard-only
-    // users can reach the "Planned: …" explanation.
+    // The dependency rows use native <button> triggers so keyboard-only
+    // users can reach the "Planned: …" explanation without requiring
+    // explicit tabIndex — buttons are focusable by default.
     const triggers = screen.getAllByRole('button', {
       name: /(database|identity provider)/i,
     })
     expect(triggers.length).toBe(2)
     for (const t of triggers) {
-      expect(t).toHaveAttribute('tabindex', '0')
+      expect(t.tagName).toBe('BUTTON')
     }
   })
 })

@@ -60,13 +60,12 @@ function StatusRow({
   const labelNode = tooltip ? (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span
-          tabIndex={0}
-          role="button"
-          className="cursor-help border-b border-dotted border-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+        <button
+          type="button"
+          className="cursor-help border-b border-dotted border-muted-foreground/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded bg-transparent p-0"
         >
           {name}
-        </span>
+        </button>
       </TooltipTrigger>
       <TooltipContent>{tooltip}</TooltipContent>
     </Tooltip>

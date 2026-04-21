@@ -20,18 +20,7 @@ function ProjectIndexRoute() {
   return <ProjectIndexPage projectName={projectName} />
 }
 
-export function ProjectIndexPage({
-  projectName: propProjectName,
-}: { projectName?: string } = {}) {
-  let routeProjectName: string | undefined
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    routeProjectName = Route.useParams().projectName
-  } catch {
-    routeProjectName = undefined
-  }
-  const projectName = propProjectName ?? routeProjectName ?? ''
-
+export function ProjectIndexPage({ projectName }: { projectName: string }) {
   const {
     data: deployments = [],
     isPending: deploymentsPending,
@@ -41,13 +30,17 @@ export function ProjectIndexPage({
   const userRole = project?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
+  // projectName is always non-empty under /_authenticated/projects/$projectName/,
+  // but guard defensively so the hooks above can still be called unconditionally.
+  if (!projectName) return null
+
   return (
     <div className="space-y-4">
       <DeploymentsSummary
         projectName={projectName}
         deployments={deployments}
         isPending={deploymentsPending}
-        error={deploymentsError ?? null}
+        error={deploymentsError}
         canWrite={canWrite}
       />
       <QuotaPlaceholder />
