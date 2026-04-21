@@ -363,11 +363,11 @@ type policyKey struct {
 	name      string
 }
 
-// wildcardAny is the literal string used in TemplatePolicyBindingTargetRef
+// WildcardAny is the literal string used in TemplatePolicyBindingTargetRef
 // `name` and `project_name` fields to match every resource of the given kind
-// within the binding's storage-scope ancestor-walk. Defined here so the
-// resolver, the handler validator (HOL-772), and any future UI affordance
-// (HOL-773) reference the same symbol rather than re-spelling "*" inline.
+// within the binding's storage-scope ancestor-walk. Exported so the handler
+// validator (HOL-772) and any future cross-package consumer can reference
+// the same symbol rather than re-spelling "*" inline.
 //
 // The wildcard is *only* recognized on `name` and `project_name`. The `kind`
 // field is never wildcarded — a `kind: DEPLOYMENT` ref never matches a
@@ -377,7 +377,7 @@ type policyKey struct {
 // Wildcard reach is capped by storage scope: a binding stored in folder `F`
 // only sees resources reachable from `F` via the ancestor walk. Wildcards
 // change matching, not evaluation reach (ancestor_bindings.go is unchanged).
-const wildcardAny = "*"
+const WildcardAny = "*"
 
 // bindingAppliesTo reports whether any of a binding's target_refs selects
 // the render target at `(project, targetKind, targetName)`. Match semantics
@@ -432,7 +432,7 @@ func bindingAppliesTo(b *ResolvedBinding, project string, targetKind TargetKind,
 }
 
 // nameMatches returns true when the ref-side value selects the target value.
-// The literal wildcardAny ("*") matches any *non-empty* target value. Exact
+// The literal WildcardAny ("*") matches any *non-empty* target value. Exact
 // string equality covers every other case. Both arguments are compared as-is
 // — no glob, regex, or case folding (ADR 029).
 //
@@ -446,7 +446,7 @@ func bindingAppliesTo(b *ResolvedBinding, project string, targetKind TargetKind,
 // `""` on the binding side (non-empty DNS labels are required), so this
 // branch never rejects a legitimate binding.
 func nameMatches(refValue, targetValue string) bool {
-	if refValue == wildcardAny {
+	if refValue == WildcardAny {
 		return targetValue != ""
 	}
 	return refValue == targetValue

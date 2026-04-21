@@ -224,7 +224,7 @@ func TestFolderResolver_BindingProjectNameMismatchContributesNothing(t *testing.
 }
 
 // TestBindingAppliesTo_Wildcards exercises every
-// `{name, project_name} × {literal, wildcardAny}` combination across both
+// `{name, project_name} × {literal, WildcardAny}` combination across both
 // PROJECT_TEMPLATE and DEPLOYMENT kinds and asserts:
 //
 //   - literal/literal is a regression guard (exact match).
