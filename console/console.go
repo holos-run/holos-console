@@ -1168,15 +1168,22 @@ func (a *projectNSPipelineAdapter) Run(ctx context.Context, in projects.ProjectN
 		BaseNamespace:   in.BaseNamespace,
 		Platform:        in.Platform,
 	})
-	if err != nil {
-		return mapProjectNSOutcome(outcome), err
-	}
-	return mapProjectNSOutcome(outcome), nil
+	return mapProjectNSOutcome(outcome), err
 }
 
+// mapProjectNSOutcome converts from the pipeline's internal Outcome to
+// the handler-side enum. An explicit switch surfaces a compile-time
+// nudge if a new Outcome value is added to projectnspipeline and
+// callers forget to extend the mapping — the default branch falls back
+// to NoBindings so the handler never skips its typed Create on an
+// unrecognised outcome.
 func mapProjectNSOutcome(o projectnspipeline.Outcome) projects.ProjectNamespacePipelineOutcome {
-	if o == projectnspipeline.OutcomeBindingsApplied {
+	switch o {
+	case projectnspipeline.OutcomeBindingsApplied:
 		return projects.ProjectNamespacePipelineBindingsApplied
+	case projectnspipeline.OutcomeNoBindings:
+		return projects.ProjectNamespacePipelineNoBindings
+	default:
+		return projects.ProjectNamespacePipelineNoBindings
 	}
-	return projects.ProjectNamespacePipelineNoBindings
 }

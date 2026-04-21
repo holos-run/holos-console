@@ -99,13 +99,6 @@ type Handler struct {
 	// console/templates (which would form an import cycle with the
 	// deployments tests that import console/projects).
 	projectNSPipeline ProjectNamespacePipeline
-	// projectNSGatewayNamespace is the gateway namespace baked into the
-	// PlatformInput for ProjectNamespace renders. A future ADR 034 phase
-	// will read this per-org from the org settings; the constant here is
-	// only used when the handler was constructed without a per-request
-	// resolver. See ADR 034's open question on per-org gateway
-	// configuration.
-	projectNSGatewayNamespace string
 }
 
 // NewHandler creates a new ProjectService handler.
@@ -114,26 +107,14 @@ func NewHandler(k8s *K8sClient, orgResolver OrgResolver) *Handler {
 }
 
 // WithProjectNamespacePipeline wires the HOL-812 resolve → render →
-// apply pipeline into CreateProject. Passing nil leaves the handler on
-// the existing Namespace-create path.
+// apply pipeline into CreateProject. Passing a nil interface value
+// leaves the handler on the existing Namespace-create path. Callers
+// that want to "turn off" the pipeline should pass literal nil, not a
+// typed nil value — a typed nil stored in an interface tests as
+// non-nil at the interface level and would cause the handler to
+// invoke .Run on a nil receiver.
 func (h *Handler) WithProjectNamespacePipeline(p ProjectNamespacePipeline) *Handler {
-	// A typed nil (e.g. (*projectnspipeline.Pipeline)(nil)) stored in
-	// an interface tests true for != nil at the interface level. Guard
-	// with reflect-free checks: only an explicit nil interface leaves
-	// the pipeline unset so the handler falls back to its existing
-	// Namespace-create path. Callers that want to "turn off" the
-	// pipeline should pass literal nil, not a typed nil value.
 	h.projectNSPipeline = p
-	return h
-}
-
-// WithProjectNamespaceGatewayNamespace sets the gateway namespace baked
-// into the PlatformInput for ProjectNamespace renders. Empty is allowed
-// (templates that reference platform.gatewayNamespace then see the
-// empty string and can constrain against it with a CUE default).
-// Deferred to HOL-806 Phase 7: read per-org from org settings.
-func (h *Handler) WithProjectNamespaceGatewayNamespace(ns string) *Handler {
-	h.projectNSGatewayNamespace = ns
 	return h
 }
 
@@ -428,7 +409,7 @@ func (h *Handler) createProjectOnce(
 			ProjectName:     name,
 			ParentNamespace: parentAncestorNamespace(parentNs),
 			BaseNamespace:   baseNs,
-			Platform:        h.buildPlatformInput(ctx, msg, name, baseNs.Name, parentNs),
+			Platform:        h.buildPlatformInput(ctx, msg, name, baseNs.Name),
 		})
 		if pipeErr != nil {
 			return pipeErr
@@ -460,16 +441,19 @@ func parentAncestorNamespace(parentNs string) string { return parentNs }
 // buildPlatformInput assembles the PlatformInput block the
 // ProjectNamespace render path binds at the CUE `platform` path. The
 // shape mirrors what the deployment render path produces for the same
-// project (deployments/handler.go), minus per-deployment fields. A
-// future enhancement will resolve gatewayNamespace per-org from the
-// organization settings; for now the handler's static default wins.
-func (h *Handler) buildPlatformInput(ctx context.Context, msg *consolev1.CreateProjectRequest, projectName, namespaceName, parentNs string) v1alpha2.PlatformInput {
+// project (deployments/handler.go), minus per-deployment fields.
+//
+// GatewayNamespace and the folder chain are intentionally omitted at
+// this phase. ADR 034 defers per-org gateway resolution and the
+// folders-with-depth walk to HOL-806 Phase 7; when that lands, this
+// helper is the one place to add them so the call site in
+// createProjectOnce stays a one-liner.
+func (h *Handler) buildPlatformInput(ctx context.Context, msg *consolev1.CreateProjectRequest, projectName, namespaceName string) v1alpha2.PlatformInput {
 	claims := rpc.ClaimsFromContext(ctx)
 	input := v1alpha2.PlatformInput{
-		Project:          projectName,
-		Namespace:        namespaceName,
-		Organization:     msg.Organization,
-		GatewayNamespace: h.projectNSGatewayNamespace,
+		Project:      projectName,
+		Namespace:    namespaceName,
+		Organization: msg.Organization,
 	}
 	if claims != nil {
 		input.Claims = v1alpha2.Claims{
@@ -482,12 +466,6 @@ func (h *Handler) buildPlatformInput(ctx context.Context, msg *consolev1.CreateP
 			Name:          claims.Name,
 		}
 	}
-	// Folders: not populated here. The ProjectNamespace render path
-	// typically does not need the folder chain (templates parameterise
-	// on the new namespace and the org). If a template needs the folder
-	// chain, HOL-806 Phase 7 will plumb the nsWalker through — out of
-	// scope for HOL-812.
-	_ = parentNs
 	return input
 }
 
