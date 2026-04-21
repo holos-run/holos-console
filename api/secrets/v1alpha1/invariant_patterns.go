@@ -72,6 +72,15 @@ var ForbiddenBytePatterns = []ForbiddenBytePattern{
 // the very material the invariant is written to prevent. See the
 // per-pattern notes on ForbiddenBytePatterns for why each entry is
 // present.
+//
+// This struct is explicitly NOT a CR field — it is a compile-time
+// configuration value consumed only by the invariant tests. The
+// marker directly below tells controller-gen to skip deepcopy
+// generation so its *regexp.Regexp field does not produce an
+// un-compilable deepcopy (regexp.Regexp is not a Kubernetes type
+// and does not expose a DeepCopyInto method).
+//
+// +kubebuilder:object:generate=false
 type ForbiddenBytePattern struct {
 	// Name is the short identifier used in test failure messages.
 	// Stable across releases — changing it is a test-output change,
