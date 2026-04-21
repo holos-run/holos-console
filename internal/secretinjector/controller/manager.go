@@ -36,6 +36,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	secretsv1alpha1 "github.com/holos-run/holos-console/api/secrets/v1alpha1"
+	sicrypto "github.com/holos-run/holos-console/internal/secretinjector/crypto"
 )
 
 // Scheme is the controller-runtime scheme shared by the secret-injector
@@ -78,6 +79,21 @@ type Options struct {
 	// exists exclusively for envtest-style suites where each test spins up
 	// its own manager with the same hard-coded controller names.
 	SkipControllerNameValidation bool
+	// ControllerNamespace is the namespace the pepper Bootstrap helper
+	// writes into on first manager start. Leave empty to read from
+	// POD_NAMESPACE via [sicrypto.ControllerNamespace]; an empty env var
+	// and empty option together cause Start() to fail loudly rather than
+	// silently sealing the pepper into the wrong namespace. envtest
+	// suites set this field directly.
+	ControllerNamespace string
+	// SkipPepperBootstrap disables the pepper self-seal in Start(). The
+	// flag exists exclusively for the narrow class of tests that
+	// construct a Manager purely to verify wiring (for example, the
+	// controller-runtime logger regression test in
+	// manager_logger_test.go) and do not need the pepper Secret to
+	// exist. Production callers MUST leave this false; the reconciler
+	// cannot hash without a pepper.
+	SkipPepperBootstrap bool
 }
 
 // Manager wraps a sigs.k8s.io/controller-runtime manager.Manager plus a
@@ -93,6 +109,18 @@ type Manager struct {
 	ready            atomic.Bool
 	cacheSyncTimeout time.Duration
 	logger           *slog.Logger
+	// cfg is retained so Start() can build a direct (non-cached)
+	// client.Client for the one-shot pepper Bootstrap before the
+	// informer caches come up. The informer-cache-backed client cannot
+	// be used for bootstrap because the cache is not synced until
+	// mgr.Start runs.
+	cfg *rest.Config
+	// controllerNamespace is the resolved namespace Bootstrap writes
+	// into. Empty means Start() will consult POD_NAMESPACE.
+	controllerNamespace string
+	// skipPepperBootstrap mirrors the Options field; see the GoDoc
+	// there for the narrow test-only use case.
+	skipPepperBootstrap bool
 }
 
 // NewManager constructs a Manager from the provided rest config and Options.
@@ -157,7 +185,14 @@ func NewManager(cfg *rest.Config, opts Options) (*Manager, error) {
 		return nil, fmt.Errorf("controller.NewManager: registering UpstreamSecretReconciler: %w", err)
 	}
 
-	return &Manager{mgr: mgr, cacheSyncTimeout: cacheSyncTimeout, logger: logger}, nil
+	return &Manager{
+		mgr:                 mgr,
+		cacheSyncTimeout:    cacheSyncTimeout,
+		logger:              logger,
+		cfg:                 cfg,
+		controllerNamespace: opts.ControllerNamespace,
+		skipPepperBootstrap: opts.SkipPepperBootstrap,
+	}, nil
 }
 
 // GetClient returns the cache-backed client.Client. Writes go straight to the
@@ -186,6 +221,19 @@ func (m *Manager) Ready() bool {
 //
 // Start is intended to be called exactly once per Manager.
 func (m *Manager) Start(ctx context.Context) error {
+	// Seal the pepper Secret before any reconciler runs. Bootstrap is
+	// idempotent, so a warm restart is a single Get; on a cold start we
+	// generate crypto/rand bytes and Create data["pepper-1"]. A
+	// failure here is fatal: the Credential reconciler (HOL-751) cannot
+	// Hash without a pepper, and falling back would produce an
+	// unpeppered hash that silently weakens every credential written
+	// after the missing bootstrap.
+	if !m.skipPepperBootstrap {
+		if err := m.bootstrapPepper(ctx); err != nil {
+			return err
+		}
+	}
+
 	watchCtx, cancelWatch := context.WithCancel(ctx)
 	defer cancelWatch()
 
@@ -217,5 +265,44 @@ func (m *Manager) Start(ctx context.Context) error {
 	if err := m.mgr.Start(ctx); err != nil {
 		return fmt.Errorf("secret-injector controller manager: %w", err)
 	}
+	return nil
+}
+
+// bootstrapPepper runs the one-shot pepper self-seal against the
+// controller's own namespace. Called from Start() before mgr.Start so the
+// pepper Secret exists the moment a reconciler tries to Hash.
+//
+// The helper uses a direct (non-cached) client.Client constructed from
+// m.cfg because the manager's cache is not yet synced at this point.
+// Factored out of Start() so the control flow in Start() stays readable
+// and so a future follow-up can stub the bootstrap path in tests by
+// overriding this method via struct embedding if the need arises.
+func (m *Manager) bootstrapPepper(ctx context.Context) error {
+	ns := m.controllerNamespace
+	if ns == "" {
+		ns = sicrypto.ControllerNamespace()
+	}
+	if ns == "" {
+		return fmt.Errorf("controller.Manager.Start: pepper bootstrap requires a controller namespace; set %s via the downward API or Options.ControllerNamespace",
+			sicrypto.PodNamespaceEnv)
+	}
+
+	directClient, err := client.New(m.cfg, client.Options{Scheme: Scheme})
+	if err != nil {
+		return fmt.Errorf("controller.Manager.Start: building bootstrap client: %w", err)
+	}
+
+	result, err := sicrypto.Bootstrap(ctx, directClient, ns)
+	if err != nil {
+		return fmt.Errorf("controller.Manager.Start: pepper bootstrap: %w", err)
+	}
+	// Telemetry invariant: only the integer version and the byte length
+	// are emitted. The pepper bytes themselves never touch the logger.
+	m.logger.Info("pepper bootstrap complete",
+		"namespace", ns,
+		"secret", sicrypto.PepperSecretName,
+		"activeVersion", result.ActiveVersion,
+		"created", result.Created,
+		"bytesLength", result.BytesLength)
 	return nil
 }

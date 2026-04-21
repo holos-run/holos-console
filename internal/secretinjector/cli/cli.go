@@ -31,7 +31,8 @@ import (
 )
 
 var (
-	logLevel string
+	logLevel            string
+	controllerNamespace string
 )
 
 // Command returns the root cobra command for the holos-secret-injector CLI.
@@ -81,6 +82,16 @@ func Command() *cobra.Command {
 	// listener, etc.) land in later phases.
 	cmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 
+	// Controller namespace. The pepper bootstrap (HOL-749) writes the
+	// pinned pepper v1.Secret into this namespace on first manager
+	// boot. Production deployments typically set POD_NAMESPACE via the
+	// downward API on the controller's Deployment manifest and leave
+	// this flag unset; the CLI flag is the escape hatch for local
+	// debugging and envtest-style suites where the downward API is
+	// unavailable. See [sicrypto.PodNamespaceEnv] for the env contract.
+	cmd.PersistentFlags().StringVar(&controllerNamespace, "controller-namespace", "",
+		"Namespace the controller treats as its own (pepper bootstrap target). Defaults to $POD_NAMESPACE.")
+
 	return cmd
 }
 
@@ -112,7 +123,8 @@ func Run(cmd *cobra.Command, args []string) error {
 	}
 
 	mgr, err := sicontroller.NewManager(cfg, sicontroller.Options{
-		Logger: slog.Default(),
+		Logger:              slog.Default(),
+		ControllerNamespace: controllerNamespace,
 	})
 	if err != nil {
 		return fmt.Errorf("constructing manager: %w", err)
