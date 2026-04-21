@@ -1,43 +1,10 @@
-import { useState } from 'react'
-import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useCreateTemplate, useRenderTemplate, useListLinkableTemplates, linkableKey, parseLinkableKey } from '@/queries/templates'
-import type { TemplateExample } from '@/queries/templates'
-import { namespaceForProject, scopeLabelFromNamespace } from '@/lib/scope-labels'
-import type { LinkedTemplateRef } from '@/queries/templates'
-import { create } from '@bufbuild/protobuf'
-import { LinkedTemplateRefSchema } from '@/gen/holos/console/v1/policy_state_pb.js'
+import { useCreateTemplate } from '@/queries/templates'
+import { namespaceForProject } from '@/lib/scope-labels'
 import { useGetProject } from '@/queries/projects'
-import { useGetOrganization } from '@/queries/organizations'
-import { useDebouncedValue } from '@/hooks/use-debounced-value'
-import { TemplateExamplePicker } from '@/components/templates/template-example-picker'
-
-// DEFAULT_CUE_TEMPLATE is the minimal CUE starter shown on an empty create
-// form. It is NOT an example — it is a blank scaffold so users have something
-// to start from before selecting a real example via the picker.
-const DEFAULT_CUE_TEMPLATE = `// Use generated type definitions from api/v1alpha2 (prepended by renderer).
-// Additional CUE constraints narrow the generated types for this template.
-input: #ProjectInput & {
-  name: =~"^[a-z][a-z0-9-]*$"
-  env:  [...#EnvVar] | *[]
-  port: >0 & <=65535 | *8080
-}
-platform: #PlatformInput
-
-// projectResources collects all rendered Kubernetes resources.
-projectResources: {
-  namespacedResources: {}
-  clusterResources: {}
-}
-`
+import { TemplateCreateForm } from '@/components/templates/TemplateCreateForm'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/new')({
   component: CreateTemplateRoute,
@@ -62,134 +29,9 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const namespace = namespaceForProject(projectName)
   const createMutation = useCreateTemplate(namespace)
   const { data: project } = useGetProject(projectName)
-  // The authoring org's gatewayNamespace (HOL-526) is mirrored into the
-  // platform-input preview default so the preview matches what the backend
-  // will inject at render time.
-  const { data: org, isPending: orgPending, error: orgError } = useGetOrganization(project?.organization ?? '')
-  const { data: linkableTemplates = [], isPending: linkablePending } = useListLinkableTemplates(namespace)
 
   const userRole = project?.userRole ?? Role.VIEWER
   const canLink = userRole === Role.OWNER
-
-  const [displayName, setDisplayName] = useState('')
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [cueTemplate, setCueTemplate] = useState(DEFAULT_CUE_TEMPLATE)
-  const [error, setError] = useState<string | null>(null)
-  const [previewOpen, setPreviewOpen] = useState(false)
-  const [selectedLinkedKeys, setSelectedLinkedKeys] = useState<string[]>([])
-  const [selectedVersionConstraints, setSelectedVersionConstraints] = useState<Map<string, string>>(new Map())
-
-  // Group linkable templates by scope for display.
-  const orgTemplates = linkableTemplates.filter(
-    (t) => scopeLabelFromNamespace(t.namespace) === 'org',
-  )
-  const folderTemplates = linkableTemplates.filter(
-    (t) => scopeLabelFromNamespace(t.namespace) === 'folder',
-  )
-
-  // Fall back to "istio-ingress" only after the org query has successfully
-  // resolved with no value configured. While the org load is pending or
-  // errored (e.g. a project EDITOR may not have org-read permission), omit
-  // the field entirely so the preview never advertises a value that may be
-  // incorrect — the backend (HOL-644) still injects the org's actual value
-  // at render time.
-  const orgLoaded = (project?.organization ?? '').length > 0 && !orgPending && !orgError
-  const gatewayNamespace = orgLoaded ? (org?.gatewayNamespace || 'istio-ingress') : ''
-  const gatewayNamespaceLine = gatewayNamespace
-    ? `\tgatewayNamespace: "${gatewayNamespace}"\n`
-    : ''
-  const previewCuePlatformInput = `platform: {
-\tproject:          "${projectName}"
-\tnamespace:        "holos-prj-${projectName}"
-${gatewayNamespaceLine}\tclaims: {
-\t\tiss:            "https://login.example.com"
-\t\tsub:            "user-abc123"
-\t\tiat:            1743868800
-\t\texp:            1743872400
-\t\temail:          "developer@example.com"
-\t\temail_verified: true
-\t}
-}`
-
-  const previewCueInput = `input: {
-\tname:  "go-httpbin"
-\timage: "ghcr.io/mccutchen/go-httpbin"
-\ttag:   "2.21"
-\tport:  8080
-}`
-
-  // Build LinkedTemplateRef objects from the currently selected keys for the
-  // preview render so the preview pane shows grouped output (platform + project).
-  const previewLinkedTemplates: LinkedTemplateRef[] = selectedLinkedKeys.map((key) => {
-    const parsed = parseLinkableKey(key)
-    const vc = selectedVersionConstraints.get(key) ?? ''
-    return {
-      namespace: parsed.namespace,
-      name: parsed.name,
-      versionConstraint: vc,
-    } as LinkedTemplateRef
-  })
-
-  const debouncedCueTemplate = useDebouncedValue(cueTemplate, 500)
-  const renderQuery = useRenderTemplate(
-    namespace,
-    debouncedCueTemplate,
-    previewCueInput,
-    previewOpen,
-    previewCuePlatformInput,
-    previewLinkedTemplates,
-  )
-
-  const handleSelectExample = (example: TemplateExample) => {
-    setDisplayName(example.displayName)
-    setName(example.name)
-    setDescription(example.description)
-    setCueTemplate(example.cueTemplate)
-  }
-
-  const slugify = (val: string) =>
-    val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-
-  const handleDisplayNameChange = (val: string) => {
-    setDisplayName(val)
-    setName(slugify(val))
-  }
-
-  const handleCreate = async () => {
-    if (!name.trim()) {
-      setError('Template name is required')
-      return
-    }
-    setError(null)
-    try {
-      // Build LinkedTemplateRef objects from scope-qualified keys with version constraints.
-      const linkedTemplates: LinkedTemplateRef[] = selectedLinkedKeys
-        .map((key) => {
-          const parsed = parseLinkableKey(key)
-          const vc = selectedVersionConstraints.get(key) ?? ''
-          return create(LinkedTemplateRefSchema, {
-            namespace: parsed.namespace,
-            name: parsed.name,
-            versionConstraint: vc,
-          })
-        })
-
-      await createMutation.mutateAsync({
-        name: name.trim(),
-        displayName: displayName.trim(),
-        description: description.trim(),
-        cueTemplate,
-        linkedTemplates,
-      })
-      await navigate({
-        to: '/projects/$projectName/templates/$templateName',
-        params: { projectName, templateName: name.trim() },
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
 
   return (
     <Card>
@@ -197,264 +39,25 @@ ${gatewayNamespaceLine}\tclaims: {
         <CardTitle>Create Deployment Template</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="template-display-name">Display Name</Label>
-            <Input
-              id="template-display-name"
-              aria-label="Display Name"
-              autoFocus
-              value={displayName}
-              onChange={(e) => handleDisplayNameChange(e.target.value)}
-              placeholder="My Web App"
-            />
-          </div>
-          <div>
-            <Label>Name (slug)</Label>
-            <Input
-              aria-label="Name slug"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="my-web-app"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Auto-derived from display name. Lowercase alphanumeric and hyphens only.
-            </p>
-          </div>
-          <div>
-            <Label htmlFor="template-description">Description</Label>
-            <Input
-              id="template-description"
-              aria-label="Description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What does this template produce?"
-            />
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <Label htmlFor="template-cue-template">CUE Template</Label>
-              <TemplateExamplePicker onSelect={handleSelectExample} />
-            </div>
-            <Textarea
-              id="template-cue-template"
-              aria-label="CUE Template"
-              value={cueTemplate}
-              onChange={(e) => setCueTemplate(e.target.value)}
-              rows={20}
-              className="font-mono text-sm field-sizing-normal max-h-[600px] overflow-y-auto"
-            />
-          </div>
-          <div className="space-y-3">
-            <Label>Linked Platform Templates</Label>
-            {linkablePending ? (
-              <p className="text-sm text-muted-foreground">Loading platform templates...</p>
-            ) : linkableTemplates.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No platform templates available to link. Create organization or folder templates to enable linking.</p>
-            ) : canLink ? (
-              <div className="space-y-4">
-                {orgTemplates.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Organization Templates</p>
-                    {orgTemplates.map((t) => {
-                      const key = linkableKey(t.namespace, t.name)
-                      const hasReleases = t.releases && t.releases.length > 0
-                      const forced = !!t.forced
-                      return (
-                      <div key={key} className="flex items-start gap-2">
-                        <Checkbox
-                          id={`linked-create-${key}`}
-                          checked={forced || selectedLinkedKeys.includes(key)}
-                          disabled={forced}
-                          onCheckedChange={(checked) => {
-                            if (forced) return
-                            setSelectedLinkedKeys((prev) =>
-                              checked ? [...prev, key] : prev.filter((k) => k !== key),
-                            )
-                          }}
-                        />
-                        <div className="flex flex-col gap-1">
-                          <label htmlFor={`linked-create-${key}`} className={`text-sm font-medium leading-none flex items-center gap-1 ${forced ? 'cursor-default' : 'cursor-pointer'}`}>
-                            {t.displayName || t.name}
-                            {forced && (
-                              <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-                                Always applied
-                              </span>
-                            )}
-                          </label>
-                          {t.description && (
-                            <p className="text-xs text-muted-foreground">{t.description}</p>
-                          )}
-                          {hasReleases && (
-                            <Select
-                              value={selectedVersionConstraints.get(key) ?? ''}
-                              onValueChange={(val) => {
-                                setSelectedVersionConstraints((prev) => {
-                                  const next = new Map(prev)
-                                  next.set(key, val === '__latest__' ? '' : val)
-                                  return next
-                                })
-                              }}
-                            >
-                              <SelectTrigger size="sm" className="w-40 text-xs">
-                                <SelectValue placeholder="Latest (auto-update)" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__latest__">Latest (auto-update)</SelectItem>
-                                {t.releases.map((r) => (
-                                  <SelectItem key={r.version} value={r.version}>{r.version}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                        </div>
-                      </div>
-                      )
-                    })}
-                  </div>
-                )}
-                {folderTemplates.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Folder Templates</p>
-                    {folderTemplates.map((t) => {
-                      const key = linkableKey(t.namespace, t.name)
-                      const hasReleases = t.releases && t.releases.length > 0
-                      const forced = !!t.forced
-                      return (
-                      <div key={key} className="flex items-start gap-2">
-                        <Checkbox
-                          id={`linked-create-${key}`}
-                          checked={forced || selectedLinkedKeys.includes(key)}
-                          disabled={forced}
-                          onCheckedChange={(checked) => {
-                            if (forced) return
-                            setSelectedLinkedKeys((prev) =>
-                              checked ? [...prev, key] : prev.filter((k) => k !== key),
-                            )
-                          }}
-                        />
-                        <div className="flex flex-col gap-1">
-                          <label htmlFor={`linked-create-${key}`} className={`text-sm font-medium leading-none flex items-center gap-1 ${forced ? 'cursor-default' : 'cursor-pointer'}`}>
-                            {t.displayName || t.name}
-                            {forced && (
-                              <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-                                Always applied
-                              </span>
-                            )}
-                          </label>
-                          {t.description && (
-                            <p className="text-xs text-muted-foreground">{t.description}</p>
-                          )}
-                          {hasReleases && (
-                            <Select
-                              value={selectedVersionConstraints.get(key) ?? ''}
-                              onValueChange={(val) => {
-                                setSelectedVersionConstraints((prev) => {
-                                  const next = new Map(prev)
-                                  next.set(key, val === '__latest__' ? '' : val)
-                                  return next
-                                })
-                              }}
-                            >
-                              <SelectTrigger size="sm" className="w-40 text-xs">
-                                <SelectValue placeholder="Latest (auto-update)" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="__latest__">Latest (auto-update)</SelectItem>
-                                {t.releases.map((r) => (
-                                  <SelectItem key={r.version} value={r.version}>{r.version}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                        </div>
-                      </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">Only owners can link platform templates.</p>
-              </div>
-            )}
-          </div>
-          <div>
-            <Button variant="outline" type="button" onClick={() => setPreviewOpen((v) => !v)}>
-              {previewOpen ? 'Hide Preview' : 'Preview'}
-            </Button>
-            {previewOpen && (
-              <div className="mt-2 min-w-0">
-                {renderQuery.isLoading && (
-                  <p className="text-sm text-muted-foreground">Rendering...</p>
-                )}
-                {renderQuery.isError && renderQuery.error && (
-                  <Alert variant="destructive">
-                    <AlertDescription>
-                      {renderQuery.error instanceof Error ? renderQuery.error.message : String(renderQuery.error)}
-                    </AlertDescription>
-                  </Alert>
-                )}
-                {renderQuery.data && (() => {
-                  const platformJson = renderQuery.data.platformResourcesJson ?? ''
-                  const projectJson = renderQuery.data.projectResourcesJson ?? ''
-                  const hasPerCollection = !!(platformJson || projectJson)
-                  if (hasPerCollection) {
-                    return (
-                      <div className="space-y-3 min-w-0">
-                        <Label>Platform Resources</Label>
-                        {platformJson ? (
-                          <pre
-                            aria-label="Platform Resources JSON"
-                            className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre max-w-full"
-                          >
-                            {platformJson}
-                          </pre>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">No platform resources rendered by this template.</p>
-                        )}
-                        <Label>Project Resources</Label>
-                        <pre
-                          aria-label="Project Resources JSON"
-                          className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre max-w-full"
-                        >
-                          {projectJson}
-                        </pre>
-                      </div>
-                    )
-                  }
-                  if (renderQuery.data.renderedJson) {
-                    return (
-                      <pre className="font-mono text-sm bg-muted rounded-md p-4 overflow-auto whitespace-pre max-w-full">
-                        {renderQuery.data.renderedJson}
-                      </pre>
-                    )
-                  }
-                  return null
-                })()}
-              </div>
-            )}
-          </div>
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-          <div className="flex items-center gap-3 pt-2">
-            <Button onClick={handleCreate} disabled={createMutation.isPending}>
-              {createMutation.isPending ? 'Creating...' : 'Create Template'}
-            </Button>
-            <Link
-              to="/projects/$projectName/templates"
-              params={{ projectName }}
-            >
-              <Button variant="ghost" type="button" aria-label="Cancel">
-                Cancel
-              </Button>
-            </Link>
-          </div>
-        </div>
+        <TemplateCreateForm
+          scopeType="project"
+          namespace={namespace}
+          organization={project?.organization ?? ''}
+          projectName={projectName}
+          canWrite={true}
+          canLink={canLink}
+          isPending={createMutation.isPending}
+          onSubmit={async (values) => {
+            await createMutation.mutateAsync(values)
+            await navigate({
+              to: '/projects/$projectName/templates/$templateName',
+              params: { projectName, templateName: values.name },
+            })
+          }}
+          onCancel={() => {
+            void navigate({ to: '/projects/$projectName/templates', params: { projectName } })
+          }}
+        />
       </CardContent>
     </Card>
   )
