@@ -152,7 +152,7 @@ func buildTemplateConditions(tmpl *v1alpha1.Template) []metav1.Condition {
 }
 
 // templateAcceptedCondition enforces the minimum spec invariants the
-// ValidatingAdmissionPolicy in config/admission/ does not cover: the
+// ValidatingAdmissionPolicy in config/holos-console/admission/ does not cover: the
 // template must carry a non-empty CUE payload (empty templates contribute
 // nothing at render time), and the declared Version — when present —
 // must parse as semver. These invariants are checked on write by admission

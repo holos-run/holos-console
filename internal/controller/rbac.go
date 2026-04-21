@@ -18,7 +18,7 @@ limitations under the License.
 // emits rules from markers attached to the package doc comment — struct or
 // method doc comments are silently ignored by controller-gen v0.20. Keeping
 // every marker in this one file makes the generated ClusterRole in
-// config/rbac/role.yaml a single source of truth for the console service
+// config/holos-console/rbac/role.yaml a single source of truth for the console service
 // account, and it prevents the accidental "marker on a struct, zero rules
 // emitted" footgun we tripped over landing HOL-620.
 //

@@ -90,7 +90,7 @@ func startEnv(t *testing.T) *env {
 	}
 
 	e := &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join(repoRoot, "config", "crd")},
+		CRDDirectoryPaths:     []string{filepath.Join(repoRoot, "config", "holos-console", "crd")},
 		ErrorIfCRDPathMissing: true,
 	}
 	cfg, err := e.Start()

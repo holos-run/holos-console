@@ -72,7 +72,7 @@ func sampleTargetRef() *consolev1.TemplatePolicyBindingTargetRef {
 // path is bypassed.
 //
 // The helper also applies the folder/org-only CEL admission policies
-// from config/admission/ once per process and waits for the policy
+// from config/holos-console/admission/ once per process and waits for the policy
 // this suite depends on (templatepolicybinding-folder-or-org-only) to
 // be registered so the admission-rejection regression does not race
 // the CEL compiler.
@@ -608,7 +608,7 @@ func TestCreateBindingRejectedByAdmissionInProjectNamespace(t *testing.T) {
 	}
 	// The admission rejection must mention either the namespace or the
 	// binding name — the exact wording is governed by the VAP bindings
-	// in config/crd. A successful rejection comes back as an Invalid
+	// in config/holos-console/crd. A successful rejection comes back as an Invalid
 	// status.
 	if !apierrors.IsInvalid(err) && !apierrors.IsForbidden(err) {
 		t.Fatalf("expected admission-rejection error (Invalid or Forbidden), got %T: %v", err, err)

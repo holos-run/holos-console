@@ -166,7 +166,7 @@ that client is gone. Namespace reads already route through
   migration or a fresh install. Per HOL-615 the pre-release migration
   policy is "no backwards compatibility"; release history authored
   against the ConfigMap shape must be republished against the CRD.
-- New CRD manifest ships in `config/crd/`; `make manifests`
+- New CRD manifest ships in `config/holos-console/crd/`; `make manifests`
   regenerates it alongside the existing Template and TemplatePolicy
   manifests.
 - `handler_release_test.go` moves from fake-clientset ConfigMap

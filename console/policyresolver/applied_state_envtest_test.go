@@ -8,7 +8,7 @@
 //  1. Cache-backed reads observe writes within the watch round-trip
 //     (HOL-622 freshness contract, applied to RenderState in HOL-694).
 //  2. The renderstate-folder-or-org-only ValidatingAdmissionPolicy
-//     shipped under config/admission/ rejects RenderState writes into
+//     shipped under config/holos-console/admission/ rejects RenderState writes into
 //     project namespaces — the HOL-554 storage-isolation guardrail.
 //
 // The tests are gated on envtest binaries (StartManager calls t.Skip

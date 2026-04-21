@@ -1,0 +1,9 @@
+# ValidatingAdmissionPolicy base for templates.holos.run. Each file contains
+# one VAP + one VAPB pair with failurePolicy: Fail and
+# validationActions: [Deny]. Consumed by ../cluster-scoped/.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- renderstate-folder-or-org-only.yaml
+- templatepolicy-folder-or-org-only.yaml
+- templatepolicybinding-folder-or-org-only.yaml

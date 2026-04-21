@@ -49,9 +49,9 @@
 # /api/templates/ @holos-run/templates-owners
 # /internal/controller/ @holos-run/templates-owners
 # /cmd/holos-console/ @holos-run/templates-owners
-# /config/crd/ @holos-run/templates-owners
-# /config/rbac/ @holos-run/templates-owners
-# /config/admission/ @holos-run/templates-owners
+# /config/holos-console/crd/ @holos-run/templates-owners
+# /config/holos-console/rbac/ @holos-run/templates-owners
+# /config/holos-console/admission/ @holos-run/templates-owners
 # /config/samples/ @holos-run/templates-owners
 # /Dockerfile.console @holos-run/templates-owners
 # /Dockerfile @holos-run/templates-owners

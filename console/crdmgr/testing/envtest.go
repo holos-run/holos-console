@@ -14,8 +14,8 @@
 //     ~3s envtest startup cost (kube-apiserver + etcd binaries) amortizes
 //     across every test in the package rather than every test function.
 //
-//   - The CRDs in config/crd/ are installed at startup time. The
-//     ValidatingAdmissionPolicy manifests in config/admission/ are
+//   - The CRDs in config/holos-console/crd/ are installed at startup time. The
+//     ValidatingAdmissionPolicy manifests in config/holos-console/admission/ are
 //     applied once and their registration is awaited so the CEL compiler
 //     is warm before any test runs.
 //
@@ -114,7 +114,7 @@ type sharedEnv struct {
 	env *envtest.Environment
 	cfg *rest.Config
 	// admissionInstalled guards one-time application of the
-	// config/admission/*.yaml manifests. After the first suite primes
+	// config/holos-console/admission/*.yaml manifests. After the first suite primes
 	// them, subsequent suites only need to wait for registration; the
 	// VAPs themselves are apiserver-wide state.
 	admissionInstalled sync.Once
@@ -158,7 +158,7 @@ func StartManager(t *testing.T, opts Options) *Env {
 			shared.admissionErr = fmt.Errorf("find repo root: %w", err)
 			return
 		}
-		admDir := filepath.Join(repoRoot, "config", "admission")
+		admDir := filepath.Join(repoRoot, "config", "holos-console", "admission")
 		if _, err := os.Stat(admDir); err != nil {
 			// No admission dir — this is fine; the suite just won't
 			// have VAPs to wait on.
@@ -285,7 +285,7 @@ func ensureSharedEnv(t *testing.T) {
 		}
 
 		e := &envtest.Environment{
-			CRDDirectoryPaths:     []string{filepath.Join(repoRoot, "config", "crd")},
+			CRDDirectoryPaths:     []string{filepath.Join(repoRoot, "config", "holos-console", "crd")},
 			ErrorIfCRDPathMissing: true,
 		}
 		cfg, err := e.Start()
@@ -330,6 +330,10 @@ func applyAdmissionYAMLFiles(ctx context.Context, c ctrlclient.Client, dir strin
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
 			continue
 		}
+		if e.Name() == "kustomization.yaml" {
+			// kustomization.yaml is a kustomize index; skip it.
+			continue
+		}
 		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {
 			return fmt.Errorf("read %s: %w", e.Name(), err)
@@ -348,7 +352,7 @@ func applyAdmissionYAMLFiles(ctx context.Context, c ctrlclient.Client, dir strin
 
 // splitYAMLDocuments splits a multi-doc YAML stream on "---" lines.
 // Preserves the exact behavior of the pre-HOL-663 copies so existing
-// config/admission/*.yaml files continue to parse unchanged.
+// config/holos-console/admission/*.yaml files continue to parse unchanged.
 func splitYAMLDocuments(data []byte) [][]byte {
 	var docs [][]byte
 	var current []byte

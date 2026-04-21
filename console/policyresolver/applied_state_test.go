@@ -225,7 +225,7 @@ func TestReadAppliedRenderSet_NotFound(t *testing.T) {
 // not enforce ValidatingAdmissionPolicy, so the seed succeeds at the
 // fixture layer. In a live cluster the same write is rejected by the
 // `renderstate-folder-or-org-only` admission policy shipped under
-// `config/admission/`. This test asserts the *handler-side* invariant
+// `config/holos-console/admission/`. This test asserts the *handler-side* invariant
 // (reads ignore project-namespace storage); the admission-side invariant
 // (writes refused at the API server) is exercised separately by
 // `internal/controller`'s envtest suite.
