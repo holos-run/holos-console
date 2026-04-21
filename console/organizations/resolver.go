@@ -100,3 +100,17 @@ func (r *GatewayNamespaceResolver) GetGatewayNamespace(ctx context.Context, proj
 	}
 	return GetGatewayNamespace(ns), nil
 }
+
+// GetOrgGatewayNamespace returns the value of the gateway-namespace annotation
+// directly from the named organization namespace, without a project→org lookup.
+// This is the entry point used by the template-preview handler where the request
+// scope may be org or folder level (no project to resolve through). Returns ""
+// when the annotation is unset; the templates handler falls back to
+// deployments.DefaultGatewayNamespace in that case.
+func (r *GatewayNamespaceResolver) GetOrgGatewayNamespace(ctx context.Context, org string) (string, error) {
+	ns, err := r.k8s.GetOrganization(ctx, org)
+	if err != nil {
+		return "", err
+	}
+	return GetGatewayNamespace(ns), nil
+}
