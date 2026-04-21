@@ -35,6 +35,10 @@ const KIND_OPTIONS: Array<{
     label: 'Project Template',
   },
   { value: TemplatePolicyBindingTargetKind.DEPLOYMENT, label: 'Deployment' },
+  {
+    value: TemplatePolicyBindingTargetKind.PROJECT_NAMESPACE,
+    label: 'Project Namespace',
+  },
 ]
 
 // Synthetic combobox items for the wildcard sentinel. Using the literal
@@ -44,11 +48,14 @@ const WILDCARD_PROJECT_ITEM: ComboboxItem = {
   value: WILDCARD,
   label: 'All projects (*)',
 }
-function wildcardNameItem(isDeployment: boolean): ComboboxItem {
-  return {
-    value: WILDCARD,
-    label: isDeployment ? 'All deployments (*)' : 'All project templates (*)',
+function wildcardNameItem(kind: TemplatePolicyBindingTargetKind): ComboboxItem {
+  if (kind === TemplatePolicyBindingTargetKind.DEPLOYMENT) {
+    return { value: WILDCARD, label: 'All deployments (*)' }
   }
+  if (kind === TemplatePolicyBindingTargetKind.PROJECT_NAMESPACE) {
+    return { value: WILDCARD, label: 'All project namespaces (*)' }
+  }
+  return { value: WILDCARD, label: 'All project templates (*)' }
 }
 
 export type TargetRefEditorProps = {
@@ -166,6 +173,8 @@ function TargetRow({
   disabled,
 }: TargetRowProps) {
   const isDeployment = target.kind === TemplatePolicyBindingTargetKind.DEPLOYMENT
+  const isProjectNamespace =
+    target.kind === TemplatePolicyBindingTargetKind.PROJECT_NAMESPACE
   const projectIsWildcard = target.projectName === WILDCARD
   const isLiteralProject = !!target.projectName && !projectIsWildcard
 
@@ -196,29 +205,43 @@ function TargetRow({
     isLiteralProject ? target.projectName : '',
   )
 
-  // KIND_OPTIONS omits UNSPECIFIED, so kind is always DEPLOYMENT or
-  // PROJECT_TEMPLATE. Branching on a single `isDeployment` flag keeps the
-  // contract explicit and avoids an unreachable fallthrough.
+  // KIND_OPTIONS omits UNSPECIFIED. Branching keeps the contract explicit:
+  // PROJECT_NAMESPACE names reference the namespace resource under the project;
+  // DEPLOYMENT names reference deployments; PROJECT_TEMPLATE names reference
+  // project-scope templates.
   const nameItems: ComboboxItem[] = useMemo(() => {
-    const wildcard = wildcardNameItem(isDeployment)
+    const wildcard = wildcardNameItem(target.kind)
     if (!isLiteralProject) {
       // No backing list when project is unset or wildcard — only the
       // wildcard sentinel is offered.
       return [wildcard]
     }
-    const literal = isDeployment
-      ? deployments.map((d) => ({
-          value: d.name,
-          label: d.displayName ? `${d.displayName} (${d.name})` : d.name,
-        }))
-      : projectTemplates
-          .filter((t) => scopeLabelFromNamespace(t.namespace) === 'project')
-          .map((t) => ({
-            value: t.name,
-            label: t.displayName ? `${t.displayName} (${t.name})` : t.name,
-          }))
+    if (isDeployment) {
+      const literal = deployments.map((d) => ({
+        value: d.name,
+        label: d.displayName ? `${d.displayName} (${d.name})` : d.name,
+      }))
+      return [wildcard, ...literal]
+    }
+    if (isProjectNamespace) {
+      // ProjectNamespace targets reference the namespace resource itself.
+      // The conventional name is the project name; offer it as the only
+      // literal option alongside the wildcard sentinel.
+      const namespaceItem: ComboboxItem = {
+        value: target.projectName,
+        label: target.projectName,
+      }
+      return [wildcard, namespaceItem]
+    }
+    // PROJECT_TEMPLATE: list project-scope templates.
+    const literal = projectTemplates
+      .filter((t) => scopeLabelFromNamespace(t.namespace) === 'project')
+      .map((t) => ({
+        value: t.name,
+        label: t.displayName ? `${t.displayName} (${t.name})` : t.name,
+      }))
     return [wildcard, ...literal]
-  }, [isDeployment, isLiteralProject, projectTemplates, deployments])
+  }, [target.kind, target.projectName, isDeployment, isProjectNamespace, isLiteralProject, projectTemplates, deployments])
 
   return (
     <div
@@ -300,7 +323,9 @@ function TargetRow({
               placeholder={
                 isDeployment
                   ? 'Select a deployment...'
-                  : 'Select a project template...'
+                  : isProjectNamespace
+                    ? 'Select a project namespace...'
+                    : 'Select a project template...'
               }
               searchPlaceholder="Search..."
               aria-label={`Target ${index + 1} name`}
@@ -327,7 +352,9 @@ function TargetRow({
                 placeholder={
                   isDeployment
                     ? 'Deployment name or *'
-                    : 'Template name or *'
+                    : isProjectNamespace
+                      ? 'Namespace name or *'
+                      : 'Template name or *'
                 }
                 aria-label={`Target ${index + 1} name`}
                 disabled={disabled}
