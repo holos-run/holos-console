@@ -27,6 +27,49 @@ All testing guidance lives in this repo. Read the entries below in order the fir
 - [Smoke Test Contract](https://github.com/holos-run/holos-console-docs/tree/main/demo/smoke-tests) — Smoke-test instructions must use `kubectl` commands for the resources required to observe the feature in the demo environment.
 - [Demo README](https://github.com/holos-run/holos-console-docs/blob/main/demo/README.md) — Forward pointer to the demo setup order, prerequisites, and per-template walkthroughs.
 
+## Example Template Registry
+
+The UI picker on every "New Template" page is backed by a Go registry of built-in CUE drop-in examples. Adding a new example requires **only a single CUE file** — no Go or TypeScript changes.
+
+### Adding a new example (drop-in workflow)
+
+1. Create `console/templates/examples/<name>-<version>.cue` with four top-level fields:
+
+   ```cue
+   displayName: "Human Readable Name (version)"
+   name:        "url-safe-slug-v1"
+   description: "One sentence describing what the template produces."
+
+   cueTemplate: """
+     // CUE template body visible in the editor.
+     // Reference #PlatformInput and #ProjectInput freely — they are
+     // prepended by the renderer at evaluation time.
+     platform: #PlatformInput
+     projectResources: {}
+     """
+   ```
+
+2. Run `make test-go` to confirm the new example compiles against the `v1alpha2` generated schema. The test in `examples_test.go` verifies every registry file.
+
+3. That is all. The ConnectRPC `ListTemplateExamples` handler reads the registry at startup; the picker fetches from that RPC. No Go or TypeScript changes are required unless you also want to seed the example into a namespace via the populate-defaults flow.
+
+### Docs-sync contract
+
+The `holos-console-docs/demo/` directory hosts **demo walkthrough snippets** tied to the CI demo environment (full cluster configs, hard-coded gateway namespaces, etc.). The `console/templates/examples/` registry hosts **generic drop-in starters** intended for new contributors. The two sets are intentionally different — they serve different audiences.
+
+The sync contract is: **both must compile** against the `v1alpha2` generated schema.
+
+`console/templates/examples/docs_sync_test.go` enforces this contract for the pinned copies of docs snippets stored under `console/templates/examples/testdata/docs-snippets/`. When the docs repo updates a snippet, copy the new version into the corresponding `testdata/` subdirectory and run `make test-go` to confirm it still compiles:
+
+```bash
+# Update after a holos-console-docs change:
+cp /path/to/holos-console-docs/demo/httpbin-v1/httpbin-v1.cue \
+    console/templates/examples/testdata/docs-snippets/httpbin-v1/httpbin-v1.cue
+cp /path/to/holos-console-docs/demo/allowed-resources/allowed-resources.cue \
+    console/templates/examples/testdata/docs-snippets/allowed-resources/allowed-resources.cue
+make test-go
+```
+
 ## Binary layout
 
 This repo ships two independent binaries from disjoint source trees per [ADR 031](https://github.com/holos-run/holos-console-docs/blob/main/docs/adrs/031-secret-injector-binary-split.md). The `holos-console` web application owns `cmd/holos-console/`, `api/templates/`, `internal/controller/`, `config/holos-console/{crd,rbac,admission}/`, and `Dockerfile.console`; the `holos-secret-injector` controller owns `cmd/secret-injector/`, `api/secrets/`, `internal/secretinjector/`, `config/secret-injector/{crd,rbac}/`, and `Dockerfile.secret-injector`. Shared infrastructure (`console/`, `frontend/`, `proto/`, `pkg/`) is fair game for either binary. The one hard invariant: **no cross-imports** between `internal/controller` and `internal/secretinjector`. `make check-imports` enforces this locally and in CI; if you find yourself reaching across the boundary, lift the shared code into `pkg/` instead. Secret material never travels through templates CRs — CRs carry metadata and `v1.Secret` refs only (ADR 031's no-sensitive-on-CRs rule).
