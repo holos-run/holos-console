@@ -77,10 +77,8 @@ func newStubPepper(version int32, bytes []byte) *stubPepperLoader {
 
 // credentialFixture fixture holds the pieces a Reconcile call needs.
 type credentialFixture struct {
-	r            *CredentialReconciler
-	cli          client.Client
-	pepper       *stubPepperLoader
-	plaintextKey string
+	r   *CredentialReconciler
+	cli client.Client
 }
 
 // newCredentialReconciler builds a reconciler + fake client seeded with
@@ -94,15 +92,14 @@ func newCredentialReconciler(t *testing.T, fixedTime time.Time, objs ...client.O
 		WithObjects(objs...).
 		WithStatusSubresource(&secretsv1alpha1.Credential{}).
 		Build()
-	pepper := newStubPepper(7, []byte("unit-test-pepper-bytes-01234567"))
 	r := &CredentialReconciler{
 		Client: cli,
 		Scheme: Scheme,
 		KDF:    sicrypto.Default(),
-		Pepper: pepper,
+		Pepper: newStubPepper(7, []byte("unit-test-pepper-bytes-01234567")),
 		Clock:  clocktesting.NewFakePassiveClock(fixedTime),
 	}
-	return credentialFixture{r: r, cli: cli, pepper: pepper}
+	return credentialFixture{r: r, cli: cli}
 }
 
 // validCredential returns a fully-populated Credential pointing at the
