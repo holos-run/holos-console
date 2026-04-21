@@ -10,6 +10,7 @@ import {
 import type {
   LinkableTemplate,
   Release,
+  TemplateExample,
   TemplateUpdate,
   TemplateDefaults,
 } from '@/gen/holos/console/v1/templates_pb.js'
@@ -17,7 +18,14 @@ import type { LinkedTemplateRef } from '@/gen/holos/console/v1/policy_state_pb.j
 import { useAuth } from '@/lib/auth'
 
 // Re-export generated types used by consumers.
-export type { LinkableTemplate, LinkedTemplateRef, Release, TemplateUpdate, TemplateDefaults }
+export type {
+  LinkableTemplate,
+  LinkedTemplateRef,
+  Release,
+  TemplateExample,
+  TemplateUpdate,
+  TemplateDefaults,
+}
 
 // linkableKey builds a composite key that uniquely identifies a linkable
 // template across namespaces. HOL-623 reworked the UI to key templates by
@@ -46,6 +54,33 @@ function templateGetKey(namespace: string, name: string) {
 
 function linkableTemplatesKey(namespace: string, includeSelfScope: boolean) {
   return ['templates', 'linkable', namespace, includeSelfScope] as const
+}
+
+function templateExamplesKey() {
+  return ['templates', 'examples'] as const
+}
+
+// useListTemplateExamples fetches the built-in CUE example templates embedded
+// in the server binary (HOL-797). The template example picker UI calls this
+// hook to offer drop-in starting points when creating a new template — the
+// frontend never hard-codes example content.
+//
+// The RPC response is stable across the life of a server binary, so the query
+// is kept long (staleTime: Infinity). Enabled only when the caller is
+// authenticated so we don't fire a request during the pre-auth redirect.
+export function useListTemplateExamples() {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(TemplateService, transport), [transport])
+  return useQuery({
+    queryKey: templateExamplesKey(),
+    queryFn: async () => {
+      const response = await client.listTemplateExamples({})
+      return response.examples
+    },
+    enabled: isAuthenticated,
+    staleTime: Infinity,
+  })
 }
 
 export function useListTemplates(namespace: string) {

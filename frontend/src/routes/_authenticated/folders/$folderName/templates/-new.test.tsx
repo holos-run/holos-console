@@ -19,22 +19,60 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   }
 })
 
+// Flatten Tooltip so TooltipContent renders inline in jsdom. The hover
+// interaction itself belongs to Radix Tooltip and is not exercised here;
+// this keeps content-level assertions (tooltip copy) reachable via
+// getByText without faking pointer events.
+vi.mock('@/components/ui/tooltip', () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipTrigger: ({
+    children,
+    asChild,
+  }: {
+    children: React.ReactNode
+    asChild?: boolean
+  }) => (asChild ? <>{children}</> : <span>{children}</span>),
+  TooltipContent: ({
+    children,
+    ...rest
+  }: React.HTMLAttributes<HTMLDivElement> & { children: React.ReactNode }) => (
+    <div {...rest}>{children}</div>
+  ),
+}))
+
 vi.mock('@/queries/templates', () => ({
   useCreateTemplate: vi.fn(),
+  useListTemplateExamples: vi.fn(),
 }))
 
 vi.mock('@/queries/folders', () => ({
   useGetFolder: vi.fn(),
 }))
 
-import { useCreateTemplate } from '@/queries/templates'
+import { useCreateTemplate, useListTemplateExamples } from '@/queries/templates'
 import { useGetFolder } from '@/queries/folders'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { CreateFolderTemplatePage } from './new'
 
+const EXAMPLE_HTTPROUTE = {
+  name: 'httproute-v1',
+  displayName: 'HTTPRoute Ingress',
+  description: 'Provides an HTTPRoute for the org-configured ingress gateway.',
+  cueTemplate: '// example CUE\nplatformResources: {}\n',
+}
+
+const EXAMPLE_SECOND = {
+  name: 'configmap-v1',
+  displayName: 'ConfigMap Starter',
+  description: 'A minimal ConfigMap scaffold for project-scope templates.',
+  cueTemplate: '// another example\nprojectResources: {}\n',
+}
+
 function setupMocks(
   mutateAsync = vi.fn().mockResolvedValue({}),
   userRole = Role.OWNER,
+  examples: typeof EXAMPLE_HTTPROUTE[] = [EXAMPLE_HTTPROUTE, EXAMPLE_SECOND],
 ) {
   ;(useCreateTemplate as Mock).mockReturnValue({
     mutateAsync,
@@ -43,6 +81,11 @@ function setupMocks(
   })
   ;(useGetFolder as Mock).mockReturnValue({
     data: { name: 'test-folder', organization: 'test-org', userRole },
+    isPending: false,
+    error: null,
+  })
+  ;(useListTemplateExamples as Mock).mockReturnValue({
+    data: examples,
     isPending: false,
     error: null,
   })
@@ -79,11 +122,36 @@ describe('CreateFolderTemplatePage', () => {
     expect(screen.getByRole('textbox', { name: /cue template/i })).toBeInTheDocument()
   })
 
-  it('renders Enabled switch defaulting to unchecked', () => {
+  it('renders Enabled switch defaulting to checked', () => {
     render(<CreateFolderTemplatePage folderName="test-folder" />)
     const toggle = screen.getByRole('switch', { name: /enabled/i })
     expect(toggle).toBeInTheDocument()
-    expect(toggle).toHaveAttribute('data-state', 'unchecked')
+    expect(toggle).toHaveAttribute('data-state', 'checked')
+  })
+
+  it('renders Enabled label without the old parenthetical', () => {
+    render(<CreateFolderTemplatePage folderName="test-folder" />)
+    const label = screen.getByText(/^Enabled$/)
+    expect(label).toBeInTheDocument()
+    expect(
+      screen.queryByText(/apply to projects in this folder/i),
+    ).not.toBeInTheDocument()
+  })
+
+  it('renders the TemplatePolicyBinding tooltip copy', () => {
+    render(<CreateFolderTemplatePage folderName="test-folder" />)
+    // Use a custom matcher on the <p> element (matched by tagName) so
+    // whitespace from JSX line breaks inside the sentence does not defeat
+    // an exact-text match. The acceptance criterion specifies the tooltip
+    // reads exactly this sentence.
+    const expected =
+      'Unified with resources bound to this Template by Policy when enabled. See TemplatePolicyBinding.'
+    const node = screen.getByText((_content, element) => {
+      if (!element || element.tagName !== 'P') return false
+      const text = element.textContent?.replace(/\s+/g, ' ').trim()
+      return text === expected
+    })
+    expect(node).toBeInTheDocument()
   })
 
   it('renders Create submit button', () => {
@@ -127,7 +195,10 @@ describe('CreateFolderTemplatePage', () => {
           name: 'my-template',
           displayName: 'My Template',
           description: 'A description',
-          enabled: false,
+          // Enabled now defaults to true; the switch is rendered checked on
+          // mount and the mutation carries that value unless the user flips
+          // it off.
+          enabled: true,
         }),
       )
     })
@@ -195,48 +266,60 @@ describe('CreateFolderTemplatePage', () => {
     expect(screen.getByText('test-folder')).toBeInTheDocument()
   })
 
-  describe('Load Example button', () => {
-    it('renders Load Example button', () => {
+  // HOL-798: the inline "Load Example" button and hard-coded CUE body were
+  // replaced by the reusable TemplateExamplePicker backed by
+  // ListTemplateExamples. The picker is the single source of example content
+  // from now on.
+  describe('TemplateExamplePicker integration', () => {
+    it('renders the Load Example picker trigger', () => {
       render(<CreateFolderTemplatePage folderName="test-folder" />)
-      expect(screen.getByRole('button', { name: /load example/i })).toBeInTheDocument()
+      expect(screen.getByRole('combobox', { name: /load example/i })).toBeInTheDocument()
     })
 
-    it('clicking Load Example populates all form fields', () => {
+    it('no longer renders a plain "Load Example" push button', () => {
       render(<CreateFolderTemplatePage folderName="test-folder" />)
-      fireEvent.click(screen.getByRole('button', { name: /load example/i }))
+      // Picker trigger is exposed as role=combobox. A plain role=button with
+      // that accessible name would indicate the old inline button survived.
+      expect(
+        screen.queryByRole('button', { name: /load example/i }),
+      ).not.toBeInTheDocument()
+    })
 
+    it('selecting an example populates all four form fields in one action', async () => {
+      render(<CreateFolderTemplatePage folderName="test-folder" />)
+      fireEvent.click(screen.getByRole('combobox', { name: /load example/i }))
+
+      const item = await screen.findByText(EXAMPLE_HTTPROUTE.displayName)
+      fireEvent.click(item)
+
+      await waitFor(() => {
+        const displayNameInput = screen.getByLabelText(/display name/i) as HTMLInputElement
+        expect(displayNameInput.value).toBe(EXAMPLE_HTTPROUTE.displayName)
+      })
       const nameInput = screen.getByLabelText(/name slug/i) as HTMLInputElement
-      expect(nameInput.value).toBe('httproute-ingress')
-
-      const displayNameInput = screen.getByLabelText(/display name/i) as HTMLInputElement
-      expect(displayNameInput.value).toBe('HTTPRoute Ingress')
-
+      expect(nameInput.value).toBe(EXAMPLE_HTTPROUTE.name)
       const descriptionInput = screen.getByLabelText(/description/i) as HTMLInputElement
-      expect(descriptionInput.value).toContain('HTTPRoute')
-
+      expect(descriptionInput.value).toBe(EXAMPLE_HTTPROUTE.description)
       const cueEditor = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
-      expect(cueEditor.value).toContain('HTTPRoute')
-      // The example now uses platform.gatewayNamespace (org-configurable)
-      // rather than hard-coding "istio-ingress" — see HOL-526.
-      expect(cueEditor.value).toContain('platform.gatewayNamespace')
-      expect(cueEditor.value).not.toContain('"istio-ingress"')
+      expect(cueEditor.value).toBe(EXAMPLE_HTTPROUTE.cueTemplate)
     })
   })
 
   describe('Enabled switch', () => {
-    it('passes enabled: true when toggle is switched on', async () => {
+    it('passes enabled: false when toggle is switched off', async () => {
       const mutateAsync = vi.fn().mockResolvedValue({})
       setupMocks(mutateAsync)
       render(<CreateFolderTemplatePage folderName="test-folder" />)
 
       fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My Template' } })
+      // Toggle starts checked; one click flips it off.
       fireEvent.click(screen.getByRole('switch', { name: /enabled/i }))
       fireEvent.click(screen.getByRole('button', { name: /^create$/i }))
 
       await waitFor(() => {
         expect(mutateAsync).toHaveBeenCalledWith(
           expect.objectContaining({
-            enabled: true,
+            enabled: false,
           }),
         )
       })
@@ -254,6 +337,7 @@ describe('CreateFolderTemplatePage', () => {
       expect(screen.getByRole('textbox', { name: /cue template/i })).toBeDisabled()
       expect(screen.getByRole('switch', { name: /enabled/i })).toBeDisabled()
       expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled()
+      expect(screen.getByRole('combobox', { name: /load example/i })).toBeDisabled()
     })
 
     it('enables form fields for OWNER users', () => {
