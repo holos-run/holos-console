@@ -73,3 +73,70 @@ make test-go
 ## Binary layout
 
 This repo ships two independent binaries from disjoint source trees per [ADR 031](https://github.com/holos-run/holos-console-docs/blob/main/docs/adrs/031-secret-injector-binary-split.md). The `holos-console` web application owns `cmd/holos-console/`, `api/templates/`, `internal/controller/`, `config/holos-console/{crd,rbac,admission}/`, and `Dockerfile.console`; the `holos-secret-injector` controller owns `cmd/secret-injector/`, `api/secrets/`, `internal/secretinjector/`, `config/secret-injector/{crd,rbac}/`, and `Dockerfile.secret-injector`. Shared infrastructure (`console/`, `frontend/`, `proto/`, `pkg/`) is fair game for either binary. The one hard invariant: **no cross-imports** between `internal/controller` and `internal/secretinjector`. `make check-imports` enforces this locally and in CI; if you find yourself reaching across the boundary, lift the shared code into `pkg/` instead. Secret material never travels through templates CRs — CRs carry metadata and `v1.Secret` refs only (ADR 031's no-sensitive-on-CRs rule).
+
+## Secret Injection Service
+
+`holos-secret-injector` is the M2 control-plane binary. Its source tree is
+`internal/secretinjector/` (reconcilers), `api/secrets/v1alpha1/` (CRD
+types), `internal/secretinjector/crypto/` (KDF + pepper), and
+`config/secret-injector/` (manifests, admission policies, RBAC).
+
+### Reconciler package
+
+`internal/secretinjector/controller/` — three reconcilers registered by
+`NewManager`:
+
+| Reconciler | Kind | Primary action |
+|------------|------|----------------|
+| `UpstreamSecretReconciler` | `UpstreamSecret` | Validates upstream v1.Secret exists; publishes `ResolvedRefs` condition |
+| `CredentialReconciler` | `Credential` | Mints KSUID + salt, calls KDF.Hash, materialises hash `v1.Secret` |
+| `SecretInjectionPolicyBindingReconciler` | `SecretInjectionPolicyBinding` | Resolves policy ref; emits `AuthorizationPolicy` (Istio) |
+
+### Envtest suite
+
+`internal/secretinjector/controller/suite_test.go` — the authoritative
+cross-reconciler integration test. Boots a real API server via
+`sigs.k8s.io/controller-runtime/pkg/envtest`, installs all four
+`secrets.holos.run` CRDs plus the Istio `AuthorizationPolicy` CRD, loads
+every `ValidatingAdmissionPolicy` from `config/secret-injector/admission/`,
+and runs all three reconcilers simultaneously. The suite skips (not fails)
+when the envtest binaries are absent; run `setup-envtest use` to install them.
+
+### Marshal-scan invariant gate
+
+`internal/secretinjector/controller/invariant_test.go` — called after every
+reconcile step in the envtest suite. GETs every CR, marshals it to JSON and
+YAML, and asserts that the forbidden byte patterns from
+`api/secrets/v1alpha1/invariant_patterns.go` produce zero matches in both
+representations. A match fails the test without printing the offending bytes.
+
+### No-sensitive-values invariant (MUST READ before editing any CR field)
+
+**CRs in `secrets.holos.run/v1alpha1` are control objects, not vaults.**
+
+They carry references, selectors, lifecycle metadata, phase, and conditions.
+They MUST NEVER carry: plaintext credential material, hash bytes, salt bytes,
+pepper bytes, API key prefixes, last-4 digits, or any truncation of a
+credential that reveals non-trivial entropy. This is the same invariant that
+governs `holos-console` template CRs (ADR 031) — it extends to every CR in
+this service.
+
+Any agent adding or editing a field in this group must:
+
+1. Verify the field type does not accept sensitive bytes (string fields that
+   accept arbitrary values are the most dangerous).
+2. Add or update the test in `*_invariant_test.go` that asserts the new
+   field cannot be populated with forbidden patterns.
+3. Run `make test-go` to confirm the marshal-scan gate passes.
+
+See `api/secrets/v1alpha1/doc.go` for the full rationale and list of
+allowed vs. forbidden field categories.
+
+### M2 technical reference
+
+Repo-local docs for the M2 reconcilers (agents need them co-located with
+the code):
+
+- [docs/secret-injector/kdf.md](docs/secret-injector/kdf.md) — KDF pluggability seam: `KDF` interface, argon2id defaults, `-fips` swap story, `Envelope` JSON contract.
+- [docs/secret-injector/pepper-bootstrap.md](docs/secret-injector/pepper-bootstrap.md) — Pepper bootstrap runbook: Secret shape, versioning contract, Post-MVP rotation notes, RBAC envelope.
+- [docs/secret-injector/lifecycle.md](docs/secret-injector/lifecycle.md) — Credential lifecycle contract: single-ownerReference model, delete-cascade semantics, backup/restore ordering, admission vs. reconciler enforcement split.

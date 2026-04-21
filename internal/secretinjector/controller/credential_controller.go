@@ -64,6 +64,25 @@ const credentialHashSecretSuffix = "-hash"
 // "no sensitive values on CRs" invariant because the bytes still live
 // exclusively in the v1.Secret, which has the tighter RBAC surface
 // (see api/secrets/v1alpha1/doc.go).
+//
+// JSON contract — the value at this key is a UTF-8 JSON object produced by
+// [sicrypto.MarshalEnvelope]. The canonical shape (schemaVersion=1) is:
+//
+//	{
+//	  "schemaVersion": 1,
+//	  "kdf": "argon2id",
+//	  "kdfParams": {"time":2,"memory":19456,"parallelism":1,"keyLength":32},
+//	  "pepperVersion": "<decimal-integer-string>",
+//	  "salt": "<base64-encoded 32-byte random salt>",
+//	  "hash": "<base64-encoded 32-byte derived hash>"
+//	}
+//
+// Immutability: the reconciler writes this key once (at materialisation)
+// and does not update it on subsequent reconciles unless the hash Secret
+// is missing or unowned. Callers MUST NOT mutate the bytes after write;
+// an in-place edit breaks the Verify path without surfacing a condition
+// change. To re-hash (for example after a cost-bump migration), delete
+// the Credential and recreate it so the reconciler mints a fresh envelope.
 const credentialHashEnvelopeKey = "envelope"
 
 // credentialExpiryRequeueFloor is the minimum Reconcile.RequeueAfter the
@@ -109,7 +128,7 @@ const credentialExpiryRequeueFloor = time.Second
 // The read surface is RBAC-protected and the bytes never flow through
 // the Credential CR, but this means the "Credential is a hash of a
 // caller-facing key, not of an upstream secret" flow is stubbed. See
-// the TODO(M4) comment in materialiseHashEnvelope below.
+// the TODO(HOL-675) comment in materialiseHashEnvelope below.
 type CredentialReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
@@ -381,11 +400,11 @@ type hashEnvelopeResult struct {
 // Credential. Returns the active pepper version and the materialised
 // Secret's name.
 //
-// TODO(M4): the plaintext source is the upstream v1.Secret named by
-// spec.upstreamSecretRef as a bridge until the issuer RPC lands in M4
-// (HOL-675 → M4 plan). When the issuer ships, this read is replaced by
-// an authenticated per-request surface and the Credential no longer
-// reads the upstream Secret.
+// TODO(HOL-675): the plaintext source is the upstream v1.Secret named by
+// spec.upstreamSecretRef as a bridge until the issuer RPC lands (HOL-675
+// M4 plan). When the issuer ships, this read is replaced by an
+// authenticated per-request surface and the Credential no longer reads
+// the upstream Secret.
 func (r *CredentialReconciler) materialiseHashEnvelope(ctx context.Context, cred *secretsv1alpha1.Credential) (int32, hashEnvelopeResult, error) {
 	plaintext, err := r.readUpstreamPlaintext(ctx, cred)
 	if err != nil {
@@ -467,9 +486,9 @@ func (r *CredentialReconciler) materialiseHashEnvelope(ctx context.Context, cred
 // references are rejected at admission (see HOL-703), so an empty
 // Namespace field defaults to the Credential's own namespace.
 //
-// TODO(M4): replace this read with the authenticated per-request surface
-// exposed by the issuer RPC. Until M4 lands, this read is the single
-// biggest plaintext-path shortcut in the injector's M2 scope.
+// TODO(HOL-675): replace this read with the authenticated per-request
+// surface exposed by the issuer RPC. Until HOL-675 lands, this read is
+// the single biggest plaintext-path shortcut in the injector's M2 scope.
 func (r *CredentialReconciler) readUpstreamPlaintext(ctx context.Context, cred *secretsv1alpha1.Credential) ([]byte, error) {
 	ns := cred.Spec.UpstreamSecretRef.Namespace
 	if ns == "" {
