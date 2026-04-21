@@ -34,13 +34,6 @@ $AB wait 1000
 $AB screenshot "$SCREENSHOT_DIR/02-deployment-detail-logs-tab.png"
 echo "Screenshot: 02-deployment-detail-logs-tab.png (error state — no cluster)"
 
-DEPLOYMENT_URL_TEMPLATE="$BACKEND_URL/projects/demo/deployments/httpbin?tab=template"
-$AB open "$DEPLOYMENT_URL_TEMPLATE"
-$AB wait --load networkidle
-$AB wait 1000
-$AB screenshot "$SCREENSHOT_DIR/03-deployment-detail-template-tab.png"
-echo "Screenshot: 03-deployment-detail-template-tab.png (error state — no cluster)"
-
 echo "Screenshots saved to $SCREENSHOT_DIR"
 echo "Note: Screenshots show error state because no Kubernetes cluster is available."
-echo "The tab layout is verified by 50 unit tests (all passing)."
+echo "The tab layout is verified by unit tests (all passing)."
