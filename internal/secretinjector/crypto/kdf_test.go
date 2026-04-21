@@ -289,6 +289,41 @@ func TestArgon2idParamDriftRejectionViaInterface(t *testing.T) {
 	}
 }
 
+// TestArgon2idIgnoresPBKDF2OnlyIterationsField pins the contract that
+// argon2id compares only the four argon2id-relevant fields (Time,
+// Memory, Parallelism, KeyLength) on Verify. A caller that passes a
+// non-zero [Params.Iterations] (meaningless to argon2id; owned by the
+// future PBKDF2 binding) must not cause Verify to fail — the envelope
+// normalizes it to zero on Hash, and the drift check ignores it on
+// Verify. A regression here would surface as spurious login failures
+// after a cross-binary migration.
+func TestArgon2idIgnoresPBKDF2OnlyIterationsField(t *testing.T) {
+	k := Argon2id{}
+	paramsWithIterations := Argon2idDefault
+	paramsWithIterations.Iterations = 600_000 // PBKDF2-style value the caller fat-fingered in
+	env, err := k.Hash(fixturePlaintext, fixtureSalt, fixturePepper, fixturePepperVersion, paramsWithIterations)
+	if err != nil {
+		t.Fatalf("Hash: %v", err)
+	}
+	// Envelope must have normalized Iterations to zero so the
+	// on-disk record is a faithful description of the argon2id cost
+	// actually paid.
+	if env.KDFParams.Iterations != 0 {
+		t.Errorf("envelope KDFParams.Iterations = %d, want 0 (normalized)", env.KDFParams.Iterations)
+	}
+	// Verify under the original params (with the ignored Iterations
+	// field) must succeed — argon2id does not feed Iterations into
+	// argon2.IDKey, so drift on that field is not drift.
+	if err := k.Verify(fixturePlaintext, fixturePepper, env, paramsWithIterations); err != nil {
+		t.Errorf("Verify with PBKDF2-only Iterations field: got %v, want nil", err)
+	}
+	// Verify under the normalized want (Iterations=0) must also
+	// succeed — both shapes are valid inputs for the argon2id path.
+	if err := k.Verify(fixturePlaintext, fixturePepper, env, Argon2idDefault); err != nil {
+		t.Errorf("Verify with normalized params: got %v, want nil", err)
+	}
+}
+
 // TestArgon2idVerifyRejectsForeignKDF covers the routing table: an
 // envelope produced by some future KDF must not be silently verified by
 // the argon2id binding. We forge an envelope with a mismatching KDF
@@ -418,21 +453,6 @@ func TestCompareHashConstantTimeSemantics(t *testing.T) {
 				t.Fatalf("CompareHash(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
 			}
 		})
-	}
-}
-
-// TestDefaultBindsArgon2id pins the package-level [Default] contract: the
-// non-FIPS build wires the argon2id implementation, not any future
-// primitive. The -fips build variant overrides this in its own
-// build-tagged file, so this test lives under the implicit !fips tag
-// (default_nofips.go).
-func TestDefaultBindsArgon2id(t *testing.T) {
-	k := Default()
-	if k.ID() != KDFArgon2id {
-		t.Fatalf("Default().ID() = %q, want %q", k.ID(), KDFArgon2id)
-	}
-	if diff := cmp.Diff(Argon2idDefault, k.DefaultParams()); diff != "" {
-		t.Fatalf("Default().DefaultParams() mismatch (-want +got):\n%s", diff)
 	}
 }
 

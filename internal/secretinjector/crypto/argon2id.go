@@ -90,11 +90,32 @@ func (a Argon2id) Hash(plaintext, salt, pepper []byte, pepperVersion string, par
 	return Envelope{
 		SchemaVersion: EnvelopeSchemaVersion,
 		KDF:           KDFArgon2id,
-		KDFParams:     params,
+		// Normalize params before stamping: zero out the PBKDF2-only
+		// Iterations field so a caller that accidentally passed a
+		// non-zero Iterations (for example, a params struct shared
+		// with a PBKDF2 call site) cannot poison the envelope with a
+		// field argon2id ignores. Combined with
+		// argon2idParamsEqual's relevant-fields-only comparison on
+		// Verify, this makes the argon2id envelope strictly describe
+		// the argon2id cost and nothing else.
+		KDFParams:     normalizeArgon2idParams(params),
 		PepperVersion: pepperVersion,
 		Salt:          saltCopy,
 		Hash:          hash,
 	}, nil
+}
+
+// normalizeArgon2idParams returns a [Params] that carries only the four
+// fields argon2id consumes. Other fields (currently just the PBKDF2
+// Iterations counter) are zeroed so the envelope is a faithful
+// description of the argon2id cost actually paid.
+func normalizeArgon2idParams(p Params) Params {
+	return Params{
+		Time:        p.Time,
+		Memory:      p.Memory,
+		Parallelism: p.Parallelism,
+		KeyLength:   p.KeyLength,
+	}
 }
 
 // Verify re-derives the hash from plaintext + envelope.Salt + pepper
@@ -115,7 +136,7 @@ func (a Argon2id) Verify(plaintext, pepper []byte, envelope Envelope, wantParams
 	if envelope.KDF != KDFArgon2id {
 		return fmt.Errorf("%w: envelope KDF %q, verifier %q", ErrKDFMismatch, envelope.KDF, KDFArgon2id)
 	}
-	if !paramsEqual(envelope.KDFParams, wantParams) {
+	if !argon2idParamsEqual(envelope.KDFParams, wantParams) {
 		return ErrParamMismatch
 	}
 	if err := validateInputs(plaintext, envelope.Salt, pepper); err != nil {

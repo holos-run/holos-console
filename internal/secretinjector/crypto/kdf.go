@@ -241,17 +241,20 @@ func UnmarshalEnvelope(data []byte, e *Envelope) error {
 	return nil
 }
 
-// paramsEqual reports whether two [Params] values are equal across every
-// field the verifier cares about. Used by concrete KDF Verify
-// implementations to flag parameter drift before attempting a compare.
-// The helper lives here rather than on [Params] so the equality check is
-// owned by the package that defines the sentinel errors.
-func paramsEqual(a, b Params) bool {
+// argon2idParamsEqual reports whether two [Params] values agree on every
+// field argon2id actually feeds into [argon2.IDKey] — Time, Memory,
+// Parallelism, KeyLength. The PBKDF2-only Iterations field is
+// deliberately excluded because argon2id does not consume it; including
+// it would fail a verify whenever a caller changed an unrelated field
+// (for example, after a migration to a binary with a different default
+// Iterations value). Each KDF owns its own equality check so a future
+// row (PBKDF2 under the -fips tag) can pick its own set of significant
+// fields without cross-field coupling.
+func argon2idParamsEqual(a, b Params) bool {
 	return a.Time == b.Time &&
 		a.Memory == b.Memory &&
 		a.Parallelism == b.Parallelism &&
-		a.KeyLength == b.KeyLength &&
-		a.Iterations == b.Iterations
+		a.KeyLength == b.KeyLength
 }
 
 // validateInputs enforces the non-empty-input invariants shared by every
