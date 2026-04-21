@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ResourceTypeIcon } from '@/components/resource-type-icon'
 import { useListResources } from '@/queries/resources'
 import {
   ResourceType,
@@ -34,10 +35,20 @@ const columnHelper = createColumnHelper<Resource>()
 
 function typeBadge(type: ResourceType) {
   if (type === ResourceType.FOLDER) {
-    return <Badge variant="outline">Folder</Badge>
+    return (
+      <Badge variant="outline" className="inline-flex items-center gap-1.5">
+        <ResourceTypeIcon type={type} className="h-3.5 w-3.5" />
+        Folder
+      </Badge>
+    )
   }
   if (type === ResourceType.PROJECT) {
-    return <Badge variant="outline">Project</Badge>
+    return (
+      <Badge variant="outline" className="inline-flex items-center gap-1.5">
+        <ResourceTypeIcon type={type} className="h-3.5 w-3.5" />
+        Project
+      </Badge>
+    )
   }
   // The server contract forbids UNSPECIFIED entries. Render a destructive
   // badge so the backend bug is visible instead of blending in.
@@ -85,8 +96,9 @@ function PathCell({ resource }: { resource: Resource }) {
                 to="/folders/$folderName"
                 params={{ folderName: element.name }}
                 title={element.name}
-                className="hover:underline text-muted-foreground"
+                className="inline-flex items-center gap-1 hover:underline text-muted-foreground"
               >
+                <ResourceTypeIcon type={element.type} className="h-3.5 w-3.5 opacity-70" />
                 {display}
               </Link>
             )}
