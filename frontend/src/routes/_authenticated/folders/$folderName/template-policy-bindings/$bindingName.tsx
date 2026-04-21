@@ -174,6 +174,7 @@ export function FolderTemplatePolicyBindingDetailPage({
             scopeType={scopeType}
             namespace={namespace}
             organization={orgName}
+            folderName={folderName}
             canWrite={canWrite}
             initialValues={initialValues}
             lockName

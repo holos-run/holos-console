@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import {
@@ -9,16 +10,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Trash2 } from 'lucide-react'
+import { Asterisk, Trash2 } from 'lucide-react'
 import { TemplatePolicyBindingTargetKind } from '@/queries/templatePolicyBindings'
-import type { TargetRefDraft } from './binding-draft'
+import {
+  WILDCARD,
+  findDuplicateTargetIndex,
+  type TargetRefDraft,
+} from './binding-draft'
 import { useListDeployments } from '@/queries/deployments'
 import { useListProjects } from '@/queries/projects'
 import { useListTemplates } from '@/queries/templates'
 import { namespaceForProject, scopeLabelFromNamespace } from '@/lib/scope-labels'
 
 // Kind options exposed to the target-row select. UNSPECIFIED is intentionally
-// omitted — the backend rejects it and the UI must not offer it.
+// omitted — the backend rejects it and the UI must not offer it. `kind` is
+// also never wildcarded (HOL-767 audit-readability rule); cross-kind fan-out
+// requires separate target rows.
 const KIND_OPTIONS: Array<{
   value: TemplatePolicyBindingTargetKind
   label: string
@@ -29,6 +36,20 @@ const KIND_OPTIONS: Array<{
   },
   { value: TemplatePolicyBindingTargetKind.DEPLOYMENT, label: 'Deployment' },
 ]
+
+// Synthetic combobox items for the wildcard sentinel. Using the literal
+// string '*' as the value is load-bearing — it round-trips byte-identically
+// to `policyresolver.WildcardAny` on the backend (HOL-769 / HOL-770 / HOL-772).
+const WILDCARD_PROJECT_ITEM: ComboboxItem = {
+  value: WILDCARD,
+  label: 'All projects (*)',
+}
+function wildcardNameItem(isDeployment: boolean): ComboboxItem {
+  return {
+    value: WILDCARD,
+    label: isDeployment ? 'All deployments (*)' : 'All project templates (*)',
+  }
+}
 
 export type TargetRefEditorProps = {
   /** The organization these target refs live under. Required to populate the
@@ -46,6 +67,13 @@ export type TargetRefEditorProps = {
  * templates for the selected project, DEPLOYMENT loads deployments for the
  * selected project. The caller owns the targets state and passes an
  * onChange callback.
+ *
+ * Both the project and name comboboxes carry a synthetic `*` (wildcard)
+ * option at the top — picking it expands the binding to every match the
+ * storage scope can reach (HOL-767). Two rows that share the same
+ * `(kind, projectName, name)` triple are flagged inline as duplicates so
+ * the author sees the conflict before submit; the backend rejects the same
+ * shape with `target_refs[i]: duplicate of target_refs[j] (...)`.
  */
 export function TargetRefEditor({
   organization,
@@ -73,6 +101,16 @@ export function TargetRefEditor({
     ])
   }
 
+  // Compute the index of the first row that duplicates an earlier row on the
+  // (kind, projectName, name) triple. The wildcard literal "*" participates
+  // as a normal string value — `{kind, "*", "*"}` matches itself, mirroring
+  // backend dedup (HOL-772). Memoized so we recompute only when the target
+  // list changes.
+  const duplicateIndex = useMemo(
+    () => findDuplicateTargetIndex(targets),
+    [targets],
+  )
+
   return (
     <div className="space-y-4" data-testid="target-ref-editor">
       {targets.length === 0 && (
@@ -86,6 +124,7 @@ export function TargetRefEditor({
           index={index}
           organization={organization}
           target={target}
+          isDuplicate={index === duplicateIndex}
           onUpdate={(patch) => handleUpdate(index, patch)}
           onRemove={() => handleRemove(index)}
           disabled={disabled}
@@ -111,6 +150,7 @@ type TargetRowProps = {
   index: number
   organization: string
   target: TargetRefDraft
+  isDuplicate: boolean
   onUpdate: (patch: Partial<TargetRefDraft>) => void
   onRemove: () => void
   disabled: boolean
@@ -120,47 +160,65 @@ function TargetRow({
   index,
   organization,
   target,
+  isDuplicate,
   onUpdate,
   onRemove,
   disabled,
 }: TargetRowProps) {
   const isDeployment = target.kind === TemplatePolicyBindingTargetKind.DEPLOYMENT
+  const projectIsWildcard = target.projectName === WILDCARD
+  const isLiteralProject = !!target.projectName && !projectIsWildcard
 
   const { data: projectsResponse } = useListProjects(organization)
   const projectItems: ComboboxItem[] = useMemo(() => {
     const projects = projectsResponse?.projects ?? []
-    return projects.map((p) => ({
+    const literal = projects.map((p) => ({
       value: p.name,
       label: p.displayName ? `${p.displayName} (${p.name})` : p.name,
     }))
+    // Wildcard sentinel pinned to the top so the author always sees the
+    // "All projects" option without scrolling past the literal list.
+    return [WILDCARD_PROJECT_ITEM, ...literal]
   }, [projectsResponse])
 
   // Name picker: project-scope templates or deployments, both scoped to the
-  // selected project. Both hooks are called unconditionally — they gate on a
-  // non-empty project name via their `enabled` option (useListTemplates keys
-  // on the namespace, useListDeployments keys on the project argument), so
-  // no fetch occurs until a project is picked.
-  const projectNamespace = namespaceForProject(target.projectName)
+  // selected literal project. When the project is the wildcard "*" the
+  // hooks are short-circuited via the `enabled` flag — `namespaceForProject`
+  // would otherwise build a malformed namespace string for the literal "*".
+  // The user can still pick the wildcard sentinel or type a literal name
+  // (the combobox accepts free-text via the search input even when the
+  // backed list is empty).
+  const projectNamespace = isLiteralProject
+    ? namespaceForProject(target.projectName)
+    : ''
   const { data: projectTemplates = [] } = useListTemplates(projectNamespace)
-  const { data: deployments = [] } = useListDeployments(target.projectName)
+  const { data: deployments = [] } = useListDeployments(
+    isLiteralProject ? target.projectName : '',
+  )
 
   // KIND_OPTIONS omits UNSPECIFIED, so kind is always DEPLOYMENT or
   // PROJECT_TEMPLATE. Branching on a single `isDeployment` flag keeps the
   // contract explicit and avoids an unreachable fallthrough.
   const nameItems: ComboboxItem[] = useMemo(() => {
-    if (isDeployment) {
-      return deployments.map((d) => ({
-        value: d.name,
-        label: d.displayName ? `${d.displayName} (${d.name})` : d.name,
-      }))
+    const wildcard = wildcardNameItem(isDeployment)
+    if (!isLiteralProject) {
+      // No backing list when project is unset or wildcard — only the
+      // wildcard sentinel is offered.
+      return [wildcard]
     }
-    return projectTemplates
-      .filter((t) => scopeLabelFromNamespace(t.namespace) === 'project')
-      .map((t) => ({
-        value: t.name,
-        label: t.displayName ? `${t.displayName} (${t.name})` : t.name,
-      }))
-  }, [isDeployment, projectTemplates, deployments])
+    const literal = isDeployment
+      ? deployments.map((d) => ({
+          value: d.name,
+          label: d.displayName ? `${d.displayName} (${d.name})` : d.name,
+        }))
+      : projectTemplates
+          .filter((t) => scopeLabelFromNamespace(t.namespace) === 'project')
+          .map((t) => ({
+            value: t.name,
+            label: t.displayName ? `${t.displayName} (${t.name})` : t.name,
+          }))
+    return [wildcard, ...literal]
+  }, [isDeployment, isLiteralProject, projectTemplates, deployments])
 
   return (
     <div
@@ -231,24 +289,78 @@ function TargetRow({
 
         <div>
           <Label htmlFor={`target-name-${index}`}>Name</Label>
-          <Combobox
-            items={nameItems}
-            value={target.name}
-            onValueChange={(v) => {
-              if (disabled) return
-              onUpdate({ name: v })
-            }}
-            placeholder={
-              isDeployment
-                ? 'Select a deployment...'
-                : 'Select a project template...'
-            }
-            searchPlaceholder="Search..."
-            aria-label={`Target ${index + 1} name`}
-          />
+          {isLiteralProject ? (
+            <Combobox
+              items={nameItems}
+              value={target.name}
+              onValueChange={(v) => {
+                if (disabled) return
+                onUpdate({ name: v })
+              }}
+              placeholder={
+                isDeployment
+                  ? 'Select a deployment...'
+                  : 'Select a project template...'
+              }
+              searchPlaceholder="Search..."
+              aria-label={`Target ${index + 1} name`}
+            />
+          ) : (
+            // When project is "*" or unset, there is no per-project list to
+            // pick from. Authors still need to be able to type a literal name
+            // (e.g. {project:"*", name:"ingress"} for a scope-wide template)
+            // OR snap to the wildcard. Our `Combobox` is strict single-select
+            // and does not accept arbitrary text, so we render an Input here
+            // with a one-click "*" quick-pick — see codex review on PR #1084.
+            <div
+              className="flex items-center gap-2"
+              data-testid={`target-ref-row-${index}-name-literal`}
+            >
+              <Input
+                id={`target-name-${index}`}
+                type="text"
+                value={target.name}
+                onChange={(e) => {
+                  if (disabled) return
+                  onUpdate({ name: e.target.value })
+                }}
+                placeholder={
+                  isDeployment
+                    ? 'Deployment name or *'
+                    : 'Template name or *'
+                }
+                aria-label={`Target ${index + 1} name`}
+                disabled={disabled}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-label={`Target ${index + 1} set name to wildcard`}
+                data-testid={`target-ref-row-${index}-name-wildcard-btn`}
+                onClick={() => {
+                  if (disabled) return
+                  onUpdate({ name: WILDCARD })
+                }}
+                disabled={disabled}
+              >
+                <Asterisk className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
+
+      {isDuplicate && (
+        <p
+          role="alert"
+          data-testid={`target-ref-row-${index}-duplicate-error`}
+          className="text-sm text-destructive"
+        >
+          Duplicate of an earlier target ({'kind, project_name, name'} triple
+          must be unique).
+        </p>
+      )}
     </div>
   )
 }
-

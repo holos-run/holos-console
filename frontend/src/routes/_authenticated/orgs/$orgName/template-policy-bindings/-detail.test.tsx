@@ -66,6 +66,13 @@ vi.mock('@/queries/projects', () => ({
   useListProjects: vi.fn().mockReturnValue({
     data: { projects: [] },
     isPending: false,
+    isLoading: false,
+    error: null,
+  }),
+  useListProjectsByParent: vi.fn().mockReturnValue({
+    data: [],
+    isPending: false,
+    isLoading: false,
     error: null,
   }),
 }))

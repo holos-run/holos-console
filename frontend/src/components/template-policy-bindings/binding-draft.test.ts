@@ -96,7 +96,51 @@ describe('validateBindingDraft', () => {
         },
       ],
     }
-    expect(validateBindingDraft(draft)).toMatch(/project is required/i)
+    expect(validateBindingDraft(draft)).toMatch(/project_name is required/i)
+  })
+
+  it('accepts the wildcard literal "*" in projectName and name', () => {
+    // HOL-769/770/772: "*" is a first-class allowed value on these fields.
+    // The frontend client-side validator must let it through so the proto
+    // round-trip stays byte-identical to policyresolver.WildcardAny.
+    const draft = {
+      ...newEmptyBindingDraft(),
+      name: 'bind-a',
+      policyNamespace: namespaceForOrg('test-org'),
+      policyName: 'policy-a',
+      targetRefs: [
+        {
+          kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+          projectName: '*',
+          name: '*',
+        },
+      ],
+    }
+    expect(validateBindingDraft(draft)).toBeNull()
+  })
+
+  it('rejects two wildcard rows of the same kind as duplicates', () => {
+    // {kind, "*", "*"} matches itself; the backend rejects an identical
+    // second row with `target_refs[i]: duplicate of target_refs[j]`.
+    const draft = {
+      ...newEmptyBindingDraft(),
+      name: 'bind-a',
+      policyNamespace: namespaceForOrg('test-org'),
+      policyName: 'policy-a',
+      targetRefs: [
+        {
+          kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+          projectName: '*',
+          name: '*',
+        },
+        {
+          kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+          projectName: '*',
+          name: '*',
+        },
+      ],
+    }
+    expect(validateBindingDraft(draft)).toMatch(/duplicate/i)
   })
 
   it('rejects duplicate (kind, projectName, name) triples', () => {
