@@ -4,8 +4,11 @@ import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
 
-// Default useSearch stub returns 'status' tab
-const mockUseSearch = vi.fn(() => ({ tab: 'status' as 'status' | 'logs' | 'template' }))
+// Default useSearch stub returns 'status' tab. The return type is widened to
+// `string` so tests can exercise `validateTab` with legacy values (e.g.
+// 'template') that the production validator now rejects — see the
+// `?tab=template` regression test below (HOL-611).
+const mockUseSearch = vi.fn<() => { tab: string }>(() => ({ tab: 'status' }))
 const mockUseNavigate = vi.fn(() => vi.fn())
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {

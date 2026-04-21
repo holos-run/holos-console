@@ -280,6 +280,9 @@ export function DeploymentDetailPage({
   // Local tab state initialised from the URL search param so that the component
   // responds immediately to tab clicks without waiting for a navigation cycle.
   // The URL is kept in sync via navigate so tabs are deep-linkable.
+  // `validateTab` also strips legacy values (notably `template`, removed in
+  // HOL-611) so a stale deep-link degrades to Status instead of leaking an
+  // invalid id into state.
   const [activeTab, setActiveTab] = useState<DeploymentTab>(() => validateTab(routeSearch.tab))
 
   const handleTabChange = (next: string) => {
