@@ -19,6 +19,7 @@ import type {
 } from '@/gen/holos/console/v1/template_policies_pb.js'
 import { useAuth } from '@/lib/auth'
 import { useListFolders } from '@/queries/folders'
+import type { Folder } from '@/gen/holos/console/v1/folders_pb.js'
 import { namespaceForFolder, namespaceForOrg } from '@/lib/scope-labels'
 
 // Re-export generated types/enums used by UI consumers. HOL-600 removed
@@ -115,7 +116,7 @@ export function aggregateFanOut<T>(
 
 // Module-level sentinel so the `folders` useMemo fallback preserves reference
 // identity across renders when the folders list is still pending or empty.
-const EMPTY_FOLDERS: readonly { name: string }[] = []
+const EMPTY_FOLDERS: readonly Folder[] = []
 
 // useAllTemplatePoliciesForOrg fans a ListTemplatePolicies call across every
 // namespace reachable from an organization root — the org namespace plus one

@@ -158,7 +158,10 @@ export function OrgTemplatePoliciesIndexPage({
     )
   }
 
-  if (error) {
+  // When the fan-out has both an error and partial data, fall through to the
+  // full grid so successfully-loaded rows remain visible. The banner below the
+  // CardHeader surfaces the error without blanking the table.
+  if (error && rows.length === 0) {
     return (
       <Card>
         <CardContent className="pt-6">
@@ -186,6 +189,11 @@ export function OrgTemplatePoliciesIndexPage({
         )}
       </CardHeader>
       <CardContent>
+        {error && (
+          <Alert variant="destructive" className="mb-4" data-testid="policies-partial-error">
+            <AlertDescription>{error.message}</AlertDescription>
+          </Alert>
+        )}
         {rows.length === 0 ? (
           <div className="rounded-md border border-dashed border-border p-6 text-center">
             <p className="text-sm font-medium">No template policies yet.</p>
