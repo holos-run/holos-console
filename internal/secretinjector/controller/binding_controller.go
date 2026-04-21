@@ -227,6 +227,7 @@ func bindingAcceptedCondition(binding *secretsv1alpha1.SecretInjectionPolicyBind
 			Message: "spec.targetRefs must carry at least one entry",
 		}
 	}
+	serviceTargets := 0
 	for i, t := range binding.Spec.TargetRefs {
 		switch t.Kind {
 		case secretsv1alpha1.TargetRefKindServiceAccount, secretsv1alpha1.TargetRefKindService:
@@ -245,6 +246,44 @@ func bindingAcceptedCondition(binding *secretsv1alpha1.SecretInjectionPolicyBind
 				Reason:  secretsv1alpha1.SecretInjectionPolicyBindingReasonInvalidSpec,
 				Message: fmt.Sprintf("spec.targetRefs[%d] namespace and name must be set", i),
 			}
+		}
+		// Service targets MUST reside in the binding's own namespace.
+		// AuthorizationPolicy objects are namespace-scoped — their
+		// spec.selector binds to Pods in the AP's own namespace. A
+		// Service target that names a namespace other than
+		// binding.Namespace cannot be enforced by the AP the reconciler
+		// emits (the AP would silently select same-named Pods in the
+		// binding's namespace), so the spec is rejected rather than
+		// silently producing a policy that protects the wrong workload.
+		// HOL-752 review round 1 flagged this as CRITICAL.
+		if t.Kind == secretsv1alpha1.TargetRefKindService {
+			serviceTargets++
+			if t.Namespace != binding.Namespace {
+				return metav1.Condition{
+					Type:   secretsv1alpha1.SecretInjectionPolicyBindingConditionAccepted,
+					Status: metav1.ConditionFalse,
+					Reason: secretsv1alpha1.SecretInjectionPolicyBindingReasonInvalidSpec,
+					Message: fmt.Sprintf("spec.targetRefs[%d]: Service target namespace %q must equal the binding's namespace %q (AuthorizationPolicy is namespace-scoped)",
+						i, t.Namespace, binding.Namespace),
+				}
+			}
+		}
+	}
+	// Multiple Service targets on a single binding would require emitting
+	// multiple AuthorizationPolicy objects (one per Service selector) —
+	// the current 1:1 binding-to-AP ownership model cannot narrow
+	// spec.selector to more than one `kubernetes.io/service-name` value
+	// via AND semantics, and a nil selector would widen the AP to every
+	// Pod in the namespace. We reject the ambiguous case in v1alpha1 and
+	// defer multi-Service handling to a later milestone. HOL-752 review
+	// round 1 flagged this as CRITICAL.
+	if serviceTargets > 1 {
+		return metav1.Condition{
+			Type:   secretsv1alpha1.SecretInjectionPolicyBindingConditionAccepted,
+			Status: metav1.ConditionFalse,
+			Reason: secretsv1alpha1.SecretInjectionPolicyBindingReasonInvalidSpec,
+			Message: fmt.Sprintf("spec.targetRefs carries %d Service entries; v1alpha1 accepts at most one Service target per binding",
+				serviceTargets),
 		}
 	}
 	return metav1.Condition{
@@ -326,13 +365,44 @@ func (r *SecretInjectionPolicyBindingReconciler) resolvePolicy(ctx context.Conte
 }
 
 // policyCandidateNamespaces returns the admission-allowed namespaces the
-// reconciler may resolve spec.policyRef.namespace against. The order is
-// (own, parent-label, synthesized organization); the first match wins in
-// resolvePolicy. The helper is deliberately tolerant of missing labels
-// — a binding in a namespace without a `parent` label only surfaces the
-// own + organization candidates — because admission is the authoritative
-// rejector of objects that would violate the contract.
+// reconciler may resolve spec.policyRef.namespace against, narrowed by
+// spec.policyRef.scope.
+//
+// Scope narrowing (HOL-752 review round 1). The API type documents that
+// spec.policyRef.scope "narrows the reconciler's resolution path" — so a
+// binding declared with scope=organization must resolve only against the
+// synthesised org namespace, and scope=folder must resolve only against
+// the direct-parent-label namespace. Without this narrowing, a
+// scope=folder binding could accept a same-named org policy and a
+// scope=organization binding could accept a folder policy, defeating
+// the defence-in-depth contract the scope field exists to enforce.
+//
+// Admission's three-path rule still applies: the binding's own
+// namespace is always a valid same-scope candidate (policies co-located
+// with a scope=organization binding in holos-org-acme live at the org
+// root; policies co-located with a scope=folder binding in holos-fld-x
+// live in that folder). The reconciler returns the subset of the three
+// admission candidates that are consistent with scope.
+//
+// Trust-domain of the returned set. Admission is still the authoritative
+// rejector of policyRef.namespace values outside the candidate set — the
+// reconciler refuses to resolve anything outside this list, so a
+// malicious writer that bypasses admission cannot trick the reconciler
+// into a cross-scope or cross-tenant read.
+//
+// Hard-coded `holos-org-` prefix. The admission CEL expression in
+// `config/secret-injector/admission/secretinjectionpolicybinding-policyref-same-namespace-or-ancestor.yaml`
+// synthesises `holos-org-<organization>` with the same hard-coded
+// prefix. Clusters that override resolver.Resolver.NamespacePrefix or
+// OrganizationPrefix MUST patch both the admission CEL and the constant
+// below. This coupling is documented in the admission YAML header and
+// will be enforced by the envtest gate HOL-753 lands.
 func (r *SecretInjectionPolicyBindingReconciler) policyCandidateNamespaces(ctx context.Context, binding *secretsv1alpha1.SecretInjectionPolicyBinding) ([]string, error) {
+	// The binding's own namespace is always a same-scope candidate. A
+	// policy co-located with the binding matches any scope (a
+	// scope=organization binding in holos-org-acme, for instance,
+	// treats the same org namespace as both "own" and "org"; the
+	// resolvePolicy allowlist collapses to the same namespace).
 	candidates := []string{binding.Namespace}
 
 	var ns corev1.Namespace
@@ -343,6 +413,32 @@ func (r *SecretInjectionPolicyBindingReconciler) policyCandidateNamespaces(ctx c
 		return nil, fmt.Errorf("get Namespace %s: %w", binding.Namespace, err)
 	}
 
+	scope := binding.Spec.PolicyRef.Scope
+	// scope=folder narrows to the parent-label candidate only. A binding
+	// in a project namespace resolves to a folder policy in the direct
+	// parent; deeper (grandparent) folders are not covered — pin at
+	// the org root with scope=organization instead.
+	if scope == secretsv1alpha1.PolicyRefScopeFolder {
+		if parent := ns.Labels[bindingNamespaceParentLabel]; parent != "" {
+			candidates = appendUnique(candidates, parent)
+		}
+		return candidates, nil
+	}
+	// scope=organization narrows to the synthesised organization
+	// namespace only. Deeply nested bindings (project inside folder
+	// inside org) always reach the org root via the organization label,
+	// which the resolver writes on every descendant namespace.
+	if scope == secretsv1alpha1.PolicyRefScopeOrganization {
+		if orgShort := ns.Labels[bindingNamespaceOrganizationLabel]; orgShort != "" {
+			candidates = appendUnique(candidates, bindingNamespaceOrganizationPrefix+orgShort)
+		}
+		return candidates, nil
+	}
+	// Unknown / empty scope: fall back to the admission-allowed union.
+	// Admission already validates the enum, so this path is only
+	// exercised by objects that bypassed admission — we are conservative
+	// and still allow the full chain so a scope-field typo does not
+	// produce a silent resolution failure.
 	if parent := ns.Labels[bindingNamespaceParentLabel]; parent != "" {
 		candidates = appendUnique(candidates, parent)
 	}

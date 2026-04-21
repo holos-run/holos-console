@@ -49,7 +49,20 @@ const bindingTestNamespace = "holos-prj-demo"
 // rooted in the bindingTestNamespace project-scoped namespace. Shared
 // by every positive and negative test case so individual tables only
 // need to mutate the one field under test.
+//
+// Scope defaults to organization — the commonest v1alpha1 shape —
+// callers that exercise folder-scope or same-namespace resolution
+// override the spec field after construction.
 func validBinding(name string, targets []secretsv1alpha1.TargetRef, policyNamespace, policyName string) *secretsv1alpha1.SecretInjectionPolicyBinding {
+	return validBindingWithScope(name, targets, policyNamespace, policyName, secretsv1alpha1.PolicyRefScopeOrganization)
+}
+
+// validBindingWithScope is the scope-aware constructor used by the
+// ancestry table. scope=organization narrows candidate namespaces to the
+// synthesised holos-org-<org> entry plus the binding's own namespace;
+// scope=folder narrows to the parent label plus own. See
+// policyCandidateNamespaces for the contract.
+func validBindingWithScope(name string, targets []secretsv1alpha1.TargetRef, policyNamespace, policyName string, scope secretsv1alpha1.PolicyRefScope) *secretsv1alpha1.SecretInjectionPolicyBinding {
 	return &secretsv1alpha1.SecretInjectionPolicyBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       name,
@@ -59,7 +72,7 @@ func validBinding(name string, targets []secretsv1alpha1.TargetRef, policyNamesp
 		},
 		Spec: secretsv1alpha1.SecretInjectionPolicyBindingSpec{
 			PolicyRef: secretsv1alpha1.PolicyRef{
-				Scope:     secretsv1alpha1.PolicyRefScopeOrganization,
+				Scope:     scope,
 				Namespace: policyNamespace,
 				Name:      policyName,
 			},
@@ -198,31 +211,43 @@ func TestBinding_ResolvePolicy_Ancestry(t *testing.T) {
 		name            string
 		nsLabels        map[string]string
 		policyNamespace string
+		scope           secretsv1alpha1.PolicyRefScope
 	}{
 		{
+			// Same-namespace resolution. Scope defaults to organization
+			// — a scope=organization binding in a project namespace
+			// should still accept a co-located policy because the own
+			// namespace is always a same-scope candidate (see
+			// policyCandidateNamespaces).
 			name:            "same-namespace resolves directly",
 			nsLabels:        map[string]string{},
 			policyNamespace: bindingTestNamespace,
+			scope:           secretsv1alpha1.PolicyRefScopeOrganization,
 		},
 		{
-			name: "parent-label resolves via console.holos.run/parent",
+			// Folder-scope resolution via the direct-parent label.
+			name: "folder-scope resolves via console.holos.run/parent label",
 			nsLabels: map[string]string{
 				"console.holos.run/parent": "holos-fld-eng",
 			},
 			policyNamespace: "holos-fld-eng",
+			scope:           secretsv1alpha1.PolicyRefScopeFolder,
 		},
 		{
-			name: "organization-label resolves via synthesised holos-org-<name>",
+			// Organization-scope resolution via the synthesised
+			// holos-org-<organization> namespace.
+			name: "organization-scope resolves via synthesised holos-org-<name>",
 			nsLabels: map[string]string{
 				"console.holos.run/organization": "acme",
 			},
 			policyNamespace: "holos-org-acme",
+			scope:           secretsv1alpha1.PolicyRefScopeOrganization,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			binding := validBinding("binding-a", targets, tc.policyNamespace, "policy-a")
+			binding := validBindingWithScope("binding-a", targets, tc.policyNamespace, "policy-a", tc.scope)
 			policy := validPolicy("policy-a", tc.policyNamespace)
 			ns := namespaceWithLabels(bindingTestNamespace, tc.nsLabels)
 			r, cli := newBindingTestReconciler(t, binding, policy, ns)
@@ -339,6 +364,81 @@ func TestBinding_ResolvePolicy_PolicyNotFound(t *testing.T) {
 		}
 		if !strings.Contains(resolved.Message, "outside the admission-allowed ancestor chain") {
 			t.Fatalf("ResolvedRefs message did not cite the bypass; got %q", resolved.Message)
+		}
+	})
+}
+
+// TestBinding_ResolvePolicy_ScopeNarrow asserts that spec.policyRef.scope
+// narrows the candidate-namespace set: a scope=folder binding must not
+// accept a policy sitting in the synthesised org namespace, and a
+// scope=organization binding must not accept a policy sitting in the
+// parent-label folder. This is the defence-in-depth contract the scope
+// field exists to enforce, called out by HOL-752 review round 1.
+func TestBinding_ResolvePolicy_ScopeNarrow(t *testing.T) {
+	targets := []secretsv1alpha1.TargetRef{{
+		Kind:      secretsv1alpha1.TargetRefKindServiceAccount,
+		Namespace: bindingTestNamespace,
+		Name:      "demo-sa",
+	}}
+
+	t.Run("scope=folder rejects an org-level policy", func(t *testing.T) {
+		// Binding points at holos-org-acme (the org root) but declares
+		// scope=folder. Admission would permit this namespace (it is the
+		// synthesised org), but the reconciler's scope-narrowing must
+		// reject the cross-scope read.
+		binding := validBindingWithScope("binding-folder-cross", targets, "holos-org-acme", "policy-org", secretsv1alpha1.PolicyRefScopeFolder)
+		policy := validPolicy("policy-org", "holos-org-acme")
+		ns := namespaceWithLabels(bindingTestNamespace, map[string]string{
+			"console.holos.run/parent":       "holos-fld-eng",
+			"console.holos.run/organization": "acme",
+		})
+		r, cli := newBindingTestReconciler(t, binding, policy, ns)
+
+		req := ctrl.Request{NamespacedName: types.NamespacedName{
+			Namespace: binding.Namespace, Name: binding.Name,
+		}}
+		if _, err := r.Reconcile(context.Background(), req); err != nil {
+			t.Fatalf("Reconcile: %v", err)
+		}
+
+		var out secretsv1alpha1.SecretInjectionPolicyBinding
+		if err := cli.Get(context.Background(), req.NamespacedName, &out); err != nil {
+			t.Fatalf("Get binding: %v", err)
+		}
+		resolved := requireCondition(t, &out, secretsv1alpha1.SecretInjectionPolicyBindingConditionResolvedRefs, metav1.ConditionFalse)
+		if resolved.Reason != secretsv1alpha1.SecretInjectionPolicyBindingReasonPolicyNotFound {
+			t.Fatalf("ResolvedRefs reason=%q; want %q", resolved.Reason, secretsv1alpha1.SecretInjectionPolicyBindingReasonPolicyNotFound)
+		}
+		requireCondition(t, &out, secretsv1alpha1.SecretInjectionPolicyBindingConditionReady, metav1.ConditionFalse)
+	})
+
+	t.Run("scope=organization rejects a parent-folder policy", func(t *testing.T) {
+		// Binding points at the parent-label folder but declares
+		// scope=organization. Admission accepts the namespace (it is
+		// the direct parent), but the reconciler must not resolve a
+		// folder policy for an org-scope binding.
+		binding := validBindingWithScope("binding-org-cross", targets, "holos-fld-eng", "policy-fld", secretsv1alpha1.PolicyRefScopeOrganization)
+		policy := validPolicy("policy-fld", "holos-fld-eng")
+		ns := namespaceWithLabels(bindingTestNamespace, map[string]string{
+			"console.holos.run/parent":       "holos-fld-eng",
+			"console.holos.run/organization": "acme",
+		})
+		r, cli := newBindingTestReconciler(t, binding, policy, ns)
+
+		req := ctrl.Request{NamespacedName: types.NamespacedName{
+			Namespace: binding.Namespace, Name: binding.Name,
+		}}
+		if _, err := r.Reconcile(context.Background(), req); err != nil {
+			t.Fatalf("Reconcile: %v", err)
+		}
+
+		var out secretsv1alpha1.SecretInjectionPolicyBinding
+		if err := cli.Get(context.Background(), req.NamespacedName, &out); err != nil {
+			t.Fatalf("Get binding: %v", err)
+		}
+		resolved := requireCondition(t, &out, secretsv1alpha1.SecretInjectionPolicyBindingConditionResolvedRefs, metav1.ConditionFalse)
+		if resolved.Reason != secretsv1alpha1.SecretInjectionPolicyBindingReasonPolicyNotFound {
+			t.Fatalf("ResolvedRefs reason=%q; want %q", resolved.Reason, secretsv1alpha1.SecretInjectionPolicyBindingReasonPolicyNotFound)
 		}
 	})
 }
@@ -641,5 +741,93 @@ func TestBinding_BuildAuthorizationPolicy_WorkloadSelector(t *testing.T) {
 	}
 	if got := ap.Spec.Selector.MatchLabels["version"]; got != "v1" {
 		t.Fatalf("selector version=%q; want v1", got)
+	}
+}
+
+// TestBinding_ServiceTarget_CrossNamespace_Rejected asserts that a
+// Service target whose namespace differs from the binding's own
+// namespace is rejected by bindingAcceptedCondition rather than
+// silently producing an AP that would select the wrong workload (HOL-752
+// review round 1 CRITICAL). The AP must not be created.
+func TestBinding_ServiceTarget_CrossNamespace_Rejected(t *testing.T) {
+	binding := validBinding("binding-svc-xns", []secretsv1alpha1.TargetRef{{
+		Kind:      secretsv1alpha1.TargetRefKindService,
+		Namespace: "holos-prj-other",
+		Name:      "svc-a",
+	}}, bindingTestNamespace, "policy-a")
+	policy := validPolicy("policy-a", bindingTestNamespace)
+	ns := namespaceWithLabels(bindingTestNamespace, nil)
+	r, cli := newBindingTestReconciler(t, binding, policy, ns)
+
+	req := ctrl.Request{NamespacedName: types.NamespacedName{
+		Namespace: binding.Namespace, Name: binding.Name,
+	}}
+	if _, err := r.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var out secretsv1alpha1.SecretInjectionPolicyBinding
+	if err := cli.Get(context.Background(), req.NamespacedName, &out); err != nil {
+		t.Fatalf("Get binding: %v", err)
+	}
+	accepted := requireCondition(t, &out, secretsv1alpha1.SecretInjectionPolicyBindingConditionAccepted, metav1.ConditionFalse)
+	if accepted.Reason != secretsv1alpha1.SecretInjectionPolicyBindingReasonInvalidSpec {
+		t.Fatalf("Accepted reason=%q; want InvalidSpec", accepted.Reason)
+	}
+	if !strings.Contains(accepted.Message, "holos-prj-other") {
+		t.Fatalf("Accepted message did not cite the foreign namespace: %q", accepted.Message)
+	}
+
+	var ap istiosecurityv1.AuthorizationPolicy
+	apKey := types.NamespacedName{Namespace: binding.Namespace, Name: authorizationPolicyName(binding.Name)}
+	if err := cli.Get(context.Background(), apKey, &ap); err == nil {
+		t.Fatalf("AuthorizationPolicy created despite cross-namespace Service target: name=%s", ap.Name)
+	} else if !apierrors.IsNotFound(err) {
+		t.Fatalf("expected NotFound; got %v", err)
+	}
+}
+
+// TestBinding_MultipleServiceTargets_Rejected asserts that a binding
+// carrying more than one Service target is rejected by
+// bindingAcceptedCondition. A single-AP-per-binding model cannot
+// enforce disjunctive service-name selectors (AND semantics across the
+// same label key is unsatisfiable) so the current code would silently
+// widen the AP to a namespace-wide selector; HOL-752 review round 1
+// flagged this as CRITICAL and we defer multi-Service emission to a
+// later milestone.
+func TestBinding_MultipleServiceTargets_Rejected(t *testing.T) {
+	binding := validBinding("binding-multi-svc", []secretsv1alpha1.TargetRef{
+		{Kind: secretsv1alpha1.TargetRefKindService, Namespace: bindingTestNamespace, Name: "svc-a"},
+		{Kind: secretsv1alpha1.TargetRefKindService, Namespace: bindingTestNamespace, Name: "svc-b"},
+	}, bindingTestNamespace, "policy-a")
+	policy := validPolicy("policy-a", bindingTestNamespace)
+	ns := namespaceWithLabels(bindingTestNamespace, nil)
+	r, cli := newBindingTestReconciler(t, binding, policy, ns)
+
+	req := ctrl.Request{NamespacedName: types.NamespacedName{
+		Namespace: binding.Namespace, Name: binding.Name,
+	}}
+	if _, err := r.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	var out secretsv1alpha1.SecretInjectionPolicyBinding
+	if err := cli.Get(context.Background(), req.NamespacedName, &out); err != nil {
+		t.Fatalf("Get binding: %v", err)
+	}
+	accepted := requireCondition(t, &out, secretsv1alpha1.SecretInjectionPolicyBindingConditionAccepted, metav1.ConditionFalse)
+	if accepted.Reason != secretsv1alpha1.SecretInjectionPolicyBindingReasonInvalidSpec {
+		t.Fatalf("Accepted reason=%q; want InvalidSpec", accepted.Reason)
+	}
+	if !strings.Contains(accepted.Message, "at most one Service target") {
+		t.Fatalf("Accepted message did not cite the multi-Service cap: %q", accepted.Message)
+	}
+
+	var ap istiosecurityv1.AuthorizationPolicy
+	apKey := types.NamespacedName{Namespace: binding.Namespace, Name: authorizationPolicyName(binding.Name)}
+	if err := cli.Get(context.Background(), apKey, &ap); err == nil {
+		t.Fatalf("AuthorizationPolicy created despite multi-Service spec: name=%s", ap.Name)
+	} else if !apierrors.IsNotFound(err) {
+		t.Fatalf("expected NotFound; got %v", err)
 	}
 }

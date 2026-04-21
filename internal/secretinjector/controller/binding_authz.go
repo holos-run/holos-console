@@ -157,13 +157,19 @@ func buildAuthorizationPolicy(binding *secretsv1alpha1.SecretInjectionPolicyBind
 // workloadSelector is supplied, a nil selector is returned and the AP
 // applies namespace-wide (still gated by the source.principals rules).
 //
+// Multi-Service and cross-namespace Service targets are rejected up
+// front by bindingAcceptedCondition (HOL-752 review round 1): emitting
+// a single AP for a binding whose selector would either be ambiguous
+// (multiple service names in AND) or refer to a different namespace
+// than the AP itself would silently protect the wrong workload. This
+// helper therefore assumes the Accepted invariant has already been
+// enforced and errs on any ambiguity it still sees as a belt-and-braces
+// defence against spec drift.
+//
 // Order-independence and determinism. The selector MatchLabels map is
-// populated in two passes (workloadSelector first, then per-target
-// kubernetes-service label). The helper therefore tolerates multiple
-// Service targets by overwriting the single `kubernetes.io/service-name`
-// label — the reconciler only emits one selector per AP because the
-// selector is an AND across labels; overlapping Service targets are a
-// bindings-level multi-AP ask that belongs in a future ticket, not M2.
+// populated in two passes (workloadSelector first, then the single
+// kubernetes-service label) so the output is deterministic across
+// reconciles on the same input.
 func selectorForBinding(binding *secretsv1alpha1.SecretInjectionPolicyBinding) (*istiotypev1beta1.WorkloadSelector, error) {
 	matchLabels := make(map[string]string)
 
@@ -178,16 +184,38 @@ func selectorForBinding(binding *secretsv1alpha1.SecretInjectionPolicyBinding) (
 
 	var serviceTargets []string
 	for _, t := range binding.Spec.TargetRefs {
-		if t.Kind == secretsv1alpha1.TargetRefKindService {
-			serviceTargets = append(serviceTargets, t.Name)
+		if t.Kind != secretsv1alpha1.TargetRefKindService {
+			continue
 		}
+		// Defence-in-depth: bindingAcceptedCondition should have
+		// rejected a cross-namespace Service target before this helper
+		// is called. If a spec still reaches us with the wrong
+		// namespace, refuse to build an AP whose selector would
+		// silently match same-named Pods in the binding's namespace.
+		if t.Namespace != binding.Namespace {
+			return nil, fmt.Errorf("Service target %s/%s references a namespace other than the binding's own %q — AuthorizationPolicy is namespace-scoped",
+				t.Namespace, t.Name, binding.Namespace)
+		}
+		serviceTargets = append(serviceTargets, t.Name)
 	}
-	if len(serviceTargets) == 1 {
+	switch len(serviceTargets) {
+	case 0:
+		// No Service target — namespace-wide selector, still gated by
+		// source.principals when the binding carries ServiceAccount
+		// targets.
+	case 1:
 		// Istio's upstream `kubernetes.io/service-name` label is populated
 		// by the service controller on every endpointslice-backed Pod —
 		// selecting on it is the canonical way to narrow an AP to a
 		// single Service without teaching the AP about pods directly.
 		matchLabels["kubernetes.io/service-name"] = serviceTargets[0]
+	default:
+		// bindingAcceptedCondition rejects >1 Service target; if we
+		// still see multiple here the admission / Accepted path was
+		// bypassed. Refuse to emit a selector that would AND multiple
+		// service-name values (impossible — no Pod carries two values
+		// for the same label) and therefore widen the AP to every Pod.
+		return nil, fmt.Errorf("v1alpha1 accepts at most one Service target per binding; saw %d", len(serviceTargets))
 	}
 
 	if len(matchLabels) == 0 {
