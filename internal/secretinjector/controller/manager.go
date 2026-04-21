@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	istiosecurityv1 "istio.io/client-go/pkg/apis/security/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -42,14 +43,27 @@ import (
 // Scheme is the controller-runtime scheme shared by the secret-injector
 // manager and any cache-backed client constructed from it. The scheme is
 // populated at package init with corev1/etc. via client-go's
-// clientgoscheme.AddToScheme and with the secrets.holos.run/v1alpha1 types
-// registered by api/secrets/v1alpha1. M2 (reconcilers) keeps registering
-// into this scheme.
+// clientgoscheme.AddToScheme, the secrets.holos.run/v1alpha1 types
+// registered by api/secrets/v1alpha1, and istio's security.istio.io/v1
+// types registered by istio.io/client-go. M2 (reconcilers) keeps
+// registering into this scheme.
+//
+// Vendor-weight tradeoff (HOL-752). The security.istio.io/v1
+// AuthorizationPolicy types are the declarative mesh artifact the
+// SecretInjectionPolicyBindingReconciler emits. We pull the Go types
+// from istio.io/client-go (which transitively vendors
+// istio.io/api/security/v1beta1 for the nested spec proto) rather than
+// defining a local thin wrapper because a controller-runtime
+// Owns(&AuthorizationPolicy{}) watch requires a registered
+// runtime.Object that matches the CRD on the cluster. Pinning the istio
+// minor version in go.mod is the agreed upgrade contract — bump when
+// istio ships a CRD schema change that affects AuthorizationPolicy.
 var Scheme = runtime.NewScheme()
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(Scheme))
 	utilruntime.Must(secretsv1alpha1.AddToScheme(Scheme))
+	utilruntime.Must(istiosecurityv1.AddToScheme(Scheme))
 }
 
 // Options holds the knobs the holos-secret-injector binary needs to construct
@@ -94,6 +108,17 @@ type Options struct {
 	// exist. Production callers MUST leave this false; the reconciler
 	// cannot hash without a pepper.
 	SkipPepperBootstrap bool
+
+	// MeshTrustDomain is the SPIFFE trust domain the installed mesh
+	// presents on ServiceAccount certificates. The
+	// SecretInjectionPolicyBindingReconciler stamps this value into
+	// every emitted AuthorizationPolicy's source.principals entry
+	// (`<MeshTrustDomain>/ns/<ns>/sa/<name>`). Leave empty to use the
+	// upstream Istio default (`cluster.local`); operators with a
+	// re-pegged mesh MUST set MeshConfig.trustDomain here. HOL-752
+	// review round 2 introduced this knob after flagging the hard-coded
+	// default as silently-wrong on non-default meshes.
+	MeshTrustDomain string
 }
 
 // Manager wraps a sigs.k8s.io/controller-runtime manager.Manager plus a
@@ -211,14 +236,36 @@ func NewManager(cfg *rest.Config, opts Options) (*Manager, error) {
 		return nil, fmt.Errorf("controller.NewManager: registering CredentialReconciler: %w", err)
 	}
 
+	// SecretInjectionPolicyBindingReconciler wiring — M2 anchor (HOL-752).
+	// The reconciler resolves spec.policyRef along the admission-validated
+	// three-path rule (same namespace / parent label / organization label)
+	// and emits a controller-owned security.istio.io/v1 AuthorizationPolicy
+	// that declares the ext_authz allow-list for the named provider. The
+	// provider name is a package-local constant so every binding emits the
+	// same holos-secret-injector reference for M3; the trust domain
+	// defaults to the upstream Istio value (cluster.local) but operators
+	// with a re-pegged mesh set opts.MeshTrustDomain to override.
+	meshTrustDomain := opts.MeshTrustDomain
+	if meshTrustDomain == "" {
+		meshTrustDomain = defaultBindingAuthzTrustDomain
+	}
+	if err := (&SecretInjectionPolicyBindingReconciler{
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Recorder:    mgr.GetEventRecorderFor("secretinjectionpolicybinding-controller"),
+		TrustDomain: meshTrustDomain,
+	}).SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering SecretInjectionPolicyBindingReconciler: %w", err)
+	}
+
 	return &Manager{
 		credentialReconciler: credReconciler,
-		mgr:                 mgr,
-		cacheSyncTimeout:    cacheSyncTimeout,
-		logger:              logger,
-		cfg:                 cfg,
-		controllerNamespace: opts.ControllerNamespace,
-		skipPepperBootstrap: opts.SkipPepperBootstrap,
+		mgr:                  mgr,
+		cacheSyncTimeout:     cacheSyncTimeout,
+		logger:               logger,
+		cfg:                  cfg,
+		controllerNamespace:  opts.ControllerNamespace,
+		skipPepperBootstrap:  opts.SkipPepperBootstrap,
 	}, nil
 }
 
