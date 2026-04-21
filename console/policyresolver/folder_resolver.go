@@ -363,19 +363,40 @@ type policyKey struct {
 	name      string
 }
 
+// WildcardAny is the literal string used in TemplatePolicyBindingTargetRef
+// `name` and `project_name` fields to match every resource of the given kind
+// within the binding's storage-scope ancestor-walk. Exported so the handler
+// validator (HOL-772) and any future cross-package consumer can reference
+// the same symbol rather than re-spelling "*" inline.
+//
+// The wildcard is *only* recognized on `name` and `project_name`. The `kind`
+// field is never wildcarded — a `kind: DEPLOYMENT` ref never matches a
+// `PROJECT_TEMPLATE` target (and vice versa). See ADR 029 (target-refs
+// wildcards) and the proto comments on TemplatePolicyBindingTargetRef.
+//
+// Wildcard reach is capped by storage scope: a binding stored in folder `F`
+// only sees resources reachable from `F` via the ancestor walk. Wildcards
+// change matching, not evaluation reach (ancestor_bindings.go is unchanged).
+const WildcardAny = "*"
+
 // bindingAppliesTo reports whether any of a binding's target_refs selects
 // the render target at `(project, targetKind, targetName)`. Match semantics
-// (AC bullet in HOL-596):
+// (AC bullet in HOL-596, amended by HOL-767 / ADR 029):
 //
 //   - kind=PROJECT_TEMPLATE: matches when the render target is a
-//     project-scope template with the same name AND the binding's
-//     project_name equals the target's project name. The proto contract
-//     (HOL-593) requires project_name on PROJECT_TEMPLATE target refs;
-//     binding handlers reject empty project_name on create/update, so
-//     the match is sound.
-//   - kind=DEPLOYMENT: matches when the render target is a Deployment
-//     with the same name AND the binding's project_name equals the
-//     target's project name.
+//     project-scope template whose name equals tr.name OR tr.name is
+//     the wildcard "*", AND whose project equals tr.project_name OR
+//     tr.project_name is the wildcard "*". The proto contract (HOL-593)
+//     requires project_name on PROJECT_TEMPLATE target refs; binding
+//     handlers reject empty project_name on create/update.
+//   - kind=DEPLOYMENT: same name/project_name semantics as
+//     PROJECT_TEMPLATE.
+//
+// `kind` is never wildcarded. A `kind: DEPLOYMENT` ref never matches a
+// `PROJECT_TEMPLATE` target. The wildcard's reach is bounded by the binding's
+// storage-scope ancestor walk (unchanged in ancestor_bindings.go), so a
+// folder-scope binding with `{project: "*", name: "*"}` only matches
+// resources reachable from that folder.
 //
 // A binding with no target_refs never matches (correctly — an empty target
 // list declares intent to attach zero render targets).
@@ -399,15 +420,36 @@ func bindingAppliesTo(b *ResolvedBinding, project string, targetKind TargetKind,
 		if tr.GetKind() != wantKind {
 			continue
 		}
-		if tr.GetName() != targetName {
+		if !nameMatches(tr.GetName(), targetName) {
 			continue
 		}
-		if tr.GetProjectName() != project {
+		if !nameMatches(tr.GetProjectName(), project) {
 			continue
 		}
 		return true
 	}
 	return false
+}
+
+// nameMatches returns true when the ref-side value selects the target value.
+// The literal WildcardAny ("*") matches any *non-empty* target value. Exact
+// string equality covers every other case. Both arguments are compared as-is
+// — no glob, regex, or case folding (ADR 029).
+//
+// The non-empty requirement is load-bearing: when Resolve cannot derive a
+// project slug from the render-target namespace (e.g., an org- or folder-
+// scope template preview, or a ProjectFromNamespace failure) it passes
+// `project = ""` through here. Allowing `name="*"` / `project_name="*"` to
+// match an empty target would silently inject rules into a render that has
+// no project to attach them to, contradicting the HOL-554 storage-isolation
+// guardrail the resolver is meant to uphold. The handler also never stores
+// `""` on the binding side (non-empty DNS labels are required), so this
+// branch never rejects a legitimate binding.
+func nameMatches(refValue, targetValue string) bool {
+	if refValue == WildcardAny {
+		return targetValue != ""
+	}
+	return refValue == targetValue
 }
 
 // RefKey is the dedup/comparison key for a LinkedTemplateRef. Exposed so
