@@ -3346,3 +3346,322 @@ func TestCueRenderer_MultiNamespaceResources(t *testing.T) {
 		}
 	})
 }
+
+// --- CUE error diagnostic tests (HOL-829) ---
+
+// noResourcesTemplate defines neither projectResources.namespacedResources
+// nor platformResources.namespacedResources — triggers the "structured output
+// format required" message.
+const noResourcesTemplate = `
+input: {
+	name: string
+}
+
+platform: {
+	project:   string
+	namespace: string
+}
+`
+
+// nonConcretePlatformNSTemplate uses a dynamic struct key that references a
+// platform field that is not yet concrete (gatewayNamespace is not supplied).
+// The CUE engine cannot evaluate the key, so the path carries an Err().
+// The renderer must surface that CUE error, not the generic "structured output
+// format required" message.
+const nonConcretePlatformNSTemplate = `
+platform: {
+	project:          string
+	namespace:        string
+	gatewayNamespace: string
+}
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+_labels: {
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+platformResources: namespacedResources: (platform.gatewayNamespace): {
+	ConfigMap: "gw-config": {
+		apiVersion: "v1"
+		kind:       "ConfigMap"
+		metadata: {
+			name:      "gw-config"
+			namespace: platform.gatewayNamespace
+			labels:    _labels
+		}
+	}
+}
+`
+
+// platformOnlyTemplate defines only platformResources (no projectResources).
+// With ReadPlatformResources=true this must succeed.
+const platformOnlyTemplate = `
+platform: {
+	project:          string
+	namespace:        string
+	gatewayNamespace: string
+}
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+_labels: {
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+platformResources: namespacedResources: "istio-ingress": {
+	ConfigMap: "gw-config": {
+		apiVersion: "v1"
+		kind:       "ConfigMap"
+		metadata: {
+			name:      "gw-config"
+			namespace: "istio-ingress"
+			labels:    _labels
+		}
+	}
+}
+`
+
+// projectOnlyTemplate defines only projectResources (no platformResources).
+// This must succeed on both project-level and org-level render paths.
+const projectOnlyTemplate = `
+platform: {
+	project:   string
+	namespace: string
+}
+
+input: {
+	name:  string
+	image: string
+	tag:   string
+}
+
+_labels: {
+	"app.kubernetes.io/name":       input.name
+	"app.kubernetes.io/managed-by": "console.holos.run"
+}
+
+projectResources: namespacedResources: (platform.namespace): {
+	ConfigMap: (input.name): {
+		apiVersion: "v1"
+		kind:       "ConfigMap"
+		metadata: {
+			name:      input.name
+			namespace: platform.namespace
+			labels:    _labels
+		}
+	}
+}
+`
+
+// TestCueErrorDiagnostics verifies the three-way branch in evaluateWithInputs
+// and evaluateCueInput (via EvaluateGroupedCUE) introduced by HOL-829.
+func TestCueErrorDiagnostics(t *testing.T) {
+	renderer := &CueRenderer{}
+	namespace := "prj-my-project"
+	platform := v1alpha2.PlatformInput{
+		Project:          "my-project",
+		Namespace:        namespace,
+		GatewayNamespace: "istio-ingress",
+	}
+	project := v1alpha2.ProjectInput{
+		Name:  "web-app",
+		Image: "nginx",
+		Tag:   "1.25",
+		Port:  8080,
+	}
+
+	t.Run("template with no resources returns structured-output-format message", func(t *testing.T) {
+		_, err := renderer.Render(context.Background(), noResourcesTemplate, nil, RenderInputs{
+			Platform:              platform,
+			Project:               project,
+			ReadPlatformResources: true,
+		})
+		if err == nil {
+			t.Fatal("expected error for template with no resources")
+		}
+		if !strings.Contains(err.Error(), "structured output format required") {
+			t.Errorf("expected 'structured output format required' message, got: %v", err)
+		}
+	})
+
+	t.Run("template with non-concrete dynamic key surfaces CUE error not generic message", func(t *testing.T) {
+		// Pass a PlatformInput that intentionally omits GatewayNamespace so
+		// that the platform.gatewayNamespace field stays non-concrete inside CUE
+		// even after unification.
+		partialPlatform := v1alpha2.PlatformInput{
+			Project:   "my-project",
+			Namespace: namespace,
+			// GatewayNamespace deliberately left empty so the dynamic key is
+			// non-concrete; the CUE engine propagates an error on that path.
+			GatewayNamespace: "",
+		}
+		_, err := renderer.Render(context.Background(), nonConcretePlatformNSTemplate, nil, RenderInputs{
+			Platform:              partialPlatform,
+			Project:               project,
+			ReadPlatformResources: true,
+		})
+		if err == nil {
+			t.Fatal("expected error for non-concrete dynamic key template")
+		}
+		// Must NOT be the generic "structured output format required" message.
+		if strings.Contains(err.Error(), "structured output format required") {
+			t.Errorf("expected CUE error message, got generic structured-output error: %v", err)
+		}
+		// Must surface the path prefix so authors can locate the issue.
+		if !strings.Contains(err.Error(), "platformResources.namespacedResources") {
+			t.Errorf("expected path 'platformResources.namespacedResources' in error, got: %v", err)
+		}
+	})
+
+	t.Run("platform-only template succeeds with ReadPlatformResources=true", func(t *testing.T) {
+		grouped, err := renderer.Render(context.Background(), platformOnlyTemplate, nil, RenderInputs{
+			Platform:              platform,
+			Project:               project,
+			ReadPlatformResources: true,
+		})
+		if err != nil {
+			t.Fatalf("expected no error for platform-only template, got %v", err)
+		}
+		if len(grouped.Platform) != 1 {
+			t.Errorf("expected 1 platform resource, got %d", len(grouped.Platform))
+		}
+	})
+
+	t.Run("project-only template succeeds", func(t *testing.T) {
+		grouped, err := renderer.Render(context.Background(), projectOnlyTemplate, nil, RenderInputs{
+			Platform: platform,
+			Project:  project,
+		})
+		if err != nil {
+			t.Fatalf("expected no error for project-only template, got %v", err)
+		}
+		if len(grouped.Project) != 1 {
+			t.Errorf("expected 1 project resource, got %d", len(grouped.Project))
+		}
+	})
+}
+
+// rawPlatformOnlyTemplate is a fully-concrete CUE source suitable for the
+// raw-CUE entry point (EvaluateGroupedCUE). It defines only
+// platformResources with concrete struct keys — no unresolved input/platform
+// references — so no platform/project input injection is needed.
+const rawPlatformOnlyTemplate = `
+platformResources: namespacedResources: "istio-ingress": {
+	ConfigMap: "gw-config": {
+		apiVersion: "v1"
+		kind:       "ConfigMap"
+		metadata: {
+			name:      "gw-config"
+			namespace: "istio-ingress"
+			labels: "app.kubernetes.io/managed-by": "console.holos.run"
+		}
+	}
+}
+`
+
+// rawProjectOnlyTemplate is a fully-concrete CUE source suitable for the
+// raw-CUE entry point. It defines only projectResources with concrete keys.
+const rawProjectOnlyTemplate = `
+projectResources: namespacedResources: "my-ns": {
+	ConfigMap: "app-config": {
+		apiVersion: "v1"
+		kind:       "ConfigMap"
+		metadata: {
+			name:      "app-config"
+			namespace: "my-ns"
+			labels: "app.kubernetes.io/managed-by": "console.holos.run"
+		}
+	}
+}
+`
+
+// rawNonConcretePlatformNSTemplate is suitable for the raw-CUE path: it uses
+// a non-concrete dynamic key (platform.gatewayNamespace) that cannot be
+// resolved because platform remains unconstrained — exactly as the preview
+// render path receives it before client values are injected.
+const rawNonConcretePlatformNSTemplate = `
+platform: {
+	project:          string
+	namespace:        string
+	gatewayNamespace: string
+}
+
+platformResources: namespacedResources: (platform.gatewayNamespace): {
+	ConfigMap: "gw-config": {
+		apiVersion: "v1"
+		kind:       "ConfigMap"
+		metadata: {
+			name:      "gw-config"
+			namespace: platform.gatewayNamespace
+			labels: "app.kubernetes.io/managed-by": "console.holos.run"
+		}
+	}
+}
+`
+
+// TestEvaluateGroupedCUEErrorDiagnostics exercises the same three-way branch
+// via the raw-CUE entry point (EvaluateGroupedCUE → evaluateCueInput) so that
+// both code paths are covered.
+func TestEvaluateGroupedCUEErrorDiagnostics(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("no resources returns structured-output-format message", func(t *testing.T) {
+		source := noResourcesTemplate
+		_, err := EvaluateGroupedCUE(ctx, source, true)
+		if err == nil {
+			t.Fatal("expected error for template with no resources")
+		}
+		if !strings.Contains(err.Error(), "structured output format required") {
+			t.Errorf("expected 'structured output format required' message, got: %v", err)
+		}
+	})
+
+	t.Run("non-concrete dynamic key surfaces CUE error not generic message", func(t *testing.T) {
+		// Raw-CUE source leaves platform.gatewayNamespace unconstrained
+		// (like the preview path does before the client injects values), so
+		// the dynamic struct key is non-concrete and the CUE engine propagates
+		// an error on that path.
+		source := rawNonConcretePlatformNSTemplate
+		_, err := EvaluateGroupedCUE(ctx, source, true)
+		if err == nil {
+			t.Fatal("expected error for non-concrete dynamic key in raw CUE path")
+		}
+		if strings.Contains(err.Error(), "structured output format required") {
+			t.Errorf("expected CUE error message, got generic structured-output error: %v", err)
+		}
+		if !strings.Contains(err.Error(), "platformResources.namespacedResources") {
+			t.Errorf("expected path prefix in error, got: %v", err)
+		}
+	})
+
+	t.Run("platform-only template succeeds", func(t *testing.T) {
+		grouped, err := EvaluateGroupedCUE(ctx, rawPlatformOnlyTemplate, true)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(grouped.Platform) != 1 {
+			t.Errorf("expected 1 platform resource, got %d", len(grouped.Platform))
+		}
+	})
+
+	t.Run("project-only template succeeds", func(t *testing.T) {
+		grouped, err := EvaluateGroupedCUE(ctx, rawProjectOnlyTemplate, false)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(grouped.Project) != 1 {
+			t.Errorf("expected 1 project resource, got %d", len(grouped.Project))
+		}
+	})
+}

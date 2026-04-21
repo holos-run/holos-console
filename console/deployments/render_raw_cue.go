@@ -69,9 +69,33 @@ func evaluateCueInput(cueSource string, readPlatformResources bool) (*GroupedRes
 
 	namespacedValue := unified.LookupPath(cue.ParsePath("projectResources.namespacedResources"))
 	platformNamespacedValue := unified.LookupPath(cue.ParsePath("platformResources.namespacedResources"))
-	if (namespacedValue.Err() != nil || !namespacedValue.Exists()) &&
-		(platformNamespacedValue.Err() != nil || !platformNamespacedValue.Exists()) {
+
+	// Three-way distinction:
+	//   1. Neither path exists → template is missing the required
+	//      structured-output fields; keep the existing message.
+	//   2. At least one path exists but carries a CUE evaluation error (e.g.
+	//      non-concrete dynamic field key) → surface the CUE error verbatim so
+	//      template authors can act on the real cause.
+	//   3. At least one path exists with no error → happy path.
+	//
+	// Note: LookupPath on a missing field returns a value that is both
+	// !Exists() AND has a non-nil Err(), so we must test Exists() first before
+	// inspecting Err() — Err() alone cannot distinguish "absent" from "broken".
+	projExists := namespacedValue.Exists()
+	platExists := platformNamespacedValue.Exists()
+
+	if !projExists && !platExists {
 		return nil, fmt.Errorf("template must define 'projectResources.namespacedResources' or 'platformResources.namespacedResources' (structured output format required)")
+	}
+	if projExists {
+		if err := namespacedValue.Err(); err != nil {
+			return nil, fmt.Errorf("projectResources.namespacedResources: %w", err)
+		}
+	}
+	if platExists {
+		if err := platformNamespacedValue.Err(); err != nil {
+			return nil, fmt.Errorf("platformResources.namespacedResources: %w", err)
+		}
 	}
 
 	return evaluateStructuredGrouped(unified, readPlatformResources)
