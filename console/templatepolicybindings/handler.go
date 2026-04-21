@@ -13,6 +13,7 @@ import (
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -588,12 +589,20 @@ func (h *Handler) validatePolicyRef(ref *consolev1.LinkedTemplatePolicyRef) erro
 }
 
 // validateTargetRefs enforces the invariants common to every target_ref:
-// kind must be set to one of the two legal values, name must be a DNS
-// label, project_name must be present (required for both PROJECT_TEMPLATE
-// and DEPLOYMENT kinds per the proto comment). Duplicate (kind,
+// kind must be set to one of the two legal values; name and project_name
+// must each be either the wildcard sentinel policyresolver.WildcardAny
+// ("*") or a valid DNS label. Empty strings are always rejected — the
+// resolver's nameMatches guard treats the empty target value as no-match
+// for wildcard refs, so storing an empty value would silently make a
+// binding match nothing (see HOL-772 handoff). Duplicate (kind,
 // project_name, name) triples are rejected — two entries with the same
 // triple make the binding semantically ambiguous and most likely signal a
-// UI bug that submitted the same target twice.
+// UI bug that submitted the same target twice. Two rows with
+// {kind, "*", "*"} are therefore still a duplicate of each other.
+//
+// The wildcard short-circuit runs BEFORE dnsLabelRe because
+// dnsLabelRe.MatchString("*") returns false. `kind` is never wildcarded;
+// see ADR 029.
 func validateTargetRefs(refs []*consolev1.TemplatePolicyBindingTargetRef) error {
 	if len(refs) == 0 {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("binding must have at least one target_ref"))
@@ -610,21 +619,11 @@ func validateTargetRefs(refs []*consolev1.TemplatePolicyBindingTargetRef) error 
 			return connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("target_refs[%d]: kind must be PROJECT_TEMPLATE or DEPLOYMENT, got %v", i, ref.GetKind()))
 		}
-		if ref.GetName() == "" {
-			return connect.NewError(connect.CodeInvalidArgument,
-				fmt.Errorf("target_refs[%d]: name is required", i))
+		if err := validateTargetRefField(i, "name", ref.GetName()); err != nil {
+			return err
 		}
-		if !dnsLabelRe.MatchString(ref.GetName()) {
-			return connect.NewError(connect.CodeInvalidArgument,
-				fmt.Errorf("target_refs[%d]: name must be a valid DNS label, got %q", i, ref.GetName()))
-		}
-		if ref.GetProjectName() == "" {
-			return connect.NewError(connect.CodeInvalidArgument,
-				fmt.Errorf("target_refs[%d]: project_name is required", i))
-		}
-		if !dnsLabelRe.MatchString(ref.GetProjectName()) {
-			return connect.NewError(connect.CodeInvalidArgument,
-				fmt.Errorf("target_refs[%d]: project_name must be a valid DNS label, got %q", i, ref.GetProjectName()))
+		if err := validateTargetRefField(i, "project_name", ref.GetProjectName()); err != nil {
+			return err
 		}
 		kindStr := targetKindString(ref.GetKind())
 		key := kindStr + "|" + ref.GetProjectName() + "|" + ref.GetName()
@@ -634,6 +633,28 @@ func validateTargetRefs(refs []*consolev1.TemplatePolicyBindingTargetRef) error 
 					i, prev, kindStr, ref.GetProjectName(), ref.GetName()))
 		}
 		seen[key] = i
+	}
+	return nil
+}
+
+// validateTargetRefField enforces the shared name/project_name syntax:
+// the value must be either policyresolver.WildcardAny or a DNS label.
+// Empty strings are rejected unconditionally — the resolver's wildcard
+// match returns false when the target-side value is empty (HOL-770's
+// storage-isolation guardrail), so allowing an empty stored value would
+// silently produce a binding that matches nothing.
+func validateTargetRefField(i int, field, value string) error {
+	if value == "" {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("target_refs[%d]: %s is required", i, field))
+	}
+	if value == policyresolver.WildcardAny {
+		return nil
+	}
+	if !dnsLabelRe.MatchString(value) {
+		return connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("target_refs[%d]: %s must be a valid DNS label or %q, got %q",
+				i, field, policyresolver.WildcardAny, value))
 	}
 	return nil
 }
@@ -715,6 +736,13 @@ func (h *Handler) validatePolicyRefReachable(
 // from the resolver is converted to CodeInternal; a false return is
 // converted to CodeInvalidArgument with the index and the offending
 // project_name so the UI can highlight the bad row.
+//
+// A target_ref whose project_name is policyresolver.WildcardAny declares
+// "every project reachable from the binding's storage scope" — there is
+// no single project to probe, and the storage-scope ancestor walk already
+// caps the wildcard's reach at render time. The handler skips the
+// existence probe and also bypasses the project-name cache so a literal
+// ref in the same request still reaches ProjectExistsResolver.
 func (h *Handler) validateTargetProjects(
 	ctx context.Context,
 	scope scopeKind,
@@ -732,6 +760,13 @@ func (h *Handler) validateTargetProjects(
 		project := ref.GetProjectName()
 		if project == "" {
 			continue // validateTargetRefs already rejected this
+		}
+		if project == policyresolver.WildcardAny {
+			// Wildcard project_name: nothing to probe, and the cache is
+			// bypassed so a literal ref with the same stored string is
+			// still probed (currently impossible since "*" is not a DNS
+			// label, but the bypass keeps the cache semantically correct).
+			continue
 		}
 		if checked[project] {
 			continue
