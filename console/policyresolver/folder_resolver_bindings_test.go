@@ -399,6 +399,71 @@ func TestBindingAppliesTo_Wildcards(t *testing.T) {
 	}
 }
 
+// TestBindingAppliesTo_WildcardRejectsEmptyTargetValue pins the HOL-554
+// storage-isolation guardrail under the new wildcard semantics: when
+// Resolve cannot derive a project slug from the render-target namespace
+// (e.g., ProjectFromNamespace fails and the call site passes `project = ""`
+// through to bindingAppliesTo), a binding whose `project_name` is the
+// wildcard must NOT match the empty target. Same for `name`. Without this
+// guard, a wildcard binding would silently cover render targets that have
+// no project to attach to.
+func TestBindingAppliesTo_WildcardRejectsEmptyTargetValue(t *testing.T) {
+	wildcardBoth := &ResolvedBinding{
+		Name:      "wildcard-both",
+		Namespace: "holos-org-acme",
+		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{{
+			Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+			Name:        "*",
+			ProjectName: "*",
+		}},
+	}
+
+	// Empty project: simulates Resolve's fallback when
+	// ProjectFromNamespace returns an error. A `{*, *}` binding must not
+	// match this "no project" case.
+	if bindingAppliesTo(wildcardBoth, "", TargetKindDeployment, "api") {
+		t.Error("wildcard project_name must not match empty project value (ProjectFromNamespace failure)")
+	}
+	// Empty target name: the handler never stores an empty Name on the
+	// render-target side, but the resolver is called through multiple
+	// layers; belt-and-suspenders check that `name="*"` doesn't match
+	// a caller that forgot to populate targetName either.
+	if bindingAppliesTo(wildcardBoth, "acme-prod", TargetKindDeployment, "") {
+		t.Error("wildcard name must not match empty targetName")
+	}
+	// Both empty: certainly must not match.
+	if bindingAppliesTo(wildcardBoth, "", TargetKindDeployment, "") {
+		t.Error("wildcard must not match both-empty target")
+	}
+
+	// Sanity check: a single-field wildcard still rejects the empty
+	// counterpart on the other axis too.
+	wildcardProjectOnly := &ResolvedBinding{
+		Name:      "wildcard-project",
+		Namespace: "holos-org-acme",
+		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{{
+			Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+			Name:        "web",
+			ProjectName: "*",
+		}},
+	}
+	if bindingAppliesTo(wildcardProjectOnly, "", TargetKindDeployment, "web") {
+		t.Error("wildcard project_name must not match empty project even when name matches literally")
+	}
+	wildcardNameOnly := &ResolvedBinding{
+		Name:      "wildcard-name",
+		Namespace: "holos-org-acme",
+		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{{
+			Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+			Name:        "*",
+			ProjectName: "acme-prod",
+		}},
+	}
+	if bindingAppliesTo(wildcardNameOnly, "acme-prod", TargetKindDeployment, "") {
+		t.Error("wildcard name must not match empty targetName even when project matches literally")
+	}
+}
+
 // TestBindingAppliesTo_NilAndEmptyRefs asserts the defensive rejects:
 // a nil binding, a binding with no TargetRefs, and a binding whose
 // TargetRefs slice contains a nil entry all degrade to "no match"

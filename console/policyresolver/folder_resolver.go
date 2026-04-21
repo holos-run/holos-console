@@ -432,12 +432,22 @@ func bindingAppliesTo(b *ResolvedBinding, project string, targetKind TargetKind,
 }
 
 // nameMatches returns true when the ref-side value selects the target value.
-// The literal wildcardAny ("*") matches any non-empty target value. Exact
+// The literal wildcardAny ("*") matches any *non-empty* target value. Exact
 // string equality covers every other case. Both arguments are compared as-is
 // — no glob, regex, or case folding (ADR 029).
+//
+// The non-empty requirement is load-bearing: when Resolve cannot derive a
+// project slug from the render-target namespace (e.g., an org- or folder-
+// scope template preview, or a ProjectFromNamespace failure) it passes
+// `project = ""` through here. Allowing `name="*"` / `project_name="*"` to
+// match an empty target would silently inject rules into a render that has
+// no project to attach them to, contradicting the HOL-554 storage-isolation
+// guardrail the resolver is meant to uphold. The handler also never stores
+// `""` on the binding side (non-empty DNS labels are required), so this
+// branch never rejects a legitimate binding.
 func nameMatches(refValue, targetValue string) bool {
 	if refValue == wildcardAny {
-		return true
+		return targetValue != ""
 	}
 	return refValue == targetValue
 }
