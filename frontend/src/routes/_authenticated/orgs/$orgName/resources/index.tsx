@@ -44,6 +44,18 @@ function typeBadge(type: ResourceType) {
   return <Badge variant="destructive">Unknown</Badge>
 }
 
+// guardOrgName logs a warning and returns a placeholder when the server
+// returns an empty path element name (contract violation). An empty slug
+// would generate broken URLs such as /orgs//folders/… that TanStack Router
+// may 404 or throw on.
+function guardOrgName(name: string): string {
+  if (!name) {
+    console.warn('PathCell: received empty org name in path element; check server contract')
+    return '(unknown)'
+  }
+  return name
+}
+
 // PathCell renders the root→leaf display-name breadcrumb with the leaf
 // (this resource) on the right. The root element (index 0) is the
 // organization; subsequent elements are ancestor folders; the leaf is the
@@ -62,7 +74,7 @@ function PathCell({ resource }: { resource: Resource }) {
             {i === 0 ? (
               <Link
                 to="/orgs/$orgName"
-                params={{ orgName: element.name }}
+                params={{ orgName: guardOrgName(element.name) }}
                 title={element.name}
                 className="hover:underline text-muted-foreground"
               >
@@ -78,6 +90,9 @@ function PathCell({ resource }: { resource: Resource }) {
                 {display}
               </Link>
             )}
+            {/* The `/` separator precedes the next sibling span (or the leaf
+                Link below) and is rendered inside this span so each breadcrumb
+                element is a self-contained flex item: [link /] [link /] [leaf]. */}
             <span className="text-muted-foreground">/</span>
           </span>
         )
@@ -237,12 +252,15 @@ export function ResourcesIndexPage() {
   )
 }
 
+// typeLabel returns the capitalized string used by the type-column accessor.
+// The values are capitalized to agree with typeBadge's rendered text and
+// remove a hidden coupling to case-insensitive globalFilterFn behaviour.
 function typeLabel(type: ResourceType) {
   return type === ResourceType.FOLDER
-    ? 'folder'
+    ? 'Folder'
     : type === ResourceType.PROJECT
-      ? 'project'
-      : 'unknown'
+      ? 'Project'
+      : 'Unknown'
 }
 
 // pathSearchString serializes the row's display-name breadcrumb plus the
@@ -251,7 +269,7 @@ function typeLabel(type: ResourceType) {
 function pathSearchString(resource: Resource): string {
   const crumbs = resource.path.map((p) => p.displayName || p.name)
   crumbs.push(resource.displayName || resource.name)
-  if (resource.name !== (resource.displayName || resource.name)) {
+  if (resource.displayName !== '' && resource.displayName !== resource.name) {
     crumbs.push(resource.name)
   }
   return crumbs.join(' / ')

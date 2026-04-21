@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
-import React from 'react'
+import { LinkMock } from '@/test/link-mock'
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
@@ -10,31 +10,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     createFileRoute: () => () => ({
       useParams: () => ({ orgName: 'test-org' }),
     }),
-    Link: ({
-      children,
-      to,
-      params,
-      title,
-      className,
-    }: {
-      children: React.ReactNode
-      to: string
-      params?: Record<string, string>
-      title?: string
-      className?: string
-    }) => {
-      let href = to
-      if (params) {
-        for (const [k, v] of Object.entries(params)) {
-          href = href.replace(`$${k}`, v)
-        }
-      }
-      return (
-        <a href={href} title={title} className={className}>
-          {children}
-        </a>
-      )
-    },
+    Link: LinkMock,
   }
 })
 
@@ -167,11 +143,10 @@ describe('ResourcesIndexPage', () => {
     setupMocks([makeFolder('ops')])
     render(<ResourcesIndexPage />)
 
-    // Leaf link uses the slug since display name is empty.
-    const leafLinks = screen.getAllByRole('link', { name: 'ops' })
-    expect(
-      leafLinks.some((l) => l.getAttribute('href') === '/folders/ops'),
-    ).toBe(true)
+    // When displayName is empty the leaf link uses the slug as its text and
+    // href — assert directly so a regression fails with a clear message.
+    const leafLink = screen.getByRole('link', { name: 'ops', hidden: false })
+    expect(leafLink).toHaveAttribute('href', '/folders/ops')
   })
 
   it('filters rows via the global search input', () => {
