@@ -11,51 +11,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Info } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useCreateTemplate } from '@/queries/templates'
+import type { TemplateExample } from '@/queries/templates'
 import { namespaceForFolder } from '@/lib/scope-labels'
 import { useGetFolder } from '@/queries/folders'
-
-// EXAMPLE_FOLDER_PLATFORM_TEMPLATE is the example folder-level platform template CUE content.
-// It provides an HTTPRoute into the org-configured ingress-gateway namespace
-// (platform.gatewayNamespace, set per-org via Settings; falls back to
-// "istio-ingress" when unset). Authors who need a literal pin should use the
-// same value the org is configured with — see HOL-526.
-const EXAMPLE_FOLDER_PLATFORM_TEMPLATE = `// Folder-level platform template — HTTPRoute for the org-configured ingress gateway.
-// Applied to projects within this folder hierarchy. The HTTPRoute lands in
-// platform.gatewayNamespace, which the backend resolves from the org's
-// console.holos.run/gateway-namespace annotation. Configure it on the org's
-// Settings page (see HOL-526).
-platformResources: {
-    namespacedResources: (platform.gatewayNamespace): {
-        HTTPRoute: (input.name): {
-            apiVersion: "gateway.networking.k8s.io/v1"
-            kind:       "HTTPRoute"
-            metadata: {
-                name:      input.name
-                namespace: platform.gatewayNamespace
-                labels: {
-                    "app.kubernetes.io/managed-by": "console.holos.run"
-                    "app.kubernetes.io/name":       input.name
-                }
-            }
-            spec: {
-                parentRefs: [{
-                    group:     "gateway.networking.k8s.io"
-                    kind:      "Gateway"
-                    namespace: platform.gatewayNamespace
-                    name:      "default"
-                }]
-                rules: [{
-                    backendRefs: [{
-                        name: input.name
-                        port: 80
-                    }]
-                }]
-            }
-        }
-    }
-    clusterResources: {}
-}
-`
+import { TemplateExamplePicker } from '@/components/templates/template-example-picker'
 
 export const Route = createFileRoute('/_authenticated/folders/$folderName/templates/new')({
   component: CreateFolderTemplateRoute,
@@ -89,7 +48,10 @@ export function CreateFolderTemplatePage({ folderName: propFolderName }: { folde
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [cueTemplate, setCueTemplate] = useState('')
-  const [enabled, setEnabled] = useState(false)
+  // The Enabled toggle defaults to true so a newly created folder-scope
+  // template is live immediately. Authors who want a dry-run entry can flip
+  // it off before submitting. See HOL-789 AC 5.
+  const [enabled, setEnabled] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const slugify = (val: string) =>
@@ -100,13 +62,11 @@ export function CreateFolderTemplatePage({ folderName: propFolderName }: { folde
     setName(slugify(val))
   }
 
-  const handleLoadExample = () => {
-    setName('httproute-ingress')
-    setDisplayName('HTTPRoute Ingress')
-    setDescription(
-      'Provides an HTTPRoute for the org-configured ingress gateway, routing traffic to project services.',
-    )
-    setCueTemplate(EXAMPLE_FOLDER_PLATFORM_TEMPLATE)
+  const handleSelectExample = (example: TemplateExample) => {
+    setDisplayName(example.displayName)
+    setName(example.name)
+    setDescription(example.description)
+    setCueTemplate(example.cueTemplate)
   }
 
   const handleCreate = async () => {
@@ -206,25 +166,10 @@ export function CreateFolderTemplatePage({ folderName: propFolderName }: { folde
           <div>
             <div className="flex items-center justify-between mb-1">
               <Label htmlFor="template-cue-template">CUE Template</Label>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" type="button" onClick={handleLoadExample} disabled={!canWrite}>
-                  Load Example
-                </Button>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Info className="h-4 w-4 text-muted-foreground cursor-default" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>
-                        Platform templates are unified with project deployment templates at render
-                        time via CUE. This example provides an HTTPRoute for the org-configured
-                        ingress gateway (platform.gatewayNamespace).
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
+              <TemplateExamplePicker
+                onSelect={handleSelectExample}
+                disabled={!canWrite}
+              />
             </div>
             <Textarea
               id="template-cue-template"
@@ -245,8 +190,24 @@ export function CreateFolderTemplatePage({ folderName: propFolderName }: { folde
               disabled={!canWrite}
             />
             <Label htmlFor="template-enabled" className="text-sm cursor-pointer">
-              Enabled (apply to projects in this folder)
+              Enabled
             </Label>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info
+                    aria-label="Enabled tooltip"
+                    className="h-4 w-4 text-muted-foreground cursor-default"
+                  />
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    Unified with resources bound to this Template by Policy when enabled. See
+                    TemplatePolicyBinding.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           {error && (
             <Alert variant="destructive">
