@@ -222,3 +222,314 @@ func TestFolderResolver_BindingProjectNameMismatchContributesNothing(t *testing.
 		t.Errorf("expected no refs when binding names a different project, got %v", refNames(got))
 	}
 }
+
+// TestBindingAppliesTo_Wildcards exercises every
+// `{name, project_name} × {literal, wildcardAny}` combination across both
+// PROJECT_TEMPLATE and DEPLOYMENT kinds and asserts:
+//
+//   - literal/literal is a regression guard (exact match).
+//   - name="*" matches any target name within the same project.
+//   - project_name="*" matches any project for the same target name.
+//   - name="*" AND project_name="*" matches every resource of the given kind.
+//   - `kind` is never wildcarded: a DEPLOYMENT ref never matches a
+//     PROJECT_TEMPLATE target and vice-versa.
+//
+// This is a direct unit test of the match function rather than going through
+// Resolve: it keeps the match-logic AC bullets in HOL-770 on a tight feedback
+// loop and surfaces regressions in a single file when either the sentinel or
+// the comparison strategy drifts. The folder cascade behavior is covered
+// separately below.
+func TestBindingAppliesTo_Wildcards(t *testing.T) {
+	type wantMatch struct {
+		project    string
+		targetKind TargetKind
+		targetName string
+		match      bool
+	}
+
+	projectTemplateRef := func(project, name string) *consolev1.TemplatePolicyBindingTargetRef {
+		return &consolev1.TemplatePolicyBindingTargetRef{
+			Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE,
+			Name:        name,
+			ProjectName: project,
+		}
+	}
+	deploymentRef := func(project, name string) *consolev1.TemplatePolicyBindingTargetRef {
+		return &consolev1.TemplatePolicyBindingTargetRef{
+			Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT,
+			Name:        name,
+			ProjectName: project,
+		}
+	}
+
+	tests := []struct {
+		name  string
+		refs  []*consolev1.TemplatePolicyBindingTargetRef
+		cases []wantMatch
+	}{
+		// --- PROJECT_TEMPLATE kind ---
+		{
+			name: "project_template literal name and project",
+			refs: []*consolev1.TemplatePolicyBindingTargetRef{projectTemplateRef("acme-prod", "web")},
+			cases: []wantMatch{
+				{project: "acme-prod", targetKind: TargetKindProjectTemplate, targetName: "web", match: true},
+				{project: "acme-prod", targetKind: TargetKindProjectTemplate, targetName: "api", match: false},
+				{project: "other-project", targetKind: TargetKindProjectTemplate, targetName: "web", match: false},
+				// kind mismatch — never matches, even when name+project align.
+				{project: "acme-prod", targetKind: TargetKindDeployment, targetName: "web", match: false},
+			},
+		},
+		{
+			name: "project_template wildcard name matches every name in project",
+			refs: []*consolev1.TemplatePolicyBindingTargetRef{projectTemplateRef("acme-prod", "*")},
+			cases: []wantMatch{
+				{project: "acme-prod", targetKind: TargetKindProjectTemplate, targetName: "web", match: true},
+				{project: "acme-prod", targetKind: TargetKindProjectTemplate, targetName: "api", match: true},
+				{project: "other-project", targetKind: TargetKindProjectTemplate, targetName: "web", match: false},
+				// kind mismatch — never matches.
+				{project: "acme-prod", targetKind: TargetKindDeployment, targetName: "web", match: false},
+			},
+		},
+		{
+			name: "project_template wildcard project matches every project with named template",
+			refs: []*consolev1.TemplatePolicyBindingTargetRef{projectTemplateRef("*", "web")},
+			cases: []wantMatch{
+				{project: "acme-prod", targetKind: TargetKindProjectTemplate, targetName: "web", match: true},
+				{project: "other-project", targetKind: TargetKindProjectTemplate, targetName: "web", match: true},
+				{project: "acme-prod", targetKind: TargetKindProjectTemplate, targetName: "api", match: false},
+				// kind mismatch — never matches.
+				{project: "acme-prod", targetKind: TargetKindDeployment, targetName: "web", match: false},
+			},
+		},
+		{
+			name: "project_template wildcard name and project matches every template",
+			refs: []*consolev1.TemplatePolicyBindingTargetRef{projectTemplateRef("*", "*")},
+			cases: []wantMatch{
+				{project: "acme-prod", targetKind: TargetKindProjectTemplate, targetName: "web", match: true},
+				{project: "other-project", targetKind: TargetKindProjectTemplate, targetName: "api", match: true},
+				// kind mismatch — {*, *} still doesn't bleed across kinds.
+				{project: "acme-prod", targetKind: TargetKindDeployment, targetName: "web", match: false},
+				{project: "other-project", targetKind: TargetKindDeployment, targetName: "api", match: false},
+			},
+		},
+		// --- DEPLOYMENT kind ---
+		{
+			name: "deployment literal name and project",
+			refs: []*consolev1.TemplatePolicyBindingTargetRef{deploymentRef("acme-prod", "web")},
+			cases: []wantMatch{
+				{project: "acme-prod", targetKind: TargetKindDeployment, targetName: "web", match: true},
+				{project: "acme-prod", targetKind: TargetKindDeployment, targetName: "api", match: false},
+				{project: "other-project", targetKind: TargetKindDeployment, targetName: "web", match: false},
+				// kind mismatch — never matches.
+				{project: "acme-prod", targetKind: TargetKindProjectTemplate, targetName: "web", match: false},
+			},
+		},
+		{
+			name: "deployment wildcard name matches every deployment in project",
+			refs: []*consolev1.TemplatePolicyBindingTargetRef{deploymentRef("acme-prod", "*")},
+			cases: []wantMatch{
+				{project: "acme-prod", targetKind: TargetKindDeployment, targetName: "web", match: true},
+				{project: "acme-prod", targetKind: TargetKindDeployment, targetName: "api", match: true},
+				{project: "other-project", targetKind: TargetKindDeployment, targetName: "web", match: false},
+				// kind mismatch — never matches.
+				{project: "acme-prod", targetKind: TargetKindProjectTemplate, targetName: "web", match: false},
+			},
+		},
+		{
+			name: "deployment wildcard project matches every project with named deployment",
+			refs: []*consolev1.TemplatePolicyBindingTargetRef{deploymentRef("*", "web")},
+			cases: []wantMatch{
+				{project: "acme-prod", targetKind: TargetKindDeployment, targetName: "web", match: true},
+				{project: "other-project", targetKind: TargetKindDeployment, targetName: "web", match: true},
+				{project: "acme-prod", targetKind: TargetKindDeployment, targetName: "api", match: false},
+				// kind mismatch — never matches.
+				{project: "acme-prod", targetKind: TargetKindProjectTemplate, targetName: "web", match: false},
+			},
+		},
+		{
+			name: "deployment wildcard name and project matches every deployment",
+			refs: []*consolev1.TemplatePolicyBindingTargetRef{deploymentRef("*", "*")},
+			cases: []wantMatch{
+				{project: "acme-prod", targetKind: TargetKindDeployment, targetName: "web", match: true},
+				{project: "other-project", targetKind: TargetKindDeployment, targetName: "api", match: true},
+				// kind mismatch — {*, *} still doesn't bleed across kinds.
+				{project: "acme-prod", targetKind: TargetKindProjectTemplate, targetName: "web", match: false},
+				{project: "other-project", targetKind: TargetKindProjectTemplate, targetName: "api", match: false},
+			},
+		},
+		// --- Multi-ref: wildcard must not short-circuit a following literal
+		// refusal and vice versa. The first matching ref wins; a wildcard
+		// ref that doesn't match the queried kind must fall through to the
+		// next ref in the slice.
+		{
+			name: "multi-ref deployment wildcard plus project_template literal",
+			refs: []*consolev1.TemplatePolicyBindingTargetRef{
+				deploymentRef("*", "*"),
+				projectTemplateRef("acme-prod", "web"),
+			},
+			cases: []wantMatch{
+				// First ref (deployment wildcard) skipped for PROJECT_TEMPLATE
+				// queries; second ref (literal) matches the named template.
+				{project: "acme-prod", targetKind: TargetKindProjectTemplate, targetName: "web", match: true},
+				// Second ref doesn't match a different name; first ref's
+				// wildcard was the wrong kind — so no match.
+				{project: "acme-prod", targetKind: TargetKindProjectTemplate, targetName: "api", match: false},
+				// First ref (deployment wildcard) matches any deployment.
+				{project: "other-project", targetKind: TargetKindDeployment, targetName: "api", match: true},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			b := &ResolvedBinding{
+				Name:       "wildcard-test",
+				Namespace:  "holos-org-acme",
+				TargetRefs: tc.refs,
+			}
+			for _, c := range tc.cases {
+				got := bindingAppliesTo(b, c.project, c.targetKind, c.targetName)
+				if got != c.match {
+					t.Errorf("bindingAppliesTo(project=%q, kind=%v, name=%q) = %v, want %v",
+						c.project, c.targetKind, c.targetName, got, c.match)
+				}
+			}
+		})
+	}
+}
+
+// TestBindingAppliesTo_NilAndEmptyRefs asserts the defensive rejects:
+// a nil binding, a binding with no TargetRefs, and a binding whose
+// TargetRefs slice contains a nil entry all degrade to "no match"
+// without panic. The zero-value kind (UNSPECIFIED) never matches
+// either of the two concrete TargetKinds the resolver queries.
+func TestBindingAppliesTo_NilAndEmptyRefs(t *testing.T) {
+	if bindingAppliesTo(nil, "acme-prod", TargetKindDeployment, "web") {
+		t.Error("nil binding must not match")
+	}
+	empty := &ResolvedBinding{Name: "empty", Namespace: "holos-org-acme"}
+	if bindingAppliesTo(empty, "acme-prod", TargetKindDeployment, "web") {
+		t.Error("binding with nil TargetRefs must not match")
+	}
+	withNilEntry := &ResolvedBinding{
+		Name:       "nil-entry",
+		Namespace:  "holos-org-acme",
+		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{nil},
+	}
+	if bindingAppliesTo(withNilEntry, "acme-prod", TargetKindDeployment, "web") {
+		t.Error("binding with a nil TargetRef entry must not match")
+	}
+	// Zero-value (UNSPECIFIED) kind with wildcard name and project must
+	// still not match either of the two concrete render-target kinds.
+	zeroKind := &ResolvedBinding{
+		Name:      "zero-kind",
+		Namespace: "holos-org-acme",
+		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{{
+			Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_UNSPECIFIED,
+			Name:        "*",
+			ProjectName: "*",
+		}},
+	}
+	if bindingAppliesTo(zeroKind, "acme-prod", TargetKindDeployment, "web") {
+		t.Error("UNSPECIFIED target kind must not match DEPLOYMENT")
+	}
+	if bindingAppliesTo(zeroKind, "acme-prod", TargetKindProjectTemplate, "web") {
+		t.Error("UNSPECIFIED target kind must not match PROJECT_TEMPLATE")
+	}
+}
+
+// TestFolderResolver_WildcardBindingFolderCascade asserts that a binding
+// at folder `team-a` with `{project: "*", name: "*"}` matches resources
+// in projects under team-a (roses) but does NOT escape to projects under
+// a sibling folder (lilies under eng) or to projects directly under the
+// org (orchids).
+//
+// The ancestor walk caps wildcard reach: when resolving for lilies the
+// walk visits lilies → eng → org; the team-a folder is never traversed,
+// so its `{*, *}` binding is never even seen. The wildcard changes
+// *matching* inside the binding's storage scope, not the storage scope
+// itself (HOL-770 AC; ADR 029 "storage scope bounds reach" bullet).
+func TestFolderResolver_WildcardBindingFolderCascade(t *testing.T) {
+	client, r, ns := buildFixture()
+	walker := &resolver.Walker{Client: client, Resolver: r}
+
+	policies := map[string][]templatesv1alpha1.TemplatePolicy{
+		ns["folderTeamA"]: {
+			policyCRD(ns["folderTeamA"], "team-a-audit", []templatesv1alpha1.TemplatePolicyRule{
+				requireRuleCRD(v1alpha2.TemplateScopeFolder, "team-a", "team-a-audit"),
+			}),
+		},
+	}
+	// Binding at team-a folder with full wildcard on both fields for
+	// DEPLOYMENT. Should match any deployment reachable through the
+	// team-a namespace's ancestor walk — i.e., deployments in projects
+	// directly under team-a. Projects under sibling folders or under
+	// org directly never walk through team-a, so they must not see it.
+	bindings := map[string][]templatesv1alpha1.TemplatePolicyBinding{
+		ns["folderTeamA"]: {
+			bindingCRD(ns["folderTeamA"], "team-a-wildcard",
+				folderPolicyRefCRD("team-a", "team-a-audit"),
+				[]templatesv1alpha1.TemplatePolicyBindingTargetRef{{
+					Kind:        templatesv1alpha1.TemplatePolicyBindingTargetKindDeployment,
+					Name:        "*",
+					ProjectName: "*",
+				}},
+			),
+		},
+	}
+	pl := &policyListerFromClient{items: policies}
+	bl := &bindingListerFromMap{items: bindings}
+	fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
+
+	ctx := context.Background()
+
+	// projectRoses is directly under team-a: the wildcard binding MUST
+	// select every deployment in roses.
+	got, err := fr.Resolve(ctx, ns["projectRoses"], TargetKindDeployment, "api", nil)
+	if err != nil {
+		t.Fatalf("Resolve(roses/api): %v", err)
+	}
+	if names := refNames(got); len(names) != 1 || names[0] != "team-a-audit" {
+		t.Errorf("roses/api: expected [team-a-audit], got %v", names)
+	}
+	// Same project, a *different* deployment name — wildcard means both
+	// match; this is the "doesn't accidentally pin to one name" check.
+	got, err = fr.Resolve(ctx, ns["projectRoses"], TargetKindDeployment, "web", nil)
+	if err != nil {
+		t.Fatalf("Resolve(roses/web): %v", err)
+	}
+	if names := refNames(got); len(names) != 1 || names[0] != "team-a-audit" {
+		t.Errorf("roses/web: expected [team-a-audit], got %v", names)
+	}
+
+	// projectLilies is under eng (sibling of team-a): team-a's binding
+	// is NOT on its ancestor chain, so even `{*, *}` must not match.
+	got, err = fr.Resolve(ctx, ns["projectLilies"], TargetKindDeployment, "api", nil)
+	if err != nil {
+		t.Fatalf("Resolve(lilies/api): %v", err)
+	}
+	if names := refNames(got); len(names) != 0 {
+		t.Errorf("lilies/api: sibling-folder wildcard leaked; got %v, want empty", names)
+	}
+
+	// projectOrchids is directly under org (skips eng and team-a
+	// entirely): team-a's binding is not on this chain either.
+	got, err = fr.Resolve(ctx, ns["projectOrchids"], TargetKindDeployment, "api", nil)
+	if err != nil {
+		t.Fatalf("Resolve(orchids/api): %v", err)
+	}
+	if names := refNames(got); len(names) != 0 {
+		t.Errorf("orchids/api: org-sibling wildcard leaked; got %v, want empty", names)
+	}
+
+	// A PROJECT_TEMPLATE render target in roses must NOT be matched by
+	// the DEPLOYMENT `{*, *}` binding — kind is never wildcarded.
+	got, err = fr.Resolve(ctx, ns["projectRoses"], TargetKindProjectTemplate, "any", nil)
+	if err != nil {
+		t.Fatalf("Resolve(roses/project-template): %v", err)
+	}
+	if names := refNames(got); len(names) != 0 {
+		t.Errorf("roses/project-template: DEPLOYMENT {*,*} must not match PROJECT_TEMPLATE; got %v", names)
+	}
+}
