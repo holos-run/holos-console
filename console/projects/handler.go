@@ -3,6 +3,7 @@ package projects
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rbac"
@@ -21,6 +23,54 @@ import (
 )
 
 const auditResourceType = "project"
+
+// ProjectNamespacePipelineOutcome is what a ProjectNamespacePipeline
+// implementation tells the handler about the work it did. The concrete
+// implementation lives in console/projects/projectnspipeline — the
+// interface is defined here so the handler package does not depend on
+// projectnspipeline (which transitively imports console/templates,
+// console/deployments, and would collide with the deployments test
+// suite that imports console/projects).
+type ProjectNamespacePipelineOutcome int
+
+const (
+	// ProjectNamespacePipelineNoBindings mirrors
+	// projectnspipeline.OutcomeNoBindings: no bindings matched, the
+	// handler must run its existing Namespace-create path.
+	ProjectNamespacePipelineNoBindings ProjectNamespacePipelineOutcome = iota
+	// ProjectNamespacePipelineBindingsApplied mirrors
+	// projectnspipeline.OutcomeBindingsApplied: at least one binding
+	// matched and the applier completed the three-group SSA pipeline,
+	// so the handler must NOT also call CreateProject on the typed k8s
+	// client.
+	ProjectNamespacePipelineBindingsApplied
+)
+
+// ProjectNamespacePipelineInput carries the per-RPC values a
+// ProjectNamespacePipeline needs. Matches the shape of
+// projectnspipeline.Input — an adapter in console/console.go converts
+// between the two at wire-up time.
+type ProjectNamespacePipelineInput struct {
+	// ProjectName is the slug of the project being created.
+	ProjectName string
+	// ParentNamespace is the ancestor namespace the resolver walks from.
+	ParentNamespace string
+	// BaseNamespace is the Namespace object the RPC built; the applier
+	// uses it as the "base" the render path unifies template-produced
+	// Namespace patches into (ADR 034 Decision 1).
+	BaseNamespace *corev1.Namespace
+	// Platform is the platform-input block the renderer binds at the
+	// CUE `platform` path.
+	Platform v1alpha2.PlatformInput
+}
+
+// ProjectNamespacePipeline is the seam the handler talks to when
+// CreateProject runs. The concrete implementation is
+// projectnspipeline.Pipeline; a nil value leaves the handler on its
+// existing Namespace-create path unchanged.
+type ProjectNamespacePipeline interface {
+	Run(ctx context.Context, in ProjectNamespacePipelineInput) (ProjectNamespacePipelineOutcome, error)
+}
 
 // OrgResolver resolves organization-level grants for access checks.
 type OrgResolver interface {
@@ -39,11 +89,52 @@ type Handler struct {
 	consolev1connect.UnimplementedProjectServiceHandler
 	k8s         *K8sClient
 	orgResolver OrgResolver
+	// projectNSPipeline wires the HOL-812 resolve → render → apply flow.
+	// Nil (the default) falls through to the existing Namespace-create
+	// path so CreateProject keeps working during bootstrap or in tests
+	// that do not care about the ProjectNamespace feature. The concrete
+	// implementation lives in
+	// console/projects/projectnspipeline.Pipeline — an interface seam
+	// keeps the handler free of that package's transitive dependency on
+	// console/templates (which would form an import cycle with the
+	// deployments tests that import console/projects).
+	projectNSPipeline ProjectNamespacePipeline
+	// projectNSGatewayNamespace is the gateway namespace baked into the
+	// PlatformInput for ProjectNamespace renders. A future ADR 034 phase
+	// will read this per-org from the org settings; the constant here is
+	// only used when the handler was constructed without a per-request
+	// resolver. See ADR 034's open question on per-org gateway
+	// configuration.
+	projectNSGatewayNamespace string
 }
 
 // NewHandler creates a new ProjectService handler.
 func NewHandler(k8s *K8sClient, orgResolver OrgResolver) *Handler {
 	return &Handler{k8s: k8s, orgResolver: orgResolver}
+}
+
+// WithProjectNamespacePipeline wires the HOL-812 resolve → render →
+// apply pipeline into CreateProject. Passing nil leaves the handler on
+// the existing Namespace-create path.
+func (h *Handler) WithProjectNamespacePipeline(p ProjectNamespacePipeline) *Handler {
+	// A typed nil (e.g. (*projectnspipeline.Pipeline)(nil)) stored in
+	// an interface tests true for != nil at the interface level. Guard
+	// with reflect-free checks: only an explicit nil interface leaves
+	// the pipeline unset so the handler falls back to its existing
+	// Namespace-create path. Callers that want to "turn off" the
+	// pipeline should pass literal nil, not a typed nil value.
+	h.projectNSPipeline = p
+	return h
+}
+
+// WithProjectNamespaceGatewayNamespace sets the gateway namespace baked
+// into the PlatformInput for ProjectNamespace renders. Empty is allowed
+// (templates that reference platform.gatewayNamespace then see the
+// empty string and can constrain against it with a CUE default).
+// Deferred to HOL-806 Phase 7: read per-org from org settings.
+func (h *Handler) WithProjectNamespaceGatewayNamespace(ns string) *Handler {
+	h.projectNSGatewayNamespace = ns
+	return h
 }
 
 // ListProjects returns all projects the user has access to.
@@ -259,14 +350,18 @@ func (h *Handler) CreateProject(
 
 	// Create the project namespace, retrying on AlreadyExists when the name was
 	// auto-generated (race between GenerateIdentifier check and K8s create).
+	// HOL-812 wires the ProjectNamespace pipeline (resolve → render → apply)
+	// inside the same retry loop so the auto-generated-name retry behavior
+	// covers both paths (existing typed Create and SSA-via-applier) with a
+	// single branch.
 	const maxCreateRetries = 3
 	for attempt := range maxCreateRetries + 1 {
-		_, err = h.k8s.CreateProject(ctx, name, req.Msg.DisplayName, req.Msg.Description, req.Msg.Organization, parentNs, claims.Email, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
+		err = h.createProjectOnce(ctx, name, req.Msg, parentNs, claims.Email, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 		if err == nil {
 			break
 		}
 		if !autoGenerated || !errors.IsAlreadyExists(err) || attempt >= maxCreateRetries {
-			return nil, mapK8sError(err)
+			return nil, mapProjectCreateError(err)
 		}
 		slog.InfoContext(ctx, "project create race detected, regenerating identifier",
 			slog.String("resource_type", auditResourceType),
@@ -291,6 +386,127 @@ func (h *Handler) CreateProject(
 	return connect.NewResponse(&consolev1.CreateProjectResponse{
 		Name: name,
 	}), nil
+}
+
+// createProjectOnce executes one attempt of the project-namespace
+// creation path: runs the HOL-812 ProjectNamespace pipeline when
+// configured, and falls through to the typed CreateProject call when
+// the pipeline returns OutcomeNoBindings (including the nil-pipeline
+// default). Separated from CreateProject so the retry loop wraps both
+// sides uniformly.
+//
+// Returns the raw error (not a connect.Error); the caller maps it via
+// mapProjectCreateError so the AlreadyExists retry-on-auto-generated-name
+// logic can still use errors.IsAlreadyExists. The only error category
+// mapProjectCreateError handles that mapK8sError does not is the
+// deadline-exceeded case — the applier's DeadlineExceededError matches
+// [context.DeadlineExceeded] via errors.Is, and mapProjectCreateError
+// translates that to connect.CodeDeadlineExceeded.
+func (h *Handler) createProjectOnce(
+	ctx context.Context,
+	name string,
+	msg *consolev1.CreateProjectRequest,
+	parentNs string,
+	creatorEmail string,
+	shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant,
+) error {
+	// Always build the base Namespace object up front — both paths need
+	// it (the typed Create call still uses it, and the pipeline needs
+	// it as the "base" the render path unifies into per ADR 034).
+	baseNs, err := h.k8s.BuildProjectNamespace(name, msg.DisplayName, msg.Description, msg.Organization, parentNs, creatorEmail, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
+	if err != nil {
+		return err
+	}
+
+	// Pipeline (HOL-812): resolve ProjectNamespace bindings; if any
+	// match, render and apply via SSA. A nil pipeline falls through to
+	// the existing Namespace-create path so CreateProject keeps
+	// working during bootstrap or in tests that do not care about the
+	// ProjectNamespace feature.
+	if h.projectNSPipeline != nil {
+		outcome, pipeErr := h.projectNSPipeline.Run(ctx, ProjectNamespacePipelineInput{
+			ProjectName:     name,
+			ParentNamespace: parentAncestorNamespace(parentNs),
+			BaseNamespace:   baseNs,
+			Platform:        h.buildPlatformInput(ctx, msg, name, baseNs.Name, parentNs),
+		})
+		if pipeErr != nil {
+			return pipeErr
+		}
+		if outcome == ProjectNamespacePipelineBindingsApplied {
+			// The applier already SSA'd the Namespace and every
+			// associated resource; there is nothing else to write.
+			// Note this path does not surface AlreadyExists (SSA is
+			// idempotent), so the auto-generated-name retry is a
+			// no-op when the pipeline handles the create.
+			return nil
+		}
+	}
+
+	// Existing path: typed Create. Unchanged from pre-HOL-812 behavior.
+	_, err = h.k8s.client.CoreV1().Namespaces().Create(ctx, baseNs, metav1.CreateOptions{})
+	return err
+}
+
+// parentAncestorNamespace returns the namespace the ProjectNamespace
+// resolver walks from. For the HOL-812 scope this is the immediate
+// parent namespace the RPC already resolved (an organization or folder
+// namespace). A future folders-with-depth or org-hierarchy feature
+// may need to rewrite this to follow a different chain — ADR 034's
+// "ancestor-chain open question" is tracked against HOL-806 Phase 7.
+// Centralising the computation here keeps the fix to one call site.
+func parentAncestorNamespace(parentNs string) string { return parentNs }
+
+// buildPlatformInput assembles the PlatformInput block the
+// ProjectNamespace render path binds at the CUE `platform` path. The
+// shape mirrors what the deployment render path produces for the same
+// project (deployments/handler.go), minus per-deployment fields. A
+// future enhancement will resolve gatewayNamespace per-org from the
+// organization settings; for now the handler's static default wins.
+func (h *Handler) buildPlatformInput(ctx context.Context, msg *consolev1.CreateProjectRequest, projectName, namespaceName, parentNs string) v1alpha2.PlatformInput {
+	claims := rpc.ClaimsFromContext(ctx)
+	input := v1alpha2.PlatformInput{
+		Project:          projectName,
+		Namespace:        namespaceName,
+		Organization:     msg.Organization,
+		GatewayNamespace: h.projectNSGatewayNamespace,
+	}
+	if claims != nil {
+		input.Claims = v1alpha2.Claims{
+			Iss:           claims.Iss,
+			Sub:           claims.Sub,
+			Exp:           claims.Exp,
+			Iat:           claims.Iat,
+			Email:         claims.Email,
+			EmailVerified: claims.EmailVerified,
+			Name:          claims.Name,
+		}
+	}
+	// Folders: not populated here. The ProjectNamespace render path
+	// typically does not need the folder chain (templates parameterise
+	// on the new namespace and the org). If a template needs the folder
+	// chain, HOL-806 Phase 7 will plumb the nsWalker through — out of
+	// scope for HOL-812.
+	_ = parentNs
+	return input
+}
+
+// mapProjectCreateError maps a CreateProject-layer error to a connect
+// error, widening mapK8sError with the deadline-exceeded case the
+// HOL-812 apply path may return. The projectapply package's structured
+// DeadlineExceededError implements `Is(target error) bool` to match
+// [context.DeadlineExceeded] — we match via errors.Is rather than a
+// type assertion so this package can stay free of a projectapply
+// import. The projectapply -> templates -> deployments chain otherwise
+// collides with deployments tests that already import projects.
+// Any non-deadline error falls through to mapK8sError (which classifies
+// apierrors.Is*() kinds and maps the "not managed by" string into
+// CodeNotFound).
+func mapProjectCreateError(err error) error {
+	if stderrors.Is(err, context.DeadlineExceeded) {
+		return connect.NewError(connect.CodeDeadlineExceeded, err)
+	}
+	return mapK8sError(err)
 }
 
 // UpdateProject updates project metadata.
