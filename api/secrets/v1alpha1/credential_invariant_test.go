@@ -52,25 +52,47 @@ func TestCredential_NoSensitiveValues(t *testing.T) {
 
 	// Synthetic inputs that MUST match each regex. Kept short and
 	// unambiguous so a failing self-test row points at a regex bug, not
-	// a fixture bug.
-	syntheticAPIKey := "sih_AaBbCcDdEeFfGgHhIiJjKkLlMm"      // 32 chars after prefix
-	syntheticArgon2 := "$argon2id$v=19$m=65536,t=3,p=4$salt" // canonical argon2id prefix
-
-	apiKeyPattern := regexp.MustCompile(`sih_[A-Za-z0-9_-]{20,}`)
-	argon2Pattern := regexp.MustCompile(`\$argon2id\$`)
+	// a fixture bug. Patterns themselves live in the exported
+	// v1alpha1.ForbiddenBytePatterns catalog (see
+	// invariant_patterns.go) so the controller's envtest marshal-scan
+	// gate (HOL-753) and this self-test share one source of truth.
+	syntheticByName := map[string]string{
+		"api-key-prefix":    "sih_AaBbCcDdEeFfGgHhIiJjKkLlMm",      // 32 chars after prefix
+		"argon2id-envelope": "$argon2id$v=19$m=65536,t=3,p=4$salt", // canonical argon2id prefix
+	}
 
 	tests := []struct {
 		name     string
 		pattern  *regexp.Regexp
 		input    string
 		wantHits int
-	}{
-		{name: "api_key_prefix/self-test", pattern: apiKeyPattern, input: syntheticAPIKey, wantHits: 1},
-		{name: "api_key_prefix/json", pattern: apiKeyPattern, input: string(jsonBytes), wantHits: 0},
-		{name: "api_key_prefix/yaml", pattern: apiKeyPattern, input: string(yamlBytes), wantHits: 0},
-		{name: "argon2id/self-test", pattern: argon2Pattern, input: syntheticArgon2, wantHits: 1},
-		{name: "argon2id/json", pattern: argon2Pattern, input: string(jsonBytes), wantHits: 0},
-		{name: "argon2id/yaml", pattern: argon2Pattern, input: string(yamlBytes), wantHits: 0},
+	}{}
+	for _, p := range v1alpha1.ForbiddenBytePatterns {
+		synthetic, ok := syntheticByName[p.Name]
+		if !ok {
+			t.Fatalf("missing synthetic self-test input for pattern %q — update syntheticByName when extending ForbiddenBytePatterns",
+				p.Name)
+		}
+		tests = append(tests,
+			struct {
+				name     string
+				pattern  *regexp.Regexp
+				input    string
+				wantHits int
+			}{name: p.Name + "/self-test", pattern: p.Pattern, input: synthetic, wantHits: 1},
+			struct {
+				name     string
+				pattern  *regexp.Regexp
+				input    string
+				wantHits int
+			}{name: p.Name + "/json", pattern: p.Pattern, input: string(jsonBytes), wantHits: 0},
+			struct {
+				name     string
+				pattern  *regexp.Regexp
+				input    string
+				wantHits int
+			}{name: p.Name + "/yaml", pattern: p.Pattern, input: string(yamlBytes), wantHits: 0},
+		)
 	}
 
 	for _, tc := range tests {
