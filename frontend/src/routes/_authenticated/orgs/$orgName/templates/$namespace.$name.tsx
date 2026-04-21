@@ -1,11 +1,24 @@
 import { useEffect, useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
-import { useGetTemplate, useUpdateTemplate } from '@/queries/templates'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  useGetTemplate,
+  useUpdateTemplate,
+  useDeleteTemplate,
+} from '@/queries/templates'
 import type { TemplateExample } from '@/queries/templates'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { TemplateExamplePicker } from '@/components/templates/template-example-picker'
@@ -71,10 +84,13 @@ export function ConsolidatedTemplateEditorPage({
   const namespace = propNamespace ?? routeParams.namespace ?? ''
   const name = propName ?? routeParams.name ?? ''
 
+  const navigate = useNavigate()
   const { data: template, isPending, error } = useGetTemplate(namespace, name)
   const updateMutation = useUpdateTemplate(namespace, name)
+  const deleteMutation = useDeleteTemplate(namespace)
 
   const [cueTemplate, setCueTemplate] = useState('')
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   useEffect(() => {
     if (template?.cueTemplate !== undefined) {
@@ -109,6 +125,21 @@ export function ConsolidatedTemplateEditorPage({
     }
   }
 
+  // Post-success: close the dialog, toast, and navigate to the canonical
+  // org-scope templates index (see HOL-804 AC — do NOT navigate to a
+  // scope-specific list). On error, deleteMutation.error surfaces inline
+  // inside the dialog; we do not double-report via toast.
+  const handleDelete = async () => {
+    try {
+      await deleteMutation.mutateAsync({ name })
+      setDeleteOpen(false)
+      toast.success('Template deleted')
+      navigate({ to: '/orgs/$orgName/templates', params: { orgName } })
+    } catch {
+      /* error surfaced via deleteMutation.error inside the dialog */
+    }
+  }
+
   if (isPending) {
     return (
       <Card>
@@ -138,13 +169,22 @@ export function ConsolidatedTemplateEditorPage({
   return (
     <Card>
       <CardContent className="pt-6 space-y-6">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {orgName} / Templates / {namespace} / {name}
-          </p>
-          <div className="flex items-center gap-2 mt-1">
-            <h2 className="text-xl font-semibold">{displayName}</h2>
+        <div className="flex items-start gap-2">
+          <div className="flex-1">
+            <p className="text-sm text-muted-foreground">
+              {orgName} / Templates / {namespace} / {name}
+            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <h2 className="text-xl font-semibold">{displayName}</h2>
+            </div>
           </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setDeleteOpen(true)}
+          >
+            Delete
+          </Button>
         </div>
 
         <div className="space-y-4">
@@ -180,6 +220,35 @@ export function ConsolidatedTemplateEditorPage({
           />
         </div>
       </CardContent>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Template</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete template &quot;{namespace}/{name}&quot;?
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteMutation.error && (
+            <Alert variant="destructive">
+              <AlertDescription>{deleteMutation.error.message}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

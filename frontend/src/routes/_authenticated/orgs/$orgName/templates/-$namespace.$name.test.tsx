@@ -4,6 +4,8 @@ import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
 
+const mockNavigate = vi.fn()
+
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
   return {
@@ -15,12 +17,14 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
         name: 'web',
       }),
     }),
+    useNavigate: () => mockNavigate,
   }
 })
 
 vi.mock('@/queries/templates', () => ({
   useGetTemplate: vi.fn(),
   useUpdateTemplate: vi.fn(),
+  useDeleteTemplate: vi.fn(),
   useListTemplateExamples: vi.fn(),
   useRenderTemplate: vi.fn().mockReturnValue({
     data: undefined,
@@ -37,7 +41,13 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
-import { useGetTemplate, useUpdateTemplate, useListTemplateExamples } from '@/queries/templates'
+import {
+  useGetTemplate,
+  useUpdateTemplate,
+  useDeleteTemplate,
+  useListTemplateExamples,
+} from '@/queries/templates'
+import { toast } from 'sonner'
 import { ConsolidatedTemplateEditorPage } from './$namespace.$name'
 
 const EXAMPLE_HTTPROUTE = {
@@ -83,6 +93,11 @@ function setupMocks(
     mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
   })
+  ;(useDeleteTemplate as Mock).mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue({}),
+    isPending: false,
+    error: null,
+  })
   ;(useListTemplateExamples as Mock).mockReturnValue({
     data: examples,
     isPending: false,
@@ -105,6 +120,16 @@ describe('ConsolidatedTemplateEditorPage', () => {
       mutateAsync: vi.fn(),
       isPending: false,
     })
+    ;(useDeleteTemplate as Mock).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+      error: null,
+    })
+    ;(useListTemplateExamples as Mock).mockReturnValue({
+      data: [],
+      isPending: false,
+      error: null,
+    })
     const { container } = render(<ConsolidatedTemplateEditorPage />)
     // The skeletons render with data-slot="skeleton" (shadcn primitive).
     expect(container.querySelector('[data-slot="skeleton"]')).toBeInTheDocument()
@@ -119,6 +144,16 @@ describe('ConsolidatedTemplateEditorPage', () => {
     ;(useUpdateTemplate as Mock).mockReturnValue({
       mutateAsync: vi.fn(),
       isPending: false,
+    })
+    ;(useDeleteTemplate as Mock).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+      error: null,
+    })
+    ;(useListTemplateExamples as Mock).mockReturnValue({
+      data: [],
+      isPending: false,
+      error: null,
     })
     render(<ConsolidatedTemplateEditorPage />)
     expect(screen.getByText('template not found')).toBeInTheDocument()
@@ -172,6 +207,11 @@ describe('ConsolidatedTemplateEditorPage', () => {
       error: null,
     })
     ;(useUpdateTemplate as Mock).mockReturnValue({ mutateAsync, isPending: false })
+    ;(useDeleteTemplate as Mock).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+      error: null,
+    })
     ;(useListTemplateExamples as Mock).mockReturnValue({
       data: [EXAMPLE_HTTPROUTE],
       isPending: false,
@@ -253,6 +293,210 @@ describe('ConsolidatedTemplateEditorPage', () => {
         const textarea = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
         expect(textarea.value).toBe(originalCue)
       })
+    })
+  })
+
+  describe('delete flow', () => {
+    it('renders the Delete button in the header row', () => {
+      setupMocks()
+      render(
+        <ConsolidatedTemplateEditorPage
+          orgName="test-org"
+          namespace="prj-billing"
+          name="web"
+        />,
+      )
+      // There should be a Delete button visible before the dialog opens.
+      expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+      // useDeleteTemplate should be wired with the same namespace as
+      // useGetTemplate / useUpdateTemplate.
+      expect(useDeleteTemplate).toHaveBeenCalledWith('prj-billing')
+    })
+
+    it('opens the confirmation dialog when Delete is clicked', async () => {
+      setupMocks()
+      const user = userEvent.setup()
+      render(
+        <ConsolidatedTemplateEditorPage
+          orgName="test-org"
+          namespace="prj-billing"
+          name="web"
+        />,
+      )
+
+      await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+      expect(
+        screen.getByRole('heading', { name: 'Delete Template' }),
+      ).toBeInTheDocument()
+      // Body names the template as namespace/name.
+      expect(screen.getByText(/prj-billing\/web/)).toBeInTheDocument()
+      // Warning copy.
+      expect(
+        screen.getByText(/cannot be undone/i),
+      ).toBeInTheDocument()
+    })
+
+    it('closes the dialog without mutating when Cancel is clicked', async () => {
+      const deleteMutateAsync = vi.fn()
+      setupMocks()
+      ;(useDeleteTemplate as Mock).mockReturnValue({
+        mutateAsync: deleteMutateAsync,
+        isPending: false,
+        error: null,
+      })
+
+      const user = userEvent.setup()
+      render(
+        <ConsolidatedTemplateEditorPage
+          orgName="test-org"
+          namespace="prj-billing"
+          name="web"
+        />,
+      )
+
+      await user.click(screen.getByRole('button', { name: 'Delete' }))
+      expect(
+        screen.getByRole('heading', { name: 'Delete Template' }),
+      ).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('heading', { name: 'Delete Template' }),
+        ).not.toBeInTheDocument()
+      })
+      expect(deleteMutateAsync).not.toHaveBeenCalled()
+      expect(mockNavigate).not.toHaveBeenCalled()
+    })
+
+    it('calls the delete mutation with the template name on confirm', async () => {
+      const deleteMutateAsync = vi.fn().mockResolvedValue({})
+      setupMocks()
+      ;(useDeleteTemplate as Mock).mockReturnValue({
+        mutateAsync: deleteMutateAsync,
+        isPending: false,
+        error: null,
+      })
+
+      const user = userEvent.setup()
+      render(
+        <ConsolidatedTemplateEditorPage
+          orgName="test-org"
+          namespace="prj-billing"
+          name="web"
+        />,
+      )
+
+      await user.click(screen.getByRole('button', { name: 'Delete' }))
+      // Confirm inside the dialog — dialog has its own Delete button.
+      const confirmButton = screen
+        .getAllByRole('button', { name: 'Delete' })
+        .find((btn) => btn.closest('[role="dialog"]'))
+      expect(confirmButton).toBeDefined()
+      await user.click(confirmButton!)
+
+      await waitFor(() => {
+        expect(deleteMutateAsync).toHaveBeenCalledWith({ name: 'web' })
+      })
+    })
+
+    it('navigates to the org templates index and toasts on success', async () => {
+      const deleteMutateAsync = vi.fn().mockResolvedValue({})
+      setupMocks()
+      ;(useDeleteTemplate as Mock).mockReturnValue({
+        mutateAsync: deleteMutateAsync,
+        isPending: false,
+        error: null,
+      })
+
+      const user = userEvent.setup()
+      render(
+        <ConsolidatedTemplateEditorPage
+          orgName="test-org"
+          namespace="prj-billing"
+          name="web"
+        />,
+      )
+
+      await user.click(screen.getByRole('button', { name: 'Delete' }))
+      const confirmButton = screen
+        .getAllByRole('button', { name: 'Delete' })
+        .find((btn) => btn.closest('[role="dialog"]'))
+      await user.click(confirmButton!)
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith({
+          to: '/orgs/$orgName/templates',
+          params: { orgName: 'test-org' },
+        })
+      })
+      expect(toast.success).toHaveBeenCalledWith('Template deleted')
+    })
+
+    it('surfaces an inline error and does not navigate on failure', async () => {
+      const deleteMutateAsync = vi
+        .fn()
+        .mockRejectedValue(new Error('delete forbidden'))
+      setupMocks()
+      ;(useDeleteTemplate as Mock).mockReturnValue({
+        mutateAsync: deleteMutateAsync,
+        isPending: false,
+        error: new Error('delete forbidden'),
+      })
+
+      const user = userEvent.setup()
+      render(
+        <ConsolidatedTemplateEditorPage
+          orgName="test-org"
+          namespace="prj-billing"
+          name="web"
+        />,
+      )
+
+      await user.click(screen.getByRole('button', { name: 'Delete' }))
+      const confirmButton = screen
+        .getAllByRole('button', { name: 'Delete' })
+        .find((btn) => btn.closest('[role="dialog"]'))
+      await user.click(confirmButton!)
+
+      await waitFor(() => {
+        expect(deleteMutateAsync).toHaveBeenCalledWith({ name: 'web' })
+      })
+
+      // Inline error inside the dialog, no navigation, no success toast.
+      expect(screen.getByText('delete forbidden')).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Delete Template' }),
+      ).toBeInTheDocument()
+      expect(mockNavigate).not.toHaveBeenCalled()
+      expect(toast.success).not.toHaveBeenCalled()
+    })
+
+    it('shows "Deleting..." and disables the confirm button while pending', async () => {
+      setupMocks()
+      ;(useDeleteTemplate as Mock).mockReturnValue({
+        mutateAsync: vi.fn(),
+        isPending: true,
+        error: null,
+      })
+
+      const user = userEvent.setup()
+      render(
+        <ConsolidatedTemplateEditorPage
+          orgName="test-org"
+          namespace="prj-billing"
+          name="web"
+        />,
+      )
+
+      await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+      const deletingButton = await screen.findByRole('button', {
+        name: /deleting/i,
+      })
+      expect(deletingButton).toBeDisabled()
     })
   })
 })
