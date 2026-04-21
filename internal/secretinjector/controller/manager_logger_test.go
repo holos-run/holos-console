@@ -33,15 +33,24 @@ import (
 // controller-runtime internals (priorityqueue, cache, leader election) hit
 // the "[controller-runtime] log.SetLogger(...) was never called" code path
 // and dump a stack trace on first use.
+//
+// NewManager now registers the secrets-group reconcilers during
+// construction (HOL-750 onwards). Reconciler registration calls
+// mgr.GetFieldIndexer().IndexField, which primes the informer cache and
+// requires a reachable API server. We pass a bogus rest.Config to keep the
+// test hermetic, so NewManager is expected to fail — the regression guard
+// only requires ctrl.SetLogger to have been invoked before that failure
+// path returns, which is exactly what we assert here.
 func TestNewManager_WiresControllerRuntimeLogger(t *testing.T) {
 	buf := &syncBuffer{}
 	handler := slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})
 	logger := slog.New(handler)
 
-	_, err := NewManager(&rest.Config{Host: "http://127.0.0.1:0"}, Options{Logger: logger})
-	if err != nil {
-		t.Fatalf("NewManager: %v", err)
-	}
+	// NewManager may return an error because the fake rest.Config cannot
+	// reach an API server; the regression under test is not the error but
+	// whether ctrl.SetLogger was called before control returned. We
+	// deliberately ignore the error.
+	_, _ = NewManager(&rest.Config{Host: "http://127.0.0.1:0"}, Options{Logger: logger})
 
 	// Log through controller-runtime's global Logger. If SetLogger was
 	// called correctly, the record flows through our slog handler into buf.
