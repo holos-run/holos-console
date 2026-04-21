@@ -406,9 +406,10 @@ export declare type DeleteTemplatePolicyBindingResponse = Message<"holos.console
 export declare const DeleteTemplatePolicyBindingResponseSchema: GenMessage<DeleteTemplatePolicyBindingResponse>;
 
 /**
- * TemplatePolicyBindingTargetKind discriminates between the two explicit
+ * TemplatePolicyBindingTargetKind discriminates between the three explicit
  * render targets a binding can name: a project-scope template (shared by
- * every deployment in a project) or a single deployment.
+ * every deployment in a project), a single deployment, or a project
+ * namespace (the to-be-created namespace for a new project).
  *
  * @generated from enum holos.console.v1.TemplatePolicyBindingTargetKind
  */
@@ -438,6 +439,19 @@ export enum TemplatePolicyBindingTargetKind {
    * @generated from enum value: TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT = 2;
    */
   DEPLOYMENT = 2,
+
+  /**
+   * TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_NAMESPACE targets the
+   * namespace that will be created for a new project (HOL-806 / ADR 034).
+   * `project_name` accepts the literal wildcard "*" (HOL-767) to match
+   * every new project reachable via the binding's ancestor-walk. `name`
+   * is the namespace slug (typically the project name). Resolver behavior
+   * for this kind is wired in a later phase; the enum value is defined
+   * here so downstream code has a typed value to reference.
+   *
+   * @generated from enum value: TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_NAMESPACE = 3;
+   */
+  PROJECT_NAMESPACE = 3,
 }
 
 /**

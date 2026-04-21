@@ -22,9 +22,10 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// TemplatePolicyBindingTargetKind discriminates between the two explicit
+// TemplatePolicyBindingTargetKind discriminates between the three explicit
 // render targets a binding can name: a project-scope template (shared by
-// every deployment in a project) or a single deployment.
+// every deployment in a project), a single deployment, or a project
+// namespace (the to-be-created namespace for a new project).
 type TemplatePolicyBindingTargetKind int32
 
 const (
@@ -40,6 +41,14 @@ const (
 	// owning project; `project_name` is the project that owns the
 	// deployment (required — deployments are scoped per-project).
 	TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT TemplatePolicyBindingTargetKind = 2
+	// TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_NAMESPACE targets the
+	// namespace that will be created for a new project (HOL-806 / ADR 034).
+	// `project_name` accepts the literal wildcard "*" (HOL-767) to match
+	// every new project reachable via the binding's ancestor-walk. `name`
+	// is the namespace slug (typically the project name). Resolver behavior
+	// for this kind is wired in a later phase; the enum value is defined
+	// here so downstream code has a typed value to reference.
+	TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_NAMESPACE TemplatePolicyBindingTargetKind = 3
 )
 
 // Enum value maps for TemplatePolicyBindingTargetKind.
@@ -48,11 +57,13 @@ var (
 		0: "TEMPLATE_POLICY_BINDING_TARGET_KIND_UNSPECIFIED",
 		1: "TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE",
 		2: "TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT",
+		3: "TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_NAMESPACE",
 	}
 	TemplatePolicyBindingTargetKind_value = map[string]int32{
-		"TEMPLATE_POLICY_BINDING_TARGET_KIND_UNSPECIFIED":      0,
-		"TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE": 1,
-		"TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT":       2,
+		"TEMPLATE_POLICY_BINDING_TARGET_KIND_UNSPECIFIED":       0,
+		"TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE":  1,
+		"TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT":        2,
+		"TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_NAMESPACE": 3,
 	}
 )
 
@@ -885,11 +896,12 @@ const file_holos_console_v1_template_policy_bindings_proto_rawDesc = "" +
 	"\"DeleteTemplatePolicyBindingRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"%\n" +
-	"#DeleteTemplatePolicyBindingResponse*\xc4\x01\n" +
+	"#DeleteTemplatePolicyBindingResponse*\xff\x01\n" +
 	"\x1fTemplatePolicyBindingTargetKind\x123\n" +
 	"/TEMPLATE_POLICY_BINDING_TARGET_KIND_UNSPECIFIED\x10\x00\x128\n" +
 	"4TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE\x10\x01\x122\n" +
-	".TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT\x10\x022\xd3\x05\n" +
+	".TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT\x10\x02\x129\n" +
+	"5TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_NAMESPACE\x10\x032\xd3\x05\n" +
 	"\x1cTemplatePolicyBindingService\x12\x87\x01\n" +
 	"\x1aListTemplatePolicyBindings\x123.holos.console.v1.ListTemplatePolicyBindingsRequest\x1a4.holos.console.v1.ListTemplatePolicyBindingsResponse\x12\x81\x01\n" +
 	"\x18GetTemplatePolicyBinding\x121.holos.console.v1.GetTemplatePolicyBindingRequest\x1a2.holos.console.v1.GetTemplatePolicyBindingResponse\x12\x8a\x01\n" +

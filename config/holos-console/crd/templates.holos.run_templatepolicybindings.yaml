@@ -110,6 +110,7 @@ spec:
                       enum:
                       - ProjectTemplate
                       - Deployment
+                      - ProjectNamespace
                       type: string
                     name:
                       description: Name is the target's DNS label slug within projectName.
