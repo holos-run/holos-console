@@ -356,6 +356,85 @@ export declare type DeleteTemplatePolicyResponse = Message<"holos.console.v1.Del
 export declare const DeleteTemplatePolicyResponseSchema: GenMessage<DeleteTemplatePolicyResponse>;
 
 /**
+ * LinkableTemplatePolicy describes a single TemplatePolicy available for
+ * selection in a TemplatePolicyBinding. It carries the owning namespace
+ * alongside all policy fields so the frontend can render a scope badge
+ * (e.g. "org" or "folder/payments") without a second round-trip.
+ *
+ * @generated from message holos.console.v1.LinkableTemplatePolicy
+ */
+export declare type LinkableTemplatePolicy = Message<"holos.console.v1.LinkableTemplatePolicy"> & {
+  /**
+   * policy is the full TemplatePolicy, including its namespace field which
+   * indicates the owning scope.
+   *
+   * @generated from field: holos.console.v1.TemplatePolicy policy = 1;
+   */
+  policy?: TemplatePolicy;
+};
+
+/**
+ * Describes the message holos.console.v1.LinkableTemplatePolicy.
+ * Use `create(LinkableTemplatePolicySchema)` to create a new message.
+ */
+export declare const LinkableTemplatePolicySchema: GenMessage<LinkableTemplatePolicy>;
+
+/**
+ * ListLinkableTemplatePoliciesRequest requests all TemplatePolicies reachable
+ * from the given scope namespace. The handler walks the ancestor chain from
+ * the scope up to the org root and returns policies from each namespace the
+ * caller has permission to list.
+ *
+ * @generated from message holos.console.v1.ListLinkableTemplatePoliciesRequest
+ */
+export declare type ListLinkableTemplatePoliciesRequest = Message<"holos.console.v1.ListLinkableTemplatePoliciesRequest"> & {
+  /**
+   * namespace is the starting scope namespace (org or folder). The handler
+   * walks up the hierarchy collecting TemplatePolicies from each namespace.
+   *
+   * @generated from field: string namespace = 1;
+   */
+  namespace: string;
+
+  /**
+   * include_self_scope, when true, also returns policies at the request's
+   * own namespace in addition to ancestor-namespace policies. Default false
+   * returns only ancestor-namespace policies. Mirrors the same field on
+   * ListLinkableTemplatesRequest (HOL-561).
+   *
+   * @generated from field: bool include_self_scope = 2;
+   */
+  includeSelfScope: boolean;
+};
+
+/**
+ * Describes the message holos.console.v1.ListLinkableTemplatePoliciesRequest.
+ * Use `create(ListLinkableTemplatePoliciesRequestSchema)` to create a new message.
+ */
+export declare const ListLinkableTemplatePoliciesRequestSchema: GenMessage<ListLinkableTemplatePoliciesRequest>;
+
+/**
+ * ListLinkableTemplatePoliciesResponse returns all linkable policies ordered
+ * child→parent (same scope first when include_self_scope is true).
+ *
+ * @generated from message holos.console.v1.ListLinkableTemplatePoliciesResponse
+ */
+export declare type ListLinkableTemplatePoliciesResponse = Message<"holos.console.v1.ListLinkableTemplatePoliciesResponse"> & {
+  /**
+   * policies are the reachable TemplatePolicies, ordered child→parent.
+   *
+   * @generated from field: repeated holos.console.v1.LinkableTemplatePolicy policies = 1;
+   */
+  policies: LinkableTemplatePolicy[];
+};
+
+/**
+ * Describes the message holos.console.v1.ListLinkableTemplatePoliciesResponse.
+ * Use `create(ListLinkableTemplatePoliciesResponseSchema)` to create a new message.
+ */
+export declare const ListLinkableTemplatePoliciesResponseSchema: GenMessage<ListLinkableTemplatePoliciesResponse>;
+
+/**
  * TemplatePolicyKind discriminates between REQUIRE and EXCLUDE rules.
  *
  * @generated from enum holos.console.v1.TemplatePolicyKind
@@ -473,6 +552,29 @@ export declare const TemplatePolicyService: GenService<{
     methodKind: "unary";
     input: typeof DeleteTemplatePolicyRequestSchema;
     output: typeof DeleteTemplatePolicyResponseSchema;
+  },
+  /**
+   * ListLinkableTemplatePolicies returns all TemplatePolicies reachable from
+   * the given scope — the scope itself plus every ancestor namespace up to
+   * the org root — ordered child→parent so the UI can render the closest
+   * scope first. This mirrors ListLinkableTemplates (TemplateService) and
+   * provides the backend capability for folder-scoped TemplatePolicyBindings
+   * to select org-scoped or parent-folder-scoped policies (HOL-834).
+   *
+   * RBAC is enforced per-scope: if the caller lacks
+   * PERMISSION_TEMPLATE_POLICIES_LIST for an ancestor namespace, policies
+   * from that namespace are omitted silently. Reachable namespaces the
+   * caller can read still return their policies.
+   *
+   * The existing ListTemplatePolicies RPC is unchanged — it returns
+   * single-scope listings for admin views. This RPC is additive.
+   *
+   * @generated from rpc holos.console.v1.TemplatePolicyService.ListLinkableTemplatePolicies
+   */
+  listLinkableTemplatePolicies: {
+    methodKind: "unary";
+    input: typeof ListLinkableTemplatePoliciesRequestSchema;
+    output: typeof ListLinkableTemplatePoliciesResponseSchema;
   },
 }>;
 

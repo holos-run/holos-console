@@ -48,6 +48,9 @@ const (
 	// TemplatePolicyServiceDeleteTemplatePolicyProcedure is the fully-qualified name of the
 	// TemplatePolicyService's DeleteTemplatePolicy RPC.
 	TemplatePolicyServiceDeleteTemplatePolicyProcedure = "/holos.console.v1.TemplatePolicyService/DeleteTemplatePolicy"
+	// TemplatePolicyServiceListLinkableTemplatePoliciesProcedure is the fully-qualified name of the
+	// TemplatePolicyService's ListLinkableTemplatePolicies RPC.
+	TemplatePolicyServiceListLinkableTemplatePoliciesProcedure = "/holos.console.v1.TemplatePolicyService/ListLinkableTemplatePolicies"
 )
 
 // TemplatePolicyServiceClient is a client for the holos.console.v1.TemplatePolicyService service.
@@ -70,6 +73,21 @@ type TemplatePolicyServiceClient interface {
 	// DeleteTemplatePolicy deletes a policy.
 	// Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the owning resource.
 	DeleteTemplatePolicy(context.Context, *connect.Request[v1.DeleteTemplatePolicyRequest]) (*connect.Response[v1.DeleteTemplatePolicyResponse], error)
+	// ListLinkableTemplatePolicies returns all TemplatePolicies reachable from
+	// the given scope — the scope itself plus every ancestor namespace up to
+	// the org root — ordered child→parent so the UI can render the closest
+	// scope first. This mirrors ListLinkableTemplates (TemplateService) and
+	// provides the backend capability for folder-scoped TemplatePolicyBindings
+	// to select org-scoped or parent-folder-scoped policies (HOL-834).
+	//
+	// RBAC is enforced per-scope: if the caller lacks
+	// PERMISSION_TEMPLATE_POLICIES_LIST for an ancestor namespace, policies
+	// from that namespace are omitted silently. Reachable namespaces the
+	// caller can read still return their policies.
+	//
+	// The existing ListTemplatePolicies RPC is unchanged — it returns
+	// single-scope listings for admin views. This RPC is additive.
+	ListLinkableTemplatePolicies(context.Context, *connect.Request[v1.ListLinkableTemplatePoliciesRequest]) (*connect.Response[v1.ListLinkableTemplatePoliciesResponse], error)
 }
 
 // NewTemplatePolicyServiceClient constructs a client for the holos.console.v1.TemplatePolicyService
@@ -113,16 +131,23 @@ func NewTemplatePolicyServiceClient(httpClient connect.HTTPClient, baseURL strin
 			connect.WithSchema(templatePolicyServiceMethods.ByName("DeleteTemplatePolicy")),
 			connect.WithClientOptions(opts...),
 		),
+		listLinkableTemplatePolicies: connect.NewClient[v1.ListLinkableTemplatePoliciesRequest, v1.ListLinkableTemplatePoliciesResponse](
+			httpClient,
+			baseURL+TemplatePolicyServiceListLinkableTemplatePoliciesProcedure,
+			connect.WithSchema(templatePolicyServiceMethods.ByName("ListLinkableTemplatePolicies")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // templatePolicyServiceClient implements TemplatePolicyServiceClient.
 type templatePolicyServiceClient struct {
-	listTemplatePolicies *connect.Client[v1.ListTemplatePoliciesRequest, v1.ListTemplatePoliciesResponse]
-	getTemplatePolicy    *connect.Client[v1.GetTemplatePolicyRequest, v1.GetTemplatePolicyResponse]
-	createTemplatePolicy *connect.Client[v1.CreateTemplatePolicyRequest, v1.CreateTemplatePolicyResponse]
-	updateTemplatePolicy *connect.Client[v1.UpdateTemplatePolicyRequest, v1.UpdateTemplatePolicyResponse]
-	deleteTemplatePolicy *connect.Client[v1.DeleteTemplatePolicyRequest, v1.DeleteTemplatePolicyResponse]
+	listTemplatePolicies         *connect.Client[v1.ListTemplatePoliciesRequest, v1.ListTemplatePoliciesResponse]
+	getTemplatePolicy            *connect.Client[v1.GetTemplatePolicyRequest, v1.GetTemplatePolicyResponse]
+	createTemplatePolicy         *connect.Client[v1.CreateTemplatePolicyRequest, v1.CreateTemplatePolicyResponse]
+	updateTemplatePolicy         *connect.Client[v1.UpdateTemplatePolicyRequest, v1.UpdateTemplatePolicyResponse]
+	deleteTemplatePolicy         *connect.Client[v1.DeleteTemplatePolicyRequest, v1.DeleteTemplatePolicyResponse]
+	listLinkableTemplatePolicies *connect.Client[v1.ListLinkableTemplatePoliciesRequest, v1.ListLinkableTemplatePoliciesResponse]
 }
 
 // ListTemplatePolicies calls holos.console.v1.TemplatePolicyService.ListTemplatePolicies.
@@ -150,6 +175,12 @@ func (c *templatePolicyServiceClient) DeleteTemplatePolicy(ctx context.Context, 
 	return c.deleteTemplatePolicy.CallUnary(ctx, req)
 }
 
+// ListLinkableTemplatePolicies calls
+// holos.console.v1.TemplatePolicyService.ListLinkableTemplatePolicies.
+func (c *templatePolicyServiceClient) ListLinkableTemplatePolicies(ctx context.Context, req *connect.Request[v1.ListLinkableTemplatePoliciesRequest]) (*connect.Response[v1.ListLinkableTemplatePoliciesResponse], error) {
+	return c.listLinkableTemplatePolicies.CallUnary(ctx, req)
+}
+
 // TemplatePolicyServiceHandler is an implementation of the holos.console.v1.TemplatePolicyService
 // service.
 type TemplatePolicyServiceHandler interface {
@@ -171,6 +202,21 @@ type TemplatePolicyServiceHandler interface {
 	// DeleteTemplatePolicy deletes a policy.
 	// Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the owning resource.
 	DeleteTemplatePolicy(context.Context, *connect.Request[v1.DeleteTemplatePolicyRequest]) (*connect.Response[v1.DeleteTemplatePolicyResponse], error)
+	// ListLinkableTemplatePolicies returns all TemplatePolicies reachable from
+	// the given scope — the scope itself plus every ancestor namespace up to
+	// the org root — ordered child→parent so the UI can render the closest
+	// scope first. This mirrors ListLinkableTemplates (TemplateService) and
+	// provides the backend capability for folder-scoped TemplatePolicyBindings
+	// to select org-scoped or parent-folder-scoped policies (HOL-834).
+	//
+	// RBAC is enforced per-scope: if the caller lacks
+	// PERMISSION_TEMPLATE_POLICIES_LIST for an ancestor namespace, policies
+	// from that namespace are omitted silently. Reachable namespaces the
+	// caller can read still return their policies.
+	//
+	// The existing ListTemplatePolicies RPC is unchanged — it returns
+	// single-scope listings for admin views. This RPC is additive.
+	ListLinkableTemplatePolicies(context.Context, *connect.Request[v1.ListLinkableTemplatePoliciesRequest]) (*connect.Response[v1.ListLinkableTemplatePoliciesResponse], error)
 }
 
 // NewTemplatePolicyServiceHandler builds an HTTP handler from the service implementation. It
@@ -210,6 +256,12 @@ func NewTemplatePolicyServiceHandler(svc TemplatePolicyServiceHandler, opts ...c
 		connect.WithSchema(templatePolicyServiceMethods.ByName("DeleteTemplatePolicy")),
 		connect.WithHandlerOptions(opts...),
 	)
+	templatePolicyServiceListLinkableTemplatePoliciesHandler := connect.NewUnaryHandler(
+		TemplatePolicyServiceListLinkableTemplatePoliciesProcedure,
+		svc.ListLinkableTemplatePolicies,
+		connect.WithSchema(templatePolicyServiceMethods.ByName("ListLinkableTemplatePolicies")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.TemplatePolicyService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TemplatePolicyServiceListTemplatePoliciesProcedure:
@@ -222,6 +274,8 @@ func NewTemplatePolicyServiceHandler(svc TemplatePolicyServiceHandler, opts ...c
 			templatePolicyServiceUpdateTemplatePolicyHandler.ServeHTTP(w, r)
 		case TemplatePolicyServiceDeleteTemplatePolicyProcedure:
 			templatePolicyServiceDeleteTemplatePolicyHandler.ServeHTTP(w, r)
+		case TemplatePolicyServiceListLinkableTemplatePoliciesProcedure:
+			templatePolicyServiceListLinkableTemplatePoliciesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -249,4 +303,8 @@ func (UnimplementedTemplatePolicyServiceHandler) UpdateTemplatePolicy(context.Co
 
 func (UnimplementedTemplatePolicyServiceHandler) DeleteTemplatePolicy(context.Context, *connect.Request[v1.DeleteTemplatePolicyRequest]) (*connect.Response[v1.DeleteTemplatePolicyResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy is not implemented"))
+}
+
+func (UnimplementedTemplatePolicyServiceHandler) ListLinkableTemplatePolicies(context.Context, *connect.Request[v1.ListLinkableTemplatePoliciesRequest]) (*connect.Response[v1.ListLinkableTemplatePoliciesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplatePolicyService.ListLinkableTemplatePolicies is not implemented"))
 }
