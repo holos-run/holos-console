@@ -187,8 +187,8 @@ coverage: test ## Test coverage profile.
 .PHONY: manifests
 # manifests generates the templates group CRDs, RBAC, and deepcopy sources.
 # Per ADR 031, each binary's API group lands in a separate config/ tree:
-# holos-console owns config/{crd,rbac}/ for templates.holos.run, while
-# holos-secret-injector owns config/secret-injector/{crd,rbac}/ for
+# holos-console owns config/holos-console/{crd,rbac}/ for templates.holos.run,
+# while holos-secret-injector owns config/secret-injector/{crd,rbac}/ for
 # secrets.holos.run (see the manifests-secrets target below).
 manifests: ## Generate CRD, RBAC, and deepcopy sources for the templates group from +kubebuilder markers.
 	controller-gen \
