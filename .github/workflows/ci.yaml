@@ -96,9 +96,9 @@ jobs:
       # ValidatingAdmissionPolicies can reference templates.holos.run kinds.
       - name: Install holos-console CRDs, admission policies, and RBAC
         run: |
-          kubectl apply -f config/holos-console/crd/
-          kubectl apply -f config/holos-console/admission/
-          kubectl apply -f config/holos-console/rbac/
+          kubectl apply -k config/holos-console/crd/
+          kubectl apply -k config/holos-console/admission/
+          kubectl apply -k config/holos-console/rbac/
 
       - name: Install Playwright browsers
         run: |
