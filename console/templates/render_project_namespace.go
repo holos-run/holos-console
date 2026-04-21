@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -272,11 +273,11 @@ func mergeGroupedIntoResult(grouped *deployments.GroupedResources, namespaceName
 	if grouped == nil {
 		return nil
 	}
-	for _, u := range grouped.Platform {
-		u := u // capture range variable
+	for i := range grouped.Platform {
+		u := &grouped.Platform[i]
 		kind := u.GetKind()
 		if kind == "Namespace" {
-			if err := unifyNamespace(result.Namespace, &u); err != nil {
+			if err := unifyNamespace(result.Namespace, u); err != nil {
 				return err
 			}
 			continue
@@ -288,7 +289,7 @@ func mergeGroupedIntoResult(grouped *deployments.GroupedResources, namespaceName
 			// here covers the rare case a cluster-scoped kind lands in
 			// the namespaced side of the CUE tree.
 			u.SetNamespace("")
-			result.ClusterScoped = append(result.ClusterScoped, u)
+			result.ClusterScoped = append(result.ClusterScoped, *u)
 			continue
 		}
 		// Namespace-scoped resource. Default metadata.namespace to the
@@ -299,7 +300,7 @@ func mergeGroupedIntoResult(grouped *deployments.GroupedResources, namespaceName
 		if u.GetNamespace() == "" {
 			u.SetNamespace(namespaceName)
 		}
-		result.NamespaceScoped = append(result.NamespaceScoped, u)
+		result.NamespaceScoped = append(result.NamespaceScoped, *u)
 	}
 	return nil
 }
@@ -462,18 +463,7 @@ func writeStringSlice(u *unstructured.Unstructured, s []string, path ...string) 
 
 // joinPath renders a path slice as a dotted string for error messages.
 // The unstructured-field helpers take variadic string arguments; this
-// helper lets error strings display the full CUE-ish path without
-// allocating fmt.Sprintf boilerplate at each site.
+// helper lets error strings display the full CUE-ish path.
 func joinPath(path []string) string {
-	switch len(path) {
-	case 0:
-		return ""
-	case 1:
-		return path[0]
-	}
-	out := path[0]
-	for _, p := range path[1:] {
-		out += "." + p
-	}
-	return out
+	return strings.Join(path, ".")
 }
