@@ -306,6 +306,150 @@ describe('TargetRefEditor', () => {
     })
   })
 
+  // --- HOL-773 wildcard coverage -------------------------------------------
+
+  it('offers a synthetic "All projects (*)" item at the top of the project picker', async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    })
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[makeTarget()]}
+        onChange={vi.fn()}
+      />,
+    )
+    const row = screen.getByTestId('target-ref-row-0')
+    await user.click(
+      within(row).getByRole('combobox', { name: /target 1 project/i }),
+    )
+    expect(
+      await screen.findByText(/All projects \(\*\)/i),
+    ).toBeInTheDocument()
+  })
+
+  it('name picker wildcard item reads "All project templates (*)" when kind=PROJECT_TEMPLATE', async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    })
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[
+          makeTarget({
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: 'proj-a',
+          }),
+        ]}
+        onChange={vi.fn()}
+      />,
+    )
+    const row = screen.getByTestId('target-ref-row-0')
+    await user.click(
+      within(row).getByRole('combobox', { name: /target 1 name/i }),
+    )
+    expect(
+      await screen.findByText(/All project templates \(\*\)/i),
+    ).toBeInTheDocument()
+  })
+
+  it('name picker wildcard item reads "All deployments (*)" when kind=DEPLOYMENT', async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    })
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[
+          makeTarget({
+            kind: TemplatePolicyBindingTargetKind.DEPLOYMENT,
+            projectName: 'proj-a',
+          }),
+        ]}
+        onChange={vi.fn()}
+      />,
+    )
+    const row = screen.getByTestId('target-ref-row-0')
+    await user.click(
+      within(row).getByRole('combobox', { name: /target 1 name/i }),
+    )
+    expect(
+      await screen.findByText(/All deployments \(\*\)/i),
+    ).toBeInTheDocument()
+  })
+
+  it('projectName="*" short-circuits useListTemplates and useListDeployments', () => {
+    // When the project is the wildcard sentinel, per-project probes would
+    // otherwise receive a malformed namespace like `p-*` and fire a bad
+    // request. The component passes empty strings so the `enabled` flag is
+    // false and no fetch fires.
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[
+          makeTarget({
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: '*',
+            name: '',
+          }),
+        ]}
+        onChange={vi.fn()}
+      />,
+    )
+    expect(useListTemplates).toHaveBeenCalledWith('')
+    expect(useListDeployments).toHaveBeenCalledWith('')
+  })
+
+  it('renders all four wildcard forms of (projectName, name) without crashing', () => {
+    // The four expansion shapes: project*/name*, project*/name, project/name*,
+    // project/name. All must render a row with no React error.
+    const targets = [
+      makeTarget({ projectName: '*', name: '*' }),
+      makeTarget({ projectName: '*', name: 'ingress' }),
+      makeTarget({ projectName: 'proj-a', name: '*' }),
+      makeTarget({ projectName: 'proj-a', name: 'ingress' }),
+    ]
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={targets}
+        onChange={vi.fn()}
+      />,
+    )
+    for (let i = 0; i < 4; i++) {
+      expect(screen.getByTestId(`target-ref-row-${i}`)).toBeInTheDocument()
+    }
+  })
+
+  it('surfaces a row-level duplicate error for two {kind,"*","*"} rows', () => {
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[
+          makeTarget({
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: '*',
+            name: '*',
+          }),
+          makeTarget({
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: '*',
+            name: '*',
+          }),
+        ]}
+        onChange={vi.fn()}
+      />,
+    )
+    // The *second* row is the duplicate; the first row should stay clean
+    // so the author can see which row to edit.
+    expect(
+      screen.queryByTestId('target-ref-row-0-duplicate-error'),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByTestId('target-ref-row-1-duplicate-error'),
+    ).toBeInTheDocument()
+  })
+
   it('hides the Add Target and Remove buttons when disabled', () => {
     render(
       <TargetRefEditor

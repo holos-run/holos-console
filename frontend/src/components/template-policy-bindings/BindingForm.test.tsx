@@ -27,6 +27,7 @@ vi.mock('@/queries/templatePolicies', async () => {
 
 vi.mock('@/queries/projects', () => ({
   useListProjects: vi.fn(),
+  useListProjectsByParent: vi.fn(),
 }))
 
 vi.mock('@/queries/deployments', () => ({
@@ -45,7 +46,10 @@ vi.mock('@/queries/templates', async () => {
 
 import { BindingForm } from './BindingForm'
 import { useListTemplatePolicies } from '@/queries/templatePolicies'
-import { useListProjects } from '@/queries/projects'
+import {
+  useListProjects,
+  useListProjectsByParent,
+} from '@/queries/projects'
 import { useListDeployments } from '@/queries/deployments'
 import { useListTemplates } from '@/queries/templates'
 import { namespaceForOrg, namespaceForProject } from '@/lib/scope-labels'
@@ -81,6 +85,13 @@ function stubQueries({
   ;(useListProjects as Mock).mockReturnValue({
     data: { projects },
     isPending: false,
+    isLoading: false,
+    error: null,
+  })
+  ;(useListProjectsByParent as Mock).mockReturnValue({
+    data: projects,
+    isPending: false,
+    isLoading: false,
     error: null,
   })
   ;(useListDeployments as Mock).mockReturnValue({
@@ -99,6 +110,32 @@ describe('BindingForm', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     stubQueries({})
+  })
+
+  it('info box explains the scoped-wildcard model and no longer mentions "no glob patterns"', () => {
+    render(
+      <BindingForm
+        mode="create"
+        scopeType="organization"
+        namespace={ORG_NAMESPACE}
+        organization="test-org"
+        canWrite
+        submitLabel="Create"
+        pendingLabel="Creating..."
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+    const info = screen.getByTestId('binding-form-info')
+    // The HOL-773 info-box rewrite drops the legacy "no glob patterns" copy
+    // entirely — matching it would be a smoke-test that the author forgot
+    // to swap phrasing after Phases 1–3 landed.
+    expect(info.textContent ?? '').not.toMatch(/no glob patterns/i)
+    // New copy mentions wildcard expansion within the binding's storage
+    // scope and the kind-never-wildcarded rule.
+    expect(info.textContent ?? '').toMatch(/wildcard/i)
+    expect(info.textContent ?? '').toMatch(/storage scope/i)
+    expect(info.textContent ?? '').toMatch(/kind is never wildcarded/i)
   })
 
   it('renders the name, display name, description, policy, and targets fields', () => {

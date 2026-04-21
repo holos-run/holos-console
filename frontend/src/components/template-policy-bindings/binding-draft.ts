@@ -10,9 +10,23 @@ import {
 } from '@/gen/holos/console/v1/template_policy_bindings_pb.js'
 
 /**
+ * WILDCARD is the literal sentinel string the backend treats as "match
+ * anything within this storage scope" for a TemplatePolicyBindingTargetRef
+ * project_name or name (HOL-769 / HOL-770 / HOL-772). The UI must round-trip
+ * this exact byte sequence to the proto — never convert to a separate
+ * `wildcard: true` flag — so resolver matching stays byte-identical to
+ * `policyresolver.WildcardAny` on the server.
+ */
+export const WILDCARD = '*'
+
+/**
  * Draft shape for a single target ref while the user is authoring a binding.
  * Kept flatter than the proto message so inputs can be bound to strings and
  * converted at submit time, mirroring rule-draft.ts.
+ *
+ * `projectName` and `name` may be the literal string `"*"` (see WILDCARD) to
+ * request scoped-wildcard expansion. `kind` is never wildcarded — cross-kind
+ * fan-out requires separate rows (HOL-767 audit-readability rule).
  */
 export type TargetRefDraft = {
   kind: TemplatePolicyBindingTargetKind
@@ -111,9 +125,38 @@ export function bindingProtoToDraft(
 }
 
 /**
+ * findDuplicateTargetIndex returns the index of the *first* row that
+ * duplicates an earlier row in `targets` on the `(kind, projectName, name)`
+ * triple, or -1 when the list is duplicate-free. The wildcard literal `"*"`
+ * participates as an ordinary string value — `{kind, "*", "*"}` matches
+ * itself and is rejected by the backend as a duplicate too (HOL-772).
+ *
+ * Exposed so TargetRefEditor can flag the offending row inline without
+ * re-running the full submit validator.
+ */
+export function findDuplicateTargetIndex(targets: TargetRefDraft[]): number {
+  const seen = new Map<string, number>()
+  for (let i = 0; i < targets.length; i++) {
+    const t = targets[i]
+    const key = `${t.kind}/${t.projectName}/${t.name}`
+    if (seen.has(key)) {
+      return i
+    }
+    seen.set(key, i)
+  }
+  return -1
+}
+
+/**
  * validateBindingDraft returns a human-readable error string when the draft
  * is not submittable, or null when it is valid for the client. The backend
  * performs authoritative validation (duplicates, cross-scope reachability).
+ *
+ * The literal `"*"` is accepted in `projectName` or `name` per
+ * `policyresolver.WildcardAny` — empty strings are still rejected (the
+ * backend likewise rejects them with `name is required` /
+ * `project_name is required`, mirrored here so client-side and server-side
+ * messages stay aligned).
  */
 export function validateBindingDraft(draft: BindingDraft): string | null {
   if (!draft.name.trim()) {
@@ -132,23 +175,15 @@ export function validateBindingDraft(draft: BindingDraft): string | null {
       return `Target ${position}: kind is required.`
     }
     if (!target.projectName) {
-      return `Target ${position}: project is required.`
+      return `Target ${position}: project_name is required.`
     }
     if (!target.name) {
       return `Target ${position}: name is required.`
     }
   }
-  // Reject duplicates (identical (kind, projectName, name) triples). The
-  // backend is authoritative but the UI should refuse to submit an obviously
-  // invalid draft.
-  const seen = new Set<string>()
-  for (let i = 0; i < draft.targetRefs.length; i++) {
-    const t = draft.targetRefs[i]
-    const key = `${t.kind}/${t.projectName}/${t.name}`
-    if (seen.has(key)) {
-      return `Target ${i + 1}: duplicate of another target in this binding.`
-    }
-    seen.add(key)
+  const dupIndex = findDuplicateTargetIndex(draft.targetRefs)
+  if (dupIndex >= 0) {
+    return `Target ${dupIndex + 1}: duplicate of another target in this binding.`
   }
   return null
 }

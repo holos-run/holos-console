@@ -96,6 +96,7 @@ export function CreateFolderTemplatePolicyBindingPage({
           scopeType={scopeType}
           namespace={namespace}
           organization={orgName}
+          folderName={folderName}
           canWrite={canWrite}
           submitLabel="Create"
           pendingLabel="Creating..."

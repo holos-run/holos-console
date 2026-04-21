@@ -8,6 +8,10 @@ import { Separator } from '@/components/ui/separator'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import { TargetRefEditor } from './TargetRefEditor'
 import {
+  MatchesPreview,
+  type MatchesPreviewParentScope,
+} from './MatchesPreview'
+import {
   applyPolicyKey,
   draftToMutationParams,
   newEmptyBindingDraft,
@@ -17,7 +21,10 @@ import {
   type BindingMutationParams,
 } from './binding-draft'
 import { useListTemplatePolicies } from '@/queries/templatePolicies'
-import { scopeLabelFromNamespace, scopeNameFromNamespace } from '@/lib/scope-labels'
+import {
+  scopeLabelFromNamespace,
+  scopeNameFromNamespace,
+} from '@/lib/scope-labels'
 
 /**
  * BindingScope captures the allowed scope types for a TemplatePolicyBinding.
@@ -35,6 +42,9 @@ export type BindingFormProps = {
   /** Organization that owns the scope — required to populate the per-row
    * project picker. */
   organization: string
+  /** Folder name when `scopeType === 'folder'`. Used by MatchesPreview to
+   * enumerate the folder's children when the author picks `project: "*"`. */
+  folderName?: string
   canWrite: boolean
   initialValues?: BindingDraft
   submitLabel: string
@@ -56,6 +66,7 @@ export function BindingForm({
   scopeType,
   namespace,
   organization,
+  folderName,
   canWrite,
   initialValues,
   submitLabel,
@@ -134,12 +145,27 @@ export function BindingForm({
     }
   }
 
+  const parentScope: MatchesPreviewParentScope = useMemo(() => {
+    if (scopeType === 'folder' && folderName) {
+      return { kind: 'folder', folderName }
+    }
+    return { kind: 'organization' }
+  }, [scopeType, folderName])
+
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-border p-3 text-sm text-muted-foreground">
-        Template policy bindings attach a single policy to an explicit list of
-        project templates and deployments. No glob patterns — every target is
-        named directly.
+      <div
+        data-testid="binding-form-info"
+        className="rounded-md border border-border p-3 text-sm text-muted-foreground"
+      >
+        A TemplatePolicyBinding attaches one policy to a list of project
+        templates and deployments. Use the wildcard <code>*</code> in{' '}
+        <code>project_name</code> or <code>name</code> to expand a row to every
+        match the binding's storage scope can reach — a folder-scoped binding
+        can only touch resources under that folder, an organization-scoped
+        binding can touch every project in the org. <code>kind</code> is never
+        wildcarded: use a separate row for each kind so audit logs stay
+        readable.
       </div>
 
       <div>
@@ -229,6 +255,11 @@ export function BindingForm({
             setDraft((prev) => ({ ...prev, targetRefs }))
           }
           disabled={!canWrite}
+        />
+        <MatchesPreview
+          organization={organization}
+          parentScope={parentScope}
+          targets={draft.targetRefs}
         />
       </div>
 
