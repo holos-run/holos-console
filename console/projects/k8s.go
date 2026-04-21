@@ -90,16 +90,16 @@ func (c *K8sClient) GetProject(ctx context.Context, name string) (*corev1.Namesp
 	return ns, nil
 }
 
-// CreateProject creates a new namespace with managed-by and resource-type labels.
-// parentNs is the Kubernetes namespace name of the immediate parent (org or folder namespace).
-// When non-empty, it is stored in the v1alpha2.AnnotationParent label for hierarchy traversal.
-func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+// BuildProjectNamespace constructs the in-memory *corev1.Namespace object
+// CreateProject would write, without contacting the cluster. The
+// HOL-812 CreateProject RPC wire-up uses this helper to produce the
+// "base" Namespace the HOL-810 render path unifies template-produced
+// Namespace patches into (ADR 034 Decision 1 — the RPC-built namespace
+// is always the base). The existing CreateProject path continues to
+// call this helper and then issue a typed Create so the no-bindings
+// happy path stays byte-identical to the pre-HOL-812 behavior.
+func (c *K8sClient) BuildProjectNamespace(name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	nsName := c.Resolver.ProjectNamespace(name)
-	slog.DebugContext(ctx, "creating project in kubernetes",
-		slog.String("name", name),
-		slog.String("namespace", nsName),
-		slog.String("parent", parentNs),
-	)
 	usersJSON, err := json.Marshal(shareUsers)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-users: %w", err)
@@ -146,12 +146,27 @@ func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, descri
 	if parentNs != "" {
 		labels[v1alpha2.AnnotationParent] = parentNs
 	}
-	ns := &corev1.Namespace{
+	return &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        nsName,
 			Labels:      labels,
 			Annotations: annotations,
 		},
+	}, nil
+}
+
+// CreateProject creates a new namespace with managed-by and resource-type labels.
+// parentNs is the Kubernetes namespace name of the immediate parent (org or folder namespace).
+// When non-empty, it is stored in the v1alpha2.AnnotationParent label for hierarchy traversal.
+func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+	slog.DebugContext(ctx, "creating project in kubernetes",
+		slog.String("name", name),
+		slog.String("namespace", c.Resolver.ProjectNamespace(name)),
+		slog.String("parent", parentNs),
+	)
+	ns, err := c.BuildProjectNamespace(name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
+	if err != nil {
+		return nil, err
 	}
 	return c.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 }

@@ -40,6 +40,8 @@ import (
 	"github.com/holos-run/holos-console/console/organizations"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/projects"
+	"github.com/holos-run/holos-console/console/projects/projectapply"
+	"github.com/holos-run/holos-console/console/projects/projectnspipeline"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/resources"
 	"github.com/holos-run/holos-console/console/rpc"
@@ -463,6 +465,28 @@ func (s *Server) Serve(ctx context.Context) error {
 		// analysis); REQUIRE rules are now enforced exclusively at render
 		// time via folderResolver (Layer A).
 		projectsHandler := projects.NewHandler(projectsK8s, orgGrantResolver)
+
+		// HOL-812: wire the ProjectNamespace pipeline
+		// (resolve → render → apply) into CreateProject. The pipeline is
+		// only active when every dependency is present — the dynamic
+		// client is required for SSA, and the controller-runtime cache
+		// powers the binding walker on the hot path. When any dependency
+		// is missing (bootstrap, tests, dev), WithProjectNamespacePipeline
+		// receives nil and the handler keeps using its existing
+		// Namespace-create path unchanged.
+		if dynamicClient != nil {
+			ancestorBindings := policyresolver.NewAncestorBindingLister(templatePolicyBindingsK8s, nsWalker, nsResolver)
+			projectNSResolver := policyresolver.NewProjectNamespaceResolver(ancestorBindings)
+			pipeline := projectnspipeline.New(
+				projectNSResolver,
+				projectnspipeline.NewPolicyGetterAdapter(templatePoliciesK8s),
+				projectnspipeline.NewTemplateGetterAdapter(templatesK8s),
+				templates.NewCueRendererAdapter(),
+				projectapply.NewApplier(dynamicClient, projectapply.NewDefaultGVRResolver()),
+			)
+			projectsHandler = projectsHandler.WithProjectNamespacePipeline(&projectNSPipelineAdapter{p: pipeline})
+		}
+
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
 
@@ -1125,4 +1149,47 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 			Raw: certDER,
 		},
 	}, nil
+}
+
+// projectNSPipelineAdapter converts between the projects handler's
+// ProjectNamespacePipeline interface and the concrete
+// projectnspipeline.Pipeline. The interface lives in console/projects so
+// the handler package does not depend on projectnspipeline (which would
+// pull in console/templates → console/deployments and cycle with the
+// deployments test suite that imports console/projects). The adapter
+// lives here in console/console.go where both packages are already
+// imported for production wiring.
+type projectNSPipelineAdapter struct {
+	p *projectnspipeline.Pipeline
+}
+
+// Run translates the handler-side input into the pipeline's native
+// Input and maps the Outcome back. BaseNamespace and Platform pass
+// through by reference/value — no defensive copy is necessary because
+// the handler does not mutate them after the Run call returns.
+func (a *projectNSPipelineAdapter) Run(ctx context.Context, in projects.ProjectNamespacePipelineInput) (projects.ProjectNamespacePipelineOutcome, error) {
+	outcome, err := a.p.Run(ctx, projectnspipeline.Input{
+		ProjectName:     in.ProjectName,
+		ParentNamespace: in.ParentNamespace,
+		BaseNamespace:   in.BaseNamespace,
+		Platform:        in.Platform,
+	})
+	return mapProjectNSOutcome(outcome), err
+}
+
+// mapProjectNSOutcome converts from the pipeline's internal Outcome to
+// the handler-side enum. An explicit switch surfaces a compile-time
+// nudge if a new Outcome value is added to projectnspipeline and
+// callers forget to extend the mapping — the default branch falls back
+// to NoBindings so the handler never skips its typed Create on an
+// unrecognised outcome.
+func mapProjectNSOutcome(o projectnspipeline.Outcome) projects.ProjectNamespacePipelineOutcome {
+	switch o {
+	case projectnspipeline.OutcomeBindingsApplied:
+		return projects.ProjectNamespacePipelineBindingsApplied
+	case projectnspipeline.OutcomeNoBindings:
+		return projects.ProjectNamespacePipelineNoBindings
+	default:
+		return projects.ProjectNamespacePipelineNoBindings
+	}
 }
