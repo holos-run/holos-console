@@ -218,6 +218,7 @@ HOL-817 remains open as of the HOL-806 cleanup sweep (HOL-815, 2026-04-21):
 the folder/org namespace customization work has not yet started and the
 design questions (new target kind vs. generalized `HierarchyNamespace`, RBAC
 scope for bindings at a higher scope, new admission policy) are still open.
+
 Per `CONTRIBUTING.md` §ADR Open Questions, this question will be closed when
 HOL-817 ships or is explicitly abandoned.
 

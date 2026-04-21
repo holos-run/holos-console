@@ -183,7 +183,7 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/components/template-policy-bindings/BindingForm.test.tsx` | BindingForm: ProjectTemplate / Deployment / ProjectNamespace kind selection, project-name field shown/hidden, wildcard validation, submit / save paths (HOL-814) |
 | `src/index.test.ts` | App entry point smoke test |
 
-### Go test files (HOL-806)
+### Go test files
 
 | File | What it covers |
 |---|---|
