@@ -25,7 +25,7 @@ primitive is injected by `Default()` in a build-tagged file.
 
 ## The KDF interface
 
-`KDF` lives in `internal/secretinjector/crypto/kdf.go`. Its three-method
+`KDF` lives in `internal/secretinjector/crypto/kdf.go`. Its four-method
 surface is deliberately minimal:
 
 ```
