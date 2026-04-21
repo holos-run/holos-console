@@ -36,6 +36,12 @@ echo ">>> (3/5) scripts/local-ca"
 ./scripts/local-ca
 
 echo ">>> (4/5) kubectl apply namespace-scoped then cluster-scoped overlays"
+# The namespace-scoped overlay installs the holos-secret-injector
+# ServiceAccount + Role + RoleBinding in holos-system. Kustomize overlays
+# do not declare the Namespace itself (M1 deferral; see
+# config/secret-injector/namespace-scoped/README.md), so create it first
+# server-side and idempotently so a fresh k3d cluster bootstraps cleanly.
+kubectl create namespace holos-system --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -k "${REPO_ROOT}/config/namespace-scoped/"
 kubectl apply -k "${REPO_ROOT}/config/cluster-scoped/"
 

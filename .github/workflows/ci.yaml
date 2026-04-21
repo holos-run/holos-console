@@ -99,6 +99,13 @@ jobs:
       # ValidatingAdmissionPolicies reference them.
       - name: Install holos-console and secret-injector manifests
         run: |
+          # The namespace-scoped overlay installs the holos-secret-injector
+          # ServiceAccount in holos-system. Kustomize overlays do not declare
+          # the Namespace itself (M1 deferral; see
+          # config/secret-injector/namespace-scoped/README.md), so create it
+          # idempotently before applying so CI bootstraps cleanly on a fresh
+          # k3s cluster.
+          kubectl create namespace holos-system --dry-run=client -o yaml | kubectl apply -f -
           kubectl apply -k config/namespace-scoped/
           kubectl apply -k config/cluster-scoped/
 
