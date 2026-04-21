@@ -24,12 +24,14 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     createFileRoute: () => () => ({
       useParams: () => currentParams,
     }),
+    useNavigate: () => vi.fn(),
   }
 })
 
 vi.mock('@/queries/templates', () => ({
   useGetTemplate: vi.fn(),
   useUpdateTemplate: vi.fn(),
+  useDeleteTemplate: vi.fn(),
   useListTemplateExamples: vi.fn().mockReturnValue({ data: [], isPending: false, error: null }),
   useRenderTemplate: vi.fn().mockReturnValue({
     data: undefined,
@@ -46,7 +48,11 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
-import { useGetTemplate, useUpdateTemplate } from '@/queries/templates'
+import {
+  useGetTemplate,
+  useUpdateTemplate,
+  useDeleteTemplate,
+} from '@/queries/templates'
 import { ConsolidatedTemplateEditorPage } from './$namespace.$name'
 
 const cases = [
@@ -80,6 +86,11 @@ describe('ConsolidatedTemplateEditorPage cross-scope equivalence (HOL-607)', () 
       ;(useUpdateTemplate as Mock).mockReturnValue({
         mutateAsync: vi.fn(),
         isPending: false,
+      })
+      ;(useDeleteTemplate as Mock).mockReturnValue({
+        mutateAsync: vi.fn(),
+        isPending: false,
+        error: null,
       })
 
       render(<ConsolidatedTemplateEditorPage />)
