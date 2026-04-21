@@ -450,6 +450,83 @@ describe('TargetRefEditor', () => {
     ).toBeInTheDocument()
   })
 
+  it('renders a text Input (not the Combobox) for the name when project_name is "*"', () => {
+    // HOL-773 codex review on PR #1084: authors must be able to author
+    // {project_name: "*", name: "literal"} rows, so when the project is the
+    // wildcard we swap the strict-select Combobox for a free-text Input.
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[
+          makeTarget({
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: '*',
+            name: 'ingress',
+          }),
+        ]}
+        onChange={vi.fn()}
+      />,
+    )
+    const row = screen.getByTestId('target-ref-row-0')
+    // There is no combobox for the name here — only the literal-input wrapper.
+    expect(
+      within(row).queryByRole('combobox', { name: /target 1 name/i }),
+    ).not.toBeInTheDocument()
+    const nameInput = within(row).getByLabelText(/target 1 name/i)
+    expect(nameInput).toHaveValue('ingress')
+  })
+
+  it('typing into the literal-name input emits the new name (project_name="*" path)', async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    })
+    const onChange = vi.fn()
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[
+          makeTarget({
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: '*',
+            name: '',
+          }),
+        ]}
+        onChange={onChange}
+      />,
+    )
+    const nameInput = screen.getByLabelText(/target 1 name/i) as HTMLInputElement
+    await user.type(nameInput, 'i')
+    expect(onChange).toHaveBeenCalled()
+    const lastPatch = onChange.mock.calls.at(-1)![0] as TargetRefDraft[]
+    expect(lastPatch[0].name).toBe('i')
+  })
+
+  it('clicking the "*" quick-pick sets the name to wildcard when project_name="*"', async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    })
+    const onChange = vi.fn()
+    render(
+      <TargetRefEditor
+        organization="test-org"
+        targets={[
+          makeTarget({
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: '*',
+            name: '',
+          }),
+        ]}
+        onChange={onChange}
+      />,
+    )
+    await user.click(
+      screen.getByTestId('target-ref-row-0-name-wildcard-btn'),
+    )
+    expect(onChange).toHaveBeenCalledTimes(1)
+    const next = onChange.mock.calls[0][0] as TargetRefDraft[]
+    expect(next[0].name).toBe('*')
+  })
+
   it('hides the Add Target and Remove buttons when disabled', () => {
     render(
       <TargetRefEditor

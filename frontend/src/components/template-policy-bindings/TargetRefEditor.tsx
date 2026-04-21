@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import {
@@ -9,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Trash2 } from 'lucide-react'
+import { Asterisk, Trash2 } from 'lucide-react'
 import { TemplatePolicyBindingTargetKind } from '@/queries/templatePolicyBindings'
 import {
   WILDCARD,
@@ -288,21 +289,65 @@ function TargetRow({
 
         <div>
           <Label htmlFor={`target-name-${index}`}>Name</Label>
-          <Combobox
-            items={nameItems}
-            value={target.name}
-            onValueChange={(v) => {
-              if (disabled) return
-              onUpdate({ name: v })
-            }}
-            placeholder={
-              isDeployment
-                ? 'Select a deployment...'
-                : 'Select a project template...'
-            }
-            searchPlaceholder="Search..."
-            aria-label={`Target ${index + 1} name`}
-          />
+          {isLiteralProject ? (
+            <Combobox
+              items={nameItems}
+              value={target.name}
+              onValueChange={(v) => {
+                if (disabled) return
+                onUpdate({ name: v })
+              }}
+              placeholder={
+                isDeployment
+                  ? 'Select a deployment...'
+                  : 'Select a project template...'
+              }
+              searchPlaceholder="Search..."
+              aria-label={`Target ${index + 1} name`}
+            />
+          ) : (
+            // When project is "*" or unset, there is no per-project list to
+            // pick from. Authors still need to be able to type a literal name
+            // (e.g. {project:"*", name:"ingress"} for a scope-wide template)
+            // OR snap to the wildcard. Our `Combobox` is strict single-select
+            // and does not accept arbitrary text, so we render an Input here
+            // with a one-click "*" quick-pick — see codex review on PR #1084.
+            <div
+              className="flex items-center gap-2"
+              data-testid={`target-ref-row-${index}-name-literal`}
+            >
+              <Input
+                id={`target-name-${index}`}
+                type="text"
+                value={target.name}
+                onChange={(e) => {
+                  if (disabled) return
+                  onUpdate({ name: e.target.value })
+                }}
+                placeholder={
+                  isDeployment
+                    ? 'Deployment name or *'
+                    : 'Template name or *'
+                }
+                aria-label={`Target ${index + 1} name`}
+                disabled={disabled}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-label={`Target ${index + 1} set name to wildcard`}
+                data-testid={`target-ref-row-${index}-name-wildcard-btn`}
+                onClick={() => {
+                  if (disabled) return
+                  onUpdate({ name: WILDCARD })
+                }}
+                disabled={disabled}
+              >
+                <Asterisk className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 

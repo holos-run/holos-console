@@ -244,6 +244,79 @@ describe('MatchesPreview', () => {
     )
   })
 
+  it('literal/literal row is verified against the project list (no over-reporting)', async () => {
+    // HOL-773 codex review on PR #1084: the preview used to short-circuit
+    // literal/literal pairs without checking that the resource actually
+    // exists in the chosen project. Now every row goes through the probe,
+    // so a typo yields the empty-state warning instead of a phantom match.
+    stubLists({
+      projects: [{ name: 'proj-a', displayName: 'Project A' }],
+      perProjectTemplates: {
+        'proj-a': [
+          {
+            name: 'ingress',
+            displayName: 'Ingress',
+            namespace: namespaceForProject('proj-a'),
+          },
+        ],
+      },
+    })
+    render(
+      <MatchesPreview
+        organization="test-org"
+        parentScope={{ kind: 'organization' }}
+        targets={[
+          {
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: 'proj-a',
+            name: 'does-not-exist',
+          },
+        ]}
+      />,
+    )
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('matches-preview-empty'),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('literal/literal row that DOES exist still renders a match (happy path after P2 fix)', async () => {
+    stubLists({
+      projects: [{ name: 'proj-a', displayName: 'Project A' }],
+      perProjectTemplates: {
+        'proj-a': [
+          {
+            name: 'ingress',
+            displayName: 'Ingress',
+            namespace: namespaceForProject('proj-a'),
+          },
+        ],
+      },
+    })
+    render(
+      <MatchesPreview
+        organization="test-org"
+        parentScope={{ kind: 'organization' }}
+        targets={[
+          {
+            kind: TemplatePolicyBindingTargetKind.PROJECT_TEMPLATE,
+            projectName: 'proj-a',
+            name: 'ingress',
+          },
+        ]}
+      />,
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('matches-preview-toggle')).toHaveTextContent(
+        /Matches 1 target/i,
+      )
+    })
+    expect(screen.getByTestId('matches-preview-list')).toHaveTextContent(
+      'proj-a/ingress',
+    )
+  })
+
   it('folder-scoped preview enumerates via useListProjectsByParent', async () => {
     stubLists({
       projects: [{ name: 'proj-folder-a', displayName: 'Project A' }],

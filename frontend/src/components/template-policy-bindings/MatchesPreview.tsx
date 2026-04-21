@@ -94,8 +94,22 @@ function useProbeStore(): ProbeStore {
   // consumer would never re-render after a probe update.
   const versionRef = useRef<Record<string, ProbeValue>>({})
 
+  // Defer notifications to a microtask. Probe children publish into the
+  // store during their own render; notifying subscribers synchronously from
+  // within a child's render would schedule a setState on the MatchesPreview
+  // parent *during its own render*, which React rightly flags with
+  // "Cannot update a component while rendering a different component".
+  // A microtask runs after the current render commits, at which point
+  // `useSyncExternalStore` can re-read the snapshot and schedule the next
+  // render cleanly.
+  const pendingNotifyRef = useRef(false)
   const notify = useCallback(() => {
-    for (const l of listenersRef.current) l()
+    if (pendingNotifyRef.current) return
+    pendingNotifyRef.current = true
+    queueMicrotask(() => {
+      pendingNotifyRef.current = false
+      for (const l of listenersRef.current) l()
+    })
   }, [])
 
   const publish = useCallback(
@@ -254,18 +268,11 @@ export function MatchesPreview({
       const nameIsWildcard = t.name === WILDCARD
       const hasLiteralName = !!t.name && !nameIsWildcard
 
-      // {project: literal, name: literal} short-circuits without a hook probe.
-      if (!plan.projectIsWildcard && hasLiteralName && plan.projects.length === 1) {
-        const entry: MatchEntry = {
-          kind: t.kind,
-          projectName: plan.projects[0],
-          name: t.name,
-        }
-        const k = entryKey(entry)
-        if (!seen.has(k)) seen.set(k, entry)
-        continue
-      }
-
+      // Literal/literal rows used to short-circuit here, but that
+      // over-reported matches for typos or out-of-scope projects (codex
+      // review on PR #1084). Let the probe verify existence for every
+      // literal name so the blast-radius panel never claims a match that
+      // the backend will later reject.
       // project wildcard with no projects yet enumerated — honestly pending.
       if (plan.projectIsWildcard && plan.projects.length === 0 && enumeratedProjectsPending) {
         pending += 1
