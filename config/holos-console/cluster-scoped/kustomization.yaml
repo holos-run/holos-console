@@ -1,0 +1,25 @@
+# Cluster-scoped overlay for holos-console. Installs every cluster-wide
+# resource the templates API surface needs: CRDs, VAPs + VAPBs, and the
+# generated ClusterRole.
+#
+#   kubectl apply -k config/holos-console/cluster-scoped/
+#
+# Apply before any namespace-scoped overlay. A missing ClusterRole is
+# harmless (the binding just grants nothing until the role exists), but
+# CRDs must be established before the controller can reconcile.
+#
+# Resources are referenced as kustomize bases (directory paths), not
+# as individual file paths, because kubectl's default kustomize load
+# restriction forbids cross-directory file references. Each base
+# directory carries its own kustomization.yaml that enumerates its
+# files; add a file to a base and it flows through to this overlay
+# without edits here.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+# CRDs — the templates.holos.run API surface.
+- ../crd
+# ValidatingAdmissionPolicies — scope-escape and cross-tenant guards.
+- ../admission
+# Cluster-scoped RBAC — generated ClusterRole for holos-console-templates.
+- ../rbac
