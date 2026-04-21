@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
@@ -33,20 +34,36 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 
 vi.mock('@/queries/templates', () => ({
   useCreateTemplate: vi.fn(),
+  useListTemplateExamples: vi.fn(),
 }))
 
 vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
 }))
 
-import { useCreateTemplate } from '@/queries/templates'
+import { useCreateTemplate, useListTemplateExamples } from '@/queries/templates'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { CreateOrgTemplatePage } from './new'
 
+const EXAMPLE_HTTPROUTE = {
+  name: 'httproute-v1',
+  displayName: 'HTTPRoute (v1)',
+  description: 'Exposes project services via an HTTPRoute into the org-configured ingress gateway.',
+  cueTemplate: '// httproute CUE\nplatformResources: {}\n',
+}
+
+const EXAMPLE_SECOND = {
+  name: 'allowed-project-resource-kinds-v1',
+  displayName: 'Allowed Project Resource Kinds (v1)',
+  description: 'Closes projectResources.namespacedResources.',
+  cueTemplate: '// allowed CUE\nprojectResources: {}\n',
+}
+
 function setupMocks(
   mutateAsync = vi.fn().mockResolvedValue({}),
   userRole = Role.OWNER,
+  examples: typeof EXAMPLE_HTTPROUTE[] = [EXAMPLE_HTTPROUTE, EXAMPLE_SECOND],
 ) {
   ;(useCreateTemplate as Mock).mockReturnValue({
     mutateAsync,
@@ -55,6 +72,11 @@ function setupMocks(
   })
   ;(useGetOrganization as Mock).mockReturnValue({
     data: { name: 'test-org', userRole },
+    isPending: false,
+    error: null,
+  })
+  ;(useListTemplateExamples as Mock).mockReturnValue({
+    data: examples,
     isPending: false,
     error: null,
   })
@@ -199,31 +221,48 @@ describe('CreateOrgTemplatePage', () => {
     expect(screen.getByText('test-org')).toBeInTheDocument()
   })
 
-  describe('Load Example button', () => {
-    it('renders Load Example button', () => {
+  // HOL-800: the inline "Load Example" button and hard-coded CUE body were
+  // replaced by the TemplateExamplePicker (same picker used on folder/project
+  // new-template pages). Verify the transition.
+  describe('example picker', () => {
+    it('renders the Load Example picker trigger', () => {
       render(<CreateOrgTemplatePage orgName="test-org" />)
-      expect(
-        screen.getByRole('button', { name: /load example/i }),
-      ).toBeInTheDocument()
+      // TemplateExamplePicker exposes role=combobox (shadcn Button with role override).
+      expect(screen.getByRole('combobox', { name: /load example/i })).toBeInTheDocument()
     })
 
-    it('clicking Load Example populates all form fields', () => {
+    it('no longer renders a plain hard-coded "Load Example" push button', () => {
       render(<CreateOrgTemplatePage orgName="test-org" />)
-      fireEvent.click(screen.getByRole('button', { name: /load example/i }))
+      // The old inline Load Example button filled a fixed httpbin-platform template.
+      // Now all load-example logic lives in the picker popover — the trigger is
+      // role=combobox, not role=button, so a plain button query returns null.
+      expect(
+        screen.queryByRole('button', { name: /load example/i }),
+      ).toBeNull()
+    })
+
+    it('selecting an example from the picker fills all form fields', async () => {
+      const user = userEvent.setup()
+      render(<CreateOrgTemplatePage orgName="test-org" />)
+
+      // Open the picker.
+      await user.click(screen.getByRole('combobox', { name: /load example/i }))
+
+      // Pick the first example.
+      const item = await screen.findByText(EXAMPLE_HTTPROUTE.displayName)
+      await user.click(item)
+
+      const displayNameInput = screen.getByLabelText(/display name/i) as HTMLInputElement
+      expect(displayNameInput.value).toBe(EXAMPLE_HTTPROUTE.displayName)
 
       const nameInput = screen.getByLabelText(/name slug/i) as HTMLInputElement
-      expect(nameInput.value).toBe('httpbin-platform')
+      expect(nameInput.value).toBe(EXAMPLE_HTTPROUTE.name)
 
-      const displayNameInput = screen.getByLabelText(
-        /display name/i,
-      ) as HTMLInputElement
-      expect(displayNameInput.value).toBe('httpbin Platform')
+      const descriptionInput = screen.getByLabelText(/description/i) as HTMLInputElement
+      expect(descriptionInput.value).toBe(EXAMPLE_HTTPROUTE.description)
 
-      const cueEditor = screen.getByRole('textbox', {
-        name: /cue template/i,
-      }) as HTMLTextAreaElement
-      expect(cueEditor.value).toContain('HTTPRoute')
-      expect(cueEditor.value).toContain('platform.gatewayNamespace')
+      const cueEditor = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
+      expect(cueEditor.value).toBe(EXAMPLE_HTTPROUTE.cueTemplate)
     })
   })
 
