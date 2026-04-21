@@ -80,11 +80,11 @@ export function FolderTemplatePolicyBindingsIndexPage({
             </Link>
             {' / '}
             <Link
-              to="/orgs/$orgName/folders"
+              to="/orgs/$orgName/resources"
               params={{ orgName }}
               className="hover:underline"
             >
-              Folders
+              Resources
             </Link>
             {' / '}
             <Link

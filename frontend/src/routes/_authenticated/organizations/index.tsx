@@ -84,12 +84,12 @@ export function OrganizationsIndexPage() {
 
   const handleRowClick = (org: Organization) => {
     // Switching organizations from this page sets the selected org and lands
-    // on the org's projects index (the org-scope home view). The picker
-    // dropdown previously did the same thing; reusing OrgContext keeps the
-    // selection persistent across reloads.
+    // on the org's Resources listing (the unified folders + projects view,
+    // introduced in HOL-606). Reusing OrgContext keeps the selection
+    // persistent across reloads.
     setSelectedOrg(org.name)
     navigate({
-      to: '/orgs/$orgName/projects',
+      to: '/orgs/$orgName/resources',
       params: { orgName: org.name },
     })
   }

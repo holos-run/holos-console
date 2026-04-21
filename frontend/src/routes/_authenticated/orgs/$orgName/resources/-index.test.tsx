@@ -147,7 +147,7 @@ describe('ResourcesIndexPage', () => {
     expect(orgLink).toHaveAttribute('title', 'test-org')
 
     const folderLink = screen.getByRole('link', { name: 'Team A' })
-    expect(folderLink).toHaveAttribute('href', '/orgs/test-org/folders/team-a')
+    expect(folderLink).toHaveAttribute('href', '/folders/team-a')
     expect(folderLink).toHaveAttribute('title', 'team-a')
 
     const leafLink = screen.getByRole('link', { name: 'Web App' })
@@ -155,12 +155,12 @@ describe('ResourcesIndexPage', () => {
     expect(leafLink).toHaveAttribute('title', 'web')
   })
 
-  it('routes folder leaves to the org-scoped folder detail URL', () => {
+  it('routes folder leaves to the canonical folder detail URL', () => {
     setupMocks([makeFolder('shared', 'Shared Folder')])
     render(<ResourcesIndexPage />)
 
     const leafLink = screen.getByRole('link', { name: 'Shared Folder' })
-    expect(leafLink).toHaveAttribute('href', '/orgs/test-org/folders/shared')
+    expect(leafLink).toHaveAttribute('href', '/folders/shared')
   })
 
   it('falls back to the slug when display name is empty', () => {
@@ -170,9 +170,7 @@ describe('ResourcesIndexPage', () => {
     // Leaf link uses the slug since display name is empty.
     const leafLinks = screen.getAllByRole('link', { name: 'ops' })
     expect(
-      leafLinks.some(
-        (l) => l.getAttribute('href') === '/orgs/test-org/folders/ops',
-      ),
+      leafLinks.some((l) => l.getAttribute('href') === '/folders/ops'),
     ).toBe(true)
   })
 

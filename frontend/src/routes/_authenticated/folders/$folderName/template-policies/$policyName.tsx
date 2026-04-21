@@ -133,8 +133,8 @@ export function FolderTemplatePolicyDetailPage({
                 {orgName}
               </Link>
               {' / '}
-              <Link to="/orgs/$orgName/folders" params={{ orgName }} className="hover:underline">
-                Folders
+              <Link to="/orgs/$orgName/resources" params={{ orgName }} className="hover:underline">
+                Resources
               </Link>
               {' / '}
               <Link
