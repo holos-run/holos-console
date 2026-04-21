@@ -8,7 +8,7 @@ exposes ConnectRPC services. The built UI is embedded into the Go binary via
 
 A first-time cluster operator can bootstrap the full cluster surface — CRDs,
 admission policies, RBAC, and the secret-injector ServiceAccount — and reach a
-running server in four steps.
+running server with a handful of commands.
 
 ### Prerequisites
 
