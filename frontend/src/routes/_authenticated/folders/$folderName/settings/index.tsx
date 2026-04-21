@@ -593,7 +593,7 @@ export function FolderDetailPage({
                 try {
                   setDeleteOpen(false)
                   navigate?.({
-                    to: '/orgs/$orgName/folders',
+                    to: '/orgs/$orgName/resources',
                     params: { orgName },
                   })
                 } catch (err) {

@@ -29,8 +29,8 @@ test.describe('Folder list page', () => {
     await apiCreateOrg(page, orgName)
     await apiCreateFolder(page, folderName, orgName, 1, orgName)
 
-    // Navigate to the org's folders page
-    await page.goto(`/orgs/${orgName}/folders`)
+    // Navigate to the org's unified Resources listing (folders + projects)
+    await page.goto(`/orgs/${orgName}/resources`)
     await page.waitForLoadState('networkidle')
 
     // Folder should appear in the list (target the display-name column span to avoid strict mode violations)
@@ -47,7 +47,7 @@ test.describe('Folder list page', () => {
     const orgName = `e2e-no-folders-${Date.now()}`
     await apiCreateOrg(page, orgName)
 
-    await page.goto(`/orgs/${orgName}/folders`)
+    await page.goto(`/orgs/${orgName}/resources`)
     await page.waitForLoadState('networkidle')
 
     // A new org auto-creates a "Default" folder — verify it appears
@@ -97,8 +97,8 @@ test.describe('Nested folder workflow', () => {
     // Create child folder under parent folder
     await apiCreateFolder(page, childFolder, orgName, 2, parentFolder)
 
-    // Navigate to org's top-level folders page — only parent folder should appear
-    await page.goto(`/orgs/${orgName}/folders`)
+    // Navigate to org's unified Resources listing — only parent folder should appear as a top-level entry
+    await page.goto(`/orgs/${orgName}/resources`)
     await page.waitForLoadState('networkidle')
     await expect(page.locator('span.font-medium', { hasText: parentFolder })).toBeVisible({ timeout: 10000 })
 

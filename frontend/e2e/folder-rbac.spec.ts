@@ -36,9 +36,9 @@ test.describe('Folder RBAC - owner can manage folder', () => {
     await apiCreateOrg(page, orgName)
     await apiCreateFolder(page, folderName, orgName, 1, orgName)
 
-    // Navigate to folder list — folder should be visible (owner can list)
+    // Navigate to the org's unified Resources listing — folder should be visible (owner can list)
     // Use the display-name span to avoid strict mode violations (name also appears in name column)
-    await page.goto(`/orgs/${orgName}/folders`)
+    await page.goto(`/orgs/${orgName}/resources`)
     await page.waitForLoadState('networkidle')
     await expect(page.locator('span.font-medium', { hasText: folderName })).toBeVisible({ timeout: 10000 })
 
