@@ -198,6 +198,15 @@ func targetKindCRDToProto(k templatesv1alpha1.TemplatePolicyBindingTargetKind) c
 		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE
 	case templatesv1alpha1.TemplatePolicyBindingTargetKindDeployment:
 		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_DEPLOYMENT
+	case templatesv1alpha1.TemplatePolicyBindingTargetKindProjectNamespace:
+		// HOL-806 / ADR 034: ProjectNamespace targets the to-be-created
+		// namespace for a new project. The binding lives in an ancestor
+		// namespace and is matched by CreateProject against the incoming
+		// project. Mirrors templatepolicybindings.targetKindCRDToProto; the
+		// two functions exist in separate packages only because importing
+		// templatepolicybindings from policyresolver would introduce a
+		// cycle (HOL-662 notes on ancestor_bindings.go:34).
+		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_NAMESPACE
 	default:
 		return consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_UNSPECIFIED
 	}
