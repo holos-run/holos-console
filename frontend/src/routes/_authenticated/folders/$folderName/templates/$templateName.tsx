@@ -33,7 +33,7 @@ export function FolderTemplateRedirect() {
       },
       replace: true,
     })
-  }, [orgName, folderName, templateName, navigate])
+  }, [isPending, orgName, folderName, templateName, navigate])
 
   if (error) {
     return (

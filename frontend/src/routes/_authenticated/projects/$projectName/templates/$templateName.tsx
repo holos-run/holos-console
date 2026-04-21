@@ -33,7 +33,7 @@ export function ProjectTemplateRedirect() {
       },
       replace: true,
     })
-  }, [orgName, projectName, templateName, navigate])
+  }, [isPending, orgName, projectName, templateName, navigate])
 
   if (error) {
     return (
