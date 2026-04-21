@@ -279,4 +279,26 @@ describe('OrgTemplatePoliciesIndexPage', () => {
     // 1 header + 2 body rows
     expect(rows.length).toBe(3)
   })
+
+  // HOL-793: the Scope column renders a human-readable label per row so users
+  // can tell org-vs-folder rows apart at a glance. Previously scope was only
+  // visible from the name-cell link target.
+  it('renders a Scope column with a badge per row', () => {
+    setup([
+      makePolicy('p-org', ORG_NS, 'Org Policy'),
+      makePolicy('p-folder', FOLDER_NS, 'Folder Policy'),
+    ])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    expect(screen.getByRole('columnheader', { name: /^scope$/i })).toBeInTheDocument()
+    expect(screen.getByText('Organization: test-org')).toBeInTheDocument()
+    expect(screen.getByText('Folder: team-alpha')).toBeInTheDocument()
+  })
+
+  it('renders a scope filter select in the toolbar', () => {
+    setup([makePolicy('p-org', ORG_NS, 'Org Policy')])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    expect(
+      screen.getByRole('combobox', { name: /filter by scope/i }),
+    ).toBeInTheDocument()
+  })
 })

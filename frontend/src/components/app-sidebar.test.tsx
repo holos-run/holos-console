@@ -305,11 +305,16 @@ describe('AppSidebar — Organization tree (HOL-605)', () => {
     expect(lineDivs.map((el) => el.textContent)).toEqual(['my-org', 'my-org'])
   })
 
-  it('renders children in canonical order Resources, Templates, Template Policies', () => {
+  it('renders children in canonical order Resources, Templates, Template Policies, Template Policy Bindings', () => {
     render(<AppSidebar />)
     const content = screen.getByTestId('org-tree-content')
     const labels = Array.from(content.querySelectorAll('li')).map((li) => li.textContent?.trim())
-    expect(labels).toEqual(['Resources', 'Templates', 'Template Policies'])
+    expect(labels).toEqual([
+      'Resources',
+      'Templates',
+      'Template Policies',
+      'Template Policy Bindings',
+    ])
   })
 
   it('routes each Organization child link to the correct /orgs/$orgName/... URL', () => {
@@ -323,6 +328,9 @@ describe('AppSidebar — Organization tree (HOL-605)', () => {
     expect(screen.getByRole('link', { name: /^template policies$/i }).getAttribute('href')).toBe(
       '/orgs/my-org/template-policies',
     )
+    expect(
+      screen.getByRole('link', { name: /^template policy bindings$/i }).getAttribute('href'),
+    ).toBe('/orgs/my-org/template-policy-bindings')
   })
 
   it('does not render the former Folders, Projects, or Org Settings sidebar entries', () => {
@@ -374,6 +382,19 @@ describe('AppSidebar — Organization tree (HOL-605)', () => {
       expect(activeOf(/^template policies$/i)).toBe('true')
       expect(activeOf(/^resources$/i)).toBe('false')
       expect(activeOf(/^templates$/i)).toBe('false')
+      expect(activeOf(/^template policy bindings$/i)).toBe('false')
+    })
+
+    // HOL-793: scoped to Template Policies only — starts-with is guarded so
+    // the `/template-policies` prefix does not light up when the pathname is
+    // actually under `/template-policy-bindings`.
+    it('marks only the Template Policy Bindings child active when the pathname is /orgs/<name>/template-policy-bindings', () => {
+      mockPathname = '/orgs/my-org/template-policy-bindings'
+      render(<AppSidebar />)
+      expect(activeOf(/^template policy bindings$/i)).toBe('true')
+      expect(activeOf(/^template policies$/i)).toBe('false')
+      expect(activeOf(/^templates$/i)).toBe('false')
+      expect(activeOf(/^resources$/i)).toBe('false')
     })
 
     it('marks only the matching child active when the pathname is a deeper sub-route', () => {
@@ -382,6 +403,7 @@ describe('AppSidebar — Organization tree (HOL-605)', () => {
       expect(activeOf(/^template policies$/i)).toBe('true')
       expect(activeOf(/^resources$/i)).toBe('false')
       expect(activeOf(/^templates$/i)).toBe('false')
+      expect(activeOf(/^template policy bindings$/i)).toBe('false')
     })
   })
 })

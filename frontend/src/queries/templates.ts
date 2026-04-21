@@ -2,7 +2,12 @@ import { useMemo } from 'react'
 import { create } from '@bufbuild/protobuf'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  useQuery,
+  useQueries,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query'
 import {
   TemplateService,
   ReleaseSchema,
@@ -10,12 +15,27 @@ import {
 import type {
   LinkableTemplate,
   Release,
+  Template,
   TemplateExample,
   TemplateUpdate,
   TemplateDefaults,
 } from '@/gen/holos/console/v1/templates_pb.js'
 import type { LinkedTemplateRef } from '@/gen/holos/console/v1/policy_state_pb.js'
 import { useAuth } from '@/lib/auth'
+import { useListFolders } from '@/queries/folders'
+import { useListProjectsByParent } from '@/queries/projects'
+import type { Folder } from '@/gen/holos/console/v1/folders_pb.js'
+import type { Project } from '@/gen/holos/console/v1/projects_pb.js'
+import {
+  namespaceForFolder,
+  namespaceForOrg,
+  namespaceForProject,
+} from '@/lib/scope-labels'
+import {
+  aggregateFanOut,
+  type FanOutAggregate,
+  type FanOutQueryState,
+} from '@/queries/templatePolicies'
 
 // Re-export generated types used by consumers.
 export type {
@@ -95,6 +115,118 @@ export function useListTemplates(namespace: string) {
     },
     enabled: isAuthenticated && !!namespace,
   })
+}
+
+// Module-level sentinels so useMemo fallbacks preserve reference identity
+// across renders when the folders/projects lists are still pending or empty.
+const EMPTY_FOLDERS: readonly Folder[] = []
+const EMPTY_PROJECTS: readonly Project[] = []
+
+// useAllTemplatesForOrg fans a ListTemplates call across every namespace
+// reachable from an organization root — the org namespace, every folder
+// namespace, and every project namespace visible to the caller — and flattens
+// the results into one array. HOL-793 uses this to render the unified
+// org-level Templates index with scope indicators and filters without
+// requiring a server-side SearchTemplates fan-out. TemplateService exposes
+// `SearchTemplates`, but it returns proto Template payloads scoped by the
+// caller's `organization` filter only, without breaking out folder/project
+// results — and the current UI needs the per-namespace list semantics for
+// correct cache invalidation. Once server-side listing lands (tracked in
+// HOL-590), this hook should be retired in favor of SearchTemplates.
+//
+// Semantics match useAllTemplatePoliciesForOrg: partial data + error is
+// preserved so the caller can keep successfully-loaded rows visible while
+// rendering a warning banner.
+export function useAllTemplatesForOrg(orgName: string): FanOutAggregate<Template> {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(TemplateService, transport), [transport])
+  const orgNamespace = namespaceForOrg(orgName)
+  const foldersQuery = useListFolders(orgName)
+  const folders = useMemo(
+    () => foldersQuery.data ?? EMPTY_FOLDERS,
+    [foldersQuery.data],
+  )
+  const projectsQuery = useListProjectsByParent(orgName)
+  const projects = useMemo(
+    () => projectsQuery.data ?? EMPTY_PROJECTS,
+    [projectsQuery.data],
+  )
+
+  const folderQueries = useQueries({
+    queries: folders.map((folder) => ({
+      queryKey: templateListKey(namespaceForFolder(folder.name)),
+      queryFn: async (): Promise<Template[]> => {
+        const response = await client.listTemplates({
+          namespace: namespaceForFolder(folder.name),
+        })
+        return response.templates
+      },
+      enabled: isAuthenticated && !!folder.name,
+    })),
+  })
+
+  const projectQueries = useQueries({
+    queries: projects.map((project) => ({
+      queryKey: templateListKey(namespaceForProject(project.name)),
+      queryFn: async (): Promise<Template[]> => {
+        const response = await client.listTemplates({
+          namespace: namespaceForProject(project.name),
+        })
+        return response.templates
+      },
+      enabled: isAuthenticated && !!project.name,
+    })),
+  })
+
+  const orgQuery = useQuery({
+    queryKey: templateListKey(orgNamespace),
+    queryFn: async () => {
+      const response = await client.listTemplates({ namespace: orgNamespace })
+      return response.templates
+    },
+    enabled: isAuthenticated && !!orgNamespace,
+  })
+
+  // The folders- and projects-list queries are modeled as extra inputs to
+  // aggregateFanOut: data=[] on success lets other scopes' rows render, while
+  // a structural error surfaces alongside whichever per-scope queries did
+  // resolve.
+  const foldersAsQuery: FanOutQueryState<Template[]> = {
+    data: foldersQuery.data === undefined ? undefined : [],
+    error: foldersQuery.error,
+    isPending: foldersQuery.isPending,
+    fetchStatus: foldersQuery.fetchStatus,
+  }
+  const projectsAsQuery: FanOutQueryState<Template[]> = {
+    data: projectsQuery.data === undefined ? undefined : [],
+    error: projectsQuery.error,
+    isPending: projectsQuery.isPending,
+    fetchStatus: projectsQuery.fetchStatus,
+  }
+
+  return aggregateFanOut<Template>([
+    foldersAsQuery,
+    projectsAsQuery,
+    {
+      data: orgQuery.data,
+      error: orgQuery.error,
+      isPending: orgQuery.isPending,
+      fetchStatus: orgQuery.fetchStatus,
+    },
+    ...folderQueries.map((q) => ({
+      data: q.data,
+      error: q.error,
+      isPending: q.isPending,
+      fetchStatus: q.fetchStatus,
+    })),
+    ...projectQueries.map((q) => ({
+      data: q.data,
+      error: q.error,
+      isPending: q.isPending,
+      fetchStatus: q.fetchStatus,
+    })),
+  ])
 }
 
 function searchTemplatesKey(

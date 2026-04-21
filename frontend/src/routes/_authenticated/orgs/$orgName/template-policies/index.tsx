@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Badge } from '@/components/ui/badge'
 import {
   Table,
   TableBody,
@@ -20,11 +21,19 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useAllTemplatePoliciesForOrg } from '@/queries/templatePolicies'
 import type { TemplatePolicy } from '@/queries/templatePolicies'
 import { useGetOrganization } from '@/queries/organizations'
 import {
+  scopeDisplayLabel,
   scopeLabelFromNamespace,
   scopeNameFromNamespace,
 } from '@/lib/scope-labels'
@@ -41,6 +50,12 @@ function OrgTemplatePoliciesIndexRoute() {
 }
 
 const columnHelper = createColumnHelper<TemplatePolicy>()
+
+// HOL-793: scope filter values. Policies live at org or folder scope only
+// (HOL-590), so the project option is shown but filters to zero rows — the
+// explicit empty-result state teaches the constraint rather than hiding the
+// option silently.
+type ScopeFilter = 'all' | 'org' | 'folder' | 'project'
 
 export function OrgTemplatePoliciesIndexPage({
   orgName: propOrgName,
@@ -62,8 +77,13 @@ export function OrgTemplatePoliciesIndexPage({
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
   const [globalFilter, setGlobalFilter] = useState('')
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all')
 
-  const rows = useMemo(() => policies ?? [], [policies])
+  const rows = useMemo(() => {
+    const all = policies ?? []
+    if (scopeFilter === 'all') return all
+    return all.filter((p) => scopeLabelFromNamespace(p.namespace) === scopeFilter)
+  }, [policies, scopeFilter])
 
   const columns = useMemo(
     () => [
@@ -110,6 +130,11 @@ export function OrgTemplatePoliciesIndexPage({
             </span>
           )
         },
+      }),
+      columnHelper.accessor((row) => scopeCellText(row.namespace), {
+        id: 'scope',
+        header: 'Scope',
+        cell: ({ row }) => <ScopeBadge namespace={row.original.namespace} />,
       }),
       columnHelper.accessor('namespace', {
         header: 'Namespace',
@@ -194,7 +219,7 @@ export function OrgTemplatePoliciesIndexPage({
             <AlertDescription>{error.message}</AlertDescription>
           </Alert>
         )}
-        {rows.length === 0 ? (
+        {(policies ?? []).length === 0 ? (
           <div className="rounded-md border border-dashed border-border p-6 text-center">
             <p className="text-sm font-medium">No template policies yet.</p>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -205,7 +230,7 @@ export function OrgTemplatePoliciesIndexPage({
           </div>
         ) : (
           <>
-            <div className="mb-3">
+            <div className="mb-3 flex flex-col sm:flex-row gap-2 sm:items-center">
               <Input
                 placeholder="Search policies…"
                 value={globalFilter}
@@ -213,7 +238,31 @@ export function OrgTemplatePoliciesIndexPage({
                 className="max-w-sm"
                 aria-label="Search template policies"
               />
+              <Select
+                value={scopeFilter}
+                onValueChange={(v) => setScopeFilter(v as ScopeFilter)}
+              >
+                <SelectTrigger
+                  className="w-[180px]"
+                  aria-label="Filter by scope"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All scopes</SelectItem>
+                  <SelectItem value="org">Organization</SelectItem>
+                  <SelectItem value="folder">Folder</SelectItem>
+                  <SelectItem value="project">Project</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
+            {rows.length === 0 && (
+              <div className="mb-3 rounded-md border border-dashed border-border p-4 text-center">
+                <p className="text-sm text-muted-foreground">
+                  No policies match the current filters.
+                </p>
+              </div>
+            )}
             <Table>
               <TableHeader>
                 {table.getHeaderGroups().map((headerGroup) => (
@@ -250,5 +299,33 @@ export function OrgTemplatePoliciesIndexPage({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+// scopeCellText supplies the string the global search filter matches against
+// when the user types a scope label. An accessor that returns text (rather
+// than a ReactNode cell) lets `includesString` search this column.
+function scopeCellText(namespace: string): string {
+  const label = scopeDisplayLabel(namespace)
+  const name = scopeNameFromNamespace(namespace)
+  if (!label) return ''
+  return name ? `${label}: ${name}` : label
+}
+
+function ScopeBadge({ namespace }: { namespace: string }) {
+  const label = scopeDisplayLabel(namespace)
+  const name = scopeNameFromNamespace(namespace)
+  if (!label) {
+    return (
+      <Badge variant="outline" className="text-xs">
+        unknown
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="outline" className="text-xs">
+      {label}
+      {name ? `: ${name}` : ''}
+    </Badge>
   )
 }

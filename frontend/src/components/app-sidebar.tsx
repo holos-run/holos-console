@@ -7,6 +7,7 @@ import {
   FolderTree,
   LayoutTemplate,
   Layers,
+  Link2,
   Building2,
   Settings,
   Shield,
@@ -110,9 +111,11 @@ export function AppSidebar() {
   // HOL-605 replaces the former flat Folders / Projects / Template Policies /
   // Org Settings group with a single collapsible "Organization" tree mirrored
   // on the Project tree pattern (HOL-604). Children order is canonical:
-  // Resources, Templates, Template Policies. Org Settings has moved to the
-  // workspace menu (HOL-603). The Organization tree itself is rendered only
-  // when an organization is selected.
+  // Resources, Templates, Template Policies, Template Policy Bindings
+  // (Bindings added in HOL-793 so users can reach them without opening folder
+  // settings). Org Settings has moved to the workspace menu (HOL-603). The
+  // Organization tree itself is rendered only when an organization is
+  // selected.
   const orgNavItems: Array<{
     label: string
     to: string
@@ -137,6 +140,12 @@ export function AppSidebar() {
           to: '/orgs/$orgName/template-policies' as const,
           params: { orgName: selectedOrg },
           icon: Shield,
+        },
+        {
+          label: 'Template Policy Bindings',
+          to: '/orgs/$orgName/template-policy-bindings' as const,
+          params: { orgName: selectedOrg },
+          icon: Link2,
         },
       ]
     : []
