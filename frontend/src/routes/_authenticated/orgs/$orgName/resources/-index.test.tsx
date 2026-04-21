@@ -130,7 +130,6 @@ describe('ResourcesIndexPage', () => {
     expect(folderLink).toHaveAttribute('title', 'team-a')
     // Folder ancestor link shows the folder icon; org root (UNSPECIFIED) does not
     expect(within(folderLink).getByTestId('resource-type-icon-folder')).toBeInTheDocument()
-    expect(screen.queryByTestId('resource-type-icon-folder')).toBeInTheDocument()
 
     const leafLink = screen.getByRole('link', { name: 'Web App' })
     expect(leafLink).toHaveAttribute('href', '/projects/web')
