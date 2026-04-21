@@ -113,10 +113,32 @@ describe('OrgTemplatePoliciesIndexPage', () => {
     expect(container.querySelector('[data-testid="policies-loading"]')).toBeInTheDocument()
   })
 
-  it('renders error alert when the fan-out fails', () => {
+  it('renders error alert when the fan-out fails with no data', () => {
     setup([], Role.OWNER, { error: new Error('bad gateway') })
     render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
     expect(screen.getByText('bad gateway')).toBeInTheDocument()
+    // full-page error — table should not be rendered
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('renders rows with inline warning banner when partial data and error coexist', () => {
+    ;(useAllTemplatePoliciesForOrg as Mock).mockReturnValue({
+      data: [makePolicy('p-org', namespaceForOrg('test-org'), 'Org Policy')],
+      isPending: false,
+      error: new Error('folders unavailable'),
+    })
+    ;(useGetOrganization as Mock).mockReturnValue({
+      data: { name: 'test-org', userRole: Role.OWNER },
+      isPending: false,
+      error: null,
+    })
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    // rows must be visible
+    expect(screen.getByText('Org Policy')).toBeInTheDocument()
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    // inline warning banner must be present
+    expect(screen.getByTestId('policies-partial-error')).toBeInTheDocument()
+    expect(screen.getByText('folders unavailable')).toBeInTheDocument()
   })
 
   it('renders empty state when no policies exist', () => {
