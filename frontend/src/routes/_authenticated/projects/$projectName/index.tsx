@@ -21,8 +21,6 @@ function ProjectIndexRoute() {
 }
 
 export function ProjectIndexPage({ projectName }: { projectName: string }) {
-  if (!projectName) return null
-
   const {
     data: deployments = [],
     isPending: deploymentsPending,
@@ -31,6 +29,10 @@ export function ProjectIndexPage({ projectName }: { projectName: string }) {
   const { data: project } = useGetProject(projectName)
   const userRole = project?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
+
+  // projectName is always non-empty under /_authenticated/projects/$projectName/,
+  // but guard defensively so the hooks above can still be called unconditionally.
+  if (!projectName) return null
 
   return (
     <div className="space-y-4">
