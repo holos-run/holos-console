@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
-import type React from 'react'
+import type { ReactNode } from 'react'
 import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
@@ -18,7 +18,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       className,
       'aria-label': ariaLabel,
     }: {
-      children: React.ReactNode
+      children: ReactNode
       to: string
       params?: Record<string, string>
       className?: string
@@ -159,16 +159,17 @@ describe('FolderIndexPage', () => {
     const projectsLink = screen.getByRole('link', {
       name: 'View all projects',
     })
-    // Position compareDocumentPosition returns a bitmask where bit 0x04
-    // ("following") is set when `other` appears after `this` in the DOM.
+    // Position compareDocumentPosition returns Node.DOCUMENT_POSITION_FOLLOWING
+    // (0x04) when `other` is a sibling that appears after `this` in the DOM
+    // with no ancestor/descendant relationship. Using .toBe() rather than a
+    // bitmask guard ensures the exact value — ruling out false positives from
+    // combined flags like FOLLOWING | CONTAINED_BY.
     expect(
-      templatesLink.compareDocumentPosition(policiesLink) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
+      templatesLink.compareDocumentPosition(policiesLink),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
     expect(
-      policiesLink.compareDocumentPosition(projectsLink) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
+      policiesLink.compareDocumentPosition(projectsLink),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 
   it('renders a folder-level error when useGetFolder fails', () => {
