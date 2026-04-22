@@ -833,3 +833,53 @@ func TestBinding_MultipleServiceTargets_Rejected(t *testing.T) {
 		t.Fatalf("expected NotFound; got %v", err)
 	}
 }
+
+// TestRuleEqual_WhenDrift pins the HOL-839 tightening of ruleEqual. The
+// reconciler never populates Rule.When, so any non-empty When on either
+// side of the compare is drift — including an apiserver-echoed mutation
+// that preserves the slice length. The previous slice-length compare
+// masked the in-place case.
+func TestRuleEqual_WhenDrift(t *testing.T) {
+	conditionA := &istiosecurityv1beta1.Condition{Key: "request.headers[x-foo]", Values: []string{"a"}}
+	conditionB := &istiosecurityv1beta1.Condition{Key: "request.headers[x-bar]", Values: []string{"b"}}
+
+	cases := []struct {
+		name string
+		a    *istiosecurityv1beta1.Rule
+		b    *istiosecurityv1beta1.Rule
+		want bool
+	}{
+		{
+			name: "both empty — equal",
+			a:    &istiosecurityv1beta1.Rule{},
+			b:    &istiosecurityv1beta1.Rule{},
+			want: true,
+		},
+		{
+			name: "desired empty, existing non-empty — drift",
+			a:    &istiosecurityv1beta1.Rule{},
+			b:    &istiosecurityv1beta1.Rule{When: []*istiosecurityv1beta1.Condition{conditionA}},
+			want: false,
+		},
+		{
+			name: "desired non-empty, existing empty — drift",
+			a:    &istiosecurityv1beta1.Rule{When: []*istiosecurityv1beta1.Condition{conditionA}},
+			b:    &istiosecurityv1beta1.Rule{},
+			want: false,
+		},
+		{
+			name: "same length, different contents — drift (the regression gate)",
+			a:    &istiosecurityv1beta1.Rule{When: []*istiosecurityv1beta1.Condition{conditionA}},
+			b:    &istiosecurityv1beta1.Rule{When: []*istiosecurityv1beta1.Condition{conditionB}},
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ruleEqual(tc.a, tc.b); got != tc.want {
+				t.Fatalf("ruleEqual=%v; want %v", got, tc.want)
+			}
+		})
+	}
+}

@@ -49,9 +49,12 @@ const bindingAuthzProviderName = "holos-secret-injector"
 //
 // HOL-752 review round 2 promoted this from a hard-coded constant to a
 // reconciler-field knob so an operator can set it once at manager
-// construction time. A follow-up ticket (HOL-753 / HOL-754) will plumb
+// construction time. HOL-839 exposed that knob through the
+// holos-secret-injector CLI as `--mesh-trust-domain` and the
+// `HOLOS_SECRETINJECTOR_MESH_TRUST_DOMAIN` env var, so a re-pegged mesh
+// no longer requires a controller rebuild. A later milestone may plumb
 // the value through a binding spec or pull it live from MeshConfig; for
-// M2 the field is the minimal surface that fixes the silent-miscompile
+// M2 the CLI knob is the minimal surface that fixes the silent-miscompile
 // failure mode the review flagged.
 const defaultBindingAuthzTrustDomain = "cluster.local"
 

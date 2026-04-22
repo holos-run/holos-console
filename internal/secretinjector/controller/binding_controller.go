@@ -863,9 +863,13 @@ func ruleEqual(a, b *istiosecurityv1beta1.Rule) bool {
 	if !tosEqual(a.To, b.To) {
 		return false
 	}
-	// When is not populated by this reconciler — treat any drift as
-	// an Update signal.
-	return len(a.When) == len(b.When)
+	// When is not populated by this reconciler. Any non-empty value on
+	// either side is therefore drift — either an external actor added a
+	// condition or the live object was mutated in place. HOL-839 tightened
+	// this from a slice-length compare that hid in-place mutations of
+	// fixed-length When slices; extend this to an element-wise walk if M3
+	// decides the reconciler may populate When.
+	return len(a.When) == 0 && len(b.When) == 0
 }
 
 func fromsEqual(a, b []*istiosecurityv1beta1.Rule_From) bool {

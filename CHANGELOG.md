@@ -4,6 +4,24 @@ All notable changes to holos-console are documented here.
 
 ## [Unreleased]
 
+### Fixed — holos-secret-injector HOL-752 review follow-ups (HOL-839)
+
+- **`holos-secret-injector` CLI now exposes `--mesh-trust-domain`**
+  (`HOLOS_SECRETINJECTOR_MESH_TRUST_DOMAIN`) plumbed into
+  `controller.Options.MeshTrustDomain`. Operators running a re-pegged
+  mesh (anything other than `cluster.local`) can now override the trust
+  domain stamped into emitted `AuthorizationPolicy.source.principals`
+  without rebuilding the controller. Default remains `cluster.local` so
+  upstream Istio installations are unaffected.
+- **`ruleEqual` drift detection tightened** in the
+  `SecretInjectionPolicyBindingReconciler`. The previous
+  `len(a.When) == len(b.When)` compare masked in-place mutations of
+  fixed-length `When` slices; the helper now treats any non-empty `When`
+  on either side as drift, matching the inline contract that the
+  reconciler never populates `Rule.When` today. Guarded by a new table
+  test in `binding_controller_test.go` so a future M3 decision to emit
+  `When` predicates will force an explicit element-wise compare.
+
 ### Added — Ancestor-aware TemplatePolicyBinding policy picker (HOL-833)
 
 `BindingForm` now calls `ListLinkableTemplatePolicies` (scope + ancestor walk)
