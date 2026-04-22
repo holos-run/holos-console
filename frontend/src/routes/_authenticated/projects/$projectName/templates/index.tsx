@@ -1,336 +1,284 @@
-import { useState } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { toast } from 'sonner'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Pencil, Trash2, Copy } from 'lucide-react'
+/**
+ * Project-scoped unified Templates index — reimplemented on ResourceGrid v1
+ * (HOL-859).
+ *
+ * Shows three template-family kinds together:
+ *   Template, TemplatePolicy, TemplatePolicyBinding
+ *
+ * The grid fans out across the whole org tree via the three useAll*ForOrg
+ * hooks so ancestor-scope templates/policies/bindings are discoverable.
+ * Default URL state: kind=Template, lineage=descendants — effectively the
+ * current project's own templates only, but the user can widen by toggling
+ * the kind filter or lineage select.
+ *
+ * orgName is derived from the OrgContext (useOrg()), not the URL, because
+ * this route is project-scoped.
+ */
+
+import { useCallback, useMemo } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createClient } from '@connectrpc/connect'
+import { useTransport } from '@connectrpc/connect-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useListTemplates, useDeleteTemplate, useCloneTemplate, useCheckUpdates, useGetTemplate } from '@/queries/templates'
-import { namespaceForProject } from '@/lib/scope-labels'
+import { TemplateService } from '@/gen/holos/console/v1/templates_pb.js'
+import { TemplatePolicyService } from '@/gen/holos/console/v1/template_policies_pb.js'
+import { TemplatePolicyBindingService } from '@/gen/holos/console/v1/template_policy_bindings_pb.js'
+import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
+import type { Row } from '@/components/resource-grid/types'
+import { parseGridSearch } from '@/components/resource-grid/url-state'
+import type { ResourceGridSearch } from '@/components/resource-grid/types'
 import { useGetProject } from '@/queries/projects'
-import { UpdatesAvailableBadge, UpgradeDialog } from '@/components/template-updates'
-import { ProjectTemplateDriftBadge } from '@/components/policy-drift/ProjectTemplateDriftBadge'
+import { useGetOrganization } from '@/queries/organizations'
+import { useAllTemplatesForOrg } from '@/queries/templates'
+import { useAllTemplatePoliciesForOrg } from '@/queries/templatePolicies'
+import { useAllTemplatePolicyBindingsForOrg } from '@/queries/templatePolicyBindings'
+import { useOrg } from '@/lib/org-context'
+import {
+  resolveTemplateRowHref,
+  parentLabelFromNamespace,
+  type TemplateKind,
+} from '@/lib/template-row-link'
+
+// ---------------------------------------------------------------------------
+// Route definition
+// ---------------------------------------------------------------------------
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/')({
-  component: DeploymentTemplatesRoute,
+  validateSearch: parseGridSearch,
+  component: ProjectTemplatesIndexRoute,
 })
 
-function DeploymentTemplatesRoute() {
+function ProjectTemplatesIndexRoute() {
   const { projectName } = Route.useParams()
-  return <DeploymentTemplatesPage projectName={projectName} />
+  return <ProjectTemplatesIndexPage projectName={projectName} />
 }
 
-export function DeploymentTemplatesPage({ projectName: propProjectName }: { projectName?: string } = {}) {
-  let routeProjectName: string | undefined
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    routeProjectName = Route.useParams().projectName
-  } catch {
-    routeProjectName = undefined
-  }
-  const projectName = propProjectName ?? routeProjectName ?? ''
+// ---------------------------------------------------------------------------
+// Page component (exported for tests)
+// ---------------------------------------------------------------------------
 
-  const namespace = namespaceForProject(projectName)
-  const { data: templates = [], isLoading, error } = useListTemplates(namespace)
+export function ProjectTemplatesIndexPage({
+  projectName,
+}: {
+  projectName: string
+}) {
+  const search = Route.useSearch()
+  const navigate = useNavigate({ from: Route.fullPath })
+
+  // Derive orgName from the OrgContext — the route is project-scoped so there
+  // is no $orgName in the URL.
+  const { selectedOrg: orgName } = useOrg()
+
+  // Transport and query-client for direct delete calls (multi-namespace).
+  const transport = useTransport()
+  const queryClient = useQueryClient()
+
+  // Project data — used to determine the user's role for create permissions.
   const { data: project } = useGetProject(projectName)
-  const deleteMutation = useDeleteTemplate(namespace)
-  const cloneMutation = useCloneTemplate(namespace)
+  // Org data — used to determine org-level ownership for policy/binding creation.
+  const { data: org } = useGetOrganization(orgName ?? '')
 
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
-  const [cloneOpen, setCloneOpen] = useState(false)
-  const [cloneSource, setCloneSource] = useState<string | null>(null)
-  const [cloneName, setCloneName] = useState('')
-  const [cloneDisplayName, setCloneDisplayName] = useState('')
-  const [cloneError, setCloneError] = useState<string | null>(null)
-  const [upgradeOpen, setUpgradeOpen] = useState(false)
-  const [upgradeTemplateName, setUpgradeTemplateName] = useState<string | null>(null)
+  const projectRole = project?.userRole ?? Role.VIEWER
+  const orgRole = org?.userRole ?? Role.VIEWER
 
-  // Fetch updates for the selected upgrade template (only when dialog is open).
-  const { data: upgradeUpdates = [] } = useCheckUpdates(namespace, upgradeTemplateName ?? '', { enabled: !!upgradeTemplateName })
-  // Fetch the selected template to get its linkedTemplates for the dialog.
-  const { data: upgradeTemplate } = useGetTemplate(namespace, upgradeTemplateName ?? '')
+  const canCreateTemplate = projectRole === Role.OWNER || projectRole === Role.EDITOR
+  const canCreateOrgResources = orgRole === Role.OWNER
 
-  const handleOpenUpgrade = (templateName: string) => {
-    setUpgradeTemplateName(templateName)
-    setUpgradeOpen(true)
-  }
+  // Fan-out hooks — all three enabled only when orgName is known.
+  const {
+    data: templates = [],
+    isPending: templatesPending,
+    error: templatesError,
+  } = useAllTemplatesForOrg(orgName ?? '')
 
-  const userRole = project?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
-  const canDelete = userRole === Role.OWNER
+  const {
+    data: policies = [],
+    isPending: policiesPending,
+    error: policiesError,
+  } = useAllTemplatePoliciesForOrg(orgName ?? '')
 
-  const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return
-    try {
-      await deleteMutation.mutateAsync({ name: deleteTarget })
-      setDeleteOpen(false)
-      setDeleteTarget(null)
-      toast.success('Template deleted')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
-    }
-  }
+  const {
+    data: bindings = [],
+    isPending: bindingsPending,
+    error: bindingsError,
+  } = useAllTemplatePolicyBindingsForOrg(orgName ?? '')
 
-  const handleOpenClone = (sourceName: string) => {
-    setCloneSource(sourceName)
-    setCloneName('')
-    setCloneDisplayName('')
-    setCloneError(null)
-    setCloneOpen(true)
-  }
+  // Combined loading / error states
+  const isLoading = !orgName || templatesPending || policiesPending || bindingsPending
+  const firstError = templatesError ?? policiesError ?? bindingsError
 
-  const handleCloneConfirm = async () => {
-    if (!cloneSource) return
-    setCloneError(null)
-    try {
-      await cloneMutation.mutateAsync({
-        sourceName: cloneSource,
-        name: cloneName,
-        displayName: cloneDisplayName,
+  // ---------------------------------------------------------------------------
+  // Build rows from all three kinds
+  // ---------------------------------------------------------------------------
+
+  const rows: Row[] = useMemo(() => {
+    const result: Row[] = []
+
+    for (const t of templates) {
+      result.push({
+        kind: 'Template',
+        name: t.name,
+        namespace: t.namespace,
+        id: `Template/${t.namespace}/${t.name}`,
+        parentId: t.namespace,
+        parentLabel: parentLabelFromNamespace(t.namespace),
+        displayName: t.displayName || t.name,
+        description: t.description ?? '',
+        createdAt: '',
+        detailHref: resolveTemplateRowHref('Template', t.namespace, t.name),
       })
-      toast.success(`Cloned to "${cloneName}"`)
-      setCloneOpen(false)
-      setCloneSource(null)
-    } catch (err) {
-      setCloneError(err instanceof Error ? err.message : String(err))
     }
-  }
 
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{projectName} / Templates</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
+    for (const p of policies) {
+      result.push({
+        kind: 'TemplatePolicy',
+        name: p.name,
+        namespace: p.namespace,
+        id: `TemplatePolicy/${p.namespace}/${p.name}`,
+        parentId: p.namespace,
+        parentLabel: parentLabelFromNamespace(p.namespace),
+        displayName: p.displayName || p.name,
+        description: p.description ?? '',
+        createdAt: '',
+        detailHref: resolveTemplateRowHref('TemplatePolicy', p.namespace, p.name),
+      })
+    }
 
-  if (error) {
+    for (const b of bindings) {
+      result.push({
+        kind: 'TemplatePolicyBinding',
+        name: b.name,
+        namespace: b.namespace,
+        id: `TemplatePolicyBinding/${b.namespace}/${b.name}`,
+        parentId: b.namespace,
+        parentLabel: parentLabelFromNamespace(b.namespace),
+        displayName: b.displayName || b.name,
+        description: b.description ?? '',
+        createdAt: '',
+        detailHref: resolveTemplateRowHref('TemplatePolicyBinding', b.namespace, b.name),
+      })
+    }
+
+    return result
+  }, [templates, policies, bindings])
+
+  // ---------------------------------------------------------------------------
+  // Kind definitions with default URL state: kind=Template
+  // ---------------------------------------------------------------------------
+
+  const kinds = useMemo(
+    () => [
+      {
+        id: 'Template',
+        label: 'Template',
+        newHref: `/projects/${projectName}/templates/new`,
+        canCreate: canCreateTemplate,
+      },
+      {
+        id: 'TemplatePolicy',
+        label: 'Template Policy',
+        newHref: orgName ? `/orgs/${orgName}/template-policies/new` : undefined,
+        canCreate: canCreateOrgResources,
+      },
+      {
+        id: 'TemplatePolicyBinding',
+        label: 'Template Policy Binding',
+        newHref: orgName ? `/orgs/${orgName}/template-policy-bindings/new` : undefined,
+        canCreate: canCreateOrgResources,
+      },
+    ],
+    [projectName, orgName, canCreateTemplate, canCreateOrgResources],
+  )
+
+  // ---------------------------------------------------------------------------
+  // Default URL state: kind=Template, lineage=descendants
+  // Apply defaults when URL omits them so the initial view shows only
+  // the current project's Template rows.
+  // ---------------------------------------------------------------------------
+
+  const searchWithDefaults: ResourceGridSearch = useMemo(
+    () => ({
+      kind: search.kind ?? 'Template',
+      lineage: search.lineage ?? 'descendants',
+      recursive: search.recursive ?? '0',
+      search: search.search,
+    }),
+    [search],
+  )
+
+  // ---------------------------------------------------------------------------
+  // Delete handler — dispatches to the correct service per kind/namespace.
+  // We call the service directly so we can pass the exact namespace from each
+  // row without calling separate per-namespace mutation hooks (which would
+  // require a fixed namespace at hook-call time).
+  // ---------------------------------------------------------------------------
+
+  const handleDelete = useCallback(
+    async (row: Row) => {
+      const { namespace, name, kind } = row
+      const templateKind = kind as TemplateKind
+
+      switch (templateKind) {
+        case 'Template': {
+          const client = createClient(TemplateService, transport)
+          await client.deleteTemplate({ namespace, name })
+          await queryClient.invalidateQueries({
+            queryKey: ['templates', 'list', namespace],
+          })
+          break
+        }
+        case 'TemplatePolicy': {
+          const client = createClient(TemplatePolicyService, transport)
+          await client.deleteTemplatePolicy({ namespace, name })
+          await queryClient.invalidateQueries({
+            queryKey: ['templatePolicies', 'list', namespace],
+          })
+          break
+        }
+        case 'TemplatePolicyBinding': {
+          const client = createClient(TemplatePolicyBindingService, transport)
+          await client.deleteTemplatePolicyBinding({ namespace, name })
+          await queryClient.invalidateQueries({
+            queryKey: ['templatePolicyBindings', 'list', namespace],
+          })
+          break
+        }
+        default:
+          throw new Error(`Unknown kind: ${kind}`)
+      }
+    },
+    [transport, queryClient],
+  )
+
+  const handleSearchChange = useCallback(
+    (updater: (prev: ResourceGridSearch) => ResourceGridSearch) => {
+      navigate({
+        search: (prev) => updater(prev as ResourceGridSearch),
+      })
+    },
+    [navigate],
+  )
+
+  // Guard: no org selected yet
+  if (!orgName) {
     return (
-      <Card>
-        <CardContent className="pt-6">
-          <Alert variant="destructive"><AlertDescription>{error.message}</AlertDescription></Alert>
-        </CardContent>
-      </Card>
+      <div className="flex flex-col items-center gap-3 py-12 text-center">
+        <p className="text-muted-foreground">Select an organization to browse templates.</p>
+      </div>
     )
   }
 
   return (
-    <>
-      <Card>
-        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-          <CardTitle>{projectName} / Templates</CardTitle>
-          {canWrite && (
-            <Link to="/projects/$projectName/templates/new" params={{ projectName }}>
-              <Button size="sm">Create Template</Button>
-            </Link>
-          )}
-        </CardHeader>
-        <CardContent>
-          {templates.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <p className="text-muted-foreground">No deployment templates yet. Create one to get started.</p>
-              {canWrite && (
-                <Link to="/projects/$projectName/templates/new" params={{ projectName }}>
-                  <Button size="sm">Create Template</Button>
-                </Link>
-              )}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {templates.map((template) => (
-                  <TableRow key={template.name}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Link
-                          to="/projects/$projectName/templates/$templateName"
-                          params={{ projectName, templateName: template.name }}
-                          className="font-medium hover:underline"
-                        >
-                          {template.name}
-                        </Link>
-                        <UpdatesAvailableBadge
-                          namespace={namespace}
-                          templateName={template.name}
-                          onClick={() => handleOpenUpgrade(template.name)}
-                        />
-                        {/*
-                          Policy drift badge — HOL-567 surfaces project-
-                          template drift via GetProjectTemplatePolicyState
-                          rather than a status_summary field (project-scope
-                          templates have no live-status concept). The
-                          per-row component issues its own small query and
-                          renders nothing when drift is false or the RPC is
-                          pending/errored, so list rendering stays fast for
-                          in-sync templates. PolicyState is sourced from
-                          the folder-namespace render-state store.
-                        */}
-                        <ProjectTemplateDriftBadge namespace={namespace} templateName={template.name} />
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {template.description ? (
-                        <span className="text-muted-foreground truncate max-w-[60ch] block">
-                          {template.description.length > 60 ? `${template.description.slice(0, 60)}…` : template.description}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`clone ${template.name}`}
-                          onClick={() => handleOpenClone(template.name)}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        {canWrite && (
-                          <Link
-                            to="/projects/$projectName/templates/$templateName"
-                            params={{ projectName, templateName: template.name }}
-                          >
-                            <Button variant="ghost" size="icon" aria-label={`edit ${template.name}`}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          </Link>
-                        )}
-                        {canDelete && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`delete ${template.name}`}
-                            onClick={() => { setDeleteTarget(template.name); deleteMutation.reset(); setDeleteOpen(true) }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Template</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete template &quot;{deleteTarget}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          {deleteMutation.error && (
-            <Alert variant="destructive"><AlertDescription>{deleteMutation.error.message}</AlertDescription></Alert>
-          )}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
-              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={cloneOpen} onOpenChange={setCloneOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Clone Deployment Template</DialogTitle>
-            <DialogDescription>
-              Create a copy of &quot;{cloneSource}&quot; with a new name.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="clone-name">Name</Label>
-              <Input
-                id="clone-name"
-                aria-label="Name"
-                value={cloneName}
-                onChange={(e) => setCloneName(e.target.value)}
-                placeholder="my-template-copy"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="clone-display-name">Display Name</Label>
-              <Input
-                id="clone-display-name"
-                aria-label="Display Name"
-                value={cloneDisplayName}
-                onChange={(e) => setCloneDisplayName(e.target.value)}
-                placeholder="My Template Copy"
-              />
-            </div>
-          </div>
-          {cloneError && (
-            <Alert variant="destructive">
-              <AlertDescription>{cloneError}</AlertDescription>
-            </Alert>
-          )}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setCloneOpen(false)}>Cancel</Button>
-            <Button onClick={handleCloneConfirm} disabled={cloneMutation.isPending || !cloneName}>
-              {cloneMutation.isPending ? 'Cloning...' : 'Clone'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {upgradeTemplateName && (
-        <UpgradeDialog
-          open={upgradeOpen}
-          onOpenChange={(open) => {
-            setUpgradeOpen(open)
-            if (!open) setUpgradeTemplateName(null)
-          }}
-          updates={upgradeUpdates}
-          namespace={namespace}
-          templateName={upgradeTemplateName}
-          linkedTemplates={upgradeTemplate?.linkedTemplates ?? []}
-        />
-      )}
-    </>
+    <ResourceGrid
+      title={`${projectName} / Templates`}
+      kinds={kinds}
+      rows={rows}
+      onDelete={handleDelete}
+      isLoading={isLoading}
+      error={firstError}
+      search={searchWithDefaults}
+      onSearchChange={handleSearchChange}
+    />
   )
 }
