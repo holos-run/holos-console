@@ -435,7 +435,7 @@ func TestListLinkableTemplatesIncludeSelfScope(t *testing.T) {
 
 			ctx := authedCtx(ownerEmail, nil)
 			req := connect.NewRequest(&consolev1.ListLinkableTemplatesRequest{
-				Namespace:            tt.scope,
+				Namespace:        tt.scope,
 				IncludeSelfScope: tt.includeSelfScope,
 			})
 

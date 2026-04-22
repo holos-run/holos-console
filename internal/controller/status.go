@@ -17,8 +17,8 @@ limitations under the License.
 package controller
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // mergeCondition stamps the reconciler-observed generation onto cond and

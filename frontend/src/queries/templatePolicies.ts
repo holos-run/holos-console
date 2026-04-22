@@ -66,8 +66,8 @@ export function useListTemplatePolicies(namespace: string) {
 // useListLinkableTemplatePolicies fetches all TemplatePolicies reachable from
 // the given scope namespace by walking the ancestor chain up to the org root.
 // The response carries a per-item owning namespace so the UI can render a scope
-// badge without a second round-trip. HOL-835 wires this into BindingForm so
-// folder-scoped bindings can select org-scoped or parent-folder-scoped policies.
+// badge without a second round-trip. BindingForm uses this hook so folder-scoped
+// bindings can select org-scoped or parent-folder-scoped policies (HOL-835).
 //
 // Do NOT use this for admin list views — those should call useListTemplatePolicies
 // to stay single-scope. This hook is additive and does not replace the single-scope
