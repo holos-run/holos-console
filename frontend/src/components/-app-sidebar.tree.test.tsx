@@ -45,13 +45,11 @@ vi.mock('@/components/workspace-menu', () => ({
   WorkspaceMenu: () => <div data-testid="workspace-menu" />,
 }))
 
-vi.mock('@/lib/org-context', () => ({ useOrg: vi.fn() }))
 vi.mock('@/lib/project-context', () => ({ useProject: vi.fn() }))
 vi.mock('@/queries/version', () => ({
   useVersion: () => ({ data: { version: 'v0.0.0-test' } }),
 }))
 
-import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from './app-sidebar'
@@ -61,12 +59,6 @@ function renderWithProvider(ui: React.ReactElement) {
 }
 
 function setupNoProject() {
-  ;(useOrg as Mock).mockReturnValue({
-    organizations: [],
-    selectedOrg: null,
-    setSelectedOrg: vi.fn(),
-    isLoading: false,
-  })
   ;(useProject as Mock).mockReturnValue({
     projects: [],
     selectedProject: null,
@@ -76,12 +68,6 @@ function setupNoProject() {
 }
 
 function setupProjectSelected() {
-  ;(useOrg as Mock).mockReturnValue({
-    organizations: [{ name: 'my-org', displayName: 'My Org' }],
-    selectedOrg: 'my-org',
-    setSelectedOrg: vi.fn(),
-    isLoading: false,
-  })
   ;(useProject as Mock).mockReturnValue({
     projects: [{ name: 'my-project', displayName: 'My Project' }],
     selectedProject: 'my-project',

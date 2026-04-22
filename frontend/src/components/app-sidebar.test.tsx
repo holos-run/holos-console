@@ -139,7 +139,6 @@ vi.mock('@/components/workspace-menu', () => ({
   WorkspaceMenu: () => <div data-testid="workspace-menu" />,
 }))
 
-vi.mock('@/lib/org-context', () => ({ useOrg: vi.fn() }))
 vi.mock('@/lib/project-context', () => ({ useProject: vi.fn() }))
 vi.mock('@/queries/version', () => ({ useVersion: vi.fn() }))
 
