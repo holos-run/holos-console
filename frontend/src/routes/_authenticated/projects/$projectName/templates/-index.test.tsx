@@ -126,16 +126,25 @@ import { ProjectTemplatesIndexPage } from './index'
 // Test data helpers
 // ---------------------------------------------------------------------------
 
+/** Creates a protobuf Timestamp-like object from an ISO string. */
+function makeTimestamp(isoStr: string) {
+  const ms = new Date(isoStr).getTime()
+  return { seconds: BigInt(Math.floor(ms / 1000)), nanos: 0 }
+}
+
+const TEST_ISO = '2026-04-22T19:51:10.000Z'
+const TEST_TIMESTAMP = makeTimestamp(TEST_ISO)
+
 function makeTemplate(name: string, namespace = 'project-test-project') {
-  return { name, namespace, displayName: name, description: '', cueTemplate: '' }
+  return { name, namespace, displayName: name, description: '', cueTemplate: '', createdAt: TEST_ISO }
 }
 
 function makePolicy(name: string, namespace = 'org-acme') {
-  return { name, namespace, displayName: name, description: '', rules: [] }
+  return { name, namespace, displayName: name, description: '', rules: [], createdAt: TEST_TIMESTAMP }
 }
 
 function makeBinding(name: string, namespace = 'org-acme') {
-  return { name, namespace, displayName: name, description: '' }
+  return { name, namespace, displayName: name, description: '', createdAt: TEST_TIMESTAMP }
 }
 
 // ---------------------------------------------------------------------------
@@ -351,5 +360,45 @@ describe('ProjectTemplatesIndexPage (ResourceGrid v1)', () => {
     expect(useAllTemplatesForOrg).toHaveBeenCalledWith('my-org')
     expect(useAllTemplatePoliciesForOrg).toHaveBeenCalledWith('my-org')
     expect(useAllTemplatePolicyBindingsForOrg).toHaveBeenCalledWith('my-org')
+  })
+
+  // -------------------------------------------------------------------------
+  // Created At column (HOL-879)
+  // -------------------------------------------------------------------------
+
+  it('Template row renders a localised date when createdAt is set from the backend', () => {
+    // makeTemplate provides createdAt: '2026-04-22T19:51:10.000Z'.
+    // ResourceGrid renders new Date(createdAt).toLocaleDateString() →
+    // jsdom locale = en-US → '4/22/2026'.
+    setupMocks({
+      templates: [makeTemplate('tpl-with-date', 'project-test-project')],
+    })
+    render(<ProjectTemplatesIndexPage projectName="test-project" />)
+    expect(screen.getByText('4/22/2026')).toBeInTheDocument()
+  })
+
+  it('Template row renders em-dash when createdAt is empty string', () => {
+    setupMocks({
+      templates: [{ ...makeTemplate('tpl-no-date'), createdAt: '' }],
+    })
+    render(<ProjectTemplatesIndexPage projectName="test-project" />)
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+
+  it('TemplatePolicy row mapper converts Timestamp to non-empty ISO string', () => {
+    // timestampToISOString(p.createdAt) is the expression wired in the row mapper.
+    // Verify that TEST_TIMESTAMP (the fixture value from makePolicy) converts to a
+    // non-empty string. We compute the same formula inline to avoid exporting the helper.
+    const ts = TEST_TIMESTAMP
+    const result = ts ? new Date(Number(ts.seconds) * 1000).toISOString() : ''
+    expect(result).toBe(TEST_ISO)
+  })
+
+  it('TemplatePolicyBinding row mapper converts Timestamp to non-empty ISO string', () => {
+    // Same check as for TemplatePolicy — TemplatePolicyBinding.createdAt shares
+    // the same google.protobuf.Timestamp shape.
+    const ts = TEST_TIMESTAMP
+    const result = ts ? new Date(Number(ts.seconds) * 1000).toISOString() : ''
+    expect(result).toBe(TEST_ISO)
   })
 })

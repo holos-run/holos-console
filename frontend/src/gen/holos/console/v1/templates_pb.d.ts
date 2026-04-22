@@ -216,6 +216,14 @@ export declare type Template = Message<"holos.console.v1.Template"> & {
    * @generated from field: string version = 10;
    */
   version: string;
+
+  /**
+   * created_at is the RFC3339-formatted timestamp when the underlying Kubernetes
+   * resource (Template CRD) was created. Populated from ObjectMeta.CreationTimestamp.
+   *
+   * @generated from field: string created_at = 11;
+   */
+  createdAt: string;
 };
 
 /**

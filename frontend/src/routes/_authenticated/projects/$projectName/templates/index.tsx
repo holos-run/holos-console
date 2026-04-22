@@ -42,6 +42,17 @@ import {
   parentLabelFromNamespace,
   type TemplateKind,
 } from '@/lib/template-row-link'
+import type { Timestamp } from '@bufbuild/protobuf/wkt'
+
+// ---------------------------------------------------------------------------
+// timestampToISOString converts a google.protobuf.Timestamp to an ISO-8601
+// string. Returns '' when ts is undefined so callers can unconditionally
+// assign the result to createdAt without a separate null-check.
+// ---------------------------------------------------------------------------
+function timestampToISOString(ts: Timestamp | undefined): string {
+  if (!ts) return ''
+  return new Date(Number(ts.seconds) * 1000).toISOString()
+}
 
 // ---------------------------------------------------------------------------
 // Route search — extends ResourceGridSearch with the help pane state
@@ -166,7 +177,7 @@ export function ProjectTemplatesIndexPage({
         parentLabel: parentLabelFromNamespace(t.namespace),
         displayName: t.displayName || t.name,
         description: t.description ?? '',
-        createdAt: '',
+        createdAt: t.createdAt,
         detailHref: resolveTemplateRowHref('Template', t.namespace, t.name),
       })
     }
@@ -181,7 +192,7 @@ export function ProjectTemplatesIndexPage({
         parentLabel: parentLabelFromNamespace(p.namespace),
         displayName: p.displayName || p.name,
         description: p.description ?? '',
-        createdAt: '',
+        createdAt: timestampToISOString(p.createdAt),
         detailHref: resolveTemplateRowHref('TemplatePolicy', p.namespace, p.name),
       })
     }
@@ -196,7 +207,7 @@ export function ProjectTemplatesIndexPage({
         parentLabel: parentLabelFromNamespace(b.namespace),
         displayName: b.displayName || b.name,
         description: b.description ?? '',
-        createdAt: '',
+        createdAt: timestampToISOString(b.createdAt),
         detailHref: resolveTemplateRowHref('TemplatePolicyBinding', b.namespace, b.name),
       })
     }

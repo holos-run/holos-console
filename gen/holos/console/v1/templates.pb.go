@@ -271,7 +271,10 @@ type Template struct {
 	Enabled bool `protobuf:"varint,9,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// version is the current semver version string (e.g. "1.2.3") of this
 	// template. Empty means the template has no published version yet.
-	Version       string `protobuf:"bytes,10,opt,name=version,proto3" json:"version,omitempty"`
+	Version string `protobuf:"bytes,10,opt,name=version,proto3" json:"version,omitempty"`
+	// created_at is the RFC3339-formatted timestamp when the underlying Kubernetes
+	// resource (Template CRD) was created. Populated from ObjectMeta.CreationTimestamp.
+	CreatedAt     string `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -365,6 +368,13 @@ func (x *Template) GetEnabled() bool {
 func (x *Template) GetVersion() string {
 	if x != nil {
 		return x.Version
+	}
+	return ""
+}
+
+func (x *Template) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
 	}
 	return ""
 }
@@ -2474,7 +2484,7 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"]\n" +
 	"\x1bGetTemplateDefaultsResponse\x12>\n" +
-	"\bdefaults\x18\x01 \x01(\v2\".holos.console.v1.TemplateDefaultsR\bdefaults\"\xf9\x02\n" +
+	"\bdefaults\x18\x01 \x01(\v2\".holos.console.v1.TemplateDefaultsR\bdefaults\"\x98\x03\n" +
 	"\bTemplate\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12!\n" +
@@ -2485,7 +2495,9 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x10linked_templates\x18\a \x03(\v2#.holos.console.v1.LinkedTemplateRefR\x0flinkedTemplates\x12\x18\n" +
 	"\aenabled\x18\t \x01(\bR\aenabled\x12\x18\n" +
 	"\aversion\x18\n" +
-	" \x01(\tR\aversionJ\x04\b\b\x10\tR\tmandatory\"4\n" +
+	" \x01(\tR\aversion\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\v \x01(\tR\tcreatedAtJ\x04\b\b\x10\tR\tmandatory\"4\n" +
 	"\x14ListTemplatesRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\"Q\n" +
 	"\x15ListTemplatesResponse\x128\n" +
