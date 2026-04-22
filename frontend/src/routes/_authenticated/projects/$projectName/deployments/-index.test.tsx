@@ -96,6 +96,7 @@ type MockDeployment = {
   template: string
   phase: DeploymentPhase
   message: string
+  createdAt: string
   statusSummary?: DeploymentStatusSummary
 }
 
@@ -103,6 +104,7 @@ function makeDeployment(
   name: string,
   statusSummary?: DeploymentStatusSummary,
   description = '',
+  createdAt = '',
 ): MockDeployment {
   return {
     name,
@@ -114,6 +116,7 @@ function makeDeployment(
     template: 'web-app',
     phase: DeploymentPhase.UNSPECIFIED,
     message: '',
+    createdAt,
     statusSummary,
   }
 }
@@ -346,5 +349,29 @@ describe('DeploymentsListPage (ResourceGrid v1)', () => {
     setupMocks({ deployments: [makeDeployment('api', undefined, 'Serves the API')] })
     render(<DeploymentsListPage />)
     expect(screen.getByText('Serves the API')).toBeInTheDocument()
+  })
+
+  // -------------------------------------------------------------------------
+  // Created At column (HOL-878)
+  // -------------------------------------------------------------------------
+
+  it('renders a localised date when createdAt is set from the backend', () => {
+    // The row mapper wires dep.createdAt into the grid row.
+    // ResourceGrid renders new Date(createdAt).toLocaleDateString(), which in
+    // jsdom produces '4/22/2026' for '2026-04-22T19:51:10Z'.
+    setupMocks({
+      deployments: [makeDeployment('api', undefined, '', '2026-04-22T19:51:10Z')],
+    })
+    render(<DeploymentsListPage />)
+    // Verify a date string is present (jsdom locale = en-US → '4/22/2026')
+    expect(screen.getByText('4/22/2026')).toBeInTheDocument()
+  })
+
+  it('renders em-dash when createdAt is empty string', () => {
+    // An empty createdAt (pre-HOL-878 data) results in the ResourceGrid
+    // fallback placeholder rather than "Invalid Date".
+    setupMocks({ deployments: [makeDeployment('api', undefined, '', '')] })
+    render(<DeploymentsListPage />)
+    expect(screen.getByText('—')).toBeInTheDocument()
   })
 })

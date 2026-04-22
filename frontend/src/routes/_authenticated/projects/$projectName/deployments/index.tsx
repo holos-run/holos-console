@@ -139,7 +139,7 @@ export function DeploymentsListPage() {
         parentLabel: projectName,
         displayName: dep.displayName || dep.name,
         description: dep.description ?? '',
-        createdAt: '',
+        createdAt: dep.createdAt,
         detailHref: `/projects/${projectName}/deployments/${dep.name}`,
       })),
     [deployments, projectName],

@@ -75,6 +75,9 @@ message Deployment {
   // deprecated `phase` (8) and `message` (9) fields; both are left in place
   // with [deprecated = true] to preserve wire compatibility.
   DeploymentStatusSummary status_summary = 14;
+  // created_at is the RFC3339-formatted timestamp when the underlying Kubernetes
+  // ConfigMap was created, sourced from metadata.creationTimestamp.
+  string created_at = 15;
 }
 
 // DeploymentPhase represents the lifecycle phase of a deployment.

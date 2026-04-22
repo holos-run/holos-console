@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
@@ -1445,6 +1446,7 @@ func configMapToDeployment(cm *corev1.ConfigMap, project string) *consolev1.Depl
 		Command:     commandFromConfigMap(cm),
 		Args:        argsFromConfigMap(cm),
 		Env:         envFromConfigMap(cm),
+		CreatedAt:   cm.ObjectMeta.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
 	if raw, ok := cm.Data[PortKey]; ok && raw != "" {
 		if p, err := strconv.ParseInt(raw, 10, 32); err == nil {
