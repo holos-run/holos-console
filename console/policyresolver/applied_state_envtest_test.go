@@ -48,11 +48,11 @@ const (
 	renderStateEnvtestSelectorPrefix  = "ls"
 	// HOL-772 wildcard cascade prefixes — one per test so the namespace
 	// hierarchy each builds is uniquely named on the shared apiserver.
-	wildcardFolderCascadePrefix      = "wfc"
-	wildcardSiblingFolderPrefix      = "wsf"
-	wildcardProjectScopeCeilingPref  = "wpc"
-	wildcardDeploymentByNamePresent  = "wdp"
-	wildcardDeploymentByNameAbsent   = "wda"
+	wildcardFolderCascadePrefix     = "wfc"
+	wildcardSiblingFolderPrefix     = "wsf"
+	wildcardProjectScopeCeilingPref = "wpc"
+	wildcardDeploymentByNamePresent = "wdp"
+	wildcardDeploymentByNameAbsent  = "wda"
 )
 
 // startRenderStateEnvtest boots a Manager primed with the RenderState

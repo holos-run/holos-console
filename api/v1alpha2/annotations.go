@@ -18,7 +18,7 @@ const (
 	LabelProject      = "console.holos.run/project"
 
 	// Label values.
-	ManagedByValue                 = "console.holos.run"
+	ManagedByValue           = "console.holos.run"
 	ResourceTypeOrganization = "organization"
 	ResourceTypeFolder       = "folder"
 	ResourceTypeProject      = "project"

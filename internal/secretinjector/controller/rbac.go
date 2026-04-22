@@ -23,13 +23,16 @@ limitations under the License.
 // templates-group rbac file established in HOL-620.
 //
 // Notes on the least-privilege envelope we're encoding here:
+//
 //   - Full CRUD on every secrets.holos.run kind (the M2 reconcilers own
 //     these). Status and finalizers are split out per controller-runtime
 //     idiom so the reconciler can update status without needing write on
 //     spec, and so finalizer removal is auditable as its own rule.
+//
 //   - CRUD on security.istio.io AuthorizationPolicy because the M2
 //     SecretInjectionPolicyBinding reconciler synthesises AP objects that
 //     enforce the caller allow-list at the mesh layer.
+//
 //   - `get` ONLY on core/v1 Secret at the cluster-role level. Enumeration
 //     (list/watch) is the vulnerability this service is meant to close —
 //     the reconciler resolves refs by name+namespace, never by listing.
@@ -48,8 +51,10 @@ limitations under the License.
 //     blockOwnerDeletion=true) guarantees the hash Secret is
 //     garbage-collected atomically when the Credential is deleted. No
 //     cluster-wide Secret enumeration path is opened by this design.
+//
 //   - `get/list/watch` on Namespace so the reconciler can resolve the
 //     hierarchy labels the admission policies enforce against.
+//
 //   - `create/patch` on Event so the reconciler can emit standard
 //     controller-runtime events.
 //

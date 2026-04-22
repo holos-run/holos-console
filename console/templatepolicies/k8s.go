@@ -314,4 +314,3 @@ func crdKindToProto(k templatesv1alpha1.TemplatePolicyKind) consolev1.TemplatePo
 		return consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_UNSPECIFIED
 	}
 }
-

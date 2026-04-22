@@ -22,8 +22,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	kfake "k8s.io/client-go/kubernetes/fake"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -232,8 +232,8 @@ func makeReleaseCRDWithData(ns, templateName, version, cue, defaults string) *te
 			Name:      ReleaseObjectName(templateName, v),
 			Namespace: ns,
 			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:          v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType:       "template-release",
+				v1alpha2.LabelManagedBy:        v1alpha2.ManagedByValue,
+				v1alpha2.LabelResourceType:     "template-release",
 				"console.holos.run/release-of": templateName,
 			},
 		},

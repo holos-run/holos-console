@@ -103,7 +103,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			ctx:  context.Background(),
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
 				Namespace: projectScopeRef(project),
-				Name:  tmplName,
+				Name:      tmplName,
 			},
 			wantCode: connect.CodeUnauthenticated,
 		},
@@ -116,7 +116,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			ctx:  otherCtx,
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
 				Namespace: projectScopeRef(project),
-				Name:  tmplName,
+				Name:      tmplName,
 			},
 			seedTemplate: true,
 			wantCode:     connect.CodePermissionDenied,
@@ -126,7 +126,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			ctx:  ownerCtx,
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
 				Namespace: projectScopeRef(project),
-				Name:  tmplName,
+				Name:      tmplName,
 			},
 			seedTemplate: false,
 			wantCode:     connect.CodeNotFound,
@@ -136,7 +136,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			ctx:  ownerCtx,
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
 				Namespace: projectScopeRef(project),
-				Name:  tmplName,
+				Name:      tmplName,
 			},
 			seedTemplate: true,
 			checker:      nil,
@@ -147,7 +147,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			ctx:  ownerCtx,
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
 				Namespace: projectScopeRef(project),
-				Name:  tmplName,
+				Name:      tmplName,
 			},
 			seedTemplate: true,
 			checker:      &stubProjectTemplateDriftChecker{stateErr: errors.New("resolver down")},
@@ -158,7 +158,7 @@ func TestGetProjectTemplatePolicyState(t *testing.T) {
 			ctx:  ownerCtx,
 			req: &consolev1.GetProjectTemplatePolicyStateRequest{
 				Namespace: projectScopeRef(project),
-				Name:  tmplName,
+				Name:      tmplName,
 			},
 			seedTemplate: true,
 			checker:      &stubProjectTemplateDriftChecker{stateResult: happyState},

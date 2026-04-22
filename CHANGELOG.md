@@ -4,6 +4,19 @@ All notable changes to holos-console are documented here.
 
 ## [Unreleased]
 
+### Added — Ancestor-aware TemplatePolicyBinding policy picker (HOL-833)
+
+`BindingForm` now calls `ListLinkableTemplatePolicies` (scope + ancestor walk)
+instead of the single-scope `ListTemplatePolicies` RPC, so a folder-scoped
+binding can select policies stored at any ancestor folder or org scope.
+`AncestorChainResolver` validation on `CreateTemplatePolicyBinding` /
+`UpdateTemplatePolicyBinding` ensures the referenced policy is reachable from
+the binding's storage scope at authoring time (HOL-836).
+
+**References**: PRs #1119 (backend `ListLinkableTemplatePolicies`), #1120
+(frontend hook + BindingForm wiring), #1121 (ancestor-chain authoring
+validation).
+
 ### Added — ProjectNamespace TemplatePolicyBinding for new Projects (HOL-806)
 
 Operators can now attach a `TemplatePolicyBinding` with

@@ -212,8 +212,8 @@ func TestCreateRejectsProjectScope(t *testing.T) {
 	h, fakeClient := newTestHandler(t, map[string]string{"owner@example.com": "owner"})
 
 	req := connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-		Namespace:  newProjectScope("billing-web"),
-		Policy: basicPolicy(newProjectScope("billing-web")),
+		Namespace: newProjectScope("billing-web"),
+		Policy:    basicPolicy(newProjectScope("billing-web")),
 	})
 	ctx := authedCtx("owner@example.com", nil)
 
@@ -260,7 +260,7 @@ func TestReadPathsRejectProjectScope(t *testing.T) {
 			run: func() error {
 				_, err := h.GetTemplatePolicy(ctx, connect.NewRequest(&consolev1.GetTemplatePolicyRequest{
 					Namespace: newProjectScope("billing-web"),
-					Name:  "any",
+					Name:      "any",
 				}))
 				return err
 			},
@@ -269,8 +269,8 @@ func TestReadPathsRejectProjectScope(t *testing.T) {
 			name: "update",
 			run: func() error {
 				_, err := h.UpdateTemplatePolicy(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyRequest{
-					Namespace:  newProjectScope("billing-web"),
-					Policy: basicPolicy(newProjectScope("billing-web")),
+					Namespace: newProjectScope("billing-web"),
+					Policy:    basicPolicy(newProjectScope("billing-web")),
 				}))
 				return err
 			},
@@ -280,7 +280,7 @@ func TestReadPathsRejectProjectScope(t *testing.T) {
 			run: func() error {
 				_, err := h.DeleteTemplatePolicy(ctx, connect.NewRequest(&consolev1.DeleteTemplatePolicyRequest{
 					Namespace: newProjectScope("billing-web"),
-					Name:  "any",
+					Name:      "any",
 				}))
 				return err
 			},
@@ -321,7 +321,7 @@ func TestCreatePolicyValidation(t *testing.T) {
 				Name: "bad-kind",
 				Rules: []*consolev1.TemplatePolicyRule{
 					{
-						Kind: consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_UNSPECIFIED,
+						Kind:     consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_UNSPECIFIED,
 						Template: &consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: "t"},
 					},
 				},
@@ -334,7 +334,7 @@ func TestCreatePolicyValidation(t *testing.T) {
 				Name: "bad-ref",
 				Rules: []*consolev1.TemplatePolicyRule{
 					{
-						Kind: consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE,
+						Kind:     consolev1.TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE,
 						Template: &consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: ""},
 					},
 				},
@@ -373,8 +373,8 @@ func TestCreatePolicyValidation(t *testing.T) {
 				tt.policy.Namespace = newFolderScope("payments")
 			}
 			_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-				Namespace:  newFolderScope("payments"),
-				Policy: tt.policy,
+				Namespace: newFolderScope("payments"),
+				Policy:    tt.policy,
 			}))
 			if err == nil {
 				t.Fatal("expected validation error")
@@ -401,10 +401,10 @@ func TestCreatePolicyNamespaceValidation(t *testing.T) {
 	ctx := authedCtx("owner@example.com", nil)
 
 	tests := []struct {
-		name     string
-		reqNs    string
-		polNs    string
-		wantMsg  string
+		name    string
+		reqNs   string
+		polNs   string
+		wantMsg string
 	}{
 		{
 			name:    "missing policy namespace",
@@ -554,8 +554,8 @@ func TestCreatePolicyHappyPath(t *testing.T) {
 	ctx := authedCtx("owner@example.com", nil)
 
 	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-		Namespace:  newFolderScope("payments"),
-		Policy: basicPolicy(newFolderScope("payments")),
+		Namespace: newFolderScope("payments"),
+		Policy:    basicPolicy(newFolderScope("payments")),
 	}))
 	if err != nil {
 		t.Fatalf("CreateTemplatePolicy: %v", err)
@@ -574,8 +574,8 @@ func TestCreatePolicyPermissionDeniedForViewer(t *testing.T) {
 	ctx := authedCtx("viewer@example.com", nil)
 
 	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-		Namespace:  newFolderScope("payments"),
-		Policy: basicPolicy(newFolderScope("payments")),
+		Namespace: newFolderScope("payments"),
+		Policy:    basicPolicy(newFolderScope("payments")),
 	}))
 	if err == nil {
 		t.Fatal("expected permission denied")
@@ -590,8 +590,8 @@ func TestCreatePolicyAtOrgScope(t *testing.T) {
 	ctx := authedCtx("owner@example.com", nil)
 
 	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-		Namespace:  newOrgScope("acme"),
-		Policy: basicPolicy(newOrgScope("acme")),
+		Namespace: newOrgScope("acme"),
+		Policy:    basicPolicy(newOrgScope("acme")),
 	}))
 	if err != nil {
 		t.Fatalf("CreateTemplatePolicy at org scope: %v", err)
@@ -616,7 +616,7 @@ func TestDeleteMissingPolicyReturnsNotFound(t *testing.T) {
 
 	_, err := h.DeleteTemplatePolicy(ctx, connect.NewRequest(&consolev1.DeleteTemplatePolicyRequest{
 		Namespace: newFolderScope("payments"),
-		Name:  "does-not-exist",
+		Name:      "does-not-exist",
 	}))
 	if err == nil {
 		t.Fatal("expected NotFound error")
@@ -695,8 +695,8 @@ func TestTemplateExistsProbeDoesNotBlockOnTransientError(t *testing.T) {
 
 	ctx := authedCtx("owner@example.com", nil)
 	_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-		Namespace:  newFolderScope("payments"),
-		Policy: basicPolicy(newFolderScope("payments")),
+		Namespace: newFolderScope("payments"),
+		Policy:    basicPolicy(newFolderScope("payments")),
 	}))
 	if err != nil {
 		t.Fatalf("transient probe error must not block create: %v", err)
@@ -713,8 +713,8 @@ func TestListPoliciesReturnsStoredRules(t *testing.T) {
 	ctx := authedCtx("owner@example.com", nil)
 
 	if _, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-		Namespace:  newFolderScope("payments"),
-		Policy: basicPolicy(newFolderScope("payments")),
+		Namespace: newFolderScope("payments"),
+		Policy:    basicPolicy(newFolderScope("payments")),
 	})); err != nil {
 		t.Fatalf("CreateTemplatePolicy: %v", err)
 	}
@@ -905,8 +905,8 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 			name: "Create at folder scope (no folder grant)",
 			run: func() error {
 				_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-					Namespace:  newFolderScope("payments"),
-					Policy: basicPolicy(newFolderScope("payments")),
+					Namespace: newFolderScope("payments"),
+					Policy:    basicPolicy(newFolderScope("payments")),
 				}))
 				return err
 			},
@@ -916,8 +916,8 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 			name: "Create at organization scope (no org grant)",
 			run: func() error {
 				_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-					Namespace:  newOrgScope("acme"),
-					Policy: basicPolicy(newOrgScope("acme")),
+					Namespace: newOrgScope("acme"),
+					Policy:    basicPolicy(newOrgScope("acme")),
 				}))
 				return err
 			},
@@ -927,8 +927,8 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 			name: "Create targeting project namespace (storage-isolation rejection)",
 			run: func() error {
 				_, err := h.CreateTemplatePolicy(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyRequest{
-					Namespace:  newProjectScope("billing-web"),
-					Policy: basicPolicy(newProjectScope("billing-web")),
+					Namespace: newProjectScope("billing-web"),
+					Policy:    basicPolicy(newProjectScope("billing-web")),
 				}))
 				return err
 			},
@@ -940,9 +940,9 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 				_, err := h.UpdateTemplatePolicy(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyRequest{
 					Namespace: newFolderScope("payments"),
 					Policy: &consolev1.TemplatePolicy{
-						Name:     "require-httproute",
+						Name:      "require-httproute",
 						Namespace: newFolderScope("payments"),
-						Rules:    []*consolev1.TemplatePolicyRule{sampleRule()},
+						Rules:     []*consolev1.TemplatePolicyRule{sampleRule()},
 					},
 				}))
 				return err
@@ -954,7 +954,7 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 			run: func() error {
 				_, err := h.DeleteTemplatePolicy(ctx, connect.NewRequest(&consolev1.DeleteTemplatePolicyRequest{
 					Namespace: newFolderScope("payments"),
-					Name:  "require-httproute",
+					Name:      "require-httproute",
 				}))
 				return err
 			},
@@ -965,7 +965,7 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 			run: func() error {
 				_, err := h.DeleteTemplatePolicy(ctx, connect.NewRequest(&consolev1.DeleteTemplatePolicyRequest{
 					Namespace: newProjectScope("billing-web"),
-					Name:  "any",
+					Name:      "any",
 				}))
 				return err
 			},

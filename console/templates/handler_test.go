@@ -703,7 +703,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		handler.WithAncestorWalker(walker)
 
 		msg := &consolev1.RenderTemplateRequest{
-			Namespace:       projectScopeRef(project),
+			Namespace:   projectScopeRef(project),
 			CueTemplate: validCue,
 			LinkedTemplates: []*consolev1.LinkedTemplateRef{
 				folderLinkedRef(folder, "payments-policy"),
@@ -792,7 +792,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		handler.WithAncestorWalker(walker)
 
 		msg := &consolev1.RenderTemplateRequest{
-			Namespace:       projectScopeRef(project),
+			Namespace:   projectScopeRef(project),
 			CueTemplate: validCue,
 			LinkedTemplates: []*consolev1.LinkedTemplateRef{
 				orgLinkedRef(org, "httproute"),
@@ -910,7 +910,7 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		handler := NewHandler(k8s, r, renderer, policyresolver.NewNoopResolver())
 		handler.WithAncestorWalker(walker)
 		_, err := handler.renderTemplateGrouped(context.Background(), &consolev1.RenderTemplateRequest{
-			Namespace:       projectScopeRef(project),
+			Namespace:   projectScopeRef(project),
 			CueTemplate: validCue,
 			LinkedTemplates: []*consolev1.LinkedTemplateRef{
 				folderLinkedRef(folder, "shared"),
@@ -1241,7 +1241,7 @@ input: #ProjectInput & {
 			ctx := authedCtx(tt.email, nil)
 			resp, err := handler.GetTemplateDefaults(ctx, connect.NewRequest(&consolev1.GetTemplateDefaultsRequest{
 				Namespace: tt.scope,
-				Name:  tt.tmplName,
+				Name:      tt.tmplName,
 			}))
 
 			if tt.want.wantErr {
@@ -1438,7 +1438,7 @@ func TestGetTemplateDefaultsValidation(t *testing.T) {
 			authedCtx("anyone@localhost", nil),
 			connect.NewRequest(&consolev1.GetTemplateDefaultsRequest{
 				Namespace: projectScopeRef("p"),
-				Name:  "",
+				Name:      "",
 			}),
 		)
 		if err == nil {
@@ -1454,7 +1454,7 @@ func TestGetTemplateDefaultsValidation(t *testing.T) {
 			context.Background(),
 			connect.NewRequest(&consolev1.GetTemplateDefaultsRequest{
 				Namespace: projectScopeRef("p"),
-				Name:  "foo",
+				Name:      "foo",
 			}),
 		)
 		if err == nil {
