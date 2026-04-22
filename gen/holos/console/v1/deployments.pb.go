@@ -123,6 +123,9 @@ type Deployment struct {
 	// deprecated `phase` (8) and `message` (9) fields; both are left in place
 	// with [deprecated = true] to preserve wire compatibility.
 	StatusSummary *DeploymentStatusSummary `protobuf:"bytes,14,opt,name=status_summary,json=statusSummary,proto3" json:"status_summary,omitempty"`
+	// created_at is the RFC3339-formatted timestamp when the underlying Kubernetes
+	// ConfigMap was created, sourced from metadata.creationTimestamp.
+	CreatedAt     string `protobuf:"bytes,15,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -255,6 +258,13 @@ func (x *Deployment) GetStatusSummary() *DeploymentStatusSummary {
 		return x.StatusSummary
 	}
 	return nil
+}
+
+func (x *Deployment) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
 }
 
 // EnvVar represents a container environment variable.
@@ -2674,7 +2684,7 @@ var File_holos_console_v1_deployments_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\n" +
-	"\"holos/console/v1/deployments.proto\x12\x10holos.console.v1\x1a#holos/console/v1/policy_state.proto\x1a\x1bholos/console/v1/rbac.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xde\x03\n" +
+	"\"holos/console/v1/deployments.proto\x12\x10holos.console.v1\x1a#holos/console/v1/policy_state.proto\x1a\x1bholos/console/v1/rbac.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfd\x03\n" +
 	"\n" +
 	"Deployment\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
@@ -2691,7 +2701,9 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\x04args\x18\v \x03(\tR\x04args\x12*\n" +
 	"\x03env\x18\f \x03(\v2\x18.holos.console.v1.EnvVarR\x03env\x12\x12\n" +
 	"\x04port\x18\r \x01(\x05R\x04port\x12P\n" +
-	"\x0estatus_summary\x18\x0e \x01(\v2).holos.console.v1.DeploymentStatusSummaryR\rstatusSummary\"\xd8\x01\n" +
+	"\x0estatus_summary\x18\x0e \x01(\v2).holos.console.v1.DeploymentStatusSummaryR\rstatusSummary\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x0f \x01(\tR\tcreatedAt\"\xd8\x01\n" +
 	"\x06EnvVar\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x05value\x18\x02 \x01(\tH\x00R\x05value\x12F\n" +

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
@@ -2258,4 +2259,67 @@ func TestHandler_AggregatedLinks(t *testing.T) {
 			t.Error("expected cache annotation preserved when no dynamic client is configured")
 		}
 	})
+}
+
+// TestHandler_ListDeployments_CreatedAt asserts that Deployment.CreatedAt is
+// populated from the underlying ConfigMap's CreationTimestamp in RFC3339 format.
+func TestHandler_ListDeployments_CreatedAt(t *testing.T) {
+	tests := []struct {
+		name        string
+		createdAt   time.Time
+		wantRFC3339 string
+	}{
+		{
+			name:        "UTC time is formatted as RFC3339",
+			createdAt:   time.Date(2026, 4, 22, 19, 51, 10, 0, time.UTC),
+			wantRFC3339: "2026-04-22T19:51:10Z",
+		},
+		{
+			name:        "non-UTC time is normalised to UTC in RFC3339",
+			createdAt:   time.Date(2025, 1, 15, 8, 30, 0, 0, time.FixedZone("EST", -5*60*60)),
+			wantRFC3339: "2025-01-15T13:30:00Z",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ns := projectNS("my-project")
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ts-deployment",
+					Namespace: "prj-my-project",
+					Labels: map[string]string{
+						v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
+						v1alpha2.LabelResourceType: v1alpha2.ResourceTypeDeployment,
+					},
+					Annotations: map[string]string{
+						v1alpha2.AnnotationDisplayName: "TS Deployment",
+						v1alpha2.AnnotationDescription: "created_at round-trip test",
+					},
+					CreationTimestamp: metav1.NewTime(tc.createdAt),
+				},
+				Data: map[string]string{
+					ImageKey:    "nginx",
+					TagKey:      "latest",
+					TemplateKey: "default",
+				},
+			}
+			fakeClient := fake.NewClientset(ns, cm)
+			pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+			handler := defaultHandler(fakeClient, pr)
+
+			ctx := authedCtx("alice@example.com", nil)
+			resp, err := handler.ListDeployments(ctx, connect.NewRequest(&consolev1.ListDeploymentsRequest{Project: "my-project"}))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(resp.Msg.Deployments) != 1 {
+				t.Fatalf("expected 1 deployment, got %d", len(resp.Msg.Deployments))
+			}
+			got := resp.Msg.Deployments[0].CreatedAt
+			if got != tc.wantRFC3339 {
+				t.Errorf("CreatedAt: got %q, want %q", got, tc.wantRFC3339)
+			}
+		})
+	}
 }

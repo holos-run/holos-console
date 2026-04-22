@@ -123,6 +123,14 @@ export declare type Deployment = Message<"holos.console.v1.Deployment"> & {
    * @generated from field: holos.console.v1.DeploymentStatusSummary status_summary = 14;
    */
   statusSummary?: DeploymentStatusSummary;
+
+  /**
+   * created_at is the RFC3339-formatted timestamp when the underlying Kubernetes
+   * ConfigMap was created, sourced from metadata.creationTimestamp.
+   *
+   * @generated from field: string created_at = 15;
+   */
+  createdAt: string;
 };
 
 /**
