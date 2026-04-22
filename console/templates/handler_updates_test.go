@@ -92,7 +92,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Namespace:        projectScopeRef(project),
+			Namespace:    projectScopeRef(project),
 			TemplateName: "web-app",
 		})
 
@@ -118,7 +118,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Namespace:        projectScopeRef(project),
+			Namespace:    projectScopeRef(project),
 			TemplateName: "web-app",
 		})
 
@@ -149,7 +149,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Namespace:        projectScopeRef(project),
+			Namespace:    projectScopeRef(project),
 			TemplateName: "web-app",
 		})
 
@@ -189,7 +189,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Namespace:        projectScopeRef(project),
+			Namespace:    projectScopeRef(project),
 			TemplateName: "web-app",
 		})
 
@@ -218,7 +218,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Namespace:        projectScopeRef(project),
+			Namespace:    projectScopeRef(project),
 			TemplateName: "web-app",
 		})
 
@@ -255,7 +255,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Namespace:        projectScopeRef(project),
+			Namespace:    projectScopeRef(project),
 			TemplateName: "standalone",
 		})
 
@@ -316,7 +316,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Namespace:          projectScopeRef(project),
+			Namespace:      projectScopeRef(project),
 			TemplateName:   "web-app",
 			IncludeCurrent: true,
 		})
@@ -354,7 +354,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Namespace:          projectScopeRef(project),
+			Namespace:      projectScopeRef(project),
 			TemplateName:   "web-app",
 			IncludeCurrent: false,
 		})
@@ -379,7 +379,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Namespace:          projectScopeRef(project),
+			Namespace:      projectScopeRef(project),
 			TemplateName:   "web-app",
 			IncludeCurrent: true,
 		})
@@ -408,7 +408,7 @@ func TestCheckUpdates(t *testing.T) {
 
 		ctx := authedCtx(ownerEmail, nil)
 		req := connect.NewRequest(&consolev1.CheckUpdatesRequest{
-			Namespace:          projectScopeRef(project),
+			Namespace:      projectScopeRef(project),
 			TemplateName:   "web-app",
 			IncludeCurrent: true,
 		})

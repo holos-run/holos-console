@@ -55,7 +55,7 @@ vi.mock('@/queries/templates', async () => {
 })
 
 vi.mock('@/queries/templatePolicies', () => ({
-  useListTemplatePolicies: vi.fn().mockReturnValue({
+  useListLinkableTemplatePolicies: vi.fn().mockReturnValue({
     data: [],
     isPending: false,
     error: null,

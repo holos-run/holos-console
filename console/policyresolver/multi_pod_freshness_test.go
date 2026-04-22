@@ -333,4 +333,3 @@ func eventuallyResolveFolderResolverNames(
 	}
 	t.Fatalf("%s: want %v, last seen %v", message, wantSorted, lastSeen)
 }
-

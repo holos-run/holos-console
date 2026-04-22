@@ -779,6 +779,165 @@ func (*DeleteTemplatePolicyResponse) Descriptor() ([]byte, []int) {
 	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{12}
 }
 
+// LinkableTemplatePolicy describes a single TemplatePolicy available for
+// selection in a TemplatePolicyBinding. It carries the owning namespace
+// alongside all policy fields so the frontend can render a scope badge
+// (e.g. "org" or "folder/payments") without a second round-trip.
+type LinkableTemplatePolicy struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// policy is the full TemplatePolicy, including its namespace field which
+	// indicates the owning scope.
+	Policy        *TemplatePolicy `protobuf:"bytes,1,opt,name=policy,proto3" json:"policy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LinkableTemplatePolicy) Reset() {
+	*x = LinkableTemplatePolicy{}
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LinkableTemplatePolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LinkableTemplatePolicy) ProtoMessage() {}
+
+func (x *LinkableTemplatePolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LinkableTemplatePolicy.ProtoReflect.Descriptor instead.
+func (*LinkableTemplatePolicy) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *LinkableTemplatePolicy) GetPolicy() *TemplatePolicy {
+	if x != nil {
+		return x.Policy
+	}
+	return nil
+}
+
+// ListLinkableTemplatePoliciesRequest requests all TemplatePolicies reachable
+// from the given scope namespace. The handler walks the ancestor chain from
+// the scope up to the org root and returns policies from each namespace the
+// caller has permission to list.
+type ListLinkableTemplatePoliciesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// namespace is the starting scope namespace (org or folder). The handler
+	// walks up the hierarchy collecting TemplatePolicies from each namespace.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	// include_self_scope, when true, also returns policies at the request's
+	// own namespace in addition to ancestor-namespace policies. Default false
+	// returns only ancestor-namespace policies. Mirrors the same field on
+	// ListLinkableTemplatesRequest (HOL-561).
+	IncludeSelfScope bool `protobuf:"varint,2,opt,name=include_self_scope,json=includeSelfScope,proto3" json:"include_self_scope,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ListLinkableTemplatePoliciesRequest) Reset() {
+	*x = ListLinkableTemplatePoliciesRequest{}
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListLinkableTemplatePoliciesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListLinkableTemplatePoliciesRequest) ProtoMessage() {}
+
+func (x *ListLinkableTemplatePoliciesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListLinkableTemplatePoliciesRequest.ProtoReflect.Descriptor instead.
+func (*ListLinkableTemplatePoliciesRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListLinkableTemplatePoliciesRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *ListLinkableTemplatePoliciesRequest) GetIncludeSelfScope() bool {
+	if x != nil {
+		return x.IncludeSelfScope
+	}
+	return false
+}
+
+// ListLinkableTemplatePoliciesResponse returns all linkable policies ordered
+// child→parent (same scope first when include_self_scope is true).
+type ListLinkableTemplatePoliciesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// policies are the reachable TemplatePolicies, ordered child→parent.
+	Policies      []*LinkableTemplatePolicy `protobuf:"bytes,1,rep,name=policies,proto3" json:"policies,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListLinkableTemplatePoliciesResponse) Reset() {
+	*x = ListLinkableTemplatePoliciesResponse{}
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListLinkableTemplatePoliciesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListLinkableTemplatePoliciesResponse) ProtoMessage() {}
+
+func (x *ListLinkableTemplatePoliciesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_template_policies_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListLinkableTemplatePoliciesResponse.ProtoReflect.Descriptor instead.
+func (*ListLinkableTemplatePoliciesResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_template_policies_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ListLinkableTemplatePoliciesResponse) GetPolicies() []*LinkableTemplatePolicy {
+	if x != nil {
+		return x.Policies
+	}
+	return nil
+}
+
 var File_holos_console_v1_template_policies_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_template_policies_proto_rawDesc = "" +
@@ -818,17 +977,25 @@ const file_holos_console_v1_template_policies_proto_rawDesc = "" +
 	"\x1bDeleteTemplatePolicyRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"\x1e\n" +
-	"\x1cDeleteTemplatePolicyResponse*~\n" +
+	"\x1cDeleteTemplatePolicyResponse\"R\n" +
+	"\x16LinkableTemplatePolicy\x128\n" +
+	"\x06policy\x18\x01 \x01(\v2 .holos.console.v1.TemplatePolicyR\x06policy\"q\n" +
+	"#ListLinkableTemplatePoliciesRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12,\n" +
+	"\x12include_self_scope\x18\x02 \x01(\bR\x10includeSelfScope\"l\n" +
+	"$ListLinkableTemplatePoliciesResponse\x12D\n" +
+	"\bpolicies\x18\x01 \x03(\v2(.holos.console.v1.LinkableTemplatePolicyR\bpolicies*~\n" +
 	"\x12TemplatePolicyKind\x12$\n" +
 	" TEMPLATE_POLICY_KIND_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cTEMPLATE_POLICY_KIND_REQUIRE\x10\x01\x12 \n" +
-	"\x1cTEMPLATE_POLICY_KIND_EXCLUDE\x10\x022\xe1\x04\n" +
+	"\x1cTEMPLATE_POLICY_KIND_EXCLUDE\x10\x022\xf1\x05\n" +
 	"\x15TemplatePolicyService\x12u\n" +
 	"\x14ListTemplatePolicies\x12-.holos.console.v1.ListTemplatePoliciesRequest\x1a..holos.console.v1.ListTemplatePoliciesResponse\x12l\n" +
 	"\x11GetTemplatePolicy\x12*.holos.console.v1.GetTemplatePolicyRequest\x1a+.holos.console.v1.GetTemplatePolicyResponse\x12u\n" +
 	"\x14CreateTemplatePolicy\x12-.holos.console.v1.CreateTemplatePolicyRequest\x1a..holos.console.v1.CreateTemplatePolicyResponse\x12u\n" +
 	"\x14UpdateTemplatePolicy\x12-.holos.console.v1.UpdateTemplatePolicyRequest\x1a..holos.console.v1.UpdateTemplatePolicyResponse\x12u\n" +
-	"\x14DeleteTemplatePolicy\x12-.holos.console.v1.DeleteTemplatePolicyRequest\x1a..holos.console.v1.DeleteTemplatePolicyResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x14DeleteTemplatePolicy\x12-.holos.console.v1.DeleteTemplatePolicyRequest\x1a..holos.console.v1.DeleteTemplatePolicyResponse\x12\x8d\x01\n" +
+	"\x1cListLinkableTemplatePolicies\x125.holos.console.v1.ListLinkableTemplatePoliciesRequest\x1a6.holos.console.v1.ListLinkableTemplatePoliciesResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_template_policies_proto_rawDescOnce sync.Once
@@ -843,49 +1010,56 @@ func file_holos_console_v1_template_policies_proto_rawDescGZIP() []byte {
 }
 
 var file_holos_console_v1_template_policies_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_holos_console_v1_template_policies_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_holos_console_v1_template_policies_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_holos_console_v1_template_policies_proto_goTypes = []any{
-	(TemplatePolicyKind)(0),              // 0: holos.console.v1.TemplatePolicyKind
-	(*TemplatePolicyTarget)(nil),         // 1: holos.console.v1.TemplatePolicyTarget
-	(*TemplatePolicyRule)(nil),           // 2: holos.console.v1.TemplatePolicyRule
-	(*TemplatePolicy)(nil),               // 3: holos.console.v1.TemplatePolicy
-	(*ListTemplatePoliciesRequest)(nil),  // 4: holos.console.v1.ListTemplatePoliciesRequest
-	(*ListTemplatePoliciesResponse)(nil), // 5: holos.console.v1.ListTemplatePoliciesResponse
-	(*GetTemplatePolicyRequest)(nil),     // 6: holos.console.v1.GetTemplatePolicyRequest
-	(*GetTemplatePolicyResponse)(nil),    // 7: holos.console.v1.GetTemplatePolicyResponse
-	(*CreateTemplatePolicyRequest)(nil),  // 8: holos.console.v1.CreateTemplatePolicyRequest
-	(*CreateTemplatePolicyResponse)(nil), // 9: holos.console.v1.CreateTemplatePolicyResponse
-	(*UpdateTemplatePolicyRequest)(nil),  // 10: holos.console.v1.UpdateTemplatePolicyRequest
-	(*UpdateTemplatePolicyResponse)(nil), // 11: holos.console.v1.UpdateTemplatePolicyResponse
-	(*DeleteTemplatePolicyRequest)(nil),  // 12: holos.console.v1.DeleteTemplatePolicyRequest
-	(*DeleteTemplatePolicyResponse)(nil), // 13: holos.console.v1.DeleteTemplatePolicyResponse
-	(*LinkedTemplateRef)(nil),            // 14: holos.console.v1.LinkedTemplateRef
-	(*timestamppb.Timestamp)(nil),        // 15: google.protobuf.Timestamp
+	(TemplatePolicyKind)(0),                      // 0: holos.console.v1.TemplatePolicyKind
+	(*TemplatePolicyTarget)(nil),                 // 1: holos.console.v1.TemplatePolicyTarget
+	(*TemplatePolicyRule)(nil),                   // 2: holos.console.v1.TemplatePolicyRule
+	(*TemplatePolicy)(nil),                       // 3: holos.console.v1.TemplatePolicy
+	(*ListTemplatePoliciesRequest)(nil),          // 4: holos.console.v1.ListTemplatePoliciesRequest
+	(*ListTemplatePoliciesResponse)(nil),         // 5: holos.console.v1.ListTemplatePoliciesResponse
+	(*GetTemplatePolicyRequest)(nil),             // 6: holos.console.v1.GetTemplatePolicyRequest
+	(*GetTemplatePolicyResponse)(nil),            // 7: holos.console.v1.GetTemplatePolicyResponse
+	(*CreateTemplatePolicyRequest)(nil),          // 8: holos.console.v1.CreateTemplatePolicyRequest
+	(*CreateTemplatePolicyResponse)(nil),         // 9: holos.console.v1.CreateTemplatePolicyResponse
+	(*UpdateTemplatePolicyRequest)(nil),          // 10: holos.console.v1.UpdateTemplatePolicyRequest
+	(*UpdateTemplatePolicyResponse)(nil),         // 11: holos.console.v1.UpdateTemplatePolicyResponse
+	(*DeleteTemplatePolicyRequest)(nil),          // 12: holos.console.v1.DeleteTemplatePolicyRequest
+	(*DeleteTemplatePolicyResponse)(nil),         // 13: holos.console.v1.DeleteTemplatePolicyResponse
+	(*LinkableTemplatePolicy)(nil),               // 14: holos.console.v1.LinkableTemplatePolicy
+	(*ListLinkableTemplatePoliciesRequest)(nil),  // 15: holos.console.v1.ListLinkableTemplatePoliciesRequest
+	(*ListLinkableTemplatePoliciesResponse)(nil), // 16: holos.console.v1.ListLinkableTemplatePoliciesResponse
+	(*LinkedTemplateRef)(nil),                    // 17: holos.console.v1.LinkedTemplateRef
+	(*timestamppb.Timestamp)(nil),                // 18: google.protobuf.Timestamp
 }
 var file_holos_console_v1_template_policies_proto_depIdxs = []int32{
 	0,  // 0: holos.console.v1.TemplatePolicyRule.kind:type_name -> holos.console.v1.TemplatePolicyKind
-	14, // 1: holos.console.v1.TemplatePolicyRule.template:type_name -> holos.console.v1.LinkedTemplateRef
+	17, // 1: holos.console.v1.TemplatePolicyRule.template:type_name -> holos.console.v1.LinkedTemplateRef
 	2,  // 2: holos.console.v1.TemplatePolicy.rules:type_name -> holos.console.v1.TemplatePolicyRule
-	15, // 3: holos.console.v1.TemplatePolicy.created_at:type_name -> google.protobuf.Timestamp
+	18, // 3: holos.console.v1.TemplatePolicy.created_at:type_name -> google.protobuf.Timestamp
 	3,  // 4: holos.console.v1.ListTemplatePoliciesResponse.policies:type_name -> holos.console.v1.TemplatePolicy
 	3,  // 5: holos.console.v1.GetTemplatePolicyResponse.policy:type_name -> holos.console.v1.TemplatePolicy
 	3,  // 6: holos.console.v1.CreateTemplatePolicyRequest.policy:type_name -> holos.console.v1.TemplatePolicy
 	3,  // 7: holos.console.v1.UpdateTemplatePolicyRequest.policy:type_name -> holos.console.v1.TemplatePolicy
-	4,  // 8: holos.console.v1.TemplatePolicyService.ListTemplatePolicies:input_type -> holos.console.v1.ListTemplatePoliciesRequest
-	6,  // 9: holos.console.v1.TemplatePolicyService.GetTemplatePolicy:input_type -> holos.console.v1.GetTemplatePolicyRequest
-	8,  // 10: holos.console.v1.TemplatePolicyService.CreateTemplatePolicy:input_type -> holos.console.v1.CreateTemplatePolicyRequest
-	10, // 11: holos.console.v1.TemplatePolicyService.UpdateTemplatePolicy:input_type -> holos.console.v1.UpdateTemplatePolicyRequest
-	12, // 12: holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy:input_type -> holos.console.v1.DeleteTemplatePolicyRequest
-	5,  // 13: holos.console.v1.TemplatePolicyService.ListTemplatePolicies:output_type -> holos.console.v1.ListTemplatePoliciesResponse
-	7,  // 14: holos.console.v1.TemplatePolicyService.GetTemplatePolicy:output_type -> holos.console.v1.GetTemplatePolicyResponse
-	9,  // 15: holos.console.v1.TemplatePolicyService.CreateTemplatePolicy:output_type -> holos.console.v1.CreateTemplatePolicyResponse
-	11, // 16: holos.console.v1.TemplatePolicyService.UpdateTemplatePolicy:output_type -> holos.console.v1.UpdateTemplatePolicyResponse
-	13, // 17: holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy:output_type -> holos.console.v1.DeleteTemplatePolicyResponse
-	13, // [13:18] is the sub-list for method output_type
-	8,  // [8:13] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	3,  // 8: holos.console.v1.LinkableTemplatePolicy.policy:type_name -> holos.console.v1.TemplatePolicy
+	14, // 9: holos.console.v1.ListLinkableTemplatePoliciesResponse.policies:type_name -> holos.console.v1.LinkableTemplatePolicy
+	4,  // 10: holos.console.v1.TemplatePolicyService.ListTemplatePolicies:input_type -> holos.console.v1.ListTemplatePoliciesRequest
+	6,  // 11: holos.console.v1.TemplatePolicyService.GetTemplatePolicy:input_type -> holos.console.v1.GetTemplatePolicyRequest
+	8,  // 12: holos.console.v1.TemplatePolicyService.CreateTemplatePolicy:input_type -> holos.console.v1.CreateTemplatePolicyRequest
+	10, // 13: holos.console.v1.TemplatePolicyService.UpdateTemplatePolicy:input_type -> holos.console.v1.UpdateTemplatePolicyRequest
+	12, // 14: holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy:input_type -> holos.console.v1.DeleteTemplatePolicyRequest
+	15, // 15: holos.console.v1.TemplatePolicyService.ListLinkableTemplatePolicies:input_type -> holos.console.v1.ListLinkableTemplatePoliciesRequest
+	5,  // 16: holos.console.v1.TemplatePolicyService.ListTemplatePolicies:output_type -> holos.console.v1.ListTemplatePoliciesResponse
+	7,  // 17: holos.console.v1.TemplatePolicyService.GetTemplatePolicy:output_type -> holos.console.v1.GetTemplatePolicyResponse
+	9,  // 18: holos.console.v1.TemplatePolicyService.CreateTemplatePolicy:output_type -> holos.console.v1.CreateTemplatePolicyResponse
+	11, // 19: holos.console.v1.TemplatePolicyService.UpdateTemplatePolicy:output_type -> holos.console.v1.UpdateTemplatePolicyResponse
+	13, // 20: holos.console.v1.TemplatePolicyService.DeleteTemplatePolicy:output_type -> holos.console.v1.DeleteTemplatePolicyResponse
+	16, // 21: holos.console.v1.TemplatePolicyService.ListLinkableTemplatePolicies:output_type -> holos.console.v1.ListLinkableTemplatePoliciesResponse
+	16, // [16:22] is the sub-list for method output_type
+	10, // [10:16] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_template_policies_proto_init() }
@@ -900,7 +1074,7 @@ func file_holos_console_v1_template_policies_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_template_policies_proto_rawDesc), len(file_holos_console_v1_template_policies_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   13,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

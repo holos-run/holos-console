@@ -22,6 +22,19 @@ All notable changes to holos-console are documented here.
   test in `binding_controller_test.go` so a future M3 decision to emit
   `When` predicates will force an explicit element-wise compare.
 
+### Added — Ancestor-aware TemplatePolicyBinding policy picker (HOL-833)
+
+`BindingForm` now calls `ListLinkableTemplatePolicies` (scope + ancestor walk)
+instead of the single-scope `ListTemplatePolicies` RPC, so a folder-scoped
+binding can select policies stored at any ancestor folder or org scope.
+`AncestorChainResolver` validation on `CreateTemplatePolicyBinding` /
+`UpdateTemplatePolicyBinding` ensures the referenced policy is reachable from
+the binding's storage scope at authoring time (HOL-836).
+
+**References**: PRs #1119 (backend `ListLinkableTemplatePolicies`), #1120
+(frontend hook + BindingForm wiring), #1121 (ancestor-chain authoring
+validation).
+
 ### Added — ProjectNamespace TemplatePolicyBinding for new Projects (HOL-806)
 
 Operators can now attach a `TemplatePolicyBinding` with
@@ -64,3 +77,15 @@ project-name input with wildcard (`*`) support.
 (`docs/adrs/034-namespace-template-policy-binding-for-new-projects.md`),
 PRs #1091 (ADR), #1093 (API types), #1096 (resolver), #1098 (render),
 #1100 (applier), #1107 (RPC wire-up), #1109 (examples), #1112 (frontend).
+
+### Fixed — `crypto.Params` JSON shape pins required uint fields (HOL-838)
+
+Removed `,omitempty` from the `Time`, `Memory`, `Parallelism`, `KeyLength`,
+and `Iterations` JSON tags on `internal/secretinjector/crypto.Params`. A
+zero value — which `validateArgon2idParams` rejects on both Hash and
+Verify — is now serialized as an explicit `0` instead of being silently
+dropped. The envelope JSON shape now faithfully reflects the required
+fields, so a future KDF that forgets a zero-rejection check cannot
+silently round-trip a degenerate envelope. No on-wire break: envelopes
+produced by earlier code either contain the fields already (non-zero
+values pass `omitempty`) or fail `Verify` at the validator as before.
