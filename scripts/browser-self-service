@@ -67,56 +67,47 @@ click_link_by_text() {
 }
 
 echo "=== Step 1: Create an organization ==="
-$AB open "$HOLOS_BACKEND_URL/organizations"
+$AB open "$HOLOS_BACKEND_URL/organization/new"
 $AB wait --load networkidle
-$AB wait --text "Organizations" 2>/dev/null || $AB wait 3000
-screenshot "organizations-list"
-
-click_button_by_text "Create Organization"
-$AB wait 1000
-screenshot "create-org-dialog"
+$AB wait --text "Create Organization" 2>/dev/null || $AB wait 3000
+screenshot "org-new-page"
 
 $AB fill "input[placeholder='My Organization']" "$ORG_DISPLAY"
 $AB wait 500
 $AB fill "input[placeholder='my-org']" "$ORG_NAME"
 $AB fill "input[placeholder='What is this organization for?']" "Automated test org"
-screenshot "create-org-filled"
+screenshot "org-new-filled"
 
-click_dialog_button "Create"
+click_button_by_text "Create Organization"
 $AB wait --load networkidle
 $AB wait 2000
 screenshot "org-created"
 
-echo "=== Step 2: Set selected org and navigate to Projects ==="
+echo "=== Step 2: Set selected org and create a project ==="
 $AB eval "sessionStorage.setItem('holos-selected-org', '$ORG_NAME')"
-$AB open "$HOLOS_BACKEND_URL/projects"
+$AB open "$HOLOS_BACKEND_URL/project/new?orgName=$ORG_NAME"
 $AB wait --load networkidle
-$AB wait --text "Projects" 2>/dev/null || $AB wait 3000
-screenshot "projects-list"
-
-echo "=== Step 3: Create a new project ==="
-click_button_by_text "Create Project"
-$AB wait 1000
-screenshot "create-project-dialog"
+$AB wait --text "Create Project" 2>/dev/null || $AB wait 3000
+screenshot "project-new-page"
 
 $AB fill "input[placeholder='My Project']" "$PROJECT_DISPLAY"
 $AB wait 500
 $AB fill "input[placeholder='my-project']" "$PROJECT_NAME"
 $AB fill "input[placeholder='What is this project for?']" "Automated test project"
-screenshot "create-project-filled"
+screenshot "project-new-filled"
 
-click_dialog_button "Create"
+click_button_by_text "Create Project"
 $AB wait --load networkidle
 $AB wait 2000
 screenshot "project-created"
 
-echo "=== Step 4: Navigate to Secrets page ==="
+echo "=== Step 3: Navigate to Secrets page ==="
 click_link_by_text "Secrets"
 $AB wait --load networkidle
 $AB wait 1000
 screenshot "secrets-list"
 
-echo "=== Step 5: Create a new secret ==="
+echo "=== Step 4: Create a new secret ==="
 click_button_by_text "Create Secret"
 $AB wait 1000
 screenshot "create-secret-dialog"
@@ -139,7 +130,7 @@ $AB wait --load networkidle
 $AB wait 2000
 screenshot "secret-created"
 
-echo "=== Step 6: Verify the secret exists ==="
+echo "=== Step 5: Verify the secret exists ==="
 $AB eval "document.querySelector('a[href*=\"$SECRET_NAME\"]')?.click()"
 $AB wait --load networkidle
 $AB wait 1000
@@ -152,7 +143,7 @@ else
   echo "  WARN: Secret key '$SECRET_KEY' not found on detail page (may be masked)."
 fi
 
-echo "=== Step 7: Clean up — delete secret ==="
+echo "=== Step 6: Clean up — delete secret ==="
 click_button_by_text "Delete"
 $AB wait 1000
 screenshot "delete-secret-dialog"
@@ -162,7 +153,7 @@ $AB wait --load networkidle
 $AB wait 2000
 screenshot "secret-deleted"
 
-echo "=== Step 8: Clean up — delete project ==="
+echo "=== Step 7: Clean up — delete project ==="
 $AB open "$HOLOS_BACKEND_URL/projects/$PROJECT_NAME"
 $AB wait --load networkidle
 $AB wait 1000
@@ -176,7 +167,7 @@ $AB wait --load networkidle
 $AB wait 2000
 screenshot "project-deleted"
 
-echo "=== Step 9: Clean up — delete organization ==="
+echo "=== Step 8: Clean up — delete organization ==="
 $AB open "$HOLOS_BACKEND_URL/organizations"
 $AB wait --load networkidle
 $AB wait 1000
