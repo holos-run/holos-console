@@ -56,6 +56,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
 
+import type { ColumnDef } from '@tanstack/react-table'
 import type { Kind, Row, LineageDirection, ResourceGridSearch } from './types'
 import { parseKindIds, serialiseKindIds } from './url-state'
 
@@ -95,6 +96,18 @@ export interface ResourceGridProps {
    * TanStack Router's `navigate({ search: updater })` pattern.
    */
   onSearchChange?: (updater: (prev: ResourceGridSearch) => ResourceGridSearch) => void
+  /**
+   * Optional extra columns appended after the Description column and before
+   * the Created At column. Callers (e.g. Deployments) use this to add
+   * kind-specific columns such as phase badges or drift indicators without
+   * altering the default column shape.
+   */
+  extraColumns?: ColumnDef<Row>[]
+  /**
+   * Optional node rendered inside the Card header, below the title and
+   * above the table. Used for description banners.
+   */
+  headerContent?: React.ReactNode
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +123,8 @@ export function ResourceGrid({
   error,
   search = {},
   onSearchChange,
+  extraColumns = [],
+  headerContent,
 }: ResourceGridProps) {
   // --- Derive local state from URL params --------------------------------
 
@@ -229,7 +244,7 @@ export function ResourceGrid({
   // --- TanStack Table columns --------------------------------------------
 
   const columns = useMemo(
-    () => [
+    (): ColumnDef<Row>[] => [
       columnHelper.accessor('parentId', {
         id: 'parentId',
         header: 'Parent',
@@ -286,6 +301,9 @@ export function ResourceGrid({
           </span>
         ),
       }),
+      // Caller-supplied extra columns (e.g. Phase badge, Policy Drift badge)
+      // appear after Description and before Created At.
+      ...extraColumns,
       columnHelper.accessor('createdAt', {
         id: 'createdAt',
         header: 'Created At',
@@ -320,7 +338,7 @@ export function ResourceGrid({
         ),
       }),
     ],
-    [handleDeleteClick],
+    [handleDeleteClick, extraColumns],
   )
 
   // --- TanStack Table instance -------------------------------------------
@@ -381,6 +399,11 @@ export function ResourceGrid({
           <CardTitle>{title}</CardTitle>
           <NewButton kinds={creatableKinds} />
         </CardHeader>
+        {headerContent && (
+          <CardContent className="pt-0 pb-0">
+            {headerContent}
+          </CardContent>
+        )}
         <CardContent>
           {/* Inline partial-error banner */}
           {error && rows.length > 0 && (

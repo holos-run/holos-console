@@ -1,270 +1,190 @@
-import { useState } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import { toast } from 'sonner'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { ExternalLink, Trash2 } from 'lucide-react'
+/**
+ * Deployments index page — reimplemented on ResourceGrid v1 (HOL-858).
+ *
+ * Default view: current project as the single parent with Parent column hidden.
+ * A static description banner at the top of the Card explains what a Deployment is.
+ * Phase and PolicyDrift badges are preserved via the `extraColumns` extension
+ * on ResourceGrid v1.
+ *
+ * Detail, create, logs, and drift flows are unchanged — only the list page is
+ * rewritten.
+ */
+
+import { useCallback, useMemo } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
+import type { Row } from '@/components/resource-grid/types'
+import { parseGridSearch } from '@/components/resource-grid/url-state'
+import type { ResourceGridSearch } from '@/components/resource-grid/types'
+import { useListDeployments, useDeleteDeployment } from '@/queries/deployments'
+import { useGetProject } from '@/queries/projects'
 import { PhaseBadge } from '@/components/phase-badge'
 import { PolicyDriftBadge } from '@/components/policy-drift/PolicySection'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { useListDeployments, useDeleteDeployment } from '@/queries/deployments'
-import { useGetProject } from '@/queries/projects'
-import { isSafeHttpUrl } from '@/lib/url'
+import type { ColumnDef } from '@tanstack/react-table'
+import type { Deployment } from '@/gen/holos/console/v1/deployments_pb'
+
+// ---------------------------------------------------------------------------
+// Route
+// ---------------------------------------------------------------------------
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/')({
-  component: DeploymentsRoute,
+  validateSearch: parseGridSearch,
+  component: DeploymentsListPage,
 })
 
-function DeploymentsRoute() {
-  const { projectName } = Route.useParams()
-  return <DeploymentsPage projectName={projectName} />
-}
+// ---------------------------------------------------------------------------
+// Description banner
+// ---------------------------------------------------------------------------
 
-export function DeploymentsPage({ projectName: propProjectName }: { projectName?: string } = {}) {
-  let routeProjectName: string | undefined
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    routeProjectName = Route.useParams().projectName
-  } catch {
-    routeProjectName = undefined
-  }
-  const projectName = propProjectName ?? routeProjectName ?? ''
-
-  const { data: deployments = [], isLoading, error } = useListDeployments(projectName)
-  const { data: project } = useGetProject(projectName)
-  const deleteMutation = useDeleteDeployment(projectName)
-
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
-
-  const userRole = project?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
-  const canDelete = userRole === Role.OWNER
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return
-    try {
-      await deleteMutation.mutateAsync({ name: deleteTarget })
-      setDeleteOpen(false)
-      setDeleteTarget(null)
-      toast.success('Deployment deleted')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{projectName} / Deployments</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (error) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <Alert variant="destructive"><AlertDescription>{error.message}</AlertDescription></Alert>
-        </CardContent>
-      </Card>
-    )
-  }
-
+/**
+ * DeploymentsDescription renders a static three-bullet explanation of what a
+ * Deployment is. The copy is verbatim from the HOL-858 acceptance criteria.
+ */
+export function DeploymentsDescription() {
   return (
-    <>
-      <Card>
-        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-          <CardTitle>{projectName} / Deployments</CardTitle>
-          {canWrite && (
-            <Link to="/projects/$projectName/deployments/new" params={{ projectName }}>
-              <Button size="sm">Create Deployment</Button>
-            </Link>
-          )}
-        </CardHeader>
-        <CardContent>
-          {deployments.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <p className="text-muted-foreground">No deployments yet. Create one to get started.</p>
-              {canWrite && (
-                <Link to="/projects/$projectName/deployments/new" params={{ projectName }}>
-                  <Button size="sm">Create Deployment</Button>
-                </Link>
-              )}
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Image</TableHead>
-                  <TableHead>Tag</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {deployments.map((deployment) => (
-                  <TableRow key={deployment.name}>
-                    <TableCell>
-                      <Link
-                        to="/projects/$projectName/deployments/$deploymentName"
-                        params={{ projectName, deploymentName: deployment.name }}
-                        search={{ tab: 'status' }}
-                        className="font-medium hover:underline"
-                      >
-                        {deployment.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="font-mono text-sm">{deployment.image}</TableCell>
-                    <TableCell className="font-mono text-sm">{deployment.tag}</TableCell>
-                    <TableCell>
-                      <div className="inline-flex items-center gap-2 flex-wrap">
-                        <PhaseBadge summary={deployment.statusSummary} />
-                        {/*
-                          Policy drift badge — surfaces the status_summary.policy_drift
-                          flag populated by the backend (HOL-567 / HOL-557).
-                          The flag is sourced from the folder-namespace
-                          render-state store; callers needing the full diff
-                          invoke GetDeploymentPolicyState (see the Policy
-                          section on the deployment detail page).
-                        */}
-                        {deployment.statusSummary?.policyDrift ? (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span>
-                                  <PolicyDriftBadge />
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                The deployment was rendered before a template policy changed; click Reconcile to re-render.
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {/*
-                        Open live site link — shown inline with other row
-                        actions when the deployment template published an
-                        `output.url` that the backend cached on the
-                        deployment ConfigMap annotation. isSafeHttpUrl
-                        restricts the anchor href to http/https so unsafe
-                        template-authored schemes (javascript:, data:,
-                        vbscript:, file:) never reach the DOM.
-                      */}
-                      {deployment.statusSummary?.output?.url && isSafeHttpUrl(deployment.statusSummary.output.url) && (
-                        <span className="inline-flex items-center">
-                          <Button
-                            asChild
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`open ${deployment.name}`}
-                          >
-                            <a
-                              href={deployment.statusSummary.output.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </a>
-                          </Button>
-                          {/*
-                            Extra-links indicator (HOL-575) — when the
-                            deployment publishes additional secondary URLs
-                            via output.links, show a small "+N" pill so
-                            operators can see at a glance that the detail
-                            page has more than just the primary URL. The
-                            count reflects only safe (http/https) entries
-                            so it matches what the detail-page Links
-                            section will actually render.
-                          */}
-                          {(() => {
-                            const extras = (deployment.statusSummary.output.links ?? []).filter((l) =>
-                              isSafeHttpUrl(l.url),
-                            ).length
-                            if (extras === 0) return null
-                            return (
-                              <span
-                                data-testid={`deployment-extra-links-${deployment.name}`}
-                                className="text-xs text-muted-foreground tabular-nums ml-0.5"
-                                aria-label={`${extras} additional link${extras === 1 ? '' : 's'}`}
-                              >
-                                +{extras}
-                              </span>
-                            )
-                          })()}
-                        </span>
-                      )}
-                      {canDelete && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`delete ${deployment.name}`}
-                          onClick={() => { setDeleteTarget(deployment.name); deleteMutation.reset(); setDeleteOpen(true) }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Deployment</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete deployment &quot;{deleteTarget}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          {deleteMutation.error && (
-            <Alert variant="destructive"><AlertDescription>{deleteMutation.error.message}</AlertDescription></Alert>
-          )}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleteMutation.isPending}>
-              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+    <div
+      className="mb-4 rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground"
+      data-testid="deployments-description"
+    >
+      <ul className="list-disc pl-5 space-y-1">
+        <li>Deployment is a collection of resource declarations (configuration).</li>
+        <li>Deploying is applying the configuration to the platform.</li>
+        <li>Controllers reconcile current state with desired state.</li>
+      </ul>
+    </div>
   )
 }
 
+// ---------------------------------------------------------------------------
+// Extra columns — Phase badge and Policy Drift badge
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the extra columns for the Deployments grid.
+ * The `deploymentsByName` map lets each cell look up the original deployment
+ * to access statusSummary without widening the Row type.
+ */
+function useDeploymentExtraColumns(
+  deploymentsByName: Map<string, Deployment>,
+): ColumnDef<Row>[] {
+  return useMemo(
+    () => [
+      {
+        id: 'phase',
+        header: 'Phase',
+        cell: ({ row }: { row: { original: Row } }) => {
+          const dep = deploymentsByName.get(row.original.name)
+          return (
+            <div className="inline-flex items-center gap-2 flex-wrap">
+              <PhaseBadge summary={dep?.statusSummary} />
+              {dep?.statusSummary?.policyDrift ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <PolicyDriftBadge />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      The deployment was rendered before a template policy changed; click Reconcile to re-render.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : null}
+            </div>
+          )
+        },
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [deploymentsByName],
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Page component
+// ---------------------------------------------------------------------------
+
+export function DeploymentsListPage() {
+  const { projectName } = Route.useParams()
+  const search = Route.useSearch()
+  const navigate = useNavigate({ from: Route.fullPath })
+
+  const { data: project } = useGetProject(projectName)
+  const { data: deployments = [], isPending, error } = useListDeployments(projectName)
+  const deleteMutation = useDeleteDeployment(projectName)
+
+  const userRole = project?.userRole ?? Role.VIEWER
+  const canCreate = userRole === Role.OWNER || userRole === Role.EDITOR
+
+  // Build name→deployment lookup for extra columns.
+  const deploymentsByName = useMemo(() => {
+    const map = new Map<string, Deployment>()
+    for (const dep of deployments) {
+      if (dep) map.set(dep.name, dep)
+    }
+    return map
+  }, [deployments])
+
+  // Map Deployment → ResourceGrid Row
+  const rows: Row[] = useMemo(
+    () =>
+      deployments.map((dep) => ({
+        kind: 'Deployment',
+        name: dep.name,
+        namespace: projectName,
+        id: dep.name,
+        parentId: projectName,
+        parentLabel: projectName,
+        displayName: dep.displayName || dep.name,
+        description: dep.description ?? '',
+        createdAt: '',
+        detailHref: `/projects/${projectName}/deployments/${dep.name}`,
+      })),
+    [deployments, projectName],
+  )
+
+  const kinds = [
+    {
+      id: 'Deployment',
+      label: 'Deployment',
+      newHref: `/projects/${projectName}/deployments/new`,
+      canCreate,
+    },
+  ]
+
+  const extraColumns = useDeploymentExtraColumns(deploymentsByName)
+
+  const handleDelete = useCallback(
+    async (row: Row) => {
+      await deleteMutation.mutateAsync({ name: row.name })
+    },
+    [deleteMutation],
+  )
+
+  const handleSearchChange = useCallback(
+    (updater: (prev: ResourceGridSearch) => ResourceGridSearch) => {
+      navigate({
+        search: (prev) => updater(prev as ResourceGridSearch),
+      })
+    },
+    [navigate],
+  )
+
+  return (
+    <ResourceGrid
+      title={`${projectName} / Deployments`}
+      kinds={kinds}
+      rows={rows}
+      onDelete={handleDelete}
+      isLoading={isPending}
+      error={error}
+      search={search}
+      onSearchChange={handleSearchChange}
+      extraColumns={extraColumns}
+      headerContent={<DeploymentsDescription />}
+    />
+  )
+}
