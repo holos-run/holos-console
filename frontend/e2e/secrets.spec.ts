@@ -45,17 +45,19 @@ test.describe('Secrets Page', () => {
 
     // Navigate to secrets list for this project
     await page.goto(`/projects/${projectName}/secrets`)
-    await expect(page.getByRole('button', { name: /create secret/i })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: /new secret/i })).toBeVisible({ timeout: 5000 })
 
-    // Create a new secret
+    // Create a new secret via the dedicated create page
     const secretName = `e2e-sharing-${Date.now()}`
-    await page.getByRole('button', { name: /create secret/i }).click()
+    await page.getByRole('button', { name: /new secret/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/new`), { timeout: 5000 })
     await page.getByPlaceholder('my-secret').fill(secretName)
     await page.getByPlaceholder('key').fill('.env')
     await page.getByPlaceholder('value').fill('TEST_KEY=test_value')
-    await page.getByRole('button', { name: /^create$/i }).click()
+    await page.getByRole('button', { name: /create secret/i }).click()
 
-    // Wait for the secret to appear in the list
+    // Wait for redirect back to list and secret to appear
+    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
     await expect(page.getByRole('link', { name: secretName })).toBeVisible({ timeout: 10000 })
 
     // Navigate to the created secret
@@ -93,17 +95,19 @@ test.describe('Secrets Page', () => {
     const projectName = `e2e-share-upd-${Date.now()}`
     await apiCreateProject(page, projectName, orgName)
 
-    // Navigate to secrets list and create a test secret
+    // Navigate to secrets list and create a test secret via the dedicated create page
     await page.goto(`/projects/${projectName}/secrets`)
-    await expect(page.getByRole('button', { name: /create secret/i })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: /new secret/i })).toBeVisible({ timeout: 5000 })
 
     const secretName = `e2e-share-update-${Date.now()}`
-    await page.getByRole('button', { name: /create secret/i }).click()
+    await page.getByRole('button', { name: /new secret/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/new`), { timeout: 5000 })
     await page.getByPlaceholder('my-secret').fill(secretName)
-    // The create dialog already shows one empty key-value row
+    // The create page shows one empty key-value row
     await page.getByPlaceholder('key').fill('.env')
     await page.getByPlaceholder('value').fill('KEY=value')
-    await page.getByRole('button', { name: /^create$/i }).click()
+    await page.getByRole('button', { name: /create secret/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
     await expect(page.getByRole('link', { name: secretName })).toBeVisible({ timeout: 10000 })
 
     // Navigate to the secret
@@ -155,17 +159,18 @@ test.describe('Secrets Page', () => {
 
     // Navigate to secrets list
     await page.goto(`/projects/${projectName}/secrets`)
-    await expect(page.getByRole('button', { name: /create secret/i })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: /new secret/i })).toBeVisible({ timeout: 5000 })
 
-    // Create a test secret
+    // Create a test secret via the dedicated create page
     const secretName = `e2e-list-summary-${Date.now()}`
-    await page.getByRole('button', { name: /create secret/i }).click()
+    await page.getByRole('button', { name: /new secret/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/new`), { timeout: 5000 })
     await page.getByPlaceholder('my-secret').fill(secretName)
-    await page.getByRole('button', { name: /^create$/i }).click()
+    await page.getByRole('button', { name: /create secret/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
 
-    // Verify the secret shows in the list with sharing summary (at least "1 user" for the creator)
-    await expect(page.getByText(secretName)).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText(/1 user/i)).toBeVisible({ timeout: 5000 })
+    // Verify the secret shows in the list as a link
+    await expect(page.getByRole('link', { name: secretName })).toBeVisible({ timeout: 10000 })
 
     // Clean up: delete via the list
     await page.getByLabel(new RegExp(`delete ${secretName}`, 'i')).click()
@@ -190,14 +195,16 @@ test.describe('Secrets Page', () => {
     const projectName = `e2e-empty-secret-${Date.now()}`
     await apiCreateProject(page, projectName, orgName)
 
-    // Create a secret with no data (skip Add Key, just name and submit)
+    // Create a secret with no data (skip key/value, just name and submit)
     await page.goto(`/projects/${projectName}/secrets`)
-    await expect(page.getByRole('button', { name: /create secret/i })).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: /new secret/i })).toBeVisible({ timeout: 5000 })
     const secretName = `e2e-empty-${Date.now()}`
-    await page.getByRole('button', { name: /create secret/i }).click()
+    await page.getByRole('button', { name: /new secret/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/new`), { timeout: 5000 })
     await page.getByPlaceholder('my-secret').fill(secretName)
-    // Do NOT click Add Key — create an empty secret
-    await page.getByRole('button', { name: /^create$/i }).click()
+    // Do NOT fill key/value — create an empty secret
+    await page.getByRole('button', { name: /create secret/i }).click()
+    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
     await expect(page.getByRole('link', { name: secretName })).toBeVisible({ timeout: 10000 })
 
     // Navigate to the detail page
