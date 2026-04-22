@@ -5,7 +5,7 @@
  * all three scopes (org / folder / project).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 // ---------------------------------------------------------------------------
 // Mock console-config so scope-labels helpers resolve predictable prefixes.
