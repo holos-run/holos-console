@@ -28,10 +28,12 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       children,
       to,
       params,
+      search,
     }: {
       children: React.ReactNode
       to?: string
       params?: Record<string, string>
+      search?: Record<string, string>
     }) => {
       let href = to ?? '#'
       if (params) {
@@ -39,10 +41,18 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
           href = href.replace(new RegExp(`\\$${k}`), v)
         }
       }
+      if (search && Object.keys(search).length > 0) {
+        const qs = Object.entries(search)
+          .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+          .join('&')
+        href = `${href}?${qs}`
+      }
       return <a href={href}>{children}</a>
     },
     useNavigate: () => mockNavigate,
-    useRouter: () => ({ state: { location: { pathname: '/resource-manager' } } }),
+    useRouter: () => ({
+      state: { location: { pathname: '/resource-manager', search: '?expanded=folder-a' } },
+    }),
   }
 })
 
@@ -159,6 +169,43 @@ describe('ResourceManagerPage', () => {
     if (orgEntry) expect(orgEntry).toBeInTheDocument()
     if (folderEntry) expect(folderEntry).toBeInTheDocument()
     if (projectEntry) expect(projectEntry).toBeInTheDocument()
+  })
+
+  it('New dropdown links point to the dedicated creation routes with returnTo', () => {
+    // useRouter mock returns pathname=/resource-manager search=?expanded=folder-a
+    // buildReturnTo produces "/resource-manager?expanded=folder-a"
+    const expectedReturnTo = encodeURIComponent('/resource-manager?expanded=folder-a')
+    const encodedOrgName = encodeURIComponent('my-org')
+
+    setupMocks({ selectedOrg: 'my-org' })
+    render(<ResourceManagerPage />)
+
+    const orgLink = screen.queryByTestId('new-menu-organization')
+    const folderLink = screen.queryByTestId('new-menu-folder')
+    const projectLink = screen.queryByTestId('new-menu-project')
+
+    if (orgLink) {
+      const anchor = orgLink.querySelector('a') ?? orgLink
+      const href = anchor.getAttribute('href') ?? ''
+      expect(href).toContain('/organization/new')
+      expect(href).toContain(`returnTo=${expectedReturnTo}`)
+    }
+
+    if (folderLink) {
+      const anchor = folderLink.querySelector('a') ?? folderLink
+      const href = anchor.getAttribute('href') ?? ''
+      expect(href).toContain('/folder/new')
+      expect(href).toContain(`orgName=${encodedOrgName}`)
+      expect(href).toContain(`returnTo=${expectedReturnTo}`)
+    }
+
+    if (projectLink) {
+      const anchor = projectLink.querySelector('a') ?? projectLink
+      const href = anchor.getAttribute('href') ?? ''
+      expect(href).toContain('/project/new')
+      expect(href).toContain(`orgName=${encodedOrgName}`)
+      expect(href).toContain(`returnTo=${expectedReturnTo}`)
+    }
   })
 
   it('renders the Resource Manager card title', () => {

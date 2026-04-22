@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useMemo } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useRouter } from '@tanstack/react-router'
 import { ChevronDown, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -30,6 +30,7 @@ import {
 import { useOrg } from '@/lib/org-context'
 import { useListResources } from '@/queries/resources'
 import { ResourceTree } from '@/components/resource-manager/ResourceTree'
+import { buildReturnTo } from '@/lib/return-to'
 
 // ---------------------------------------------------------------------------
 // Route search params schema
@@ -208,13 +209,15 @@ export function ResourceManagerPage() {
 /**
  * NewDropdown — top-right dropdown for creating new resources.
  *
- * Organization → /organizations (existing org-create landing page)
- * Folder → /orgs/$orgName/settings (deferred; no standalone create-folder
- *           route exists yet — follow-up in sibling cleanup plan)
- * Project → /organizations (deferred; no standalone create-project route
- *            exists yet — follow-up in sibling cleanup plan)
+ * Each item links to the dedicated creation route for that resource type.
+ * A `returnTo` search param is included so the creation page can redirect
+ * the user back to Resource Manager (preserving the current `?expanded=…`
+ * state) after the resource is created.
  */
 function NewDropdown({ orgName }: { orgName: string }) {
+  const router = useRouter()
+  const returnTo = buildReturnTo(router.state.location)
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -226,17 +229,25 @@ function NewDropdown({ orgName }: { orgName: string }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" data-testid="resource-manager-new-menu">
         <DropdownMenuItem asChild data-testid="new-menu-organization">
-          <Link to="/organizations">Organization</Link>
+          <Link to="/organization/new" search={{ returnTo }}>
+            Organization
+          </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild data-testid="new-menu-folder">
-          {/* Route to org settings until a dedicated create-folder page exists. */}
-          <Link to="/orgs/$orgName/settings" params={{ orgName }}>
+          <Link
+            to="/folder/new"
+            search={orgName ? { orgName, returnTo } : { returnTo }}
+          >
             Folder
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild data-testid="new-menu-project">
-          {/* Route to organizations until a dedicated create-project page exists. */}
-          <Link to="/organizations">Project</Link>
+          <Link
+            to="/project/new"
+            search={orgName ? { orgName, returnTo } : { returnTo }}
+          >
+            Project
+          </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
