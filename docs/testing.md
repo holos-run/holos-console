@@ -180,6 +180,14 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/queries/-templatePolicies.test.ts` | `aggregateFanOut` helper: idle/disabled queries, pending while fetching, org-only and org+folder concatenation, partial-failure tolerance, non-Error wrapping, empty input |
 | `src/components/create-org-dialog.test.tsx` | Create organization dialog: validation, submission |
 | `src/components/create-project-dialog.test.tsx` | Create project dialog: validation, submission |
+| `src/components/resource-grid/-resource-grid.test.tsx` | ResourceGrid v1: column headers, kind filter, lineage filter, global search, empty/loading/error states, delete-confirm dialog |
+| `src/components/ui/-confirm-delete-dialog.test.tsx` | ConfirmDeleteDialog: open/close, confirm, error, isDeleting state |
+| `src/components/-app-sidebar.tree.test.tsx` | Sidebar integration (real primitives): enabled entries render Link, disabled entries render tooltip-wrapped button |
+| `src/components/templates/-templates-help-pane.test.tsx` | TemplatesHelpPane: renders help content sections |
+| `src/components/resource-manager/-resource-tree.test.tsx` | ResourceTree: expand/collapse, leaf nodes, empty state |
+| `src/routes/_authenticated/resource-manager/-index.test.tsx` | Resource Manager page: renders ResourceTree, loading/error states |
+| `src/routes/_authenticated/projects/$projectName/templates/-index-help.test.tsx` | Templates index with help pane: ? icon toggle, pane visibility |
+| `src/lib/-template-row-link.test.ts` | templateRowLink helper: namespace/name → detail href mapping |
 | `src/components/template-policy-bindings/BindingForm.test.tsx` | BindingForm: ProjectTemplate / Deployment / ProjectNamespace kind selection, project-name field shown/hidden, wildcard validation, submit / save paths (HOL-814) |
 | `src/index.test.ts` | App entry point smoke test |
 

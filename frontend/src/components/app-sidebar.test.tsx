@@ -3,11 +3,9 @@ import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
 
-// HOL-856: replaces the two-tree sidebar (HOL-604/HOL-605 Collapsible groups)
-// with a flat 4-item nav: Secrets, Deployments, Templates, Resource Manager.
-// The workspace picker stays in SidebarHeader. The version label moves into
-// SidebarFooter. Legacy routes remain reachable by URL; their cleanup is a
-// separate sibling plan.
+// Tests for the flat 4-item sidebar nav: Secrets, Deployments, Templates,
+// Resource Manager. The workspace picker lives in SidebarHeader; the version
+// label lives in SidebarFooter.
 
 // Configurable per-test so we can drive route-based active-state gating.
 let mockPathname = '/'
