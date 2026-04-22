@@ -446,8 +446,8 @@ export enum TemplatePolicyBindingTargetKind {
    * `project_name` accepts the literal wildcard "*" (HOL-767) to match
    * every new project reachable via the binding's ancestor-walk. `name`
    * is the namespace slug (typically the project name). Resolver behavior
-   * for this kind is wired in a later phase; the enum value is defined
-   * here so downstream code has a typed value to reference.
+   * for this kind is wired in HOL-806; the full CreateProject integration
+   * (apply-on-create, SSA, retry) shipped in PRs #1093–#1112.
    *
    * @generated from enum value: TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_NAMESPACE = 3;
    */
@@ -478,9 +478,11 @@ export declare const TemplatePolicyBindingTargetKindSchema: GenEnum<TemplatePoli
  * in the same hierarchy level. The HOL-618 admission plugin enforces this
  * by rejecting any TemplatePolicyBinding created in a project namespace.
  *
- * Handler wiring, RBAC enforcement, and ConnectRPC registration land in the
- * follow-on sub-ticket (HOL-595). This file defines only the proto contract
- * so subsequent phases have types to work against.
+ * Handler wiring, RBAC enforcement, and ConnectRPC registration shipped in
+ * HOL-595. The ancestor-aware policy picker (ListLinkableTemplatePolicies) is
+ * available via TemplatePolicyService and is wired into BindingForm so
+ * folder-scoped bindings can select org-scoped or parent-folder-scoped
+ * policies (HOL-835).
  *
  * @generated from service holos.console.v1.TemplatePolicyBindingService
  */

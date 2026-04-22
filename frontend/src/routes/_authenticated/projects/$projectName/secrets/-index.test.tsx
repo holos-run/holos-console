@@ -66,7 +66,7 @@ import type { SecretRow } from '@/queries/secrets'
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeSecretRow(name: string, scope = 'test-project', description = ''): SecretRow {
+function makeSecretRow(name: string, scope = 'test-project', description = '', createdAt = ''): SecretRow {
   return {
     secret: {
       name,
@@ -74,6 +74,7 @@ function makeSecretRow(name: string, scope = 'test-project', description = ''): 
       userGrants: [],
       roleGrants: [],
       description: description || undefined,
+      createdAt,
     } as SecretRow['secret'],
     scope,
   }
@@ -252,5 +253,25 @@ describe('SecretsListPage (ResourceGrid v1)', () => {
     setupMocks({ rows: [makeSecretRow('my-secret', 'test-project', 'A useful description')] })
     render(<SecretsListPage />)
     expect(screen.getByText('A useful description')).toBeInTheDocument()
+  })
+
+  it('renders a localised date when createdAt is set from the backend', () => {
+    // The row mapper wires secret.createdAt into the grid row.
+    // ResourceGrid renders new Date(createdAt).toLocaleDateString(), which in
+    // jsdom produces '4/22/2026' for '2026-04-22T19:51:10Z'.
+    setupMocks({
+      rows: [makeSecretRow('my-secret', 'test-project', '', '2026-04-22T19:51:10Z')],
+    })
+    render(<SecretsListPage />)
+    // Verify a date string is present (jsdom locale = en-US → '4/22/2026')
+    expect(screen.getByText('4/22/2026')).toBeInTheDocument()
+  })
+
+  it('renders em-dash when createdAt is empty string', () => {
+    // An empty createdAt (pre-HOL-877 data) results in the ResourceGrid
+    // fallback placeholder rather than "Invalid Date".
+    setupMocks({ rows: [makeSecretRow('my-secret', 'test-project', '', '')] })
+    render(<SecretsListPage />)
+    expect(screen.getByText('—')).toBeInTheDocument()
   })
 })

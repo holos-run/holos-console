@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
@@ -3237,4 +3238,61 @@ func TestCreateSecret_DefaultRoleGrantsMerged(t *testing.T) {
 		}
 	}
 	t.Errorf("expected engineering in share-roles from defaults, got %v", roles)
+}
+
+// TestHandler_ListSecrets_CreatedAt asserts that SecretMetadata.CreatedAt is
+// populated from the underlying corev1.Secret's CreationTimestamp in RFC3339 format.
+func TestHandler_ListSecrets_CreatedAt(t *testing.T) {
+	tests := []struct {
+		name        string
+		createdAt   time.Time
+		wantRFC3339 string
+	}{
+		{
+			name:        "epoch time is formatted as RFC3339",
+			createdAt:   time.Date(2026, 4, 22, 19, 51, 10, 0, time.UTC),
+			wantRFC3339: "2026-04-22T19:51:10Z",
+		},
+		{
+			name:        "non-UTC time is normalised to UTC in RFC3339",
+			createdAt:   time.Date(2025, 1, 15, 8, 30, 0, 0, time.FixedZone("EST", -5*60*60)),
+			wantRFC3339: "2025-01-15T13:30:00Z",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ts-secret",
+					Namespace: "prj-test-namespace",
+					Labels: map[string]string{
+						v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
+					},
+					Annotations: map[string]string{
+						v1alpha2.AnnotationShareUsers: `[{"principal":"user@example.com","role":"owner"}]`,
+					},
+					CreationTimestamp: metav1.NewTime(tc.createdAt),
+				},
+			}
+			fakeClient := fake.NewClientset(testProjectNS(), secret)
+			k8sClient := NewK8sClient(fakeClient, testResolver())
+			handler := NewProjectScopedHandler(k8sClient, nil)
+
+			claims := &rpc.Claims{Sub: "u1", Email: "user@example.com", Roles: []string{}}
+			ctx := rpc.ContextWithClaims(context.Background(), claims)
+
+			resp, err := handler.ListSecrets(ctx, connect.NewRequest(&consolev1.ListSecretsRequest{Project: "test-namespace"}))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(resp.Msg.Secrets) != 1 {
+				t.Fatalf("expected 1 secret, got %d", len(resp.Msg.Secrets))
+			}
+			got := resp.Msg.Secrets[0].CreatedAt
+			if got != tc.wantRFC3339 {
+				t.Errorf("CreatedAt: got %q, want %q", got, tc.wantRFC3339)
+			}
+		})
+	}
 }

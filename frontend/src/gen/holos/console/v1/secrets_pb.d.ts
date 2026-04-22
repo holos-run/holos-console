@@ -355,6 +355,14 @@ export declare type SecretMetadata = Message<"holos.console.v1.SecretMetadata"> 
    * @generated from field: optional string url = 8;
    */
   url?: string;
+
+  /**
+   * created_at is the RFC3339-formatted timestamp when the underlying Kubernetes
+   * Secret was created, sourced from metadata.creationTimestamp.
+   *
+   * @generated from field: string created_at = 9;
+   */
+  createdAt: string;
 };
 
 /**

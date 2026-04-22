@@ -46,8 +46,8 @@ const (
 	// `project_name` accepts the literal wildcard "*" (HOL-767) to match
 	// every new project reachable via the binding's ancestor-walk. `name`
 	// is the namespace slug (typically the project name). Resolver behavior
-	// for this kind is wired in a later phase; the enum value is defined
-	// here so downstream code has a typed value to reference.
+	// for this kind is wired in HOL-806; the full CreateProject integration
+	// (apply-on-create, SSA, retry) shipped in PRs #1093–#1112.
 	TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_NAMESPACE TemplatePolicyBindingTargetKind = 3
 )
 
