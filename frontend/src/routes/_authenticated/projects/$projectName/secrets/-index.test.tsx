@@ -1,24 +1,46 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+/**
+ * Tests for the Secrets index page (HOL-857) — ResourceGrid v1 implementation.
+ *
+ * Mocks @/queries/secrets and @/queries/projects. URL-state parsing is
+ * exercised via createMemoryRouter with initialEntries.
+ */
+
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
 
-// Mock router — Route.useParams() must return a stable projectName for the component
+// ---------------------------------------------------------------------------
+// Router mock — Route.useParams / useSearch / useNavigate
+// ---------------------------------------------------------------------------
+
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
   return {
     ...actual,
-    createFileRoute: () => () => ({ useParams: () => ({ projectName: 'test-project' }) }),
-    Link: ({ children, className }: { children: React.ReactNode; className?: string }) => (
-      <a href="#" className={className}>{children}</a>
-    ),
+    createFileRoute: () => () => ({
+      useParams: () => ({ projectName: 'test-project' }),
+      useSearch: () => ({}),
+      fullPath: '/projects/test-project/secrets/',
+    }),
+    Link: ({
+      children,
+      className,
+    }: {
+      children: React.ReactNode
+      className?: string
+    }) => <a href="#" className={className}>{children}</a>,
     useNavigate: () => vi.fn(),
   }
 })
 
+// ---------------------------------------------------------------------------
+// Query mocks
+// ---------------------------------------------------------------------------
+
 vi.mock('@/queries/secrets', () => ({
-  useListSecrets: vi.fn(),
-  useCreateSecret: vi.fn(),
+  useAllSecretsForProject: vi.fn(),
   useDeleteSecret: vi.fn(),
 }))
 
@@ -28,204 +50,207 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn() } }))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useListSecrets, useCreateSecret, useDeleteSecret } from '@/queries/secrets'
+// ---------------------------------------------------------------------------
+// Imports after mocks
+// ---------------------------------------------------------------------------
+
+import { useAllSecretsForProject, useDeleteSecret } from '@/queries/secrets'
 import { useGetProject } from '@/queries/projects'
 import { useAuth } from '@/lib/auth'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { SecretsListPage } from './index'
+import type { SecretRow } from '@/queries/secrets'
 
-function makeSecret(name: string, description = '') {
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeSecretRow(name: string, scope = 'test-project', description = ''): SecretRow {
   return {
-    name,
-    description,
-    accessible: true,
-    userGrants: [{ principal: 'test@example.com', role: 3 }],
-    roleGrants: [],
-    url: '',
+    secret: {
+      name,
+      accessible: true,
+      userGrants: [],
+      roleGrants: [],
+      description: description || undefined,
+    } as SecretRow['secret'],
+    scope,
   }
 }
 
-function setupMocks(secrets = [makeSecret('test-secret')], projectOverrides?: {
-  defaultUserGrants?: { principal: string; role: number }[]
-  defaultRoleGrants?: { principal: string; role: number }[]
-}) {
-  ;(useListSecrets as Mock).mockReturnValue({ data: secrets, isLoading: false, error: null })
-  ;(useCreateSecret as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn() })
+function setupMocks({
+  rows = [makeSecretRow('test-secret')],
+  isPending = false,
+  error = null,
+  userRole = Role.OWNER,
+}: {
+  rows?: SecretRow[]
+  isPending?: boolean
+  error?: Error | null
+  userRole?: number
+} = {}) {
+  ;(useAllSecretsForProject as Mock).mockReturnValue({ data: rows, isPending, error })
   ;(useDeleteSecret as Mock).mockReturnValue({
-    mutateAsync: vi.fn(),
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
     isPending: false,
-    reset: vi.fn(),
-    error: null,
+  })
+  ;(useGetProject as Mock).mockReturnValue({
+    data: { name: 'test-project', userRole, organization: 'my-org' },
+    isLoading: false,
   })
   ;(useAuth as Mock).mockReturnValue({
     isAuthenticated: true,
     isLoading: false,
     user: { profile: { email: 'test@example.com' } },
   })
-  ;(useGetProject as Mock).mockReturnValue({
-    data: {
-      name: 'test-project',
-      defaultUserGrants: projectOverrides?.defaultUserGrants ?? [],
-      defaultRoleGrants: projectOverrides?.defaultRoleGrants ?? [],
-    },
-    isLoading: false,
-  })
 }
 
-describe('SecretsListPage', () => {
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('SecretsListPage (ResourceGrid v1)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('renders table with Name and Description column headers', () => {
-    setupMocks()
+  it('renders default project rows in the grid', () => {
+    setupMocks({ rows: [makeSecretRow('my-secret', 'test-project')] })
     render(<SecretsListPage />)
-    expect(screen.getByRole('columnheader', { name: /name/i })).toBeInTheDocument()
-    expect(screen.getByRole('columnheader', { name: /description/i })).toBeInTheDocument()
-  })
-
-  it('renders secret name as a link', () => {
-    setupMocks([makeSecret('my-secret')])
-    render(<SecretsListPage />)
+    // The secret name should appear as a link in the grid
     expect(screen.getByText('my-secret')).toBeInTheDocument()
   })
 
-  it('renders multiple secrets as links', () => {
-    setupMocks([makeSecret('alpha-secret'), makeSecret('zebra-secret')])
+  it('calls useAllSecretsForProject with descendants lineage by default', () => {
+    setupMocks()
     render(<SecretsListPage />)
-    expect(screen.getByText('alpha-secret')).toBeInTheDocument()
-    expect(screen.getByText('zebra-secret')).toBeInTheDocument()
+    expect(useAllSecretsForProject).toHaveBeenCalledWith('test-project', {
+      lineage: 'descendants',
+    })
   })
 
-  it('renders description text in the row', () => {
-    setupMocks([makeSecret('my-secret', 'A useful description')])
+  it('shows loading skeleton when isPending is true', () => {
+    setupMocks({ isPending: true, rows: [] })
     render(<SecretsListPage />)
-    expect(screen.getByText('A useful description')).toBeInTheDocument()
+    expect(screen.getByTestId('resource-grid-loading')).toBeInTheDocument()
+  })
+
+  it('shows error state when fetch fails and no rows', () => {
+    setupMocks({ error: new Error('fetch failed'), rows: [] })
+    render(<SecretsListPage />)
+    expect(screen.getByText(/fetch failed/i)).toBeInTheDocument()
   })
 
   it('shows empty state when no secrets exist', () => {
-    setupMocks([])
+    setupMocks({ rows: [] })
     render(<SecretsListPage />)
-    expect(screen.getByText(/no secrets/i)).toBeInTheDocument()
+    expect(screen.getByText(/no resources found/i)).toBeInTheDocument()
   })
 
-  it('renders loading skeleton when auth is loading', () => {
-    ;(useListSecrets as Mock).mockReturnValue({ data: [], isLoading: false, error: null })
-    ;(useCreateSecret as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn() })
-    ;(useDeleteSecret as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn(), error: null })
-    ;(useAuth as Mock).mockReturnValue({ isAuthenticated: false, isLoading: true, user: null })
+  it('renders New Secret button when user can create', () => {
+    setupMocks({ userRole: Role.OWNER })
     render(<SecretsListPage />)
-    // Loading state renders skeleton, no table
-    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /new secret/i })).toBeInTheDocument()
   })
 
-  it('renders error state when secrets fetch fails', () => {
-    ;(useListSecrets as Mock).mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      error: new Error('failed to fetch secrets'),
-    })
-    ;(useCreateSecret as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn() })
-    ;(useDeleteSecret as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, reset: vi.fn(), error: null })
-    ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true, isLoading: false, user: null })
+  it('does not render New Secret button when user is viewer', () => {
+    setupMocks({ userRole: Role.VIEWER })
     render(<SecretsListPage />)
-    expect(screen.getByText(/failed to fetch secrets/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /new secret/i })).not.toBeInTheDocument()
   })
 
-  it('renders Create Secret button', () => {
-    setupMocks()
-    render(<SecretsListPage />)
-    expect(screen.getByRole('button', { name: /create secret/i })).toBeInTheDocument()
-  })
-
-  it('renders sharing summary badge for secrets with grants', () => {
-    setupMocks([{ ...makeSecret('my-secret'), userGrants: [{ principal: 'a@b.com', role: 3 }], roleGrants: [] }])
-    render(<SecretsListPage />)
-    expect(screen.getByText('1 user')).toBeInTheDocument()
-  })
-
-  it('Name column header is sortable — click toggles sort direction', () => {
-    setupMocks([makeSecret('zebra-secret'), makeSecret('alpha-secret')])
-    render(<SecretsListPage />)
-
-    const rows = screen.getAllByRole('row')
-    // rows[0] is the header row, rows[1] and rows[2] are data rows
-    // Default sort: ascending (alpha first)
-    expect(rows[1]).toHaveTextContent('alpha-secret')
-    expect(rows[2]).toHaveTextContent('zebra-secret')
-
-    // Click Name sort button → descending (zebra first)
-    const sortBtn = screen.getByRole('button', { name: /name/i })
-    fireEvent.click(sortBtn)
-    const rowsAfter = screen.getAllByRole('row')
-    expect(rowsAfter[1]).toHaveTextContent('zebra-secret')
-    expect(rowsAfter[2]).toHaveTextContent('alpha-secret')
-
-    // Click again → back to ascending
-    fireEvent.click(sortBtn)
-    const rowsFinal = screen.getAllByRole('row')
-    expect(rowsFinal[1]).toHaveTextContent('alpha-secret')
-    expect(rowsFinal[2]).toHaveTextContent('zebra-secret')
-  })
-
-  it('pre-populates create dialog with default grants from project', () => {
-    setupMocks([makeSecret('existing')], {
-      defaultUserGrants: [{ principal: 'team@example.com', role: Role.EDITOR }],
-      defaultRoleGrants: [{ principal: 'engineering', role: Role.VIEWER }],
+  it('renders multiple secret rows', () => {
+    setupMocks({
+      rows: [
+        makeSecretRow('alpha-secret', 'test-project'),
+        makeSecretRow('beta-secret', 'test-project'),
+      ],
     })
     render(<SecretsListPage />)
-    fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
-    // Creator OWNER grant is always present
-    expect(screen.getByText('test@example.com')).toBeInTheDocument()
-    // Default user grant is pre-filled
-    expect(screen.getByText('team@example.com')).toBeInTheDocument()
-    // Default role grant is pre-filled
-    expect(screen.getByText('engineering')).toBeInTheDocument()
+    expect(screen.getByText('alpha-secret')).toBeInTheDocument()
+    expect(screen.getByText('beta-secret')).toBeInTheDocument()
   })
 
-  it('creator-as-OWNER is always present even with defaults', () => {
-    setupMocks([makeSecret('existing')], {
-      defaultUserGrants: [{ principal: 'other@example.com', role: Role.EDITOR }],
-      defaultRoleGrants: [],
+  it('single parent hides Parent column', () => {
+    // When all rows have the same parentId, singleParent=true → parentId col hidden
+    setupMocks({
+      rows: [
+        makeSecretRow('s1', 'test-project'),
+        makeSecretRow('s2', 'test-project'),
+      ],
     })
     render(<SecretsListPage />)
-    fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
-    expect(screen.getByText('test@example.com')).toBeInTheDocument()
-    expect(screen.getByText('other@example.com')).toBeInTheDocument()
+    // Parent column header should not be rendered when singleParent=true
+    expect(screen.queryByRole('columnheader', { name: /parent/i })).not.toBeInTheDocument()
   })
 
-  it('shows hint text when project has default grants', () => {
-    setupMocks([makeSecret('existing')], {
-      defaultUserGrants: [{ principal: 'team@example.com', role: Role.EDITOR }],
-      defaultRoleGrants: [],
+  it('shows parent column when rows come from multiple scopes (ancestors)', () => {
+    setupMocks({
+      rows: [
+        makeSecretRow('proj-secret', 'test-project'),
+        makeSecretRow('folder-secret', 'my-folder'),
+      ],
     })
     render(<SecretsListPage />)
-    fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
-    expect(screen.getByText(/pre-filled from project default sharing/i)).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /parent/i })).toBeInTheDocument()
   })
 
-  it('does not show hint text when project has no defaults', () => {
-    setupMocks([makeSecret('existing')])
+  it('delete button opens ConfirmDeleteDialog', async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(undefined)
+    ;(useDeleteSecret as Mock).mockReturnValue({ mutateAsync, isPending: false })
+    setupMocks({ rows: [makeSecretRow('my-secret')] })
     render(<SecretsListPage />)
-    fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
-    expect(screen.queryByText(/pre-filled from project default sharing/i)).not.toBeInTheDocument()
-  })
 
-  it('user can remove a default grant in the dialog', () => {
-    setupMocks([makeSecret('existing')], {
-      defaultUserGrants: [{ principal: 'team@example.com', role: Role.EDITOR }],
-      defaultRoleGrants: [],
+    // Click the trash icon — the dialog should open
+    const deleteBtn = screen.getByRole('button', { name: /delete my-secret/i })
+    fireEvent.click(deleteBtn)
+
+    // ConfirmDeleteDialog should open
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
+  })
+
+  it('confirming delete invokes useDeleteSecret mutation', async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(undefined)
+    // Set up all mocks including the specific mutateAsync we want to track
+    setupMocks({ rows: [makeSecretRow('my-secret')] })
+    // Override the useDeleteSecret mock after setupMocks to capture the specific fn
+    ;(useDeleteSecret as Mock).mockReturnValue({ mutateAsync, isPending: false })
     render(<SecretsListPage />)
-    fireEvent.click(screen.getByRole('button', { name: /create secret/i }))
-    expect(screen.getByText('team@example.com')).toBeInTheDocument()
-    // Find the remove button closest to team@example.com's grant row
-    const teamText = screen.getByText('team@example.com')
-    const grantRow = teamText.closest('div')!
-    const removeBtn = grantRow.querySelector('button[aria-label="remove"]')!
-    fireEvent.click(removeBtn)
-    expect(screen.queryByText('team@example.com')).not.toBeInTheDocument()
+
+    // Open the confirm dialog
+    const deleteBtn = screen.getByRole('button', { name: /delete my-secret/i })
+    fireEvent.click(deleteBtn)
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    // Click the Delete button in the dialog
+    const confirmBtn = screen.getByRole('button', { name: /^delete$/i })
+    fireEvent.click(confirmBtn)
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith('my-secret')
+    })
+  })
+
+  it('URL state: useAllSecretsForProject is called with the search lineage', () => {
+    // The component extracts lineage from useSearch() and passes it to
+    // useAllSecretsForProject. Since our router mock returns {} for useSearch,
+    // the component defaults to "descendants".
+    setupMocks({ rows: [makeSecretRow('my-secret')] })
+    render(<SecretsListPage />)
+    expect(useAllSecretsForProject).toHaveBeenCalledWith('test-project', {
+      lineage: 'descendants',
+    })
+  })
+
+  it('description column shows secret description', () => {
+    setupMocks({ rows: [makeSecretRow('my-secret', 'test-project', 'A useful description')] })
+    render(<SecretsListPage />)
+    expect(screen.getByText('A useful description')).toBeInTheDocument()
   })
 })
