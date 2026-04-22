@@ -43,6 +43,24 @@ semantics that do not require a real apiserver.
 
 Vitest + React Testing Library + jsdom. Mock query hooks (`@/queries/*`) with `vi.mock()` and `vi.fn()`. Route-directory test files must be prefixed with `-` (e.g. `-about.test.tsx`) so TanStack Router's generator ignores them. Run with `make test-ui`.
 
+### ResourceGrid v1 unit-test pattern (HOL-855)
+
+`frontend/src/components/resource-grid/-resource-grid.test.tsx` is the
+reference for testing pages built on `ResourceGrid`. The pattern:
+
+1. Import `ResourceGrid` and pass a synthetic `kinds` + `rows` array.
+2. Do **not** mock `@/components/resource-grid`; test the component directly.
+3. Mock only the TanStack Router primitives (`Link`, `useNavigate`) and
+   shadcn primitives that are not present in jsdom (e.g. `dialog`).
+4. Assert visible column headers, row cell content, filter controls, empty
+   state, loading skeleton (`data-testid="resource-grid-loading"`), and the
+   delete-confirm dialog flow.
+
+Route-level tests for pages that wrap `ResourceGrid` (e.g. Secrets, Deployments,
+Templates) follow the same mock-query pattern as other route tests. They do not
+need to re-exercise filter logic — one line asserting the grid renders is
+sufficient at the page level.
+
 ## E2E Tests
 
 Playwright in `frontend/e2e/`. `make test-e2e` orchestrates the full stack (builds Go binary, starts Go backend on :8443 and Vite on :5173). For tight iteration, start servers once and run targeted tests — see `docs/e2e-testing.md` for the full workflow including K8s-backed tests.

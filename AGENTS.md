@@ -21,6 +21,33 @@ All testing guidance lives in this repo. Read the entries below in order the fir
 
 **Make targets**: `make test-go` (Go tests), `make test-ui` (Vitest unit tests), `make test-e2e` (Playwright, needs `make certs` and a k3d cluster), `make test` (all three). Run `make generate` before committing if proto or generated code is affected.
 
+## MVP UI — ResourceGrid v1 and 4-item sidebar nav (HOL-854)
+
+The HOL-854 plan shipped seven phases (HOL-855 – HOL-861) that replace the old
+two-tree sidebar with a flat 4-item nav and a shared table component. Key files
+added:
+
+| File / dir | Phase | Purpose |
+|---|---|---|
+| `frontend/src/components/resource-grid/` | HOL-855 | `ResourceGrid` v1 table, `types.ts`, `url-state.ts` |
+| `frontend/src/components/ui/confirm-delete-dialog.tsx` | HOL-855 | Shared delete confirmation dialog |
+| `frontend/src/components/app-sidebar.tsx` | HOL-856 | Flat 4-item nav (Secrets, Deployments, Templates, Resource Manager) |
+| `frontend/src/routes/_authenticated/projects/$projectName/secrets/index.tsx` | HOL-857 | Secrets page on ResourceGrid v1 |
+| `frontend/src/routes/_authenticated/projects/$projectName/deployments/index.tsx` | HOL-858 | Deployments page on ResourceGrid v1 |
+| `frontend/src/routes/_authenticated/projects/$projectName/templates/index.tsx` | HOL-859 | Unified Templates index on ResourceGrid v1 |
+| `frontend/src/components/templates/TemplatesHelpPane.tsx` | HOL-860 | Templates help pane (? icon toggle) |
+| `frontend/src/components/resource-manager/` | HOL-861 | Resource Manager tree view at `/resource-manager` |
+| `frontend/src/routes/_authenticated/resource-manager/index.tsx` | HOL-861 | Resource Manager route |
+
+**Design note**: `docs/ui/resource-grid-v1.md` — columns, filter contract, URL
+state format, extension points (`extraColumns`, `onDelete`), and when to use
+ResourceGrid v1 vs. the Resource Manager tree.
+
+**Deferred**: Legacy sidebar destinations (Project tree, Organization tree,
+`/orgs/$orgName/resources`, folder-scoped index pages) are still present in
+the codebase but no longer reachable via the sidebar. Their removal is tracked
+in a sibling cleanup plan.
+
 ## Guardrails
 
 - [Demo Docs Routing](https://github.com/holos-run/holos-console-docs/tree/main/demo) — Demo setup materials and CUE example snippets belong in `holos-run/holos-console-docs/demo/`, **not** in this repo; demo-related issues must include concrete examples and operator guidance.

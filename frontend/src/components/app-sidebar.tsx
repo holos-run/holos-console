@@ -50,11 +50,10 @@ export function AppSidebar() {
 
   const hasProject = Boolean(selectedProject)
 
-  // HOL-856: flat 4-item nav replacing the two Collapsible trees.
-  // Order: Secrets, Deployments, Templates, Resource Manager.
-  // Resource Manager links to /resource-manager (top-level route added in
-  // Phase 7 / HOL-861). The link is always enabled; it may 404 until Phase 7
-  // merges — this is documented and accepted per the plan sequencing rationale.
+  // Flat 4-item nav: Secrets, Deployments, Templates, Resource Manager.
+  // The first three items are scoped to the selected project and are disabled
+  // until a project is chosen from the WorkspaceMenu. Resource Manager is a
+  // top-level route that is always enabled.
   const navItems: NavItem[] = [
     {
       label: 'Secrets',
@@ -96,17 +95,12 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="px-2 py-2">
-        {/*
-          HOL-603 replaces the previous stacked OrgPicker + ProjectPicker
-          with a single Linear-style workspace menu. Profile / Dev Tools
-          have moved off the footer and into this menu so all "global" nav
-          lives in one place at the top of the sidebar.
-        */}
+          {/* WorkspaceMenu provides org/project selection, profile, and dev tools. */}
         <WorkspaceMenu />
       </SidebarHeader>
 
       <SidebarContent>
-        {/* HOL-856: flat 4-item nav — Secrets, Deployments, Templates, Resource Manager */}
+        {/* Flat 4-item nav — Secrets, Deployments, Templates, Resource Manager */}
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -164,7 +158,7 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      {/* HOL-856: version label moved from SidebarHeader into footer, bottom-left */}
+      {/* Version label in the footer, bottom-left. */}
       {versionData?.version && (
         <SidebarFooter>
           <div className="px-2 py-2 text-xs text-muted-foreground">

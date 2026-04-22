@@ -3,14 +3,10 @@ import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
 
-// HOL-856 integration test: exercise the flat 4-item nav with the real
-// sidebar primitives (no mocks for ui/sidebar). This verifies that
-// SidebarMenuButton asChild correctly forwards the Link child for enabled
-// entries, and that disabled entries render a TooltipProvider-wrapped
-// button instead of an anchor.
-//
-// The Collapsible toggle tests from HOL-604 are intentionally removed: the
-// two-tree Collapsible layout is replaced by a flat SidebarMenu in HOL-856.
+// Integration test: exercise the flat 4-item nav with the real sidebar
+// primitives (no mocks for ui/sidebar). Verifies that SidebarMenuButton
+// asChild correctly forwards the Link child for enabled entries, and that
+// disabled entries render a TooltipProvider-wrapped button instead of an anchor.
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({

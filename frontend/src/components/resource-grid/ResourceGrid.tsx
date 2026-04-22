@@ -10,7 +10,7 @@
  *  - Row-level delete via ConfirmDeleteDialog
  *  - URL sync via TanStack Router useSearch / useNavigate
  *
- * See HOL-855 for the full acceptance criteria.
+ * See docs/ui/resource-grid-v1.md for the design note and extension guide.
  */
 
 import { useState, useMemo, useCallback } from 'react'
