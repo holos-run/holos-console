@@ -42,6 +42,29 @@ frontend/src/components/resource-grid/
 | Created At | `row.createdAt` | ISO-8601 string, rendered via `toLocaleDateString()` |
 | Actions | — | Delete icon button; triggers ConfirmDeleteDialog |
 
+## Created At
+
+The `createdAt` field on `Row` carries the Kubernetes resource creation
+timestamp sourced from `metadata.creationTimestamp` in the API response.
+
+- **Type**: `string` — RFC 3339 / ISO-8601 (e.g. `"2025-01-15T12:00:00Z"`).
+  Every row mapper should read `metadata.creationTimestamp` from the
+  Kubernetes object and pass it verbatim; do not coerce it to a `Date` or
+  leave it as `""`.
+- **Backend source**: `ObjectMeta.creationTimestamp` from the Kubernetes API
+  response. The field is always present on persisted objects; it is safe to
+  read without a nil-guard.
+- **Fallback behavior**: When `createdAt` is an empty string, `undefined`, or
+  any value that `new Date(value).getTime()` returns as `NaN`, the cell
+  renders an em-dash (`—`) placeholder. This guard was introduced in HOL-876
+  (UI hardening) to eliminate "Invalid Date" regressions. The only valid
+  non-empty value is a parseable RFC 3339 date string.
+
+The Resource Manager tree (`frontend/src/components/resource-manager/`) uses
+`createdAt: undefined` in its synthetic tree-node rows because those rows do
+not correspond 1-to-1 with a single Kubernetes object. This is intentional and
+out of scope for the ResourceGrid v1 contract.
+
 ## The `Row` interface
 
 ```ts
