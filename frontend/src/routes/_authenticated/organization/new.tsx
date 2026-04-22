@@ -1,29 +1,43 @@
+/**
+ * /organization/new — dedicated page for creating a new organization.
+ *
+ * On success navigates to `resolveReturnTo(search.returnTo, '/organizations')`.
+ * The Cancel button honours the same returnTo fallback.
+ *
+ * Replaces the CreateOrgDialog modal (HOL-869).
+ */
+
 import { useState } from 'react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
+import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Info } from 'lucide-react'
 import { useCreateOrganization } from '@/queries/organizations'
 import { toSlug } from '@/lib/slug'
+import { resolveReturnTo } from '@/lib/return-to'
 
-export interface CreateOrgDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onCreated?: (name: string) => void
+export const Route = createFileRoute('/_authenticated/organization/new')({
+  validateSearch: (search: Record<string, unknown>): { returnTo?: string } => ({
+    returnTo: typeof search.returnTo === 'string' ? search.returnTo : undefined,
+  }),
+  component: OrganizationNewRoute,
+})
+
+function OrganizationNewRoute() {
+  const search = Route.useSearch()
+  return <OrganizationNewPage returnTo={search.returnTo} />
 }
 
-export function CreateOrgDialog({ open, onOpenChange, onCreated }: CreateOrgDialogProps) {
+export function OrganizationNewPage({ returnTo }: { returnTo?: string }) {
+  const navigate = useNavigate()
+  const cancelTarget = resolveReturnTo(returnTo, '/organizations')
+
   const [displayName, setDisplayName] = useState('')
   const [name, setName] = useState('')
   const [nameEdited, setNameEdited] = useState(false)
@@ -53,32 +67,28 @@ export function CreateOrgDialog({ open, onOpenChange, onCreated }: CreateOrgDial
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!name) return
     setError(null)
     try {
-      const response = await mutateAsync({
+      await mutateAsync({
         name,
         displayName,
         description,
         ...(populateDefaults ? { populateDefaults: true } : {}),
       })
-      setName('')
-      setDisplayName('')
-      setDescription('')
-      setPopulateDefaults(false)
-      setNameEdited(false)
-      onCreated?.(response.name)
-      onOpenChange(false)
+      const target = resolveReturnTo(returnTo, '/organizations')
+      navigate({ to: target })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create organization')
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>New Organization</DialogTitle>
-        </DialogHeader>
+    <Card>
+      <CardHeader>
+        <CardTitle>New Organization</CardTitle>
+      </CardHeader>
+      <CardContent>
         <form role="form" onSubmit={handleSubmit}>
           <div className="space-y-4 py-2">
             {error && (
@@ -150,16 +160,18 @@ export function CreateOrgDialog({ open, onOpenChange, onCreated }: CreateOrgDial
               </TooltipProvider>
             </div>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
+          <div className="flex items-center gap-3 pt-4">
             <Button type="submit" disabled={isPending || !name}>
-              {isPending ? 'Creating…' : 'Create'}
+              {isPending ? 'Creating…' : 'Create Organization'}
             </Button>
-          </DialogFooter>
+            <Link to={cancelTarget}>
+              <Button variant="ghost" type="button" aria-label="Cancel">
+                Cancel
+              </Button>
+            </Link>
+          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </CardContent>
+    </Card>
   )
 }

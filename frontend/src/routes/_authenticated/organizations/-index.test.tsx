@@ -15,14 +15,14 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       children,
       className,
       to,
-      params,
+      search,
     }: {
       children: React.ReactNode
       className?: string
       to?: string
-      params?: Record<string, string>
+      search?: Record<string, unknown>
     }) => (
-      <a href={to} data-params={JSON.stringify(params)} className={className}>
+      <a href={to} data-search={JSON.stringify(search)} className={className}>
         {children}
       </a>
     ),
@@ -37,14 +37,6 @@ vi.mock('@/queries/organizations', () => ({
 
 vi.mock('@/lib/org-context', () => ({
   useOrg: vi.fn(),
-}))
-
-// CreateOrgDialog visibility is asserted via the testid the mock emits when
-// `open` is true. The real dialog is portaled and would require fully
-// instantiating Radix in jsdom otherwise.
-vi.mock('@/components/create-org-dialog', () => ({
-  CreateOrgDialog: ({ open }: { open: boolean }) =>
-    open ? <div data-testid="create-org-dialog" /> : null,
 }))
 
 import { useListOrganizations } from '@/queries/organizations'
@@ -168,11 +160,14 @@ describe('OrganizationsIndexPage', () => {
     expect(screen.getByText(/failed to load organizations/i)).toBeInTheDocument()
   })
 
-  it('Create Organization button is visible', () => {
+  it('Create Organization link is visible and points to /organization/new', () => {
     setupMocks([])
     render(<OrganizationsIndexPage />)
-    const buttons = screen.getAllByRole('button', { name: /create organization/i })
-    expect(buttons.length).toBeGreaterThanOrEqual(1)
+    const links = screen.getAllByRole('link')
+    const createLinks = links.filter((l) =>
+      l.getAttribute('href') === '/organization/new',
+    )
+    expect(createLinks.length).toBeGreaterThanOrEqual(1)
   })
 
   it('pagination controls appear when organizations exceed page size', () => {

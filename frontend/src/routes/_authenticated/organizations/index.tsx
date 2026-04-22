@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import {
   useReactTable,
   getCoreRowModel,
@@ -24,7 +24,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Plus } from 'lucide-react'
 import { useListOrganizations } from '@/queries/organizations'
 import { useOrg } from '@/lib/org-context'
-import { CreateOrgDialog } from '@/components/create-org-dialog'
 import type { Organization } from '@/gen/holos/console/v1/organizations_pb'
 
 export const Route = createFileRoute('/_authenticated/organizations/')({
@@ -40,7 +39,6 @@ export function OrganizationsIndexPage() {
   const organizations = data?.organizations ?? []
 
   const [globalFilter, setGlobalFilter] = useState('')
-  const [createOpen, setCreateOpen] = useState(false)
 
   const columns = [
     columnHelper.accessor((row) => row.displayName || row.name, {
@@ -99,10 +97,12 @@ export function OrganizationsIndexPage() {
       <Card>
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <CardTitle>Organizations</CardTitle>
-          <Button size="sm" disabled>
-            <Plus className="h-4 w-4 mr-1" />
-            Create Organization
-          </Button>
+          <Link to="/organization/new" search={{ returnTo: '/organizations' }}>
+            <Button size="sm" disabled>
+              <Plus className="h-4 w-4 mr-1" />
+              Create Organization
+            </Button>
+          </Link>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
@@ -132,18 +132,22 @@ export function OrganizationsIndexPage() {
       <Card>
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <CardTitle>Organizations</CardTitle>
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            Create Organization
-          </Button>
+          <Link to="/organization/new" search={{ returnTo: '/organizations' }}>
+            <Button size="sm">
+              <Plus className="h-4 w-4 mr-1" />
+              Create Organization
+            </Button>
+          </Link>
         </CardHeader>
         <CardContent>
           {organizations.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
               <p className="text-muted-foreground">No organizations yet. Create one.</p>
-              <Button size="sm" onClick={() => setCreateOpen(true)}>
-                Create Organization
-              </Button>
+              <Link to="/organization/new" search={{ returnTo: '/organizations' }}>
+                <Button size="sm">
+                  Create Organization
+                </Button>
+              </Link>
             </div>
           ) : (
             <>
@@ -213,12 +217,6 @@ export function OrganizationsIndexPage() {
           )}
         </CardContent>
       </Card>
-
-      <CreateOrgDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        onCreated={(name) => setSelectedOrg(name)}
-      />
     </>
   )
 }
