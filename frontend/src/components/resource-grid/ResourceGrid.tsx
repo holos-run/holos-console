@@ -244,7 +244,7 @@ export function ResourceGrid({
   // --- TanStack Table columns --------------------------------------------
 
   const columns = useMemo(
-    (): ColumnDef<Row>[] => [
+    () => [
       columnHelper.accessor('parentId', {
         id: 'parentId',
         header: 'Parent',
