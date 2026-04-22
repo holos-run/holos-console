@@ -3249,7 +3249,7 @@ func TestHandler_ListSecrets_CreatedAt(t *testing.T) {
 		wantRFC3339 string
 	}{
 		{
-			name:        "epoch time is formatted as RFC3339",
+			name:        "UTC time is formatted as RFC3339",
 			createdAt:   time.Date(2026, 4, 22, 19, 51, 10, 0, time.UTC),
 			wantRFC3339: "2026-04-22T19:51:10Z",
 		},
