@@ -59,3 +59,15 @@ project-name input with wildcard (`*`) support.
 (`docs/adrs/034-namespace-template-policy-binding-for-new-projects.md`),
 PRs #1091 (ADR), #1093 (API types), #1096 (resolver), #1098 (render),
 #1100 (applier), #1107 (RPC wire-up), #1109 (examples), #1112 (frontend).
+
+### Fixed — `crypto.Params` JSON shape pins required uint fields (HOL-838)
+
+Removed `,omitempty` from the `Time`, `Memory`, `Parallelism`, `KeyLength`,
+and `Iterations` JSON tags on `internal/secretinjector/crypto.Params`. A
+zero value — which `validateArgon2idParams` rejects on both Hash and
+Verify — is now serialized as an explicit `0` instead of being silently
+dropped. The envelope JSON shape now faithfully reflects the required
+fields, so a future KDF that forgets a zero-rejection check cannot
+silently round-trip a degenerate envelope. No on-wire break: envelopes
+produced by earlier code either contain the fields already (non-zero
+values pass `omitempty`) or fail `Verify` at the validator as before.

@@ -384,6 +384,59 @@ func TestEnvelopeJSONRoundTrip(t *testing.T) {
 	}
 }
 
+// TestEnvelopeJSONZeroFieldRoundTrip pins the on-wire shape for a
+// degenerate envelope whose [Params] are all zero. The required uint
+// fields deliberately do NOT carry `omitempty`, so marshaling must emit
+// "time":0, "memory":0, "parallelism":0, "keyLength":0, and
+// "iterations":0 rather than silently dropping them. A future KDF that
+// forgets its zero-rejection guard would otherwise round-trip a
+// degenerate envelope as an empty kdfParams object; pinning the shape
+// here forces that regression to fail loudly.
+func TestEnvelopeJSONZeroFieldRoundTrip(t *testing.T) {
+	original := Envelope{
+		SchemaVersion: EnvelopeSchemaVersion,
+		KDF:           KDFArgon2id,
+		KDFParams:     Params{},
+		PepperVersion: fixturePepperVersion,
+		Salt:          fixtureSalt,
+		Hash:          []byte("hash"),
+	}
+	encoded, err := MarshalEnvelope(original)
+	if err != nil {
+		t.Fatalf("MarshalEnvelope: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(encoded, &m); err != nil {
+		t.Fatalf("re-unmarshal to map: %v", err)
+	}
+	paramsAny, ok := m["kdfParams"].(map[string]any)
+	if !ok {
+		t.Fatalf("kdfParams is not a JSON object: %T", m["kdfParams"])
+	}
+	for _, k := range []string{"time", "memory", "parallelism", "keyLength", "iterations"} {
+		v, ok := paramsAny[k]
+		if !ok {
+			t.Errorf("kdfParams JSON missing required zero-valued key %q; have %v", k, paramsAny)
+			continue
+		}
+		num, ok := v.(float64)
+		if !ok {
+			t.Errorf("kdfParams[%q] = %T(%v), want JSON number", k, v, v)
+			continue
+		}
+		if num != 0 {
+			t.Errorf("kdfParams[%q] = %v, want 0", k, num)
+		}
+	}
+	var decoded Envelope
+	if err := UnmarshalEnvelope(encoded, &decoded); err != nil {
+		t.Fatalf("UnmarshalEnvelope: %v", err)
+	}
+	if diff := cmp.Diff(original, decoded); diff != "" {
+		t.Fatalf("zero-field envelope round-trip mismatch (-want +got):\n%s", diff)
+	}
+}
+
 // TestEnvelopeJSONShape pins the JSON field names so a downstream
 // operator script or a future parser in a sibling binary can rely on the
 // exact keys. A rename is a breaking wire change and should fail this
@@ -410,7 +463,7 @@ func TestEnvelopeJSONShape(t *testing.T) {
 	if !ok {
 		t.Fatalf("kdfParams is not a JSON object: %T", m["kdfParams"])
 	}
-	for _, k := range []string{"time", "memory", "parallelism", "keyLength"} {
+	for _, k := range []string{"time", "memory", "parallelism", "keyLength", "iterations"} {
 		if _, ok := paramsAny[k]; !ok {
 			t.Errorf("kdfParams JSON missing key %q; have %v", k, paramsAny)
 		}
