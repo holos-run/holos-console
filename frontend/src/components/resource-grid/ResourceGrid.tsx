@@ -108,6 +108,11 @@ export interface ResourceGridProps {
    * above the table. Used for description banners.
    */
   headerContent?: React.ReactNode
+  /**
+   * Optional extra actions rendered in the Card header to the left of the
+   * New button. Use for icon buttons such as the Templates help pane toggle.
+   */
+  headerActions?: React.ReactNode
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +130,7 @@ export function ResourceGrid({
   onSearchChange,
   extraColumns = [],
   headerContent,
+  headerActions,
 }: ResourceGridProps) {
   // --- Derive local state from URL params --------------------------------
 
@@ -397,7 +403,10 @@ export function ResourceGrid({
       <Card>
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <CardTitle>{title}</CardTitle>
-          <NewButton kinds={creatableKinds} />
+          <div className="flex items-center gap-2">
+            {headerActions}
+            <NewButton kinds={creatableKinds} />
+          </div>
         </CardHeader>
         {headerContent && (
           <CardContent className="pt-0 pb-0">

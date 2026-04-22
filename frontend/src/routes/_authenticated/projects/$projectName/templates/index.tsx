@@ -20,6 +20,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
 import { useQueryClient } from '@tanstack/react-query'
+import { HelpCircle } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { TemplateService } from '@/gen/holos/console/v1/templates_pb.js'
 import { TemplatePolicyService } from '@/gen/holos/console/v1/template_policies_pb.js'
@@ -28,6 +29,8 @@ import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
+import { Button } from '@/components/ui/button'
+import { TemplatesHelpPane } from '@/components/templates/TemplatesHelpPane'
 import { useGetProject } from '@/queries/projects'
 import { useGetOrganization } from '@/queries/organizations'
 import { useAllTemplatesForOrg } from '@/queries/templates'
@@ -41,11 +44,29 @@ import {
 } from '@/lib/template-row-link'
 
 // ---------------------------------------------------------------------------
+// Route search — extends ResourceGridSearch with the help pane state
+// ---------------------------------------------------------------------------
+
+export interface TemplatesSearch extends ResourceGridSearch {
+  /** "1" = help pane open, absent = closed. */
+  help?: '1'
+}
+
+function parseTemplatesSearch(raw: Record<string, unknown>): TemplatesSearch {
+  const base = parseGridSearch(raw)
+  const result: TemplatesSearch = { ...base }
+  if (raw['help'] === '1') {
+    result.help = '1'
+  }
+  return result
+}
+
+// ---------------------------------------------------------------------------
 // Route definition
 // ---------------------------------------------------------------------------
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/')({
-  validateSearch: parseGridSearch,
+  validateSearch: parseTemplatesSearch,
   component: ProjectTemplatesIndexRoute,
 })
 
@@ -63,8 +84,28 @@ export function ProjectTemplatesIndexPage({
 }: {
   projectName: string
 }) {
-  const search = Route.useSearch()
+  const search = Route.useSearch() as TemplatesSearch
   const navigate = useNavigate({ from: Route.fullPath })
+
+  // Help pane state — persisted in URL as ?help=1
+  const helpOpen = search.help === '1'
+
+  const handleHelpOpenChange = useCallback(
+    (open: boolean) => {
+      navigate({
+        search: (prev) => {
+          const next = { ...(prev as TemplatesSearch) }
+          if (open) {
+            next.help = '1'
+          } else {
+            delete next.help
+          }
+          return next
+        },
+      })
+    },
+    [navigate],
+  )
 
   // Derive orgName from the OrgContext — the route is project-scoped so there
   // is no $orgName in the URL.
@@ -254,7 +295,16 @@ export function ProjectTemplatesIndexPage({
   const handleSearchChange = useCallback(
     (updater: (prev: ResourceGridSearch) => ResourceGridSearch) => {
       navigate({
-        search: (prev) => updater(prev as ResourceGridSearch),
+        search: (prev) => {
+          const typedPrev = prev as TemplatesSearch
+          const updated = updater(typedPrev)
+          // Preserve the help param across grid-search updates.
+          const next: TemplatesSearch = { ...updated }
+          if (typedPrev.help) {
+            next.help = typedPrev.help
+          }
+          return next
+        },
       })
     },
     [navigate],
@@ -269,16 +319,32 @@ export function ProjectTemplatesIndexPage({
     )
   }
 
+  const helpButton = (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Help — Templates overview"
+      onClick={() => handleHelpOpenChange(true)}
+      data-testid="templates-help-button"
+    >
+      <HelpCircle className="h-5 w-5" />
+    </Button>
+  )
+
   return (
-    <ResourceGrid
-      title={`${projectName} / Templates`}
-      kinds={kinds}
-      rows={rows}
-      onDelete={handleDelete}
-      isLoading={isLoading}
-      error={firstError}
-      search={searchWithDefaults}
-      onSearchChange={handleSearchChange}
-    />
+    <>
+      <ResourceGrid
+        title={`${projectName} / Templates`}
+        kinds={kinds}
+        rows={rows}
+        onDelete={handleDelete}
+        isLoading={isLoading}
+        error={firstError}
+        search={searchWithDefaults}
+        onSearchChange={handleSearchChange}
+        headerActions={helpButton}
+      />
+      <TemplatesHelpPane open={helpOpen} onOpenChange={handleHelpOpenChange} />
+    </>
   )
 }
