@@ -74,9 +74,8 @@ export function FolderNewPage({ orgName, parentType, parentName, returnTo }: Fol
   const resolvedParentType = resolveParentType(parentType)
   const resolvedParentName = parentName ?? orgName ?? ''
 
-  // Fallback destination: resource-manager when launched from there, else /organizations
-  const fallback = resolveReturnTo(returnTo, '/organizations')
-  const cancelTarget = fallback
+  // Post-create and Cancel destination: honour returnTo, fall back to /organizations.
+  const cancelTarget = resolveReturnTo(returnTo, '/organizations')
 
   const [displayName, setDisplayName] = useState('')
   const [name, setName] = useState('')

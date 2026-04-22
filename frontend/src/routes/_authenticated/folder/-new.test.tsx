@@ -170,7 +170,6 @@ describe('FolderNewPage', () => {
 
     await waitFor(() => {
       const call = mutateAsync.mock.calls[0][0]
-      // ParentType.ORGANIZATION is 1 in the enum
       expect(call.parentType).toBeDefined()
       expect(call.parentName).toBe('my-org')
     })
