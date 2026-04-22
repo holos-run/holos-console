@@ -16,6 +16,7 @@ import {
 import type {
   TemplatePolicy,
   TemplatePolicyRule,
+  LinkableTemplatePolicy,
 } from '@/gen/holos/console/v1/template_policies_pb.js'
 import { useAuth } from '@/lib/auth'
 import { useListFolders } from '@/queries/folders'
@@ -25,7 +26,7 @@ import { namespaceForFolder, namespaceForOrg } from '@/lib/scope-labels'
 // Re-export generated types/enums used by UI consumers. HOL-600 removed
 // TemplatePolicyTarget from the proto — render-target selection now
 // lives on TemplatePolicyBinding.
-export type { TemplatePolicy, TemplatePolicyRule }
+export type { TemplatePolicy, TemplatePolicyRule, LinkableTemplatePolicy }
 export { TemplatePolicyKind }
 
 /** Query key helper for the template policies list at a given namespace. */
@@ -36,6 +37,11 @@ function templatePolicyListKey(namespace: string) {
 /** Query key helper for a single template policy. */
 function templatePolicyGetKey(namespace: string, name: string) {
   return ['templatePolicies', 'get', namespace, name] as const
+}
+
+/** Query key helper for the linkable template policies list at a given namespace. */
+function linkableTemplatePolicyListKey(namespace: string) {
+  return ['templatePolicies', 'linkable', namespace] as const
 }
 
 // useListTemplatePolicies fetches all policies visible within a namespace.
@@ -51,6 +57,35 @@ export function useListTemplatePolicies(namespace: string) {
     queryKey: templatePolicyListKey(namespace),
     queryFn: async () => {
       const response = await client.listTemplatePolicies({ namespace })
+      return response.policies
+    },
+    enabled: isAuthenticated && !!namespace,
+  })
+}
+
+// useListLinkableTemplatePolicies fetches all TemplatePolicies reachable from
+// the given scope namespace by walking the ancestor chain up to the org root.
+// The response carries a per-item owning namespace so the UI can render a scope
+// badge without a second round-trip. HOL-835 wires this into BindingForm so
+// folder-scoped bindings can select org-scoped or parent-folder-scoped policies.
+//
+// Do NOT use this for admin list views — those should call useListTemplatePolicies
+// to stay single-scope. This hook is additive and does not replace the single-scope
+// hook.
+export function useListLinkableTemplatePolicies(namespace: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(
+    () => createClient(TemplatePolicyService, transport),
+    [transport],
+  )
+  return useQuery({
+    queryKey: linkableTemplatePolicyListKey(namespace),
+    queryFn: async () => {
+      const response = await client.listLinkableTemplatePolicies({
+        namespace,
+        includeSelfScope: true,
+      })
       return response.policies
     },
     enabled: isAuthenticated && !!namespace,
