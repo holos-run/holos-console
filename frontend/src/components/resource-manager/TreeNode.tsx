@@ -200,7 +200,7 @@ export function TreeNode({
                 asChild
                 aria-label={`settings for ${node.displayName}`}
               >
-                <Link to="/orgs/$orgName/settings/" params={{ orgName: node.name }}>
+                <Link to="/orgs/$orgName/settings" params={{ orgName: node.name }}>
                   <Settings className="h-4 w-4" />
                 </Link>
               </Button>
@@ -214,7 +214,7 @@ export function TreeNode({
                 asChild
                 aria-label={`settings for ${node.displayName}`}
               >
-                <Link to="/folders/$folderName/settings/" params={{ folderName: node.name }}>
+                <Link to="/folders/$folderName/settings" params={{ folderName: node.name }}>
                   <Settings className="h-4 w-4" />
                 </Link>
               </Button>
@@ -228,7 +228,7 @@ export function TreeNode({
                 asChild
                 aria-label={`settings for ${node.displayName}`}
               >
-                <Link to="/projects/$projectName/settings/" params={{ projectName: node.name }}>
+                <Link to="/projects/$projectName/settings" params={{ projectName: node.name }}>
                   <Settings className="h-4 w-4" />
                 </Link>
               </Button>

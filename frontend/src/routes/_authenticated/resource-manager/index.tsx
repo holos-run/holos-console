@@ -230,7 +230,7 @@ function NewDropdown({ orgName }: { orgName: string }) {
         </DropdownMenuItem>
         <DropdownMenuItem asChild data-testid="new-menu-folder">
           {/* Route to org settings until a dedicated create-folder page exists. */}
-          <Link to="/orgs/$orgName/settings/" params={{ orgName }}>
+          <Link to="/orgs/$orgName/settings" params={{ orgName }}>
             Folder
           </Link>
         </DropdownMenuItem>

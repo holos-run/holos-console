@@ -84,7 +84,6 @@ function buildProjectChildMap(resources: Resource[]): Map<string, Resource[]> {
  */
 function buildTree(
   orgName: string,
-  resources: Resource[],
   folderMap: Map<string, Resource[]>,
   projectMap: Map<string, Resource[]>,
 ): TreeNodeData {
@@ -139,7 +138,7 @@ export function ResourceTree({
   const tree = useMemo(() => {
     const folderMap = buildFolderChildMap(resources)
     const projectMap = buildProjectChildMap(resources)
-    return buildTree(orgName, resources, folderMap, projectMap)
+    return buildTree(orgName, folderMap, projectMap)
   }, [orgName, resources])
 
   return (
