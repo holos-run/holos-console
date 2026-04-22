@@ -43,6 +43,12 @@ added:
 state format, extension points (`extraColumns`, `onDelete`), and when to use
 ResourceGrid v1 vs. the Resource Manager tree.
 
+**URL convention**: `docs/ui/resource-routing.md` — singular prefix for
+creation pages (`/organization/new`, `/folder/new`, `/project/new`); plural +
+identifier for scoped operations (`/organizations/$name/settings`). Includes
+the `returnTo` search-param contract and a worked example from the Resource
+Manager dropdown (HOL-867 / HOL-873).
+
 **Deferred**: Legacy sidebar destinations (Project tree, Organization tree,
 `/orgs/$orgName/resources`, folder-scoped index pages) are still present in
 the codebase but no longer reachable via the sidebar. Their removal is tracked
@@ -50,6 +56,7 @@ in a sibling cleanup plan.
 
 ## Guardrails
 
+- [Resource URL Convention](docs/ui/resource-routing.md) — Use singular prefix for creation pages (`/organization/new`, `/folder/new`, `/project/new`) and plural + identifier for scoped operations (`/organizations/$name/settings`). Do NOT place creation pages under plural prefixes (e.g. `/folders/new`) — this creates a namespace collision where `new` is both a keyword and a valid resource name.
 - [Demo Docs Routing](https://github.com/holos-run/holos-console-docs/tree/main/demo) — Demo setup materials and CUE example snippets belong in `holos-run/holos-console-docs/demo/`, **not** in this repo; demo-related issues must include concrete examples and operator guidance.
 - [Smoke Test Contract](https://github.com/holos-run/holos-console-docs/tree/main/demo/smoke-tests) — Smoke-test instructions must use `kubectl` commands for the resources required to observe the feature in the demo environment.
 - [Demo README](https://github.com/holos-run/holos-console-docs/blob/main/demo/README.md) — Forward pointer to the demo setup order, prerequisites, and per-template walkthroughs.
