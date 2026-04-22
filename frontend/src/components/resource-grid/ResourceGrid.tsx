@@ -315,15 +315,22 @@ export function ResourceGrid({
         header: 'Created At',
         cell: ({ getValue }) => {
           const raw = getValue()
-          try {
+          if (!raw) {
             return (
-              <span className="text-muted-foreground text-sm whitespace-nowrap">
-                {new Date(raw).toLocaleDateString()}
-              </span>
+              <span className="text-muted-foreground text-sm">—</span>
             )
-          } catch {
-            return <span className="text-muted-foreground text-sm">{raw}</span>
           }
+          const date = new Date(raw)
+          if (Number.isNaN(date.getTime())) {
+            return (
+              <span className="text-muted-foreground text-sm">—</span>
+            )
+          }
+          return (
+            <span className="text-muted-foreground text-sm whitespace-nowrap">
+              {date.toLocaleDateString()}
+            </span>
+          )
         },
       }),
       // Actions column — no accessor, uses the full row
