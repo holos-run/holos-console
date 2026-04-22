@@ -138,9 +138,11 @@ export const TemplatePolicyBindingTargetKind = /*@__PURE__*/
  * in the same hierarchy level. The HOL-618 admission plugin enforces this
  * by rejecting any TemplatePolicyBinding created in a project namespace.
  *
- * Handler wiring, RBAC enforcement, and ConnectRPC registration land in the
- * follow-on sub-ticket (HOL-595). This file defines only the proto contract
- * so subsequent phases have types to work against.
+ * Handler wiring, RBAC enforcement, and ConnectRPC registration shipped in
+ * HOL-595. The ancestor-aware policy picker (ListLinkableTemplatePolicies) is
+ * available via TemplatePolicyService and is wired into BindingForm so
+ * folder-scoped bindings can select org-scoped or parent-folder-scoped
+ * policies (HOL-835).
  *
  * @generated from service holos.console.v1.TemplatePolicyBindingService
  */

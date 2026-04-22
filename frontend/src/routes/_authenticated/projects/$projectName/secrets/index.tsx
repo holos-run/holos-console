@@ -48,7 +48,7 @@ export function SecretsListPage() {
     parentLabel: scope,
     displayName: secret.name,
     description: secret.description ?? '',
-    createdAt: '',
+    createdAt: secret.createdAt,
     detailHref: `/projects/${projectName}/secrets/${secret.name}`,
   }))
 

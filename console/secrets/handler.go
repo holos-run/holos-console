@@ -566,6 +566,7 @@ func (h *Handler) buildSecretMetadata(secret *corev1.Secret, shareUsers, shareRo
 		Accessible: accessible,
 		UserGrants: userGrants,
 		RoleGrants: roleGrants,
+		CreatedAt:  secret.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
 	if desc := GetDescription(secret); desc != "" {
 		md.Description = &desc

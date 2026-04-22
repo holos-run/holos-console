@@ -614,7 +614,10 @@ type SecretMetadata struct {
 	// description is a human-readable description of the secret's purpose.
 	Description *string `protobuf:"bytes,7,opt,name=description,proto3,oneof" json:"description,omitempty"`
 	// url is a URL associated with the secret (e.g. link to the service that uses it).
-	Url           *string `protobuf:"bytes,8,opt,name=url,proto3,oneof" json:"url,omitempty"`
+	Url *string `protobuf:"bytes,8,opt,name=url,proto3,oneof" json:"url,omitempty"`
+	// created_at is the RFC3339-formatted timestamp when the underlying Kubernetes
+	// Secret was created, sourced from metadata.creationTimestamp.
+	CreatedAt     string `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -687,6 +690,13 @@ func (x *SecretMetadata) GetDescription() string {
 func (x *SecretMetadata) GetUrl() string {
 	if x != nil && x.Url != nil {
 		return *x.Url
+	}
+	return ""
+}
+
+func (x *SecretMetadata) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
 	}
 	return ""
 }
@@ -1045,7 +1055,7 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\x13DeleteSecretRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aproject\x18\x02 \x01(\tR\aproject\"\x16\n" +
-	"\x14DeleteSecretResponse\"\x98\x02\n" +
+	"\x14DeleteSecretResponse\"\xb7\x02\n" +
 	"\x0eSecretMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
 	"\n" +
@@ -1056,7 +1066,9 @@ const file_holos_console_v1_secrets_proto_rawDesc = "" +
 	"\vrole_grants\x18\x06 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
 	"roleGrants\x12%\n" +
 	"\vdescription\x18\a \x01(\tH\x00R\vdescription\x88\x01\x01\x12\x15\n" +
-	"\x03url\x18\b \x01(\tH\x01R\x03url\x88\x01\x01B\x0e\n" +
+	"\x03url\x18\b \x01(\tH\x01R\x03url\x88\x01\x01\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\t \x01(\tR\tcreatedAtB\x0e\n" +
 	"\f_descriptionB\x06\n" +
 	"\x04_url\"\x94\x01\n" +
 	"\n" +
