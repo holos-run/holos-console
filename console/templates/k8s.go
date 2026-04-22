@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -799,6 +800,7 @@ func templateCRDToProto(tmpl *templatesv1alpha1.Template, isProject bool) *conso
 		Enabled:         tmpl.Spec.Enabled,
 		Version:         tmpl.Spec.Version,
 		LinkedTemplates: crdLinkedToProto(tmpl.Spec.LinkedTemplates),
+		CreatedAt:       tmpl.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
 
 	// Priority 1: CUE extraction for project-scope templates (ADR 018 design,

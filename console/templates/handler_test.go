@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
@@ -14,6 +15,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
+	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
@@ -1484,4 +1486,69 @@ func TestGetTemplateDefaultsValidation(t *testing.T) {
 			t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
 		}
 	})
+}
+
+// TestHandler_ListTemplates_CreatedAt asserts that Template.CreatedAt is
+// populated from the underlying Template CRD's CreationTimestamp in RFC3339 format.
+func TestHandler_ListTemplates_CreatedAt(t *testing.T) {
+	tests := []struct {
+		name        string
+		createdAt   time.Time
+		wantRFC3339 string
+	}{
+		{
+			name:        "UTC time is formatted as RFC3339",
+			createdAt:   time.Date(2026, 4, 22, 19, 51, 10, 0, time.UTC),
+			wantRFC3339: "2026-04-22T19:51:10Z",
+		},
+		{
+			name:        "non-UTC time is normalised to UTC in RFC3339",
+			createdAt:   time.Date(2025, 1, 15, 8, 30, 0, 0, time.FixedZone("EST", -5*60*60)),
+			wantRFC3339: "2025-01-15T13:30:00Z",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			const projectName = "my-project"
+			ns := testResolver.ProjectNamespace(projectName)
+
+			// Build a Template CRD with a controlled CreationTimestamp.
+			tmplCRD := &templatesv1alpha1.Template{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ts-template",
+					Namespace: ns,
+					Labels: map[string]string{
+						v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
+					},
+					CreationTimestamp: metav1.NewTime(tc.createdAt),
+				},
+				Spec: templatesv1alpha1.TemplateSpec{
+					DisplayName: "TS Template",
+					Description: "created_at round-trip test",
+					CueTemplate: validCue,
+				},
+			}
+
+			// Seed an empty Clientset (no ConfigMap templates) and inject the
+			// Template CRD directly as an extra ctrl object.
+			fakeClient := fake.NewClientset()
+			handler := newTestHandler(t, fakeClient, map[string]string{"platform@localhost": "owner"}, tmplCRD)
+
+			ctx := authedCtx("platform@localhost", nil)
+			resp, err := handler.ListTemplates(ctx, connect.NewRequest(&consolev1.ListTemplatesRequest{
+				Namespace: ns,
+			}))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(resp.Msg.Templates) != 1 {
+				t.Fatalf("expected 1 template, got %d", len(resp.Msg.Templates))
+			}
+			got := resp.Msg.Templates[0].CreatedAt
+			if got != tc.wantRFC3339 {
+				t.Errorf("CreatedAt: got %q, want %q", got, tc.wantRFC3339)
+			}
+		})
+	}
 }
