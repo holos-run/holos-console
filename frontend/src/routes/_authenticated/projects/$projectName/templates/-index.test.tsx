@@ -1,246 +1,355 @@
+/**
+ * Tests for the project-scoped unified Templates index (HOL-859).
+ *
+ * Exercises ResourceGrid v1 with all three template-family kinds:
+ *   Template, TemplatePolicy, TemplatePolicyBinding
+ *
+ * All query hooks are mocked. The test directly renders ProjectTemplatesIndexPage.
+ */
+
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
+
+// ---------------------------------------------------------------------------
+// Router mock
+// ---------------------------------------------------------------------------
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
   return {
     ...actual,
-    createFileRoute: () => () => ({ useParams: () => ({ projectName: 'test-project' }) }),
-    Link: ({ children, className, to, params }: { children: React.ReactNode; className?: string; to?: string; params?: Record<string, string> }) => (
-      <a href={to} data-params={JSON.stringify(params)} className={className}>{children}</a>
+    createFileRoute: () => () => ({
+      useParams: () => ({ projectName: 'test-project' }),
+      useSearch: () => ({}),
+      fullPath: '/projects/test-project/templates/',
+    }),
+    Link: ({
+      children,
+      to,
+      className,
+    }: {
+      children: React.ReactNode
+      to?: string
+      className?: string
+    }) => (
+      <a href={to ?? '#'} className={className}>
+        {children}
+      </a>
     ),
     useNavigate: () => vi.fn(),
   }
 })
 
-vi.mock('@/queries/templates', () => ({
-  useListTemplates: vi.fn(),
-  useDeleteTemplate: vi.fn(),
-  useCloneTemplate: vi.fn(),
-  useCheckUpdates: vi.fn().mockReturnValue({ data: [], isPending: false, error: null }),
-  useGetTemplate: vi.fn().mockReturnValue({ data: undefined, isPending: false, error: null }),
-  useGetProjectTemplatePolicyState: vi.fn().mockReturnValue({ data: undefined, isPending: false, error: null }),
+// ---------------------------------------------------------------------------
+// Console-config mock — predictable namespace prefixes
+// ---------------------------------------------------------------------------
+
+vi.mock('@/lib/console-config', () => ({
+  getConsoleConfig: vi.fn().mockReturnValue({
+    namespacePrefix: '',
+    organizationPrefix: 'org-',
+    folderPrefix: 'folder-',
+    projectPrefix: 'project-',
+  }),
 }))
 
-vi.mock('@/components/template-updates', () => ({
-  UpdatesAvailableBadge: () => null,
-  UpgradeDialog: () => null,
+// ---------------------------------------------------------------------------
+// Query mocks
+// ---------------------------------------------------------------------------
+
+vi.mock('@/queries/templates', () => ({
+  useAllTemplatesForOrg: vi.fn(),
+}))
+
+vi.mock('@/queries/templatePolicies', () => ({
+  useAllTemplatePoliciesForOrg: vi.fn(),
+}))
+
+vi.mock('@/queries/templatePolicyBindings', () => ({
+  useAllTemplatePolicyBindingsForOrg: vi.fn(),
 }))
 
 vi.mock('@/queries/projects', () => ({
   useGetProject: vi.fn(),
 }))
 
+vi.mock('@/queries/organizations', () => ({
+  useGetOrganization: vi.fn(),
+}))
+
+// OrgContext mock
+vi.mock('@/lib/org-context', () => ({
+  useOrg: vi.fn(),
+}))
+
+// ConnectRPC transport + query client mocks (for delete path)
+vi.mock('@connectrpc/connect-query', () => ({
+  useTransport: vi.fn().mockReturnValue({}),
+}))
+
+vi.mock('@tanstack/react-query', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-query')>()
+  return {
+    ...actual,
+    useQueryClient: vi.fn().mockReturnValue({
+      invalidateQueries: vi.fn().mockResolvedValue(undefined),
+    }),
+  }
+})
+
+vi.mock('@connectrpc/connect', () => ({
+  createClient: vi.fn().mockReturnValue({
+    deleteTemplate: vi.fn().mockResolvedValue({}),
+    deleteTemplatePolicy: vi.fn().mockResolvedValue({}),
+    deleteTemplatePolicyBinding: vi.fn().mockResolvedValue({}),
+  }),
+}))
+
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useListTemplates, useDeleteTemplate, useCloneTemplate, useGetProjectTemplatePolicyState } from '@/queries/templates'
+// ---------------------------------------------------------------------------
+// Imports after mocks
+// ---------------------------------------------------------------------------
+
+import { useAllTemplatesForOrg } from '@/queries/templates'
+import { useAllTemplatePoliciesForOrg } from '@/queries/templatePolicies'
+import { useAllTemplatePolicyBindingsForOrg } from '@/queries/templatePolicyBindings'
 import { useGetProject } from '@/queries/projects'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { DeploymentTemplatesPage } from './index'
+import { useGetOrganization } from '@/queries/organizations'
+import { useOrg } from '@/lib/org-context'
+import { ProjectTemplatesIndexPage } from './index'
 
-function makeTemplate(name: string, description = '', displayName = '') {
-  return { name, project: 'test-project', displayName, description, cueTemplate: '' }
+// ---------------------------------------------------------------------------
+// Test data helpers
+// ---------------------------------------------------------------------------
+
+function makeTemplate(name: string, namespace = 'project-test-project') {
+  return { name, namespace, displayName: name, description: '', cueTemplate: '' }
 }
 
-function setupMocks(templates = [makeTemplate('web-app', 'Standard web app')], userRole = Role.OWNER) {
-  ;(useListTemplates as Mock).mockReturnValue({ data: templates, isLoading: false, error: null })
-  ;(useDeleteTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
-  ;(useCloneTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ name: 'new-template' }), isPending: false })
-  ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
+function makePolicy(name: string, namespace = 'org-acme') {
+  return { name, namespace, displayName: name, description: '', rules: [] }
 }
 
-describe('DeploymentTemplatesPage', () => {
+function makeBinding(name: string, namespace = 'org-acme') {
+  return { name, namespace, displayName: name, description: '' }
+}
+
+// ---------------------------------------------------------------------------
+// Setup helpers
+// ---------------------------------------------------------------------------
+
+function setupMocks({
+  templates = [makeTemplate('my-template')],
+  policies = [] as ReturnType<typeof makePolicy>[],
+  bindings = [] as ReturnType<typeof makeBinding>[],
+  templatesPending = false,
+  policiesPending = false,
+  bindingsPending = false,
+  templatesError = null,
+  policiesError = null,
+  bindingsError = null,
+  projectRole = Role.OWNER,
+  orgRole = Role.OWNER,
+  orgName = 'acme',
+}: {
+  templates?: ReturnType<typeof makeTemplate>[]
+  policies?: ReturnType<typeof makePolicy>[]
+  bindings?: ReturnType<typeof makeBinding>[]
+  templatesPending?: boolean
+  policiesPending?: boolean
+  bindingsPending?: boolean
+  templatesError?: Error | null
+  policiesError?: Error | null
+  bindingsError?: Error | null
+  projectRole?: number
+  orgRole?: number
+  orgName?: string | null
+} = {}) {
+  ;(useOrg as Mock).mockReturnValue({ selectedOrg: orgName })
+  ;(useGetProject as Mock).mockReturnValue({
+    data: { name: 'test-project', userRole: projectRole },
+    isPending: false,
+  })
+  ;(useGetOrganization as Mock).mockReturnValue({
+    data: { name: orgName, userRole: orgRole },
+    isPending: false,
+  })
+  ;(useAllTemplatesForOrg as Mock).mockReturnValue({
+    data: templates,
+    isPending: templatesPending,
+    error: templatesError,
+  })
+  ;(useAllTemplatePoliciesForOrg as Mock).mockReturnValue({
+    data: policies,
+    isPending: policiesPending,
+    error: policiesError,
+  })
+  ;(useAllTemplatePolicyBindingsForOrg as Mock).mockReturnValue({
+    data: bindings,
+    isPending: bindingsPending,
+    error: bindingsError,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('ProjectTemplatesIndexPage (ResourceGrid v1)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('renders the templates list with template names', () => {
-    setupMocks([makeTemplate('web-app', 'Standard web app'), makeTemplate('worker', 'Background worker')])
-    render(<DeploymentTemplatesPage />)
-    expect(screen.getByText('web-app')).toBeInTheDocument()
-    expect(screen.getByText('worker')).toBeInTheDocument()
-  })
+  // -------------------------------------------------------------------------
+  // Default view
+  // -------------------------------------------------------------------------
 
-  it('renders description text', () => {
-    setupMocks([makeTemplate('web-app', 'Standard web application')])
-    render(<DeploymentTemplatesPage />)
-    expect(screen.getByText('Standard web application')).toBeInTheDocument()
-  })
-
-  it('shows empty state when no templates exist', () => {
-    setupMocks([])
-    render(<DeploymentTemplatesPage />)
-    expect(screen.getByText(/no deployment templates/i)).toBeInTheDocument()
-  })
-
-  it('renders Create Template button for owners', () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentTemplatesPage />)
-    expect(screen.getAllByRole('button', { name: /create template/i }).length).toBeGreaterThan(0)
-  })
-
-  it('renders Create Template button for editors', () => {
-    setupMocks([], Role.EDITOR)
-    render(<DeploymentTemplatesPage />)
-    expect(screen.getAllByRole('button', { name: /create template/i }).length).toBeGreaterThan(0)
-  })
-
-  it('does not render Create Template button for viewers', () => {
-    setupMocks([], Role.VIEWER)
-    render(<DeploymentTemplatesPage />)
-    expect(screen.queryByRole('button', { name: /create template/i })).not.toBeInTheDocument()
-  })
-
-  it('Create Template button is a link to the new page', () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentTemplatesPage />)
-    const links = screen.getAllByRole('link')
-    const createLinks = links.filter((l) => l.getAttribute('href')?.includes('/templates/new'))
-    expect(createLinks.length).toBeGreaterThan(0)
-  })
-
-  it('renders delete buttons for each template (owner)', () => {
-    setupMocks([makeTemplate('web-app'), makeTemplate('worker')], Role.OWNER)
-    render(<DeploymentTemplatesPage />)
-    const deleteButtons = screen.getAllByRole('button', { name: /delete/i })
-    expect(deleteButtons.length).toBeGreaterThanOrEqual(2)
-  })
-
-  it('does not render delete buttons for viewers', () => {
-    setupMocks([makeTemplate('web-app')], Role.VIEWER)
-    render(<DeploymentTemplatesPage />)
-    expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument()
-  })
-
-  it('empty state Create Template link points to new page', () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentTemplatesPage />)
-    const links = screen.getAllByRole('link')
-    const createLinks = links.filter((l) => l.getAttribute('href')?.includes('/templates/new'))
-    expect(createLinks.length).toBeGreaterThanOrEqual(2) // header + empty state
-  })
-
-  it('shows error state when fetch fails', () => {
-    ;(useListTemplates as Mock).mockReturnValue({ data: undefined, isLoading: false, error: new Error('fetch failed') })
-    ;(useDeleteTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null, reset: vi.fn() })
-    ;(useCloneTemplate as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
-    ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
-    render(<DeploymentTemplatesPage />)
-    expect(screen.getByText(/fetch failed/)).toBeInTheDocument()
-  })
-
-  describe('clone action', () => {
-    it('renders clone buttons for templates (owner)', () => {
-      setupMocks([makeTemplate('web-app'), makeTemplate('worker')], Role.OWNER)
-      render(<DeploymentTemplatesPage />)
-      const cloneButtons = screen.getAllByRole('button', { name: /clone/i })
-      expect(cloneButtons.length).toBeGreaterThanOrEqual(2)
+  it('renders default view showing only Template rows from the current project', () => {
+    // Default URL: kind=Template, lineage=descendants → only Template rows visible.
+    setupMocks({
+      templates: [makeTemplate('web-template', 'project-test-project')],
+      policies: [makePolicy('strict-policy', 'org-acme')],
+      bindings: [makeBinding('prod-binding', 'org-acme')],
     })
+    render(<ProjectTemplatesIndexPage projectName="test-project" />)
 
-    it('renders clone buttons for templates (editor)', () => {
-      setupMocks([makeTemplate('web-app')], Role.EDITOR)
-      render(<DeploymentTemplatesPage />)
-      expect(screen.getByRole('button', { name: /clone web-app/i })).toBeInTheDocument()
+    // Template row visible (kind=Template is the default kind filter)
+    expect(screen.getByText('web-template')).toBeInTheDocument()
+
+    // Policy and binding rows are present in the DOM but filtered out by the
+    // kind filter default (kind=Template). They should not appear.
+    expect(screen.queryByText('strict-policy')).not.toBeInTheDocument()
+    expect(screen.queryByText('prod-binding')).not.toBeInTheDocument()
+  })
+
+  it('shows loading skeleton while any fan-out is pending', () => {
+    setupMocks({ templatesPending: true, templates: [] })
+    render(<ProjectTemplatesIndexPage projectName="test-project" />)
+    expect(screen.getByTestId('resource-grid-loading')).toBeInTheDocument()
+  })
+
+  it('shows error when templates fetch fails and no rows available', () => {
+    setupMocks({
+      templates: [],
+      policies: [],
+      bindings: [],
+      templatesError: new Error('templates fetch failed'),
     })
+    render(<ProjectTemplatesIndexPage projectName="test-project" />)
+    expect(screen.getByText(/templates fetch failed/i)).toBeInTheDocument()
+  })
 
-    it('renders clone buttons for templates (viewer)', () => {
-      setupMocks([makeTemplate('web-app')], Role.VIEWER)
-      render(<DeploymentTemplatesPage />)
-      expect(screen.getByRole('button', { name: /clone web-app/i })).toBeInTheDocument()
+  // -------------------------------------------------------------------------
+  // No org selected
+  // -------------------------------------------------------------------------
+
+  it('renders "select an organization" message when orgName is null', () => {
+    setupMocks({ orgName: null })
+    render(<ProjectTemplatesIndexPage projectName="test-project" />)
+    expect(screen.getByText(/select an organization/i)).toBeInTheDocument()
+  })
+
+  // -------------------------------------------------------------------------
+  // Kind filter
+  // -------------------------------------------------------------------------
+
+  it('kind filter renders three kind checkboxes', () => {
+    setupMocks({
+      templates: [makeTemplate('my-template')],
+      policies: [makePolicy('my-policy')],
     })
+    render(<ProjectTemplatesIndexPage projectName="test-project" />)
+    const kindFilter = screen.getByTestId('kind-filter')
+    expect(kindFilter).toBeInTheDocument()
+    expect(screen.getByLabelText(/filter template$/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/filter template policy$/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/filter template policy binding/i)).toBeInTheDocument()
+  })
 
-    it('clicking clone opens dialog', async () => {
-      setupMocks([makeTemplate('web-app', 'Standard web app')], Role.OWNER)
-      const user = userEvent.setup()
-      render(<DeploymentTemplatesPage />)
-      await user.click(screen.getByRole('button', { name: /clone web-app/i }))
+  // -------------------------------------------------------------------------
+  // New dropdown
+  // -------------------------------------------------------------------------
+
+  it('New dropdown lists three entries for org OWNER', () => {
+    setupMocks({ orgRole: Role.OWNER, projectRole: Role.OWNER })
+    render(<ProjectTemplatesIndexPage projectName="test-project" />)
+    // The "New" button should be a dropdown when all three kinds have canCreate+newHref
+    const newBtn = screen.getByRole('button', { name: /new/i })
+    expect(newBtn).toBeInTheDocument()
+    fireEvent.click(newBtn)
+    expect(screen.getByText('Template')).toBeInTheDocument()
+    expect(screen.getByText('Template Policy')).toBeInTheDocument()
+    expect(screen.getByText('Template Policy Binding')).toBeInTheDocument()
+  })
+
+  it('only Template "New" button shown for org VIEWER who can still create project templates', () => {
+    // projectRole=OWNER can create Templates; orgRole=VIEWER cannot create policies/bindings.
+    setupMocks({ orgRole: Role.VIEWER, projectRole: Role.OWNER })
+    render(<ProjectTemplatesIndexPage projectName="test-project" />)
+    // With only one creatable kind, the New button should be a single link, not a dropdown.
+    expect(screen.getByRole('button', { name: /new template$/i })).toBeInTheDocument()
+  })
+
+  // -------------------------------------------------------------------------
+  // Delete flow
+  // -------------------------------------------------------------------------
+
+  it('delete button opens ConfirmDeleteDialog', async () => {
+    setupMocks({
+      templates: [makeTemplate('my-template', 'project-test-project')],
+    })
+    render(<ProjectTemplatesIndexPage projectName="test-project" />)
+    const deleteBtn = screen.getByRole('button', { name: /delete my-template/i })
+    fireEvent.click(deleteBtn)
+    await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
-
-    it('confirming clone calls cloneTemplate', async () => {
-      setupMocks([makeTemplate('web-app', 'Standard web app')], Role.OWNER)
-      const user = userEvent.setup()
-      render(<DeploymentTemplatesPage />)
-      await user.click(screen.getByRole('button', { name: /clone web-app/i }))
-      const nameInput = screen.getByRole('textbox', { name: /^name$/i })
-      await user.clear(nameInput)
-      await user.type(nameInput, 'web-app-copy')
-      const displayNameInput = screen.getByRole('textbox', { name: /display name/i })
-      await user.clear(displayNameInput)
-      await user.type(displayNameInput, 'Web App Copy')
-      await user.click(screen.getByRole('button', { name: /^clone$/i }))
-      const mutateAsync = (useCloneTemplate as Mock).mock.results[0].value.mutateAsync
-      await waitFor(() => {
-        expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
-          sourceName: 'web-app',
-          name: 'web-app-copy',
-          displayName: 'Web App Copy',
-        }))
-      })
-    })
-
-    it('cancel closes clone dialog without saving', async () => {
-      setupMocks([makeTemplate('web-app', 'Standard web app')], Role.OWNER)
-      const user = userEvent.setup()
-      render(<DeploymentTemplatesPage />)
-      await user.click(screen.getByRole('button', { name: /clone web-app/i }))
-      await user.click(screen.getByRole('button', { name: /cancel/i }))
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-      const mutateAsync = (useCloneTemplate as Mock).mock.results[0].value.mutateAsync
-      expect(mutateAsync).not.toHaveBeenCalled()
-    })
   })
 
-  // HOL-559: the project templates list surfaces policy drift for project-
-  // scope templates via the per-row ProjectTemplateDriftBadge, which fetches
-  // GetProjectTemplatePolicyState. Project-scope templates do not carry a
-  // ProjectTemplateStatusSummary surface (HOL-567 scope decision).
-  describe('policy drift badge', () => {
-    it('renders the Policy Drift badge on rows whose state.drift is true', () => {
-      setupMocks([makeTemplate('web-app', 'Standard web app')])
-      ;(useGetProjectTemplatePolicyState as Mock).mockReturnValue({
-        data: { drift: true, hasAppliedState: true, appliedSet: [], currentSet: [], addedRefs: [], removedRefs: [] },
-        isPending: false,
-        error: null,
-      })
-      render(<DeploymentTemplatesPage />)
-      expect(screen.getByTestId('policy-drift-badge')).toBeInTheDocument()
-    })
+  // -------------------------------------------------------------------------
+  // Parent column
+  // -------------------------------------------------------------------------
 
-    it('does not render the Policy Drift badge when state.drift is false', () => {
-      setupMocks([makeTemplate('web-app', 'Standard web app')])
-      ;(useGetProjectTemplatePolicyState as Mock).mockReturnValue({
-        data: { drift: false, hasAppliedState: true, appliedSet: [], currentSet: [], addedRefs: [], removedRefs: [] },
-        isPending: false,
-        error: null,
-      })
-      render(<DeploymentTemplatesPage />)
-      expect(screen.queryByTestId('policy-drift-badge')).not.toBeInTheDocument()
+  it('Parent column shown when rows span multiple scopes', () => {
+    setupMocks({
+      templates: [
+        makeTemplate('proj-tpl', 'project-test-project'),
+        makeTemplate('org-tpl', 'org-acme'),
+      ],
+      policies: [],
+      bindings: [],
     })
+    render(<ProjectTemplatesIndexPage projectName="test-project" />)
+    // With all kinds selected (clearing default Template-only filter isn't needed
+    // here — the parent column visibility is driven by having >1 unique parentId).
+    // Both templates are in the row list (filtered by kind=Template which shows both).
+    expect(screen.getByRole('columnheader', { name: /parent/i })).toBeInTheDocument()
+  })
 
-    it('does not render the Policy Drift badge when state is undefined (pending/error)', () => {
-      setupMocks([makeTemplate('web-app', 'Standard web app')])
-      ;(useGetProjectTemplatePolicyState as Mock).mockReturnValue({
-        data: undefined,
-        isPending: true,
-        error: null,
-      })
-      render(<DeploymentTemplatesPage />)
-      expect(screen.queryByTestId('policy-drift-badge')).not.toBeInTheDocument()
+  it('Parent column hidden when all rows share the same parent', () => {
+    setupMocks({
+      templates: [
+        makeTemplate('tpl-a', 'project-test-project'),
+        makeTemplate('tpl-b', 'project-test-project'),
+      ],
     })
+    render(<ProjectTemplatesIndexPage projectName="test-project" />)
+    expect(screen.queryByRole('columnheader', { name: /parent/i })).not.toBeInTheDocument()
+  })
 
-    it('renders the Policy Drift badge for viewers as well (read-only signal)', () => {
-      setupMocks([makeTemplate('web-app', 'Standard web app')], Role.VIEWER)
-      ;(useGetProjectTemplatePolicyState as Mock).mockReturnValue({
-        data: { drift: true, hasAppliedState: true, appliedSet: [], currentSet: [], addedRefs: [], removedRefs: [] },
-        isPending: false,
-        error: null,
-      })
-      render(<DeploymentTemplatesPage />)
-      expect(screen.getByTestId('policy-drift-badge')).toBeInTheDocument()
-    })
+  // -------------------------------------------------------------------------
+  // Fan-out hooks called with orgName
+  // -------------------------------------------------------------------------
+
+  it('calls all three fan-out hooks with the selected orgName', () => {
+    setupMocks({ orgName: 'my-org' })
+    render(<ProjectTemplatesIndexPage projectName="test-project" />)
+    expect(useAllTemplatesForOrg).toHaveBeenCalledWith('my-org')
+    expect(useAllTemplatePoliciesForOrg).toHaveBeenCalledWith('my-org')
+    expect(useAllTemplatePolicyBindingsForOrg).toHaveBeenCalledWith('my-org')
   })
 })
