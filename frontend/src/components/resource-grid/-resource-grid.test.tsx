@@ -145,6 +145,27 @@ describe('ResourceGrid', () => {
     expect(screen.getByText('A test secret')).toBeInTheDocument()
   })
 
+  // --- Created At cell ---
+
+  it('renders a localized date string when createdAt is a valid ISO string', () => {
+    // Use a fixed RFC3339 timestamp and assert the cell is non-empty and not
+    // the placeholder.
+    renderGrid({ rows: [makeRow({ createdAt: '2025-01-15T12:00:00Z' })] })
+    // new Date('2025-01-15T12:00:00Z').toLocaleDateString() in jsdom is '1/15/2025'
+    const cell = screen.getByText(/\d+\/\d+\/\d+/)
+    expect(cell).toBeInTheDocument()
+  })
+
+  it('renders em-dash placeholder when createdAt is an empty string', () => {
+    renderGrid({ rows: [makeRow({ createdAt: '' })] })
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+
+  it('renders em-dash placeholder when createdAt is an unparseable string', () => {
+    renderGrid({ rows: [makeRow({ createdAt: 'not-a-date' })] })
+    expect(screen.getByText('—')).toBeInTheDocument()
+  })
+
   it('links display name to detailHref', () => {
     renderGrid()
     const link = screen.getByRole('link', { name: /my secret/i })
