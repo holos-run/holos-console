@@ -51,7 +51,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     },
     useNavigate: () => mockNavigate,
     useRouter: () => ({
-      state: { location: { pathname: '/resource-manager', search: '?expanded=folder-a' } },
+      state: { location: { pathname: '/resource-manager', searchStr: '?expanded=folder-a' } },
     }),
   }
 })

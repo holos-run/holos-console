@@ -216,7 +216,8 @@ export function ResourceManagerPage() {
  */
 function NewDropdown({ orgName }: { orgName: string }) {
   const router = useRouter()
-  const returnTo = buildReturnTo(router.state.location)
+  const { pathname, searchStr } = router.state.location
+  const returnTo = buildReturnTo({ pathname, search: searchStr })
 
   return (
     <DropdownMenu>
