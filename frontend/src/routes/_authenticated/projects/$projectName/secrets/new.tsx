@@ -6,7 +6,7 @@
  * phase and queued for the sibling cleanup plan.
  */
 
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,13 +47,26 @@ export function SecretCreatePage({ projectName }: { projectName: string }) {
   const [url, setUrl] = useState('')
   const [data, setData] = useState<Record<string, Uint8Array>>({})
   const [error, setError] = useState<string | null>(null)
+  const [grantsInitialized, setGrantsInitialized] = useState(false)
+  const [userGrants, setUserGrants] = useState<CreateGrant[]>([])
+  const [roleGrants, setRoleGrants] = useState<CreateGrant[]>([])
 
-  // Initialize grants from project defaults + creator-as-OWNER on first mount
   const creatorEmail = (user?.profile?.email as string) || ''
-  const defaultUserGrants = (project?.defaultUserGrants ?? []) as CreateGrant[]
-  const defaultRoleGrants = (project?.defaultRoleGrants ?? []) as CreateGrant[]
+  const defaultUserGrants = useMemo(
+    () => (project?.defaultUserGrants ?? []) as CreateGrant[],
+    [project],
+  )
+  const defaultRoleGrants = useMemo(
+    () => (project?.defaultRoleGrants ?? []) as CreateGrant[],
+    [project],
+  )
+  const hasDefaults = defaultUserGrants.length > 0 || defaultRoleGrants.length > 0
 
-  const [userGrants, setUserGrants] = useState<CreateGrant[]>(() => {
+  // Initialize grants once the project record loads. Using an effect (not a
+  // useState lazy initializer) ensures we capture the real project defaults
+  // rather than the undefined-on-first-render placeholder.
+  useEffect(() => {
+    if (grantsInitialized || !project) return
     const creatorGrant: CreateGrant = { principal: creatorEmail, role: Role.OWNER }
     const seenPrincipals = new Set([creatorEmail])
     const grants = [creatorGrant]
@@ -63,12 +76,10 @@ export function SecretCreatePage({ projectName }: { projectName: string }) {
         grants.push({ principal: g.principal, role: g.role })
       }
     }
-    return grants
-  })
-  const [roleGrants, setRoleGrants] = useState<CreateGrant[]>(() =>
-    defaultRoleGrants.map((g) => ({ principal: g.principal, role: g.role })),
-  )
-  const hasDefaults = defaultUserGrants.length > 0 || defaultRoleGrants.length > 0
+    setUserGrants(grants)
+    setRoleGrants(defaultRoleGrants.map((g) => ({ principal: g.principal, role: g.role })))
+    setGrantsInitialized(true)
+  }, [project, grantsInitialized, creatorEmail, defaultUserGrants, defaultRoleGrants])
 
   const handleCreate = async () => {
     if (!name.trim()) {
