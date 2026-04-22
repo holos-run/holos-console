@@ -1,19 +1,47 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+/**
+ * Tests for the Deployments index page (HOL-858) — ResourceGrid v1 implementation.
+ *
+ * Mocks @/queries/deployments and @/queries/projects. Covers:
+ *  - DeploymentsDescription banner (copy-locking assertions)
+ *  - ResourceGrid renders project rows
+ *  - Delete flow via ConfirmDeleteDialog
+ *  - Extra columns: Phase badge and PolicyDrift badge
+ */
+
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { DeploymentPhase, type DeploymentStatusSummary } from '@/gen/holos/console/v1/deployments_pb'
+
+// ---------------------------------------------------------------------------
+// Router mock — Route.useParams / useSearch / useNavigate
+// ---------------------------------------------------------------------------
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
   return {
     ...actual,
-    createFileRoute: () => () => ({ useParams: () => ({ projectName: 'test-project' }) }),
-    Link: ({ children, className, to, params }: { children: React.ReactNode; className?: string; to?: string; params?: Record<string, string> }) => (
-      <a href={to} data-params={JSON.stringify(params)} className={className}>{children}</a>
-    ),
+    createFileRoute: () => () => ({
+      useParams: () => ({ projectName: 'test-project' }),
+      useSearch: () => ({}),
+      fullPath: '/projects/test-project/deployments/',
+    }),
+    Link: ({
+      children,
+      className,
+    }: {
+      children: React.ReactNode
+      className?: string
+    }) => <a href="#" className={className}>{children}</a>,
     useNavigate: () => vi.fn(),
   }
 })
+
+// ---------------------------------------------------------------------------
+// Query mocks
+// ---------------------------------------------------------------------------
 
 vi.mock('@/queries/deployments', () => ({
   useListDeployments: vi.fn(),
@@ -26,17 +54,22 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
+// ---------------------------------------------------------------------------
+// Imports after mocks
+// ---------------------------------------------------------------------------
+
 import { useListDeployments, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { DeploymentPhase, type DeploymentStatusSummary, type DeploymentOutput } from '@/gen/holos/console/v1/deployments_pb'
-import { DeploymentsPage } from './index'
+import { DeploymentsListPage, DeploymentsDescription } from './index'
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function makeSummary(
   phase: DeploymentPhase,
   readyReplicas = 0,
   desiredReplicas = 0,
-  output?: DeploymentOutput,
   policyDrift?: boolean,
 ): DeploymentStatusSummary {
   return {
@@ -48,369 +81,270 @@ function makeSummary(
     updatedReplicas: readyReplicas,
     observedGeneration: 0n,
     message: '',
-    output,
+    output: undefined,
     policyDrift,
   }
 }
 
-function makeOutput(url: string, links: DeploymentOutput['links'] = []): DeploymentOutput {
-  return { $typeName: 'holos.console.v1.DeploymentOutput', url, links }
-}
-
-function makeLink(name: string, url: string, source: 'holos' | 'argocd' = 'holos'): DeploymentOutput['links'][number] {
-  return { $typeName: 'holos.console.v1.Link', url, title: name, description: '', source, name }
+type MockDeployment = {
+  name: string
+  project: string
+  displayName: string
+  description: string
+  image: string
+  tag: string
+  template: string
+  phase: DeploymentPhase
+  message: string
+  statusSummary?: DeploymentStatusSummary
 }
 
 function makeDeployment(
   name: string,
-  image = 'ghcr.io/org/app',
-  tag = 'v1.0.0',
   statusSummary?: DeploymentStatusSummary,
-) {
-  // Legacy phase (field 8) and message (field 9) are deprecated and no longer
-  // populated by the backend after the status cache rollout (#912). Tests
-  // populate statusSummary only.
-  return { name, project: 'test-project', image, tag, template: 'web-app', displayName: '', description: '', phase: DeploymentPhase.UNSPECIFIED, message: '', statusSummary }
+  description = '',
+): MockDeployment {
+  return {
+    name,
+    project: 'test-project',
+    displayName: '',
+    description,
+    image: 'ghcr.io/org/app',
+    tag: 'v1.0.0',
+    template: 'web-app',
+    phase: DeploymentPhase.UNSPECIFIED,
+    message: '',
+    statusSummary,
+  }
 }
 
-function setupMocks(
+function setupMocks({
   deployments = [
-    makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0', makeSummary(DeploymentPhase.RUNNING, 1, 1)),
-    makeDeployment('worker', 'ghcr.io/org/wrk', 'latest', makeSummary(DeploymentPhase.PENDING, 0, 1)),
+    makeDeployment('api', makeSummary(DeploymentPhase.RUNNING, 1, 1)),
+    makeDeployment('worker', makeSummary(DeploymentPhase.PENDING, 0, 1)),
   ],
+  isPending = false,
+  error = null as Error | null,
   userRole = Role.OWNER,
-) {
-  ;(useListDeployments as Mock).mockReturnValue({ data: deployments, isLoading: false, error: null })
-  ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, error: null, reset: vi.fn() })
-  ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole }, isLoading: false })
+} = {}) {
+  ;(useListDeployments as Mock).mockReturnValue({ data: deployments, isPending, error })
+  ;(useDeleteDeployment as Mock).mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
+    isPending: false,
+  })
+  ;(useGetProject as Mock).mockReturnValue({
+    data: { name: 'test-project', userRole },
+    isLoading: false,
+  })
 }
 
-describe('DeploymentsPage', () => {
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('DeploymentsListPage (ResourceGrid v1)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('renders deployment names', () => {
+  // -------------------------------------------------------------------------
+  // Description banner (copy-locking)
+  // -------------------------------------------------------------------------
+
+  describe('DeploymentsDescription banner', () => {
+    it('renders the description banner', () => {
+      render(<DeploymentsDescription />)
+      expect(screen.getByTestId('deployments-description')).toBeInTheDocument()
+    })
+
+    it('contains the three verbatim bullet points', () => {
+      render(<DeploymentsDescription />)
+      expect(
+        screen.getByText('Deployment is a collection of resource declarations (configuration).'),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText('Deploying is applying the configuration to the platform.'),
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText('Controllers reconcile current state with desired state.'),
+      ).toBeInTheDocument()
+    })
+
+    it('renders the description banner inside the full page', () => {
+      setupMocks()
+      render(<DeploymentsListPage />)
+      expect(screen.getByTestId('deployments-description')).toBeInTheDocument()
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // Grid — project rows
+  // -------------------------------------------------------------------------
+
+  it('renders deployment names in the grid', () => {
     setupMocks()
-    render(<DeploymentsPage />)
-    expect(screen.getByText('api')).toBeInTheDocument()
-    expect(screen.getByText('worker')).toBeInTheDocument()
+    render(<DeploymentsListPage />)
+    // Each name appears in both the Resource ID cell and the Display Name link
+    expect(screen.getAllByText('api').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('worker').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('renders image and tag for each deployment', () => {
-    setupMocks()
-    render(<DeploymentsPage />)
-    expect(screen.getByText('ghcr.io/org/app')).toBeInTheDocument()
-    expect(screen.getByText('v1.0.0')).toBeInTheDocument()
-    expect(screen.getByText('latest')).toBeInTheDocument()
+  it('shows loading skeleton when isPending is true', () => {
+    setupMocks({ isPending: true, deployments: [] })
+    render(<DeploymentsListPage />)
+    expect(screen.getByTestId('resource-grid-loading')).toBeInTheDocument()
   })
 
-  it('renders Running badge with ready/desired replicas from status_summary', () => {
-    setupMocks([
-      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0',
-        makeSummary(DeploymentPhase.RUNNING, 2, 3)),
-    ])
-    render(<DeploymentsPage />)
-    expect(screen.getByText(/running/i)).toBeInTheDocument()
-    expect(screen.getByText('2/3')).toBeInTheDocument()
+  it('shows error state when fetch fails and no rows', () => {
+    setupMocks({ error: new Error('fetch failed'), deployments: [] })
+    render(<DeploymentsListPage />)
+    expect(screen.getByText(/fetch failed/i)).toBeInTheDocument()
   })
 
-  it('renders Pending badge with replica count from status_summary', () => {
-    setupMocks([
-      makeDeployment('worker', 'ghcr.io/org/wrk', 'latest',
-        makeSummary(DeploymentPhase.PENDING, 0, 1)),
-    ])
-    render(<DeploymentsPage />)
-    expect(screen.getByText(/pending/i)).toBeInTheDocument()
-    expect(screen.getByText('0/1')).toBeInTheDocument()
+  it('shows empty state when no deployments exist', () => {
+    setupMocks({ deployments: [] })
+    render(<DeploymentsListPage />)
+    expect(screen.getByText(/no resources found/i)).toBeInTheDocument()
   })
 
-  it('renders Failed badge with replica count from status_summary', () => {
-    setupMocks([
-      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0',
-        makeSummary(DeploymentPhase.FAILED, 0, 1)),
-    ])
-    render(<DeploymentsPage />)
-    expect(screen.getByText(/failed/i)).toBeInTheDocument()
-    expect(screen.getByText('0/1')).toBeInTheDocument()
+  it('single parent hides Parent column', () => {
+    setupMocks({ deployments: [makeDeployment('api'), makeDeployment('worker')] })
+    render(<DeploymentsListPage />)
+    // All rows have the same parentId (projectName) → Parent column hidden
+    expect(screen.queryByRole('columnheader', { name: /parent/i })).not.toBeInTheDocument()
   })
 
-  it('renders Unknown only when status_summary is missing', () => {
-    setupMocks([
-      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0' /* no summary */),
-    ])
-    render(<DeploymentsPage />)
-    expect(screen.getByText(/unknown/i)).toBeInTheDocument()
-    // No replica count rendered when summary is missing.
-    expect(screen.queryByText(/^\d+\/\d+$/)).not.toBeInTheDocument()
+  it('renders New Deployment button when user can create', () => {
+    setupMocks({ userRole: Role.OWNER })
+    render(<DeploymentsListPage />)
+    expect(screen.getByRole('button', { name: /new deployment/i })).toBeInTheDocument()
   })
 
-  it('omits replica count when desired_replicas is zero', () => {
-    setupMocks([
-      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0',
-        makeSummary(DeploymentPhase.RUNNING, 0, 0)),
-    ])
-    render(<DeploymentsPage />)
-    expect(screen.getByText(/running/i)).toBeInTheDocument()
-    expect(screen.queryByText('0/0')).not.toBeInTheDocument()
-  })
-
-  it('shows empty state when no deployments', () => {
-    setupMocks([])
-    render(<DeploymentsPage />)
-    expect(screen.getByText(/no deployments yet/i)).toBeInTheDocument()
-  })
-
-  it('renders Create Deployment link for owners', () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentsPage />)
-    const links = screen.getAllByRole('link', { name: /create deployment/i })
-    expect(links.length).toBeGreaterThan(0)
-    expect(links[0].getAttribute('href')).toContain('deployments/new')
-  })
-
-  it('renders Create Deployment link for editors', () => {
-    setupMocks([], Role.EDITOR)
-    render(<DeploymentsPage />)
-    const links = screen.getAllByRole('link', { name: /create deployment/i })
-    expect(links.length).toBeGreaterThan(0)
-    expect(links[0].getAttribute('href')).toContain('deployments/new')
-  })
-
-  it('does not render Create Deployment link for viewers', () => {
-    setupMocks([], Role.VIEWER)
-    render(<DeploymentsPage />)
-    expect(screen.queryByRole('link', { name: /create deployment/i })).not.toBeInTheDocument()
-  })
-
-  it('renders delete buttons for owners', () => {
-    setupMocks([makeDeployment('api')], Role.OWNER)
-    render(<DeploymentsPage />)
-    expect(screen.getAllByRole('button', { name: /delete/i }).length).toBeGreaterThanOrEqual(1)
-  })
-
-  it('does not render delete buttons for viewers', () => {
-    setupMocks([makeDeployment('api')], Role.VIEWER)
-    render(<DeploymentsPage />)
-    expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument()
+  it('does not render New Deployment button when user is viewer', () => {
+    setupMocks({ userRole: Role.VIEWER })
+    render(<DeploymentsListPage />)
+    expect(screen.queryByRole('button', { name: /new deployment/i })).not.toBeInTheDocument()
   })
 
   it('deployment name links to detail page', () => {
-    setupMocks([makeDeployment('api')])
-    render(<DeploymentsPage />)
+    setupMocks({ deployments: [makeDeployment('api')] })
+    render(<DeploymentsListPage />)
     const link = screen.getByRole('link', { name: 'api' })
-    expect(link.getAttribute('href')).toContain('deployments')
+    expect(link.getAttribute('href')).toContain('deployments/api')
   })
 
-  it('shows error state when fetch fails', () => {
-    ;(useListDeployments as Mock).mockReturnValue({ data: undefined, isLoading: false, error: new Error('fetch failed') })
-    ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false, error: null, reset: vi.fn() })
-    ;(useGetProject as Mock).mockReturnValue({ data: { name: 'test-project', userRole: Role.OWNER }, isLoading: false })
-    render(<DeploymentsPage />)
-    expect(screen.getByText(/fetch failed/)).toBeInTheDocument()
-  })
+  // -------------------------------------------------------------------------
+  // Delete flow
+  // -------------------------------------------------------------------------
 
-  it('opens delete dialog when delete button is clicked', async () => {
-    setupMocks([makeDeployment('api')], Role.OWNER)
-    render(<DeploymentsPage />)
-    fireEvent.click(screen.getByRole('button', { name: /delete api/i }))
+  it('delete button opens ConfirmDeleteDialog', async () => {
+    setupMocks({ deployments: [makeDeployment('api')] })
+    render(<DeploymentsListPage />)
+
+    const deleteBtn = screen.getByRole('button', { name: /delete api/i })
+    fireEvent.click(deleteBtn)
+
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
   })
 
-  it('Create Deployment link in empty state navigates to new page', () => {
-    setupMocks([], Role.OWNER)
-    render(<DeploymentsPage />)
-    const links = screen.getAllByRole('link', { name: /create deployment/i })
-    // All Create Deployment links should point to the new page
-    links.forEach((link) => {
-      expect(link.getAttribute('href')).toContain('deployments/new')
+  it('confirming delete invokes useDeleteDeployment.mutateAsync with { name }', async () => {
+    const mutateAsync = vi.fn().mockResolvedValue(undefined)
+    setupMocks({ deployments: [makeDeployment('api')] })
+    ;(useDeleteDeployment as Mock).mockReturnValue({ mutateAsync, isPending: false })
+
+    render(<DeploymentsListPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: /delete api/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /^delete$/i }))
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({ name: 'api' })
     })
   })
 
-  it('renders Open link when statusSummary.output.url is a safe http(s) URL', () => {
-    setupMocks([
-      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0',
-        makeSummary(DeploymentPhase.RUNNING, 1, 1, makeOutput('https://api.example.com'))),
-    ])
-    render(<DeploymentsPage />)
-    const link = screen.getByRole('link', { name: /open api/i })
-    expect(link.getAttribute('href')).toBe('https://api.example.com')
-    expect(link.getAttribute('target')).toBe('_blank')
-    expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+  // -------------------------------------------------------------------------
+  // Extra columns — Phase badge and Policy Drift badge
+  // -------------------------------------------------------------------------
+
+  describe('Phase column (extraColumns)', () => {
+    it('renders Running phase badge', () => {
+      setupMocks({
+        deployments: [makeDeployment('api', makeSummary(DeploymentPhase.RUNNING, 1, 1))],
+      })
+      render(<DeploymentsListPage />)
+      expect(screen.getByText(/running/i)).toBeInTheDocument()
+    })
+
+    it('renders Pending phase badge', () => {
+      setupMocks({
+        deployments: [makeDeployment('worker', makeSummary(DeploymentPhase.PENDING, 0, 1))],
+      })
+      render(<DeploymentsListPage />)
+      expect(screen.getByText(/pending/i)).toBeInTheDocument()
+    })
+
+    it('renders Unknown badge when statusSummary is absent', () => {
+      setupMocks({ deployments: [makeDeployment('api')] })
+      render(<DeploymentsListPage />)
+      expect(screen.getByText(/unknown/i)).toBeInTheDocument()
+    })
   })
 
-  it('does not render Open link when statusSummary.output.url is absent', () => {
-    setupMocks([
-      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0',
-        makeSummary(DeploymentPhase.RUNNING, 1, 1 /* no output */)),
-    ])
-    render(<DeploymentsPage />)
-    expect(screen.queryByRole('link', { name: /open api/i })).not.toBeInTheDocument()
-  })
-
-  it('does not render Open link when statusSummary.output.url is empty string', () => {
-    setupMocks([
-      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0',
-        makeSummary(DeploymentPhase.RUNNING, 1, 1, makeOutput(''))),
-    ])
-    render(<DeploymentsPage />)
-    expect(screen.queryByRole('link', { name: /open api/i })).not.toBeInTheDocument()
-  })
-
-  it('does not render Open link when output.url uses an unsafe scheme', () => {
-    // Defense-in-depth: templates are admin-authored, but the UI still
-    // refuses javascript:/data:/vbscript:/file: URLs so they cannot reach
-    // an anchor href and execute on click.
-    setupMocks([
-      makeDeployment('api', 'ghcr.io/org/app', 'v1.0.0',
-        makeSummary(DeploymentPhase.RUNNING, 1, 1, makeOutput('javascript:alert(1)'))),
-    ])
-    render(<DeploymentsPage />)
-    expect(screen.queryByRole('link', { name: /open api/i })).not.toBeInTheDocument()
-  })
-
-  describe('policy drift badge', () => {
-    // HOL-559: the deployment list surfaces policy drift when the backend
-    // populates status_summary.policy_drift. The flag is sourced from the
-    // folder-namespace render-state store via HOL-567.
-    it('renders the Policy Drift badge when policy_drift is true', () => {
-      setupMocks([
-        makeDeployment(
-          'api',
-          'ghcr.io/org/app',
-          'v1.0.0',
-          makeSummary(DeploymentPhase.RUNNING, 1, 1, undefined, true),
-        ),
-      ])
-      render(<DeploymentsPage />)
+  describe('PolicyDrift column (extraColumns)', () => {
+    it('renders the Policy Drift badge when policyDrift is true', () => {
+      setupMocks({
+        deployments: [
+          makeDeployment('api', makeSummary(DeploymentPhase.RUNNING, 1, 1, true)),
+        ],
+      })
+      render(<DeploymentsListPage />)
       expect(screen.getByTestId('policy-drift-badge')).toBeInTheDocument()
     })
 
-    it('does not render the Policy Drift badge when policy_drift is false', () => {
-      setupMocks([
-        makeDeployment(
-          'api',
-          'ghcr.io/org/app',
-          'v1.0.0',
-          makeSummary(DeploymentPhase.RUNNING, 1, 1, undefined, false),
-        ),
-      ])
-      render(<DeploymentsPage />)
+    it('does not render the Policy Drift badge when policyDrift is false', () => {
+      setupMocks({
+        deployments: [
+          makeDeployment('api', makeSummary(DeploymentPhase.RUNNING, 1, 1, false)),
+        ],
+      })
+      render(<DeploymentsListPage />)
       expect(screen.queryByTestId('policy-drift-badge')).not.toBeInTheDocument()
     })
 
-    it('does not render the Policy Drift badge when policy_drift is undefined', () => {
-      setupMocks([
-        makeDeployment(
-          'api',
-          'ghcr.io/org/app',
-          'v1.0.0',
-          makeSummary(DeploymentPhase.RUNNING, 1, 1),
-        ),
-      ])
-      render(<DeploymentsPage />)
+    it('does not render the Policy Drift badge when policyDrift is undefined', () => {
+      setupMocks({
+        deployments: [makeDeployment('api', makeSummary(DeploymentPhase.RUNNING, 1, 1))],
+      })
+      render(<DeploymentsListPage />)
       expect(screen.queryByTestId('policy-drift-badge')).not.toBeInTheDocument()
     })
 
     it('renders the Policy Drift badge for viewers as well (read-only signal)', () => {
-      setupMocks(
-        [
-          makeDeployment(
-            'api',
-            'ghcr.io/org/app',
-            'v1.0.0',
-            makeSummary(DeploymentPhase.RUNNING, 1, 1, undefined, true),
-          ),
+      setupMocks({
+        deployments: [
+          makeDeployment('api', makeSummary(DeploymentPhase.RUNNING, 1, 1, true)),
         ],
-        Role.VIEWER,
-      )
-      render(<DeploymentsPage />)
+        userRole: Role.VIEWER,
+      })
+      render(<DeploymentsListPage />)
       expect(screen.getByTestId('policy-drift-badge')).toBeInTheDocument()
     })
   })
 
-  // HOL-575: when a deployment publishes more than the primary URL via
-  // `output.links`, surface a small "+N" indicator next to the existing
-  // open-link icon so operators can see at a glance that more links are
-  // available on the detail page. The indicator never appears when
-  // links is empty, when there is no primary URL, or when the link list
-  // length is below 1.
-  describe('extra links indicator (+N)', () => {
-    it('renders a "+N" links indicator when output.links has additional entries', () => {
-      setupMocks([
-        makeDeployment(
-          'api',
-          'ghcr.io/org/app',
-          'v1.0.0',
-          makeSummary(
-            DeploymentPhase.RUNNING,
-            1,
-            1,
-            makeOutput('https://api.example.com', [
-              makeLink('logs', 'https://logs.example.com'),
-              makeLink('metrics', 'https://metrics.example.com', 'argocd'),
-            ]),
-          ),
-        ),
-      ])
-      render(<DeploymentsPage />)
-      expect(screen.getByTestId('deployment-extra-links-api')).toHaveTextContent('+2')
-    })
+  // -------------------------------------------------------------------------
+  // Description column
+  // -------------------------------------------------------------------------
 
-    it('does not render the "+N" indicator when output.links is empty', () => {
-      setupMocks([
-        makeDeployment(
-          'api',
-          'ghcr.io/org/app',
-          'v1.0.0',
-          makeSummary(DeploymentPhase.RUNNING, 1, 1, makeOutput('https://api.example.com', [])),
-        ),
-      ])
-      render(<DeploymentsPage />)
-      expect(screen.queryByTestId('deployment-extra-links-api')).not.toBeInTheDocument()
-    })
-
-    it('does not render the "+N" indicator when output.url is empty', () => {
-      // The icon affordance is keyed off output.url; without a primary URL
-      // the icon does not render and the "+N" indicator has nothing to sit
-      // next to. Surfacing extra links without the open-link icon would
-      // be inconsistent with the contract documented on the icon.
-      setupMocks([
-        makeDeployment(
-          'api',
-          'ghcr.io/org/app',
-          'v1.0.0',
-          makeSummary(DeploymentPhase.RUNNING, 1, 1, makeOutput('', [makeLink('logs', 'https://logs.example.com')])),
-        ),
-      ])
-      render(<DeploymentsPage />)
-      expect(screen.queryByTestId('deployment-extra-links-api')).not.toBeInTheDocument()
-    })
-
-    it('does not count secondary links whose URL is unsafe', () => {
-      // Defense-in-depth: links that fail the http/https allowlist do not
-      // render in the detail-page Links section, so they should not be
-      // counted by the list-page "+N" badge either.
-      setupMocks([
-        makeDeployment(
-          'api',
-          'ghcr.io/org/app',
-          'v1.0.0',
-          makeSummary(
-            DeploymentPhase.RUNNING,
-            1,
-            1,
-            makeOutput('https://api.example.com', [
-              makeLink('bad', 'javascript:alert(1)'),
-              makeLink('good', 'https://good.example.com'),
-            ]),
-          ),
-        ),
-      ])
-      render(<DeploymentsPage />)
-      expect(screen.getByTestId('deployment-extra-links-api')).toHaveTextContent('+1')
-    })
+  it('description column shows deployment description', () => {
+    setupMocks({ deployments: [makeDeployment('api', undefined, 'Serves the API')] })
+    render(<DeploymentsListPage />)
+    expect(screen.getByText('Serves the API')).toBeInTheDocument()
   })
 })
