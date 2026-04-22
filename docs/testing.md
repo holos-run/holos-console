@@ -178,8 +178,9 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/queries/-organizations.test.ts` | Organization query hooks: get, update, sharing, default sharing, delete |
 | `src/queries/-projects.test.ts` | useListProjects and useCreateProject hooks |
 | `src/queries/-templatePolicies.test.ts` | `aggregateFanOut` helper: idle/disabled queries, pending while fetching, org-only and org+folder concatenation, partial-failure tolerance, non-Error wrapping, empty input |
-| `src/components/create-org-dialog.test.tsx` | Create organization dialog: validation, submission |
-| `src/components/create-project-dialog.test.tsx` | Create project dialog: validation, submission |
+| `src/routes/_authenticated/organization/-new.test.tsx` | Create organization page: heading, full-page (not dialog), fields, slug auto-derivation, validation, submit, returnTo, error |
+| `src/routes/_authenticated/folder/-new.test.tsx` | Create folder page: heading, full-page (not dialog), fields, slug auto-derivation, validation, submit, returnTo, error, orgName guard |
+| `src/routes/_authenticated/project/-new.test.tsx` | Create project page: heading, full-page (not dialog), fields, slug auto-derivation, validation, submit, returnTo, error, orgName/folderName guards |
 | `src/components/resource-grid/-resource-grid.test.tsx` | ResourceGrid v1: column headers, kind filter, lineage filter, global search, empty/loading/error states, delete-confirm dialog |
 | `src/components/ui/-confirm-delete-dialog.test.tsx` | ConfirmDeleteDialog: open/close, confirm, error, isDeleting state |
 | `src/components/-app-sidebar.tree.test.tsx` | Sidebar integration (real primitives): enabled entries render Link, disabled entries render tooltip-wrapped button |
