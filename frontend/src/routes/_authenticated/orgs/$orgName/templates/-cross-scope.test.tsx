@@ -33,6 +33,7 @@ vi.mock('@/queries/templates', () => ({
   useUpdateTemplate: vi.fn(),
   useDeleteTemplate: vi.fn(),
   useListTemplateExamples: vi.fn().mockReturnValue({ data: [], isPending: false, error: null }),
+  useGetTemplateDefaults: vi.fn(),
   useRenderTemplate: vi.fn().mockReturnValue({
     data: undefined,
     error: null,
@@ -52,6 +53,7 @@ import {
   useGetTemplate,
   useUpdateTemplate,
   useDeleteTemplate,
+  useGetTemplateDefaults,
 } from '@/queries/templates'
 import { ConsolidatedTemplateEditorPage } from './$namespace.$name'
 
@@ -64,6 +66,7 @@ const cases = [
 describe('ConsolidatedTemplateEditorPage cross-scope equivalence (HOL-607)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    ;(useGetTemplateDefaults as Mock).mockReturnValue({ data: undefined })
   })
 
   it.each(cases)(
