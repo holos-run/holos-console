@@ -21,21 +21,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useAllTemplatePoliciesForOrg } from '@/queries/templatePolicies'
+import { useListTemplatePolicies } from '@/queries/templatePolicies'
 import type { TemplatePolicy } from '@/queries/templatePolicies'
 import { useGetOrganization } from '@/queries/organizations'
 import {
   scopeDisplayLabel,
   scopeLabelFromNamespace,
   scopeNameFromNamespace,
+  namespaceForOrg,
 } from '@/lib/scope-labels'
 
 export const Route = createFileRoute(
@@ -51,12 +45,6 @@ function OrgTemplatePoliciesIndexRoute() {
 
 const columnHelper = createColumnHelper<TemplatePolicy>()
 
-// HOL-793: scope filter values. Policies live at org or folder scope only
-// (HOL-590), so the project option is shown but filters to zero rows — the
-// explicit empty-result state teaches the constraint rather than hiding the
-// option silently.
-type ScopeFilter = 'all' | 'org' | 'folder' | 'project'
-
 export function OrgTemplatePoliciesIndexPage({
   orgName: propOrgName,
 }: { orgName?: string } = {}) {
@@ -69,7 +57,12 @@ export function OrgTemplatePoliciesIndexPage({
   }
   const orgName = propOrgName ?? routeOrgName ?? ''
 
-  const { data: policies, isPending, error } = useAllTemplatePoliciesForOrg(orgName)
+  // HOL-917: this page is now org-scoped only. The RPC is called with the org
+  // namespace directly so only org-scoped policies are returned. The previous
+  // fan-out across org+folder namespaces and the "All scopes" Select filter
+  // have been removed.
+  const orgNamespace = namespaceForOrg(orgName)
+  const { data: policies, isPending, error } = useListTemplatePolicies(orgNamespace)
   const { data: org } = useGetOrganization(orgName)
 
   const userRole = org?.userRole ?? Role.VIEWER
@@ -77,13 +70,10 @@ export function OrgTemplatePoliciesIndexPage({
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
   const [globalFilter, setGlobalFilter] = useState('')
-  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all')
 
   const rows = useMemo(() => {
-    const all = policies ?? []
-    if (scopeFilter === 'all') return all
-    return all.filter((p) => scopeLabelFromNamespace(p.namespace) === scopeFilter)
-  }, [policies, scopeFilter])
+    return policies ?? []
+  }, [policies])
 
   const columns = useMemo(
     () => [
@@ -183,10 +173,7 @@ export function OrgTemplatePoliciesIndexPage({
     )
   }
 
-  // When the fan-out has both an error and partial data, fall through to the
-  // full grid so successfully-loaded rows remain visible. The banner below the
-  // CardHeader surfaces the error without blanking the table.
-  if (error && rows.length === 0) {
+  if (error && (policies ?? []).length === 0) {
     return (
       <Card>
         <CardContent className="pt-6">
@@ -238,28 +225,11 @@ export function OrgTemplatePoliciesIndexPage({
                 className="max-w-sm"
                 aria-label="Search template policies"
               />
-              <Select
-                value={scopeFilter}
-                onValueChange={(v) => setScopeFilter(v as ScopeFilter)}
-              >
-                <SelectTrigger
-                  className="w-[180px]"
-                  aria-label="Filter by scope"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All scopes</SelectItem>
-                  <SelectItem value="org">Organization</SelectItem>
-                  <SelectItem value="folder">Folder</SelectItem>
-                  <SelectItem value="project">Project</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             {rows.length === 0 && (
               <div className="mb-3 rounded-md border border-dashed border-border p-4 text-center">
                 <p className="text-sm text-muted-foreground">
-                  No policies match the current filters.
+                  No policies match the current search.
                 </p>
               </div>
             )}
