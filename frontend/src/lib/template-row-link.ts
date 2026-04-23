@@ -68,7 +68,7 @@ export function resolveTemplateRowHref(
 
     case 'TemplatePolicyBinding': {
       if (scope === 'org') {
-        return `/orgs/${scopeName}/template-policy-bindings/${name}`
+        return `/orgs/${scopeName}/template-bindings/${name}`
       }
       if (scope === 'folder') {
         return `/folders/${scopeName}/template-policy-bindings/${name}`

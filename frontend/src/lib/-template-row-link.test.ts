@@ -76,7 +76,7 @@ describe('resolveTemplateRowHref', () => {
     it('resolves org-scope TemplatePolicyBinding link', () => {
       expect(
         resolveTemplateRowHref('TemplatePolicyBinding', 'org-acme', 'my-binding'),
-      ).toBe('/orgs/acme/template-policy-bindings/my-binding')
+      ).toBe('/orgs/acme/template-bindings/my-binding')
     })
 
     it('resolves folder-scope TemplatePolicyBinding link', () => {

@@ -56,7 +56,7 @@ vi.mock('@/queries/organizations', () => ({
 import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { OrgTemplatePolicyBindingsIndexPage } from './index'
+import { OrgTemplateBindingsIndexPage } from './index'
 
 function makeBinding(
   name: string,
@@ -102,48 +102,51 @@ function setup(
   })
 }
 
-describe('OrgTemplatePolicyBindingsIndexPage', () => {
+describe('OrgTemplateBindingsIndexPage', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('renders empty state when no bindings exist', () => {
     setup(Role.OWNER, [])
-    render(<OrgTemplatePolicyBindingsIndexPage orgName="test-org" />)
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
     expect(
-      screen.getByText(/no template policy bindings yet/i),
+      screen.getByText(/no template bindings yet/i),
     ).toBeInTheDocument()
   })
 
-  it('renders the grid with scope-aware name links, scope badges, and target counts', () => {
+  it('renders the grid with org-scoped name links, scope badges, and target counts', () => {
     setup(Role.OWNER, [
       makeBinding('org-bind', {
         targets: 3,
         policyName: 'require-http',
       }),
+    ])
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
+
+    // Name cell renders as a link to the new template-bindings route.
+    const orgLink = screen.getByRole('link', { name: 'org-bind' })
+    expect(orgLink.getAttribute('href')).toBe(
+      '/orgs/test-org/template-bindings/org-bind',
+    )
+
+    // Scope and targets columns.
+    expect(screen.getByText(/^Organization: test-org$/)).toBeInTheDocument()
+    expect(screen.getByText(/3 targets/)).toBeInTheDocument()
+    expect(screen.getByText('require-http')).toBeInTheDocument()
+  })
+
+  it('renders plain text (no link) for non-org-scoped rows', () => {
+    setup(Role.OWNER, [
       makeBinding('fld-bind', {
         namespace: 'holos-fld-team-alpha',
         targets: 1,
         policyName: 'exclude-http',
       }),
     ])
-    render(<OrgTemplatePolicyBindingsIndexPage orgName="test-org" />)
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
 
-    // Name cells render as links scoped by the binding's namespace.
-    const orgLink = screen.getByRole('link', { name: 'org-bind' })
-    expect(orgLink.getAttribute('href')).toBe(
-      '/orgs/test-org/template-policy-bindings/org-bind',
-    )
-    const fldLink = screen.getByRole('link', { name: 'fld-bind' })
-    expect(fldLink.getAttribute('href')).toBe(
-      '/folders/team-alpha/template-policy-bindings/fld-bind',
-    )
-
-    // Scope and targets columns.
-    expect(screen.getByText(/^Organization: test-org$/)).toBeInTheDocument()
-    expect(screen.getByText(/^Folder: team-alpha$/)).toBeInTheDocument()
-    expect(screen.getByText(/3 targets/)).toBeInTheDocument()
-    expect(screen.getByText(/1 target\b/)).toBeInTheDocument()
-    expect(screen.getByText('require-http')).toBeInTheDocument()
-    expect(screen.getByText('exclude-http')).toBeInTheDocument()
+    // Folder-scoped binding should NOT produce a link (this page is org-only).
+    expect(screen.queryByRole('link', { name: 'fld-bind' })).not.toBeInTheDocument()
+    expect(screen.getByText('fld-bind')).toBeInTheDocument()
   })
 
   it('filters rows by the global search input', () => {
@@ -151,33 +154,29 @@ describe('OrgTemplatePolicyBindingsIndexPage', () => {
       makeBinding('alpha', { policyName: 'p1' }),
       makeBinding('beta', { policyName: 'p2' }),
     ])
-    render(<OrgTemplatePolicyBindingsIndexPage orgName="test-org" />)
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
 
-    const input = screen.getByLabelText('Search template policy bindings')
+    const input = screen.getByLabelText('Search template bindings')
     fireEvent.change(input, { target: { value: 'alph' } })
 
     expect(screen.getByRole('link', { name: 'alpha' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'beta' })).not.toBeInTheDocument()
   })
 
-  // HOL-917: the "All scopes / Organization / Folder" Select was removed. The
-  // page is now org-scoped only — no scope filter in the toolbar.
   it('does not render a scope filter select in the toolbar', () => {
     setup(Role.OWNER, [makeBinding('org-bind', { policyName: 'p1' })])
-    render(<OrgTemplatePolicyBindingsIndexPage orgName="test-org" />)
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
     expect(
       screen.queryByRole('combobox', { name: /filter by scope/i }),
     ).not.toBeInTheDocument()
   })
 
-  // HOL-917: prove that org-namespace bindings appear in the listing (the page
-  // now calls useListTemplatePolicyBindings(orgNamespace) directly).
   it('lists bindings returned from the org namespace RPC call', () => {
     setup(Role.OWNER, [
       makeBinding('bind-a', { policyName: 'policy-a' }),
       makeBinding('bind-b', { policyName: 'policy-b' }),
     ])
-    render(<OrgTemplatePolicyBindingsIndexPage orgName="test-org" />)
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
     expect(screen.getByRole('link', { name: 'bind-a' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'bind-b' })).toBeInTheDocument()
   })
@@ -185,7 +184,7 @@ describe('OrgTemplatePolicyBindingsIndexPage', () => {
   it('shows Create Binding for OWNER and EDITOR', () => {
     setup(Role.OWNER, [])
     const { unmount } = render(
-      <OrgTemplatePolicyBindingsIndexPage orgName="test-org" />,
+      <OrgTemplateBindingsIndexPage orgName="test-org" />,
     )
     expect(
       screen.getByRole('link', { name: /create binding/i }),
@@ -193,7 +192,7 @@ describe('OrgTemplatePolicyBindingsIndexPage', () => {
     unmount()
 
     setup(Role.EDITOR, [])
-    render(<OrgTemplatePolicyBindingsIndexPage orgName="test-org" />)
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
     expect(
       screen.getByRole('link', { name: /create binding/i }),
     ).toBeInTheDocument()
@@ -201,7 +200,7 @@ describe('OrgTemplatePolicyBindingsIndexPage', () => {
 
   it('hides Create Binding for VIEWER', () => {
     setup(Role.VIEWER, [])
-    render(<OrgTemplatePolicyBindingsIndexPage orgName="test-org" />)
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
     expect(
       screen.queryByRole('link', { name: /create binding/i }),
     ).not.toBeInTheDocument()
@@ -218,19 +217,19 @@ describe('OrgTemplatePolicyBindingsIndexPage', () => {
       isPending: false,
       error: null,
     })
-    render(<OrgTemplatePolicyBindingsIndexPage orgName="test-org" />)
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
     expect(screen.getByText('backend unreachable')).toBeInTheDocument()
   })
 
-  it('shows a partial-error banner when the fan-out errors but some rows loaded', () => {
+  it('shows a partial-error banner when the query errors but some rows loaded', () => {
     setup(
       Role.OWNER,
       [makeBinding('org-bind', { policyName: 'p1' })],
-      new Error('folder fetch failed'),
+      new Error('fetch failed'),
     )
-    render(<OrgTemplatePolicyBindingsIndexPage orgName="test-org" />)
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
     const banner = screen.getByTestId('bindings-partial-error')
-    expect(within(banner).getByText('folder fetch failed')).toBeInTheDocument()
+    expect(within(banner).getByText('fetch failed')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'org-bind' })).toBeInTheDocument()
   })
 })

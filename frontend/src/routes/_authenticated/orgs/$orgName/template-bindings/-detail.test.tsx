@@ -97,7 +97,7 @@ import {
 } from '@/queries/templatePolicyBindings'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { OrgTemplatePolicyBindingDetailPage } from './$bindingName'
+import { OrgTemplateBindingDetailPage } from './$bindingName'
 
 function makeBinding() {
   return {
@@ -106,7 +106,7 @@ function makeBinding() {
     description: 'Attach require-http to ingress',
     creatorEmail: 'jane@example.com',
     policyRef: {
-      namespace: "holos-org-test-org",
+      namespace: 'holos-org-test-org',
       name: 'require-http',
     },
     targetRefs: [
@@ -143,13 +143,13 @@ function setupMocks(
   })
 }
 
-describe('OrgTemplatePolicyBindingDetailPage', () => {
+describe('OrgTemplateBindingDetailPage', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('shows the Delete Binding button for OWNER', () => {
     setupMocks(Role.OWNER)
     render(
-      <OrgTemplatePolicyBindingDetailPage
+      <OrgTemplateBindingDetailPage
         orgName="test-org"
         bindingName="bind-a"
       />,
@@ -162,7 +162,7 @@ describe('OrgTemplatePolicyBindingDetailPage', () => {
   it('hides the Delete Binding button for EDITOR (DELETE is OWNER-only)', () => {
     setupMocks(Role.EDITOR)
     render(
-      <OrgTemplatePolicyBindingDetailPage
+      <OrgTemplateBindingDetailPage
         orgName="test-org"
         bindingName="bind-a"
       />,
@@ -178,7 +178,7 @@ describe('OrgTemplatePolicyBindingDetailPage', () => {
   it('hides the Delete Binding button for VIEWER', () => {
     setupMocks(Role.VIEWER)
     render(
-      <OrgTemplatePolicyBindingDetailPage
+      <OrgTemplateBindingDetailPage
         orgName="test-org"
         bindingName="bind-a"
       />,
@@ -191,7 +191,7 @@ describe('OrgTemplatePolicyBindingDetailPage', () => {
   it('seeds the form with initial values from the proto binding', () => {
     setupMocks(Role.OWNER)
     render(
-      <OrgTemplatePolicyBindingDetailPage
+      <OrgTemplateBindingDetailPage
         orgName="test-org"
         bindingName="bind-a"
       />,

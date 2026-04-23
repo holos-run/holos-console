@@ -33,19 +33,19 @@ import {
 } from '@/lib/scope-labels'
 
 export const Route = createFileRoute(
-  '/_authenticated/orgs/$orgName/template-policy-bindings/',
+  '/_authenticated/orgs/$orgName/template-bindings/',
 )({
-  component: OrgTemplatePolicyBindingsIndexRoute,
+  component: OrgTemplateBindingsIndexRoute,
 })
 
-function OrgTemplatePolicyBindingsIndexRoute() {
+function OrgTemplateBindingsIndexRoute() {
   const { orgName } = Route.useParams()
-  return <OrgTemplatePolicyBindingsIndexPage orgName={orgName} />
+  return <OrgTemplateBindingsIndexPage orgName={orgName} />
 }
 
 const columnHelper = createColumnHelper<TemplatePolicyBinding>()
 
-export function OrgTemplatePolicyBindingsIndexPage({
+export function OrgTemplateBindingsIndexPage({
   orgName: propOrgName,
 }: { orgName?: string } = {}) {
   let routeOrgName: string | undefined
@@ -57,10 +57,10 @@ export function OrgTemplatePolicyBindingsIndexPage({
   }
   const orgName = propOrgName ?? routeOrgName ?? ''
 
-  // HOL-917: this page is now org-scoped only. The RPC is called with the org
-  // namespace directly so only org-scoped bindings are returned. The previous
-  // fan-out across org+folder namespaces and the "All scopes" Select filter
-  // have been removed.
+  // This page is org-scoped only. The RPC is called with the org namespace
+  // directly so only org-scoped bindings are returned. Folder-scoped bindings
+  // are excluded — the folder-scoped index remains at
+  // /folders/$folderName/template-policy-bindings.
   const orgNamespace = namespaceForOrg(orgName)
   const { data: bindings, isPending, error } =
     useListTemplatePolicyBindings(orgNamespace)
@@ -86,28 +86,13 @@ export function OrgTemplatePolicyBindingsIndexPage({
           const b = row.original
           const label = b.displayName || b.name
           const scope = scopeLabelFromNamespace(b.namespace)
-          // Scope-aware link: bindings live at org or folder scope. A
-          // namespace that fails both prefix checks (stale cache, proto
-          // drift) renders as plain text rather than forging a link that
-          // would 404.
-          if (scope === 'folder') {
-            const folderName = scopeNameFromNamespace(b.namespace)
-            if (folderName) {
-              return (
-                <Link
-                  to="/folders/$folderName/template-policy-bindings/$bindingName"
-                  params={{ folderName, bindingName: b.name }}
-                  title={b.name}
-                  className="hover:underline font-medium"
-                >
-                  {label}
-                </Link>
-              )
-            }
-          } else if (scope === 'org') {
+          // This page shows org-scoped bindings only (namespaceForOrg). Any
+          // row from a folder namespace would indicate stale cache / proto
+          // drift — render as plain text to avoid a broken link.
+          if (scope === 'org') {
             return (
               <Link
-                to="/orgs/$orgName/template-policy-bindings/$bindingName"
+                to="/orgs/$orgName/template-bindings/$bindingName"
                 params={{ orgName, bindingName: b.name }}
                 title={b.name}
                 className="hover:underline font-medium"
@@ -181,7 +166,7 @@ export function OrgTemplatePolicyBindingsIndexPage({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Template Policy Bindings</CardTitle>
+          <CardTitle>Template Bindings</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2" data-testid="bindings-loading">
@@ -211,13 +196,13 @@ export function OrgTemplatePolicyBindingsIndexPage({
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <div>
           <p className="text-sm text-muted-foreground">
-            {orgName} / Template Policy Bindings
+            {orgName} / Template Bindings
           </p>
-          <CardTitle className="mt-1">Template Policy Bindings</CardTitle>
+          <CardTitle className="mt-1">Template Bindings</CardTitle>
         </div>
         {canWrite && (
           <Link
-            to="/orgs/$orgName/template-policy-bindings/new"
+            to="/orgs/$orgName/template-bindings/new"
             params={{ orgName }}
           >
             <Button size="sm">Create Binding</Button>
@@ -237,7 +222,7 @@ export function OrgTemplatePolicyBindingsIndexPage({
         {(bindings ?? []).length === 0 ? (
           <div className="rounded-md border border-dashed border-border p-6 text-center">
             <p className="text-sm font-medium">
-              No template policy bindings yet.
+              No template bindings yet.
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               Bindings attach a single TemplatePolicy to project templates and
@@ -253,7 +238,7 @@ export function OrgTemplatePolicyBindingsIndexPage({
                 value={globalFilter}
                 onChange={(e) => setGlobalFilter(e.target.value)}
                 className="max-w-sm"
-                aria-label="Search template policy bindings"
+                aria-label="Search template bindings"
               />
             </div>
             {rows.length === 0 ? (
