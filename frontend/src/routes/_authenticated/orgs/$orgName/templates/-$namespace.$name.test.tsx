@@ -75,7 +75,6 @@ function setupMocks(
     description?: string
     cueTemplate: string
     enabled?: boolean
-    linkedTemplates?: unknown[]
   } = {
     name: 'web',
     namespace: 'prj-billing',
@@ -83,7 +82,6 @@ function setupMocks(
     description: '',
     cueTemplate: '// cue body',
     enabled: true,
-    linkedTemplates: [],
   },
   examples: typeof EXAMPLE_HTTPROUTE[] = [EXAMPLE_HTTPROUTE, EXAMPLE_SECOND],
 ) {
@@ -209,7 +207,6 @@ describe('ConsolidatedTemplateEditorPage', () => {
         description: 'desc',
         cueTemplate: '// original',
         enabled: true,
-        linkedTemplates: [],
       },
       isPending: false,
       error: null,
@@ -261,7 +258,6 @@ describe('ConsolidatedTemplateEditorPage', () => {
         displayName: 'Web Service',
         cueTemplate: '// original cue body',
         enabled: true,
-        linkedTemplates: [],
       })
       vi.spyOn(window, 'confirm').mockReturnValue(true)
 
@@ -287,7 +283,6 @@ describe('ConsolidatedTemplateEditorPage', () => {
         displayName: 'Web Service',
         cueTemplate: originalCue,
         enabled: true,
-        linkedTemplates: [],
       })
       vi.spyOn(window, 'confirm').mockReturnValue(false)
 

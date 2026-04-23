@@ -6,7 +6,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { useRenderTemplate } from '@/queries/templates'
-import type { LinkedTemplateRef } from '@/queries/templates'
 
 interface RenderStatusIndicatorProps {
   isStale: boolean
@@ -95,8 +94,6 @@ export interface CueTemplateEditorProps {
   defaultProjectInput?: string
   /** Namespace used to resolve ancestor platform templates when rendering the preview */
   namespace: string
-  /** Linked template refs to include in the render preview for grouped output */
-  linkedTemplates?: LinkedTemplateRef[]
 }
 
 /**
@@ -112,7 +109,6 @@ export function CueTemplateEditor({
   isSaving = false,
   defaultProjectInput = '',
   namespace,
-  linkedTemplates = [],
 }: CueTemplateEditorProps) {
   const [activeTab, setActiveTab] = useState('editor')
   const [cueInput, setCueInput] = useState(() => prettyPrintJson(defaultProjectInput))
@@ -145,7 +141,6 @@ export function CueTemplateEditor({
     debouncedCueTemplate,
     debouncedCueInput,
     activeTab === 'preview',
-    linkedTemplates,
   )
 
   // Per-collection fields take precedence over the unified renderedYaml

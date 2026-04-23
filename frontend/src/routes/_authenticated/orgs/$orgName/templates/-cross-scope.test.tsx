@@ -81,7 +81,6 @@ describe('ConsolidatedTemplateEditorPage cross-scope equivalence (HOL-607)', () 
           description: 'cross-scope fixture',
           cueTemplate: '// body',
           enabled: true,
-          linkedTemplates: [],
         },
         isPending: false,
         error: null,
