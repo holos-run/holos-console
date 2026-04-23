@@ -202,6 +202,40 @@ Example: adding a hypothetical `TemplateRelease` kind to the Templates grid.
 
 No changes to `ResourceGrid` itself are required.
 
+## SPA navigation contract
+
+The Display Name cell **must** use TanStack Router `Link` for all intra-app
+navigation. Raw `<a href>` anchors are forbidden for in-app routes because they
+trigger a full-page reload, which re-authenticates the user and discards client
+state (the root cause of HOL-920 / HOL-921).
+
+**Invariant**: when `row.detailHref` is set, `ResourceGrid` renders a `<Link
+to={row.detailHref}>` (from `@tanstack/react-router`), never a bare `<a href>`.
+
+**Audit procedure**: run the following from the repo root after any change to
+`ResourceGrid.tsx` or its callers:
+
+```bash
+grep -rn '<a href=' frontend/src --include='*.tsx' | grep -v '\.test\.tsx'
+```
+
+The only permitted results are inside `frontend/src/test/` (test infrastructure
+mocks). Any hit in a production file is a regression and must be converted to
+`<Link>`.
+
+**Test coverage**: the `links display name to detailHref` case in
+`-resource-grid.test.tsx` asserts both `href` and `data-testid="router-link"`
+on the rendered element. The `data-testid` guard ensures a future regression to
+a bare anchor is caught by the test mock (which sets `data-testid="router-link"`
+on the `<Link>` stub). This test was hardened as part of HOL-921.
+
+**Rationale**: HOL-920 tracked the original regression where the Secrets list
+used a raw `<a href>` for row-click navigation. HOL-921 decomposed the fix into
+three phases: HOL-922 (replace the raw anchor with `<Link>`), HOL-923 (E2E
+regression guard), and HOL-924 (this audit + doc update). The contract is
+captured here so future agents adding new `detailHref` sources are aware of the
+requirement without having to trace the issue history.
+
 ## Unit-test reference
 
 `frontend/src/components/resource-grid/-resource-grid.test.tsx` — covers:
