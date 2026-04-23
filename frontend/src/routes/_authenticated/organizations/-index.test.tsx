@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
-import { vi } from 'vitest'
+import { vi, beforeEach, afterEach } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
 
@@ -39,16 +39,20 @@ vi.mock('@/lib/org-context', () => ({
   useOrg: vi.fn(),
 }))
 
+// Pin "now" to 2026-04-23T12:00:00Z so Created At column assertions are stable.
+const FIXED_NOW = new Date('2026-04-23T12:00:00Z').getTime()
+
 import { useListOrganizations } from '@/queries/organizations'
 import { useOrg } from '@/lib/org-context'
 import { OrganizationsIndexPage } from './index'
 
-function makeOrg(name: string, displayName = '', description = '') {
-  return {
-    name,
-    displayName,
-    description,
-  }
+function makeOrg(
+  name: string,
+  displayName = '',
+  description = '',
+  createdAt = '2026-04-20T10:00:00Z',
+) {
+  return { name, displayName, description, createdAt }
 }
 
 function setupMocks(organizations = [makeOrg('test-org', 'Test Org')]) {
@@ -68,6 +72,12 @@ function setupMocks(organizations = [makeOrg('test-org', 'Test Org')]) {
 describe('OrganizationsIndexPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(FIXED_NOW)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('renders loading skeletons while query is pending', () => {
@@ -106,6 +116,38 @@ describe('OrganizationsIndexPage', () => {
     setupMocks([makeOrg('my-slug', 'My Org')])
     render(<OrganizationsIndexPage />)
     expect(screen.getByText('my-slug')).toBeInTheDocument()
+  })
+
+  it('renders the "Created At" column header', () => {
+    setupMocks([makeOrg('test-org', 'Test Org')])
+    render(<OrganizationsIndexPage />)
+    expect(screen.getByText('Created At')).toBeInTheDocument()
+  })
+
+  it('renders the Created At column formatted as YYYY-MM-DD (N days ago)', () => {
+    // 2026-04-20 is 3 days before the fixed "now" of 2026-04-23
+    setupMocks([makeOrg('test-org', 'Test Org', '', '2026-04-20T10:00:00Z')])
+    render(<OrganizationsIndexPage />)
+    expect(screen.getByText('2026-04-20 (3 days ago)')).toBeInTheDocument()
+  })
+
+  it('clicking the Created At header toggles sort between desc and asc', () => {
+    setupMocks([
+      makeOrg('alpha', 'Alpha Org', '', '2026-04-20T10:00:00Z'),
+      makeOrg('beta', 'Beta Org', '', '2026-04-22T10:00:00Z'),
+    ])
+    render(<OrganizationsIndexPage />)
+
+    // Default sort is desc (newest first): beta should appear before alpha.
+    const rows = screen.getAllByRole('row').slice(1) // skip header
+    expect(rows[0]).toHaveTextContent('Beta Org')
+    expect(rows[1]).toHaveTextContent('Alpha Org')
+
+    // Click Created At to switch to ascending (oldest first).
+    fireEvent.click(screen.getByText('Created At'))
+    const rowsAsc = screen.getAllByRole('row').slice(1)
+    expect(rowsAsc[0]).toHaveTextContent('Alpha Org')
+    expect(rowsAsc[1]).toHaveTextContent('Beta Org')
   })
 
   it('search input filters visible rows by display name', () => {

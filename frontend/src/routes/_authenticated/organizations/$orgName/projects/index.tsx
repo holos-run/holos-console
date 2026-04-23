@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import {
   useReactTable,
   getCoreRowModel,
@@ -25,14 +25,20 @@ import {
 } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ChevronUp, ChevronDown, ChevronsUpDown, Plus } from 'lucide-react'
-import { useListOrganizations } from '@/queries/organizations'
-import { useOrg } from '@/lib/org-context'
+import { useListProjects } from '@/queries/projects'
 import { formatCreatedAt } from '@/lib/format-created-at'
-import type { Organization } from '@/gen/holos/console/v1/organizations_pb'
+import type { Project } from '@/gen/holos/console/v1/projects_pb'
 
-export const Route = createFileRoute('/_authenticated/organizations/')({
-  component: OrganizationsIndexPage,
+export const Route = createFileRoute(
+  '/_authenticated/organizations/$orgName/projects/',
+)({
+  component: OrgProjectsIndexRoute,
 })
+
+function OrgProjectsIndexRoute() {
+  const { orgName } = Route.useParams()
+  return <OrgProjectsIndexPage orgName={orgName} />
+}
 
 // SortIcon renders a chevron indicator for a sortable column header.
 function SortIcon({ isSorted }: { isSorted: false | 'asc' | 'desc' }) {
@@ -45,9 +51,9 @@ function SortIcon({ isSorted }: { isSorted: false | 'asc' | 'desc' }) {
 
 // columnHelper and columns are defined at module scope so they are stable
 // across re-renders and do not trigger unnecessary TanStack Table updates.
-const columnHelper = createColumnHelper<Organization>()
+const columnHelper = createColumnHelper<Project>()
 
-const columns: ColumnDef<Organization, string>[] = [
+const columns: ColumnDef<Project, string>[] = [
   columnHelper.accessor((row) => row.displayName || row.name, {
     id: 'displayName',
     header: ({ column }) => (
@@ -126,11 +132,21 @@ const columns: ColumnDef<Organization, string>[] = [
   }),
 ]
 
-export function OrganizationsIndexPage() {
+export function OrgProjectsIndexPage({
+  orgName: propOrgName,
+}: { orgName?: string } = {}) {
+  let routeOrgName: string | undefined
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    routeOrgName = Route.useParams().orgName
+  } catch {
+    routeOrgName = undefined
+  }
+  const orgName = propOrgName ?? routeOrgName ?? ''
+
   const navigate = useNavigate()
-  const { setSelectedOrg } = useOrg()
-  const { data, isLoading, error } = useListOrganizations()
-  const organizations = data?.organizations ?? []
+  const { data, isLoading, error } = useListProjects(orgName)
+  const projects = data?.projects ?? []
 
   const [globalFilter, setGlobalFilter] = useState('')
   // Default sort: Created At descending (newest first).
@@ -139,7 +155,7 @@ export function OrganizationsIndexPage() {
   ])
 
   const table = useReactTable({
-    data: organizations,
+    data: projects,
     columns,
     state: { globalFilter, sorting },
     onGlobalFilterChange: setGlobalFilter,
@@ -152,29 +168,15 @@ export function OrganizationsIndexPage() {
     initialState: { pagination: { pageSize: 25 } },
   })
 
-  const handleRowClick = (org: Organization) => {
-    // Switching organizations from this page sets the selected org and lands
-    // on the org's Resources listing (the unified folders + projects view,
-    // introduced in HOL-606). Reusing OrgContext keeps the selection
-    // persistent across reloads.
-    setSelectedOrg(org.name)
-    navigate({
-      to: '/orgs/$orgName/resources',
-      params: { orgName: org.name },
-    })
-  }
-
   if (isLoading) {
     return (
       <Card>
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-          <CardTitle>Organizations</CardTitle>
-          <Link to="/organization/new" search={{ returnTo: '/organizations' }}>
-            <Button size="sm" disabled>
-              <Plus className="h-4 w-4 mr-1" />
-              Create Organization
-            </Button>
-          </Link>
+          <CardTitle>Projects</CardTitle>
+          <Button size="sm" disabled>
+            <Plus className="h-4 w-4 mr-1" />
+            Create Project
+          </Button>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
@@ -203,29 +205,45 @@ export function OrganizationsIndexPage() {
     <>
       <Card>
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-          <CardTitle>Organizations</CardTitle>
-          <Link to="/organization/new" search={{ returnTo: '/organizations' }}>
+          <div>
+            <p className="text-sm text-muted-foreground">
+              <Link to="/organizations" className="hover:underline">
+                Organizations
+              </Link>
+              {' / '}
+              {orgName}
+              {' / Projects'}
+            </p>
+            <CardTitle className="mt-1">Projects</CardTitle>
+          </div>
+          <Link
+            to="/project/new"
+            search={{ returnTo: `/organizations/${orgName}/projects` }}
+          >
             <Button size="sm">
               <Plus className="h-4 w-4 mr-1" />
-              Create Organization
+              Create Project
             </Button>
           </Link>
         </CardHeader>
         <CardContent>
-          {organizations.length === 0 ? (
+          {projects.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <p className="text-muted-foreground">No organizations yet. Create one.</p>
-              <Link to="/organization/new" search={{ returnTo: '/organizations' }}>
-                <Button size="sm">
-                  Create Organization
-                </Button>
+              <p className="text-muted-foreground">
+                No projects in this organization yet.
+              </p>
+              <Link
+                to="/project/new"
+                search={{ returnTo: `/organizations/${orgName}/projects` }}
+              >
+                <Button size="sm">Create Project</Button>
               </Link>
             </div>
           ) : (
             <>
               <div className="mb-3">
                 <Input
-                  placeholder="Search organizations…"
+                  placeholder="Search projects…"
                   value={globalFilter}
                   onChange={(e) => setGlobalFilter(e.target.value)}
                   className="max-w-sm"
@@ -239,7 +257,10 @@ export function OrganizationsIndexPage() {
                         <TableHead key={header.id}>
                           {header.isPlaceholder
                             ? null
-                            : flexRender(header.column.columnDef.header, header.getContext())}
+                            : flexRender(
+                                header.column.columnDef.header,
+                                header.getContext(),
+                              )}
                         </TableHead>
                       ))}
                     </TableRow>
@@ -250,11 +271,19 @@ export function OrganizationsIndexPage() {
                     <TableRow
                       key={row.id}
                       className="cursor-pointer"
-                      onClick={() => handleRowClick(row.original)}
+                      onClick={() =>
+                        navigate({
+                          to: '/projects/$projectName',
+                          params: { projectName: row.original.name },
+                        })
+                      }
                     >
                       {row.getVisibleCells().map((cell) => (
                         <TableCell key={cell.id}>
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
                         </TableCell>
                       ))}
                     </TableRow>
