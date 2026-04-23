@@ -220,4 +220,3 @@ func templateCUEValidCondition(tmpl *v1alpha1.Template) metav1.Condition {
 		Message: "CUE payload parses successfully",
 	}
 }
-

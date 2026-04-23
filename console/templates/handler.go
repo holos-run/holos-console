@@ -729,8 +729,8 @@ func (h *Handler) CreateTemplate(
 	// The `mandatory` annotation and its Go/proto projections were removed in
 	// HOL-565. Ancestor templates that must always apply to every project now
 	// come in via TemplatePolicy REQUIRE rules (HOL-567).
-	// HOL-906: linked_templates in the request is silently ignored; template
-	// composition is driven exclusively by TemplatePolicyBinding.
+	// HOL-908: linked_templates was removed from the proto; template composition
+	// is driven exclusively by TemplatePolicyBinding.
 	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	_, err = h.k8s.CreateTemplate(ctx, ns, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, tmpl.Enabled)
 	if err != nil {
@@ -1337,7 +1337,6 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeKind,
 
 	return result, nil
 }
-
 
 // checkAccess verifies the caller has the given permission for the requested scope.
 // All scope levels (org, folder, project) use the unified TemplateCascadePerms

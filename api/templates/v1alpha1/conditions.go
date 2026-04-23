@@ -34,13 +34,13 @@ const (
 
 // Template condition reasons.
 const (
-	TemplateReasonAccepted     = "Accepted"
-	TemplateReasonInvalidSpec  = "InvalidSpec"
-	TemplateReasonCUEValid     = "CUEValid"
+	TemplateReasonAccepted      = "Accepted"
+	TemplateReasonInvalidSpec   = "InvalidSpec"
+	TemplateReasonCUEValid      = "CUEValid"
 	TemplateReasonCUEParseError = "CUEParseError"
-	TemplateReasonCUETypeError = "CUETypeError"
-	TemplateReasonReady        = "Ready"
-	TemplateReasonNotReady     = "NotReady"
+	TemplateReasonCUETypeError  = "CUETypeError"
+	TemplateReasonReady         = "Ready"
+	TemplateReasonNotReady      = "NotReady"
 )
 
 // TemplatePolicy condition types.
