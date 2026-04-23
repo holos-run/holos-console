@@ -94,8 +94,10 @@ export function WorkspaceMenu() {
           )}
           {selectedOrg ? (
             <DropdownMenuItem asChild>
+              {/* Route /organizations/$orgName/projects is added in HOL-915;
+                  cast suppresses TS until the route file exists. */}
               <Link
-                to="/organizations/$orgName/projects"
+                to={'/organizations/$orgName/projects' as string}
                 params={{ orgName: selectedOrg }}
                 data-testid="workspace-menu-item-switch-projects"
               >
