@@ -2,7 +2,6 @@ package templates
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 
@@ -79,9 +78,7 @@ func ownerCtx() context.Context {
 }
 
 // existingProjectTemplate returns a seeded project-scope template ConfigMap.
-// The refs parameter is accepted for call-site compatibility but ignored —
-// LinkedTemplates was removed from TemplateSpec in HOL-908.
-func existingProjectTemplateWithLinks(project, name string, _ []*consolev1.LinkedTemplateRef) *corev1.ConfigMap {
+func existingProjectTemplate(project, name string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -98,30 +95,6 @@ func existingProjectTemplateWithLinks(project, name string, _ []*consolev1.Linke
 			CueTemplateKey: "#Input: { name: string }\n",
 		},
 	}
-}
-
-// marshalLinkedTemplatesForTest is retained for compatibility; callers that
-// existed pre-HOL-908 are gone. The function remains only so any stale
-// test-helper references compile. TODO(HOL-909): remove entirely.
-func marshalLinkedTemplatesForTest(refs []*consolev1.LinkedTemplateRef) (string, error) {
-	type storedRef struct {
-		Namespace         string `json:"namespace"`
-		Name              string `json:"name"`
-		VersionConstraint string `json:"version_constraint,omitempty"`
-	}
-	stored := make([]storedRef, 0, len(refs))
-	for _, r := range refs {
-		stored = append(stored, storedRef{
-			Namespace:         r.GetNamespace(),
-			Name:              r.GetName(),
-			VersionConstraint: r.GetVersionConstraint(),
-		})
-	}
-	b, err := json.Marshal(stored)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
 }
 
 // TestHandler_CreateTemplate_RecordsAppliedOnSuccess verifies that a
@@ -317,12 +290,9 @@ func TestHandler_CreateTemplate_NoRecordOnPersistFailure(t *testing.T) {
 	}
 }
 
-// TestHandler_UpdateTemplate_RecordsAppliedOnSuccess_NewLinks verifies the
 // TestHandler_UpdateTemplate_RecordsAppliedOnSuccess verifies that a
 // successful project-scope UpdateTemplate calls RecordApplied with the
-// policy-resolved effective ref set. HOL-908 removed the update_linked_templates
-// and linked_templates fields; template composition is driven exclusively by
-// TemplatePolicyBinding.
+// policy-resolved effective ref set.
 func TestHandler_UpdateTemplate_RecordsAppliedOnSuccess(t *testing.T) {
 	resolved := []*consolev1.LinkedTemplateRef{
 		folderLinkedRef("payments", "audit"),
@@ -330,7 +300,7 @@ func TestHandler_UpdateTemplate_RecordsAppliedOnSuccess(t *testing.T) {
 	resolver := &recordingResolver{resolved: resolved}
 	checker := &stubProjectTemplateDriftChecker{}
 
-	existing := existingProjectTemplateWithLinks("my-project", "web-app", nil)
+	existing := existingProjectTemplate("my-project", "web-app")
 	h := recordAppliedTemplateHandler(t, resolver, checker, existing)
 
 	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
@@ -386,7 +356,7 @@ func TestHandler_UpdateTemplate_WarnButSucceedOnRecordFailure(t *testing.T) {
 	resolver := &recordingResolver{}
 	checker := &stubProjectTemplateDriftChecker{recordErr: errors.New("applied-state write failed")}
 
-	existing := existingProjectTemplateWithLinks("my-project", "web-app", nil)
+	existing := existingProjectTemplate("my-project", "web-app")
 	h := recordAppliedTemplateHandler(t, resolver, checker, existing)
 
 	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
@@ -409,7 +379,7 @@ func TestHandler_UpdateTemplate_WarnButSucceedOnRecordFailure(t *testing.T) {
 // resolver is not invoked.
 func TestHandler_UpdateTemplate_NilCheckerIsSafe(t *testing.T) {
 	resolver := &recordingResolver{}
-	existing := existingProjectTemplateWithLinks("my-project", "web-app", nil)
+	existing := existingProjectTemplate("my-project", "web-app")
 	h := recordAppliedTemplateHandler(t, resolver, nil, existing)
 
 	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
@@ -445,7 +415,7 @@ func TestHandler_UpdateTemplate_ResolverFailureIsSwallowed(t *testing.T) {
 	resolver := &recordingResolver{err: errors.New("policy fetch failed")}
 	checker := &stubProjectTemplateDriftChecker{}
 
-	existing := existingProjectTemplateWithLinks("my-project", "web-app", nil)
+	existing := existingProjectTemplate("my-project", "web-app")
 	h := recordAppliedTemplateHandler(t, resolver, checker, existing)
 
 	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{

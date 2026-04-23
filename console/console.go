@@ -547,13 +547,9 @@ func (s *Server) Serve(ctx context.Context) error {
 		// could be wired; reuse the same client here so there is exactly
 		// one policy reader+writer in the process.
 		//
-		// HOL-600 removed the HOL-570 EXCLUDE-vs-explicit-link guardrail
-		// and its K8sResourceTopology resolver: policies no longer carry
-		// a glob Target, and render-target selection runs entirely
-		// through TemplatePolicyBinding. Any equivalent guardrail now
-		// belongs on the binding create/update path (enforced by
-		// console/templatepolicybindings) rather than on the policy
-		// itself.
+		// Render-target selection runs entirely through TemplatePolicyBinding.
+		// Guardrails belong on the binding create/update path (enforced by
+		// console/templatepolicybindings) rather than on the policy itself.
 		templatePoliciesHandler := templatepolicies.NewHandler(templatePoliciesK8s, nsResolver).
 			WithOrgGrantResolver(orgGrantResolver).
 			WithFolderGrantResolver(folderGrantResolver).

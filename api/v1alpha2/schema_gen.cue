@@ -79,19 +79,6 @@
 // Decision 3 and Decision 6).
 #AnnotationParent: "console.holos.run/parent"
 
-// AnnotationLinkedTemplates is the wire format used to bridge
-// Template CRDs to the deployment handler. Template CRD storage
-// keeps linked refs in a structured Spec field (HOL-621), but the
-// deployment handler still consumes deployment-template ConfigMaps
-// and reads the linked refs off this JSON-annotation. The
-// templateCRDToConfigMap adapter in console/templates writes the
-// annotation on the fly so deployments can keep its existing
-// reader. Once the deployments package is ported off ConfigMaps
-// (HOL-615 Phase 6 and friends), this constant and its adapter
-// both go away.
-// Example: [{"scope":"organization","scope_name":"acme","name":"microservice-v2"}]
-#AnnotationLinkedTemplates: "console.holos.run/linked-templates"
-
 // LabelTemplateScope identifies the hierarchy level of a Template.
 // Values: "organization", "folder", "project" (ADR 021 Decision 4).
 // Still surfaced on CRD-stored Templates via the scheme label

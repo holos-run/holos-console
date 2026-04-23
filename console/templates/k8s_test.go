@@ -11,9 +11,6 @@
 // controller-runtime client because their inputs are still expressed as
 // ConfigMap fixtures and the bridge in testhelpers_test.go materializes
 // them into CRs.
-//
-// HOL-908: LinkedTemplates was removed from TemplateSpec and the
-// LinkedTemplatesAnnotation tests were retired.
 package templates
 
 import (
@@ -50,8 +47,6 @@ var (
 // newLinkedRef builds a proto LinkedTemplateRef for the given scope, scope
 // name, template name, and optional version constraint. Used by
 // ListEffectiveTemplateSources tests to construct policy-effective ref slices.
-// Moved from handler_updates_test.go to this file in HOL-908 when
-// CheckUpdates tests were removed.
 func newLinkedRef(scope scopeKind, scopeName, name, constraint string) *consolev1.LinkedTemplateRef {
 	var ns string
 	switch scope {
@@ -453,7 +448,6 @@ func TestCreateTemplate(t *testing.T) {
 			if tc.defaults != nil && read.Spec.Defaults == nil {
 				t.Errorf("expected defaults to be persisted")
 			}
-			// HOL-908: LinkedTemplates field removed from TemplateSpec entirely.
 		})
 	}
 }
@@ -864,10 +858,6 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		}
 	})
 }
-
-// NOTE: TestCreateTemplate_NoLinkedTemplates was removed in HOL-908.
-// The LinkedTemplates field was removed from TemplateSpec entirely — there is
-// nothing left to assert against. The invariant was first guarded in HOL-906.
 
 // Ensure defaults serialize through the DefaultsKey JSON path the test
 // helpers use. Covers the DefaultsKey-read path in configMapToTemplateCRD.

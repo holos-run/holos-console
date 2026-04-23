@@ -136,10 +136,6 @@ func TestConfigMapToTemplate(t *testing.T) {
 		}
 	})
 
-	// NOTE: "linked templates from v1alpha2 annotation" subtest removed in
-	// HOL-908. The LinkedTemplates field was removed from the proto Template
-	// message; configMapToTemplate no longer populates it.
-
 	t.Run("defaults from annotation fallback", func(t *testing.T) {
 		defaultsJSON := `{"image":"ghcr.io/example/app","tag":"v1.0"}`
 		cm := &corev1.ConfigMap{
@@ -261,30 +257,6 @@ func folderLinkedRef(folder, name string) *consolev1.LinkedTemplateRef {
 func projectScopeRef(project string) string {
 	return testResolver.ProjectNamespace(project)
 }
-
-// NOTE: TestCreateTemplate_IgnoresLinkedTemplates and
-// TestUpdateTemplate_IgnoresLinkedTemplates were removed in HOL-908.
-// The linked_templates field on Template, update_linked_templates flag on
-// UpdateTemplateRequest, and LinkedTemplates on TemplateSpec are all gone.
-// Template composition is driven exclusively by TemplatePolicyBinding.
-
-// NOTE: TestCreateTemplateLinkPermissions, TestCreateTemplateLinkedRefsValidation,
-// and TestUpdateTemplateLinkPermissions were removed in HOL-906.
-// Those tests verified that CreateTemplate/UpdateTemplate enforced scoped link
-// permissions and rejected foreign-namespace refs. After HOL-906 the handler
-// silently ignores linked_templates in all requests — permission checks for
-// linking are no longer relevant. TestCreateTemplate_IgnoresLinkedTemplates and
-// TestUpdateTemplate_IgnoresLinkedTemplates guard the new invariant.
-
-// NOTE: TestUpdateTemplateMalformedLinkedAnnotation was removed in HOL-661.
-// Before HOL-661 linked templates were persisted as a JSON annotation on the
-// Template ConfigMap, and the update-path parsed that annotation to enforce
-// scoped link permissions against the pre-existing refs. The test guarded
-// against a silent JSON-parse failure allowing an EDITOR to bypass those
-// checks. After HOL-661 linked templates are a typed field on
-// Template.Spec.LinkedTemplates — there is no JSON parse step to fail, so
-// the invariant the test asserted no longer exists. Permission enforcement
-// still happens via crdLinkedToProto on the typed spec.
 
 // trackingRenderer records which renderer method was called so tests can
 // verify that renderTemplateGrouped dispatches correctly.
@@ -498,8 +470,6 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 
 		msg := &consolev1.RenderTemplateRequest{
 			CueTemplate: validCue,
-			// HOL-908: linked_templates removed from RenderTemplateRequest;
-			// ancestor template resolution is driven by TemplatePolicyBinding.
 		}
 
 		_, err := handler.renderTemplateGrouped(context.Background(), msg)
@@ -573,8 +543,6 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		_, err := handler.renderTemplateGrouped(context.Background(), &consolev1.RenderTemplateRequest{
 			Namespace:   projectScopeRef(project),
 			CueTemplate: validCue,
-			// HOL-908: linked_templates removed from RenderTemplateRequest;
-			// ancestor template resolution is driven by TemplatePolicyBinding.
 		})
 		if err != nil {
 			t.Fatalf("preview render failed: %v", err)

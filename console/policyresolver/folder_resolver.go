@@ -311,9 +311,8 @@ func (r *folderResolver) Resolve(
 	}
 
 	// Apply EXCLUDE rules. EXCLUDE removes any REQUIRE-injected ref that
-	// matches the rule's template. Since there are no owner-linked explicit
-	// refs in the effective set (HOL-905), every ref is eligible for
-	// removal by an EXCLUDE rule.
+	// matches the rule's template. Every ref in the effective set is
+	// eligible for removal by an EXCLUDE rule.
 	if len(excludeRules) == 0 {
 		return effective, nil
 	}

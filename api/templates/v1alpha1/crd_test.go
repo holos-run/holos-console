@@ -147,8 +147,6 @@ func TestCRDRoundTrip_Template(t *testing.T) {
 			},
 		},
 		{
-			// HOL-908: renamed from "with-defaults-and-links" — LinkedTemplates
-			// was removed from TemplateSpec; this case now covers defaults only.
 			name: "with-defaults",
 			template: &v1alpha1.Template{
 				ObjectMeta: metav1.ObjectMeta{Name: "with-defaults", Namespace: nsName},

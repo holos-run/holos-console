@@ -1381,9 +1381,6 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil).
 			WithAncestorTemplateProvider(atp)
 
-		// HOL-904: render helpers no longer accept explicit linked-template
-		// refs; the effective set is derived exclusively from
-		// TemplatePolicyBinding resolution.
 		_, err := handler.renderResources(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1457,9 +1454,6 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil).
 			WithAncestorTemplateProvider(atp)
 
-		// HOL-904: render helpers no longer accept explicit linked-template
-		// refs; the effective set is derived exclusively from
-		// TemplatePolicyBinding resolution.
 		_, _, err := handler.renderResourcesGrouped(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1500,10 +1494,9 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 // TestCreateDeployment_AnnotationIgnored is the HOL-902 regression guard.
 // It asserts that a deployment whose Template ConfigMap carries a populated
 // console.holos.run/linked-templates annotation renders ONLY the resources
-// produced by the deployment template — the annotation must be ignored by the
-// render pipeline (HOL-904). Before HOL-904 the render path read this
-// annotation and merged in unrelated org-level resources (the httproute bug
-// reported in HOL-902).
+// produced by the deployment template — the annotation is ignored by the
+// render pipeline. Before the explicit-linking removal (HOL-902) the render
+// path read this annotation and merged in unrelated org-level resources.
 func TestCreateDeployment_AnnotationIgnored(t *testing.T) {
 	// Build a template ConfigMap that has a non-empty linked-templates annotation.
 	// The annotation lists a fictitious org-level "httproute" template that
@@ -1512,7 +1505,7 @@ func TestCreateDeployment_AnnotationIgnored(t *testing.T) {
 	if tmplCM.Annotations == nil {
 		tmplCM.Annotations = make(map[string]string)
 	}
-	tmplCM.Annotations[v1alpha2.AnnotationLinkedTemplates] = `[{"namespace":"holos-org-acme","name":"httproute"}]`
+	tmplCM.Annotations["console.holos.run/linked-templates"] = `[{"namespace":"holos-org-acme","name":"httproute"}]`
 
 	// stubAncestorTemplateProvider returns no ancestor sources so the render is
 	// project-only. The handler must call it with nil (not the annotation refs).
