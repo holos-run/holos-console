@@ -218,7 +218,6 @@ export function ConsolidatedTemplateEditorPage({
             onChange={setCueTemplate}
             onSave={handleSave}
             isSaving={updateMutation.isPending}
-            defaultPlatformInput={DEFAULT_PLATFORM_INPUT}
             defaultProjectInput={DEFAULT_PROJECT_INPUT}
             linkedTemplates={template?.linkedTemplates ?? []}
             namespace={namespace}
