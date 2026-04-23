@@ -256,10 +256,6 @@ func (h *Handler) WithPolicyDriftChecker(c PolicyDriftChecker) *Handler {
 // resolver invocation (HOL-569). Returns (nil, nil, false) when no
 // provider is configured or the walk fails; the caller should fall back to
 // a project-only render in that case.
-//
-// HOL-904: the legacy explicit linkedRefs parameter has been removed.
-// The provider is called with nil, so only the TemplatePolicyBinding-
-// derived effective set contributes to the render.
 func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project, deploymentName string) ([]string, []*consolev1.LinkedTemplateRef, bool) {
 	if h.ancestorTemplateProvider == nil {
 		return nil, nil, false
@@ -279,11 +275,8 @@ func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project, d
 
 // renderResources renders deployment resources, unifying with platform
 // templates from the full ancestor chain (org + folders) when an
-// AncestorTemplateProvider is configured.
-//
-// The effective template set at render time is derived exclusively from
-// TemplatePolicyBinding resolution. The legacy explicit-link annotation is
-// no longer consulted (HOL-904).
+// AncestorTemplateProvider is configured. The effective template set is
+// derived exclusively from TemplatePolicyBinding resolution.
 //
 // When no AncestorTemplateProvider is configured, falls back to a plain
 // project-level render (deployment template only, no platform template
@@ -319,10 +312,6 @@ func (h *Handler) renderResources(ctx context.Context, project, deploymentName, 
 // ignore it. It is nil when no AncestorTemplateProvider is configured or the
 // provider returned an error (the render falls back to project-only in both
 // cases, so there is no rendered set to record).
-//
-// HOL-904: the legacy explicit linkedRefs parameter has been removed. The
-// effective set is now derived exclusively from TemplatePolicyBinding
-// resolution; the linked-templates annotation is not consulted.
 func (h *Handler) renderResourcesGrouped(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput) (*GroupedResources, []*consolev1.LinkedTemplateRef, error) {
 	var ancestorSources []string
 	var effectiveRefs []*consolev1.LinkedTemplateRef
@@ -523,9 +512,6 @@ func (h *Handler) CreateDeployment(
 	}
 
 	// Validate that the referenced template exists and get its CUE source.
-	// The legacy explicit linking list read from the annotation is no longer
-	// consumed here (HOL-904); the render pipeline uses only the
-	// TemplatePolicyBinding-derived effective set.
 	var cueSource string
 	if h.templateResolver != nil {
 		tmplCM, err := h.templateResolver.GetTemplate(ctx, project, req.Msg.Template)
@@ -738,10 +724,7 @@ func (h *Handler) UpdateDeployment(
 		image := updated.Data[ImageKey]
 		tag := updated.Data[TagKey]
 
-		// Look up the template CUE source. The legacy explicit linking list
-		// read from the annotation is no longer consumed here (HOL-904); the
-		// render pipeline uses only the TemplatePolicyBinding-derived effective
-		// set.
+		// Look up the template CUE source.
 		var cueSource string
 		if h.templateResolver != nil && templateName != "" {
 			tmplCM, tmplErr := h.templateResolver.GetTemplate(ctx, project, templateName)
@@ -1057,9 +1040,6 @@ func (h *Handler) GetDeploymentRenderPreview(
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("template %q not found in project %q", templateName, project))
 	}
 	cueTemplate := tmplCM.Data[cueTemplateKey]
-	// The legacy explicit linking list read from the annotation is no longer
-	// consumed here (HOL-904); the render pipeline uses only the
-	// TemplatePolicyBinding-derived effective set.
 
 	// Build platform input from authenticated claims and resolved namespace.
 	ns := h.k8s.Resolver.ProjectNamespace(project)

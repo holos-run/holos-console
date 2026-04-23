@@ -154,10 +154,6 @@ func TestHandler_CreateDeployment_DriftBecomesFalseAfterRecord(t *testing.T) {
 	fakeClient := fake.NewClientset(projectNS("my-project"))
 	pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
 	k8s := NewK8sClient(fakeClient, testResolver())
-	// Wire a TemplateResolver that surfaces the explicit linked list as
-	// the annotation on the deployment template ConfigMap. The handler
-	// uses this when resolving the deployment's linked-templates
-	// annotation on GetDeploymentPolicyState.
 	templateResolver := &stubTemplateResolver{cm: fakeTemplate("default")}
 
 	h := NewHandler(k8s, pr, &stubSettingsResolver{settings: enabledSettings()}, templateResolver, &stubRenderer{}, &stubApplier{}).

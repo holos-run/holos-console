@@ -63,8 +63,6 @@ func (r *TemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 //
 //  1. Fetch the object; NotFound -> no-op.
 //  2. Build the Accepted / CUEValid component conditions from the current spec.
-//     LinkedRefsResolved was removed in HOL-908 — explicit linking is
-//     superseded by TemplatePolicyBinding.
 //  3. Aggregate into Ready.
 //  4. Stamp metadata.generation on every condition plus
 //     status.observedGeneration.
@@ -140,9 +138,6 @@ func (r *TemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 // buildTemplateConditions computes the Accepted and CUEValid component
 // conditions from the current spec. The caller aggregates them into Ready
 // and stamps observedGeneration.
-//
-// LinkedRefsResolved was removed in HOL-908 — explicit linking is superseded
-// by TemplatePolicyBinding.
 //
 // Callers receive conditions in the canonical order: Accepted, CUEValid.
 // Keeping a stable order simplifies test assertions.

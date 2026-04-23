@@ -69,10 +69,6 @@ func configMapIsTemplate(cm *corev1.ConfigMap) bool {
 // fixture to the equivalent Template CRD. Preserves name, namespace,
 // display/description/enabled fields, CUE payload, and structured defaults
 // (decoded from the DefaultsKey JSON).
-//
-// HOL-908: the linkedTemplates annotation is no longer read — LinkedTemplates
-// was removed from TemplateSpec. Fixtures that carried linked refs via
-// AnnotationLinkedTemplates compile fine; the field is just ignored.
 func configMapToTemplateCRD(cm *corev1.ConfigMap) *templatesv1alpha1.Template {
 	tmpl := &templatesv1alpha1.Template{
 		ObjectMeta: metav1.ObjectMeta{

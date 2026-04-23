@@ -139,8 +139,6 @@ func (k *K8sClient) GetTemplate(ctx context.Context, namespace, name string) (*t
 }
 
 // CreateTemplate creates a new Template CRD in the given namespace.
-// HOL-906: the linkedTemplates parameter was removed; template composition
-// is driven exclusively by TemplatePolicyBinding.
 func (k *K8sClient) CreateTemplate(
 	ctx context.Context,
 	namespace, name, displayName, description, cueTemplate string,
@@ -177,9 +175,6 @@ func (k *K8sClient) CreateTemplate(
 //
 // Each optional pointer parameter applies only when non-nil — the helper
 // preserves nil-for-"leave alone" semantics the handler relies on.
-//
-// HOL-908: linkedTemplates and clearLinks parameters were removed — explicit
-// linking is superseded by TemplatePolicyBinding.
 func (k *K8sClient) UpdateTemplate(
 	ctx context.Context,
 	namespace, name string,
@@ -248,8 +243,6 @@ func (k *K8sClient) CloneTemplate(ctx context.Context, namespace, sourceName, ne
 		source.Spec.CueTemplate,
 		crdDefaultsToProto(source.Spec.Defaults),
 		false, // new clones start disabled
-		// HOL-906: linked templates are not propagated to clones; template
-		// composition is driven exclusively by TemplatePolicyBinding.
 	)
 }
 
@@ -288,11 +281,6 @@ func (r *ProjectScopedResolver) GetTemplate(ctx context.Context, project, name s
 // ConfigMap and reads only Name, Namespace, and Data[CueTemplateKey].
 // When the deployments package is rewritten against the CRD this helper can
 // be deleted with ProjectScopedResolver.
-//
-// HOL-906: the AnnotationLinkedTemplates annotation is no longer written.
-// Template composition is driven exclusively by TemplatePolicyBinding; the
-// deployments handler already reads the TPB-derived effective set directly
-// (HOL-904/HOL-905).
 func templateCRDToConfigMap(tmpl *templatesv1alpha1.Template) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{

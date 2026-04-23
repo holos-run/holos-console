@@ -227,16 +227,13 @@ func TestHandler_CreateDeployment_RecordsEmptyOnDegradedRender(t *testing.T) {
 	}
 }
 
-// TestHandler_CreateDeployment_RecordsEmptyOnZeroExplicitRefs verifies the
-// HOL-569 baseline contract: a successful apply with no explicit linked
+// TestHandler_CreateDeployment_RecordsEmptyOnZeroAncestorRefs verifies the
+// HOL-569 baseline contract: a successful apply with no TPB-resolved ancestor
 // templates still persists an applied set (the empty slice) so
 // GetDeploymentPolicyState reports has_applied_state=true on the very
-// next read. Review round 2 P1a found a gap where the previous guard
-// (effectiveRefs != nil before RecordApplied) conflated "no refs to
-// record" with "degraded render"; the normalization in
-// ListEffectiveTemplateSources plus the empty-slice write-through here
-// keeps the two cases distinct and correct.
-func TestHandler_CreateDeployment_RecordsEmptyOnZeroExplicitRefs(t *testing.T) {
+// next read. The normalization in ListEffectiveTemplateSources plus the
+// empty-slice write-through keeps "no refs" distinct from "degraded render".
+func TestHandler_CreateDeployment_RecordsEmptyOnZeroAncestorRefs(t *testing.T) {
 	// Stub provider returns a non-nil empty effective-ref slice —
 	// mirroring what ListEffectiveTemplateSources now produces on a
 	// successful render whose resolver output is empty.

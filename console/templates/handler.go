@@ -184,8 +184,7 @@ type ProjectTemplateDriftChecker interface {
 	// PolicyState returns the full TemplatePolicy drift snapshot for a
 	// project-scope template. `project` is the owning project slug;
 	// `templateName` is the template's DNS label within that project.
-	// The effective set is derived purely from TemplatePolicyBinding
-	// resolution (HOL-905); no explicit refs are passed.
+	// The effective set is derived purely from TemplatePolicyBinding resolution.
 	PolicyState(ctx context.Context, project, templateName string) (*consolev1.PolicyState, error)
 	// RecordApplied persists the effective render set for the
 	// project-scope template on successful Create/Update. Idempotent.
@@ -728,8 +727,7 @@ func (h *Handler) CreateTemplate(
 
 	// The `mandatory` annotation and its Go/proto projections were removed in
 	// HOL-565. Ancestor templates that must always apply to every project now
-	// come in via TemplatePolicy REQUIRE rules (HOL-567).
-	// HOL-908: linked_templates was removed from the proto; template composition
+	// come in via TemplatePolicy REQUIRE rules (HOL-567). Template composition
 	// is driven exclusively by TemplatePolicyBinding.
 	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	_, err = h.k8s.CreateTemplate(ctx, ns, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, tmpl.Enabled)
@@ -1282,11 +1280,8 @@ func (h *Handler) ListAncestorTemplates(
 
 // collectAncestorTemplates walks the hierarchy and collects all enabled
 // templates from ancestor scopes (organization and folder). Results are
-// returned in org→folder order for correct CUE unification.
-//
-// HOL-906: the linkedRefs filter was removed. The enabled set is returned
-// unconditionally — template composition is now driven exclusively by
-// TemplatePolicyBinding rather than explicit linked-templates lists.
+// returned in org→folder order for correct CUE unification. Template
+// composition is driven exclusively by TemplatePolicyBinding.
 //
 // Storage-isolation note (HOL-554): the traversal only visits ancestor
 // namespaces — organization and folder — and never reads templates from a
@@ -1713,9 +1708,7 @@ func (h *Handler) GetProjectTemplatePolicyState(
 
 	// Verify the template exists before delegating to the checker so the
 	// handler returns NotFound instead of an empty-state response when the
-	// caller supplies an invalid name. The previous implementation read the
-	// template to extract explicit refs; this read preserves that existence
-	// gate without the now-removed explicit-refs parameter (HOL-905).
+	// caller supplies an invalid name.
 	if _, err := h.k8s.GetTemplate(ctx, namespace, name); err != nil {
 		return nil, mapK8sError(err)
 	}

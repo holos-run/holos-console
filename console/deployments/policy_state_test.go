@@ -53,8 +53,7 @@ func (s *stubPolicyDriftChecker) RecordApplied(_ context.Context, project, name 
 }
 
 // deploymentCMForPolicy builds a minimal deployment ConfigMap for policy-state
-// tests — only the namespace, name, and the v1alpha2 linked-templates
-// annotation matter for the RPC under test.
+// tests.
 func deploymentCMForPolicy(project, name string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{

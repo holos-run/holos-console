@@ -33,11 +33,9 @@
 //
 // Render-time selection runs exclusively through TemplatePolicyBinding
 // (HOL-590). A rule contributes to a render target only when a matching
-// binding names its owning policy; the legacy glob-based
-// TemplatePolicyTarget path and the HOL-570 EXCLUDE-vs-explicit-link
-// guardrail that operated on it were removed in HOL-600. See
-// console/policyresolver and console/templates/k8s.go for the resolver
-// call sites, and console/templatepolicybindings for the binding CRUD.
+// binding names its owning policy. See console/policyresolver and
+// console/templates/k8s.go for the resolver call sites, and
+// console/templatepolicybindings for the binding CRUD.
 package templatepolicies
 
 import (

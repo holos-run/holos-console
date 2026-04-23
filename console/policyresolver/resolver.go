@@ -3,13 +3,6 @@
 // project-scope templates (create/update/preview), and project creation
 // (REQUIRE-matched templates).
 //
-// The package exists so Phase 5 of HOL-562 (HOL-567) can swap the no-op
-// implementation for a real TemplatePolicy-backed resolver without touching
-// call sites. In Phase 4 (HOL-566) the interface is introduced and wired
-// everywhere with the no-op implementation. Phase 2 of HOL-903 (HOL-905)
-// removed the explicitRefs parameter from the interface so the resolver
-// derives the effective set from TemplatePolicyBinding rules only.
-//
 // Keeping the resolver in its own package (rather than in
 // console/templates/) prevents the PolicyResolver abstraction from leaking
 // into the CUE renderer and related apply/preview machinery. The renderer
@@ -45,9 +38,8 @@ const (
 //	result = REQUIRE-injected − EXCLUDE-removed
 //
 // Only bindings whose target_refs select the current render target contribute.
-// Policies with no covering binding contribute nothing. Callers no longer pass
-// an explicit-refs slice — the resolver derives the effective set purely from
-// policy rules (HOL-905).
+// Policies with no covering binding contribute nothing. The effective set is
+// derived purely from TemplatePolicyBinding rules.
 //
 // Implementations must not mutate any shared state. The returned slice is
 // owned by the caller and may be appended to freely.

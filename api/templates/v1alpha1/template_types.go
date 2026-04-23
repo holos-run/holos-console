@@ -59,10 +59,10 @@ type TemplateDefaults struct {
 	Description string `json:"description,omitempty"`
 }
 
-// LinkedTemplateRef is a (namespace, name) reference to another Template
-// used in the explicit linking list. The namespace's
-// `console.holos.run/resource-type` label classifies the linked template's
-// hierarchy kind at render time — callers supply the namespace only.
+// LinkedTemplateRef is a (namespace, name) reference to another Template.
+// The namespace's `console.holos.run/resource-type` label classifies the
+// linked template's hierarchy kind at render time — callers supply the
+// namespace only. Used in TemplatePolicyBinding rules and RenderState.
 type LinkedTemplateRef struct {
 	// Namespace is the Kubernetes namespace that owns the linked template.
 	// +kubebuilder:validation:MinLength=1
