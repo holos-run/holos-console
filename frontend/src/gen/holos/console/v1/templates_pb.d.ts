@@ -5,8 +5,8 @@
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { EnvVar } from "./deployments_pb";
-import type { GetProjectTemplatePolicyStateRequestSchema, GetProjectTemplatePolicyStateResponseSchema, LinkedTemplateRef } from "./policy_state_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import type { GetProjectTemplatePolicyStateRequestSchema, GetProjectTemplatePolicyStateResponseSchema } from "./policy_state_pb";
 
 /**
  * Describes the file holos/console/v1/templates.proto.
@@ -189,16 +189,6 @@ export declare type Template = Message<"holos.console.v1.Template"> & {
   defaults?: TemplateDefaults;
 
   /**
-   * linked_templates lists templates in ancestor namespaces to unify with
-   * this template at render time. Replaces linked_org_templates from
-   * v1alpha1. Ancestor templates forced onto a project by a TemplatePolicy
-   * REQUIRE rule always unify regardless of this list.
-   *
-   * @generated from field: repeated holos.console.v1.LinkedTemplateRef linked_templates = 7;
-   */
-  linkedTemplates: LinkedTemplateRef[];
-
-  /**
    * enabled controls whether this template is eligible to appear in selection
    * lists and to participate in render-time unification. Disabled templates
    * are filtered out of linkable-template pickers and out of the effective
@@ -365,17 +355,6 @@ export declare type UpdateTemplateRequest = Message<"holos.console.v1.UpdateTemp
    * @generated from field: holos.console.v1.Template template = 2;
    */
   template?: Template;
-
-  /**
-   * update_linked_templates signals that the linked_templates field on the template
-   * message should be written. When false (default), existing linked templates are
-   * preserved regardless of the template.linked_templates value. When true, the
-   * backend replaces the stored linked templates with template.linked_templates
-   * and enforces scoped link permissions.
-   *
-   * @generated from field: bool update_linked_templates = 3;
-   */
-  updateLinkedTemplates: boolean;
 };
 
 /**
@@ -476,15 +455,6 @@ export declare type RenderTemplateRequest = Message<"holos.console.v1.RenderTemp
    * @generated from field: string cue_project_input = 4;
    */
   cueProjectInput: string;
-
-  /**
-   * linked_templates lists (namespace, name) template references to include
-   * in preview unification. Allows draft templates to preview their effective
-   * rendering with the chosen linking list before saving.
-   *
-   * @generated from field: repeated holos.console.v1.LinkedTemplateRef linked_templates = 5;
-   */
-  linkedTemplates: LinkedTemplateRef[];
 };
 
 /**
@@ -911,57 +881,6 @@ export declare type Release = Message<"holos.console.v1.Release"> & {
 export declare const ReleaseSchema: GenMessage<Release>;
 
 /**
- * TemplateUpdate describes an available version update for a linked template.
- * Returned by CheckUpdates to help consumers decide whether to upgrade.
- *
- * @generated from message holos.console.v1.TemplateUpdate
- */
-export declare type TemplateUpdate = Message<"holos.console.v1.TemplateUpdate"> & {
-  /**
-   * ref is the linked template reference being checked.
-   *
-   * @generated from field: holos.console.v1.LinkedTemplateRef ref = 1;
-   */
-  ref?: LinkedTemplateRef;
-
-  /**
-   * current_version is the version currently pinned by the consumer.
-   *
-   * @generated from field: string current_version = 2;
-   */
-  currentVersion: string;
-
-  /**
-   * latest_compatible_version is the newest release satisfying the version
-   * constraint. Empty if no compatible update is available.
-   *
-   * @generated from field: string latest_compatible_version = 3;
-   */
-  latestCompatibleVersion: string;
-
-  /**
-   * latest_version is the absolute newest release regardless of constraints.
-   *
-   * @generated from field: string latest_version = 4;
-   */
-  latestVersion: string;
-
-  /**
-   * breaking_update_available is true when a newer version exists that is
-   * outside the current version constraint (i.e. a major version bump).
-   *
-   * @generated from field: bool breaking_update_available = 5;
-   */
-  breakingUpdateAvailable: boolean;
-};
-
-/**
- * Describes the message holos.console.v1.TemplateUpdate.
- * Use `create(TemplateUpdateSchema)` to create a new message.
- */
-export declare const TemplateUpdateSchema: GenMessage<TemplateUpdate>;
-
-/**
  * CreateReleaseRequest publishes a new release for a template.
  *
  * @generated from message holos.console.v1.CreateReleaseRequest
@@ -1104,67 +1023,6 @@ export declare type GetReleaseResponse = Message<"holos.console.v1.GetReleaseRes
  * Use `create(GetReleaseResponseSchema)` to create a new message.
  */
 export declare const GetReleaseResponseSchema: GenMessage<GetReleaseResponse>;
-
-/**
- * CheckUpdatesRequest asks for available updates for linked templates in a
- * namespace.
- *
- * @generated from message holos.console.v1.CheckUpdatesRequest
- */
-export declare type CheckUpdatesRequest = Message<"holos.console.v1.CheckUpdatesRequest"> & {
-  /**
-   * namespace is the Kubernetes namespace whose linked templates should be
-   * checked.
-   *
-   * @generated from field: string namespace = 1;
-   */
-  namespace: string;
-
-  /**
-   * template_name is the template whose linked templates should be checked.
-   * If empty, all templates in the namespace are checked.
-   *
-   * @generated from field: string template_name = 2;
-   */
-  templateName: string;
-
-  /**
-   * include_current, when true, causes the response to include entries for
-   * linked templates that are already at their latest compatible version (i.e.
-   * no update available). This allows the version status indicator to display
-   * resolved version information for ALL linked templates, not just those with
-   * pending updates.
-   *
-   * @generated from field: bool include_current = 3;
-   */
-  includeCurrent: boolean;
-};
-
-/**
- * Describes the message holos.console.v1.CheckUpdatesRequest.
- * Use `create(CheckUpdatesRequestSchema)` to create a new message.
- */
-export declare const CheckUpdatesRequestSchema: GenMessage<CheckUpdatesRequest>;
-
-/**
- * CheckUpdatesResponse returns available updates for linked templates.
- *
- * @generated from message holos.console.v1.CheckUpdatesResponse
- */
-export declare type CheckUpdatesResponse = Message<"holos.console.v1.CheckUpdatesResponse"> & {
-  /**
-   * updates lists each linked template that has an available update.
-   *
-   * @generated from field: repeated holos.console.v1.TemplateUpdate updates = 1;
-   */
-  updates: TemplateUpdate[];
-};
-
-/**
- * Describes the message holos.console.v1.CheckUpdatesResponse.
- * Use `create(CheckUpdatesResponseSchema)` to create a new message.
- */
-export declare const CheckUpdatesResponseSchema: GenMessage<CheckUpdatesResponse>;
 
 /**
  * SearchTemplatesRequest requests templates matching the given filters across
@@ -1475,18 +1333,6 @@ export declare const TemplateService: GenService<{
     methodKind: "unary";
     input: typeof GetReleaseRequestSchema;
     output: typeof GetReleaseResponseSchema;
-  },
-  /**
-   * CheckUpdates returns available version updates for linked templates in a
-   * given namespace, comparing current pinned versions against published
-   * releases.
-   *
-   * @generated from rpc holos.console.v1.TemplateService.CheckUpdates
-   */
-  checkUpdates: {
-    methodKind: "unary";
-    input: typeof CheckUpdatesRequestSchema;
-    output: typeof CheckUpdatesResponseSchema;
   },
   /**
    * GetTemplateDefaults returns the defaults a template provides for

@@ -264,10 +264,12 @@ func TestTemplate_ObservedGenerationConverges(t *testing.T) {
 	}
 
 	// Confirm the full condition set is present.
+	// LinkedRefsResolved was removed in HOL-908 — explicit linking is
+	// superseded by TemplatePolicyBinding. The reconciler now surfaces only
+	// Accepted, CUEValid, and Ready.
 	expected := []string{
 		v1alpha1.TemplateConditionAccepted,
 		v1alpha1.TemplateConditionCUEValid,
-		v1alpha1.TemplateConditionLinkedRefsResolved,
 		v1alpha1.TemplateConditionReady,
 	}
 	for _, ct := range expected {

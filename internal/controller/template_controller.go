@@ -62,8 +62,9 @@ func (r *TemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // HOL-620 for the full contract; in summary:
 //
 //  1. Fetch the object; NotFound -> no-op.
-//  2. Build the Accepted / CUEValid / LinkedRefsResolved component
-//     conditions from the current spec.
+//  2. Build the Accepted / CUEValid component conditions from the current spec.
+//     LinkedRefsResolved was removed in HOL-908 — explicit linking is
+//     superseded by TemplatePolicyBinding.
 //  3. Aggregate into Ready.
 //  4. Stamp metadata.generation on every condition plus
 //     status.observedGeneration.
@@ -93,7 +94,7 @@ func (r *TemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	ready := aggregateReady(components,
 		v1alpha1.TemplateReasonReady,
 		v1alpha1.TemplateReasonNotReady,
-		"Template is accepted, the CUE payload is valid, and every linked template reference resolves.",
+		"Template is accepted and the CUE payload is valid.",
 		"Template is not Ready; see component conditions for details.")
 	ready.Type = v1alpha1.TemplateConditionReady
 	ready.ObservedGeneration = gen
@@ -136,18 +137,19 @@ func (r *TemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	return ctrl.Result{}, nil
 }
 
-// buildTemplateConditions computes the Accepted, CUEValid, and
-// LinkedRefsResolved component conditions from the current spec. The caller
-// aggregates them into Ready and stamps observedGeneration.
+// buildTemplateConditions computes the Accepted and CUEValid component
+// conditions from the current spec. The caller aggregates them into Ready
+// and stamps observedGeneration.
 //
-// Callers receive conditions in the canonical order:
-// Accepted, CUEValid, LinkedRefsResolved. Keeping a stable order simplifies
-// test assertions.
+// LinkedRefsResolved was removed in HOL-908 — explicit linking is superseded
+// by TemplatePolicyBinding.
+//
+// Callers receive conditions in the canonical order: Accepted, CUEValid.
+// Keeping a stable order simplifies test assertions.
 func buildTemplateConditions(tmpl *v1alpha1.Template) []metav1.Condition {
-	conds := make([]metav1.Condition, 0, 3)
+	conds := make([]metav1.Condition, 0, 2)
 	conds = append(conds, templateAcceptedCondition(tmpl))
 	conds = append(conds, templateCUEValidCondition(tmpl))
-	conds = append(conds, templateLinkedRefsCondition(tmpl))
 	return conds
 }
 
@@ -219,31 +221,3 @@ func templateCUEValidCondition(tmpl *v1alpha1.Template) metav1.Condition {
 	}
 }
 
-// templateLinkedRefsCondition validates the version constraints carried on
-// each LinkedTemplateRef. HOL-620 intentionally does NOT look up the
-// referenced templates in the cache yet — that cross-namespace read path
-// wires in during HOL-622. For now, a malformed version constraint flips
-// the condition False with LinkedRefVersionMismatch so operators see the
-// failure surface even before the full resolver lands. An empty
-// LinkedTemplates list is True with ResolvedRefs — nothing to resolve.
-func templateLinkedRefsCondition(tmpl *v1alpha1.Template) metav1.Condition {
-	for _, ref := range tmpl.Spec.LinkedTemplates {
-		if ref.VersionConstraint == "" {
-			continue
-		}
-		if _, err := semver.NewConstraint(ref.VersionConstraint); err != nil {
-			return metav1.Condition{
-				Type:    v1alpha1.TemplateConditionLinkedRefsResolved,
-				Status:  metav1.ConditionFalse,
-				Reason:  v1alpha1.TemplateReasonLinkedRefVersionMismatch,
-				Message: fmt.Sprintf("linkedTemplates[%s/%s].versionConstraint is not a valid semver constraint: %v", ref.Namespace, ref.Name, err),
-			}
-		}
-	}
-	return metav1.Condition{
-		Type:    v1alpha1.TemplateConditionLinkedRefsResolved,
-		Status:  metav1.ConditionTrue,
-		Reason:  v1alpha1.TemplateReasonResolvedRefs,
-		Message: "every linkedTemplates version constraint parses",
-	}
-}

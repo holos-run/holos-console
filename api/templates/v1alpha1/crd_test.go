@@ -147,7 +147,9 @@ func TestCRDRoundTrip_Template(t *testing.T) {
 			},
 		},
 		{
-			name: "with-defaults-and-links",
+			// HOL-908: renamed from "with-defaults-and-links" — LinkedTemplates
+			// was removed from TemplateSpec; this case now covers defaults only.
+			name: "with-defaults",
 			template: &v1alpha1.Template{
 				ObjectMeta: metav1.ObjectMeta{Name: "with-defaults", Namespace: nsName},
 				Spec: v1alpha1.TemplateSpec{
@@ -161,13 +163,6 @@ func TestCRDRoundTrip_Template(t *testing.T) {
 						Port:  8080,
 						Env: []v1alpha1.EnvVar{
 							{Name: "LOG_LEVEL", Value: "info"},
-						},
-					},
-					LinkedTemplates: []v1alpha1.LinkedTemplateRef{
-						{
-							Namespace:         "holos-org-acme",
-							Name:              "istio-gateway",
-							VersionConstraint: ">=1.0.0 <2.0.0",
 						},
 					},
 				},
