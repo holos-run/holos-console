@@ -369,14 +369,13 @@ func TestCreateTemplate(t *testing.T) {
 	ensureNamespace(t, e.Direct, ns)
 
 	cases := []struct {
-		name            string
-		resourceName    string
-		displayName     string
-		description     string
-		cueTemplate     string
-		defaults        *consolev1.TemplateDefaults
-		enabled         bool
-		linkedTemplates []*consolev1.LinkedTemplateRef
+		name         string
+		resourceName string
+		displayName  string
+		description  string
+		cueTemplate  string
+		defaults     *consolev1.TemplateDefaults
+		enabled      bool
 	}{
 		{
 			name:         "minimal fields persisted",
@@ -395,21 +394,18 @@ func TestCreateTemplate(t *testing.T) {
 			},
 		},
 		{
-			name:         "enabled + linked refs stored in spec",
+			name:         "enabled flag stored in spec",
 			resourceName: "enabled",
 			displayName:  "Enabled",
 			cueTemplate:  "package holos\n",
 			enabled:      true,
-			linkedTemplates: []*consolev1.LinkedTemplateRef{
-				newLinkedRef(orgScope, "acme", "httproute", ""),
-			},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := k.CreateTemplate(
 				context.Background(), ns, tc.resourceName, tc.displayName, tc.description,
-				tc.cueTemplate, tc.defaults, tc.enabled, tc.linkedTemplates,
+				tc.cueTemplate, tc.defaults, tc.enabled,
 			)
 			if err != nil {
 				t.Fatalf("CreateTemplate: %v", err)
@@ -432,8 +428,9 @@ func TestCreateTemplate(t *testing.T) {
 			if tc.defaults != nil && read.Spec.Defaults == nil {
 				t.Errorf("expected defaults to be persisted")
 			}
-			if len(tc.linkedTemplates) != len(read.Spec.LinkedTemplates) {
-				t.Errorf("linkedTemplates len=%d want %d", len(read.Spec.LinkedTemplates), len(tc.linkedTemplates))
+			// HOL-906: CreateTemplate never writes LinkedTemplates.
+			if len(read.Spec.LinkedTemplates) != 0 {
+				t.Errorf("expected no linked templates in spec (HOL-906), got %d", len(read.Spec.LinkedTemplates))
 			}
 		})
 	}
@@ -541,7 +538,7 @@ func TestK8sClient_ListReflectsCreate(t *testing.T) {
 
 	if _, err := k.CreateTemplate(
 		context.Background(), ns, "fresh", "Fresh", "", "package holos\n",
-		nil, false, nil,
+		nil, false,
 	); err != nil {
 		t.Fatalf("CreateTemplate: %v", err)
 	}
@@ -846,43 +843,33 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 	})
 }
 
-// TestLinkedTemplatesAnnotation covers CreateTemplate's linked-refs handling
-// through the CRD spec (post-HOL-661 the annotation round-trip is gone, but
-// the bridged fixtures make the same assertions). The bridge still round-
-// trips through the JSON annotation path to make sure
-// unmarshalLinkedTemplates retains its public shape — the Release-rendering
-// path depends on it.
-func TestLinkedTemplatesAnnotation(t *testing.T) {
+// TestCreateTemplate_NoLinkedTemplates guards the HOL-906 invariant:
+// CreateTemplate never writes spec.linkedTemplates regardless of what the
+// caller passes. Template composition is driven exclusively by
+// TemplatePolicyBinding (HOL-903 Phase 3).
+func TestCreateTemplate_NoLinkedTemplates(t *testing.T) {
 	e, k := newEnvtestK8sClient(t)
 
 	ns := "prj-links"
 	ctx := context.Background()
 	ensureNamespace(t, e.Direct, ns)
 
-	t.Run("CreateTemplate stores linked refs in spec", func(t *testing.T) {
-		linked := []*consolev1.LinkedTemplateRef{
-			newLinkedRef(orgScope, "acme", "httproute", ""),
-			newLinkedRef(orgScope, "acme", "policy-floor", ""),
-		}
-		tmpl, err := k.CreateTemplate(ctx, ns, "web-app", "Web App", "desc", "package holos\n", nil, false, linked)
+	t.Run("CreateTemplate never writes spec.linkedTemplates", func(t *testing.T) {
+		tmpl, err := k.CreateTemplate(ctx, ns, "web-app", "Web App", "desc", "package holos\n", nil, false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(tmpl.Spec.LinkedTemplates) != 2 {
-			t.Fatalf("expected 2 linked templates, got %d", len(tmpl.Spec.LinkedTemplates))
-		}
-		if tmpl.Spec.LinkedTemplates[0].Name != "httproute" {
-			t.Errorf("expected 'httproute', got %q", tmpl.Spec.LinkedTemplates[0].Name)
-		}
-	})
-
-	t.Run("CreateTemplate with nil linked list leaves spec empty", func(t *testing.T) {
-		tmpl, err := k.CreateTemplate(ctx, ns, "no-links", "No Links", "desc", "package holos\n", nil, false, nil)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		// HOL-906: CreateTemplate must not write any linked templates.
 		if len(tmpl.Spec.LinkedTemplates) != 0 {
-			t.Errorf("expected empty linked list, got %d entries", len(tmpl.Spec.LinkedTemplates))
+			t.Errorf("HOL-906: expected no linked templates in spec, got %d", len(tmpl.Spec.LinkedTemplates))
+		}
+		// Read-your-own-write via direct client Get to confirm storage.
+		read := &templatesv1alpha1.Template{}
+		if err := e.Direct.Get(ctx, types.NamespacedName{Namespace: ns, Name: "web-app"}, read); err != nil {
+			t.Fatalf("Get after Create: %v", err)
+		}
+		if len(read.Spec.LinkedTemplates) != 0 {
+			t.Errorf("HOL-906: expected no linked templates on stored CRD, got %d", len(read.Spec.LinkedTemplates))
 		}
 	})
 }
