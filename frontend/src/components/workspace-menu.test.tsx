@@ -186,15 +186,35 @@ describe('WorkspaceMenu — items', () => {
     expect(link.getAttribute('href')).toBe('/profile')
   })
 
-  it('renders Settings disabled (not a link) when no org is selected', () => {
+  it('renders Project Settings disabled (not a link) when no project is selected', () => {
     render(<WorkspaceMenu />)
-    const settings = screen.getByTestId('workspace-menu-item-settings')
+    const settings = screen.getByTestId('workspace-menu-item-project-settings')
     expect(settings.tagName).toBe('DIV')
     expect(settings.getAttribute('aria-disabled')).toBe('true')
-    expect(settings.textContent).toContain('Settings')
+    expect(settings.textContent).toContain('Project Settings')
   })
 
-  it('renders Settings → /orgs/$orgName/settings when an org is selected', () => {
+  it('renders Project Settings → /projects/$projectName/settings when a project is selected', () => {
+    ;(useProject as Mock).mockReturnValue({
+      projects: [{ name: 'my-project', displayName: 'My Project' }],
+      selectedProject: 'my-project',
+      setSelectedProject: vi.fn(),
+      isLoading: false,
+    })
+    render(<WorkspaceMenu />)
+    const link = screen.getByTestId('workspace-menu-item-project-settings')
+    expect(link.getAttribute('href')).toBe('/projects/my-project/settings')
+  })
+
+  it('renders Organization Settings disabled (not a link) when no org is selected', () => {
+    render(<WorkspaceMenu />)
+    const settings = screen.getByTestId('workspace-menu-item-org-settings')
+    expect(settings.tagName).toBe('DIV')
+    expect(settings.getAttribute('aria-disabled')).toBe('true')
+    expect(settings.textContent).toContain('Organization Settings')
+  })
+
+  it('renders Organization Settings → /orgs/$orgName/settings when an org is selected', () => {
     ;(useOrg as Mock).mockReturnValue({
       organizations: [{ name: 'my-org', displayName: 'My Org' }],
       selectedOrg: 'my-org',
@@ -202,7 +222,7 @@ describe('WorkspaceMenu — items', () => {
       isLoading: false,
     })
     render(<WorkspaceMenu />)
-    const link = screen.getByTestId('workspace-menu-item-settings')
+    const link = screen.getByTestId('workspace-menu-item-org-settings')
     expect(link.getAttribute('href')).toBe('/orgs/my-org/settings')
   })
 
@@ -238,11 +258,17 @@ describe('WorkspaceMenu — items', () => {
     expect(switchProjects.textContent).toContain('Switch Projects')
   })
 
-  it('renders items in the canonical order: About, Settings, Switch Projects, Switch organization, Profile, Dev Tools', () => {
+  it('renders items in the canonical order: About, Project Settings, Organization Settings, Switch Projects, Switch Organization, Profile, Dev Tools', () => {
     ;(useOrg as Mock).mockReturnValue({
       organizations: [{ name: 'my-org', displayName: 'My Org' }],
       selectedOrg: 'my-org',
       setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+    ;(useProject as Mock).mockReturnValue({
+      projects: [{ name: 'my-project', displayName: 'My Project' }],
+      selectedProject: 'my-project',
+      setSelectedProject: vi.fn(),
       isLoading: false,
     })
     ;(getConsoleConfig as Mock).mockReturnValue({ devToolsEnabled: true })
@@ -255,7 +281,8 @@ describe('WorkspaceMenu — items', () => {
 
     expect(labels).toEqual([
       'workspace-menu-item-about',
-      'workspace-menu-item-settings',
+      'workspace-menu-item-project-settings',
+      'workspace-menu-item-org-settings',
       'workspace-menu-item-switch-projects',
       'workspace-menu-item-switch-organization',
       'workspace-menu-item-profile',
@@ -263,7 +290,7 @@ describe('WorkspaceMenu — items', () => {
     ])
   })
 
-  it('keeps the canonical order when no org is selected (Settings and Switch Projects are disabled but present)', () => {
+  it('keeps the canonical order when no org/project selected (Project Settings and Org Settings are disabled but present)', () => {
     ;(getConsoleConfig as Mock).mockReturnValue({ devToolsEnabled: true })
     render(<WorkspaceMenu />)
 
@@ -274,7 +301,8 @@ describe('WorkspaceMenu — items', () => {
 
     expect(labels).toEqual([
       'workspace-menu-item-about',
-      'workspace-menu-item-settings',
+      'workspace-menu-item-project-settings',
+      'workspace-menu-item-org-settings',
       'workspace-menu-item-switch-projects',
       'workspace-menu-item-switch-organization',
       'workspace-menu-item-profile',

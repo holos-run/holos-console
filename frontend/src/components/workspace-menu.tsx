@@ -16,14 +16,16 @@ import { getConsoleConfig } from '@/lib/console-config'
  * of the sidebar. It replaces the previous stacked OrgPicker + ProjectPicker
  * dropdowns. Menu items appear in the canonical order:
  *
- *   About, Settings, Switch Projects, Switch organization, separator, Profile, Dev Tools
+ *   About, Project Settings, Organization Settings, Switch Projects,
+ *   Switch Organization, separator, Profile, Dev Tools
  *
  * Dev Tools is only visible when the server gates it on via `--enable-dev-tools`
  * (mirrored to the frontend via `getConsoleConfig().devToolsEnabled`). The
- * `Settings` item routes to org settings when an org is selected; when no org
- * is selected it is rendered disabled (there is no global settings route) so
- * the canonical item order stays visible in every state. `Switch Projects`
- * links to the org-scoped projects list and is disabled when no org is selected.
+ * `Project Settings` item routes to project settings when a project is selected;
+ * `Organization Settings` routes to org settings when an org is selected. Both
+ * are rendered disabled when the respective scope is not selected so the
+ * canonical item order stays visible in every state. `Switch Projects` links to
+ * the org-scoped projects list and is disabled when no org is selected.
  */
 export function WorkspaceMenu() {
   const { selectedOrg, organizations } = useOrg()
@@ -75,21 +77,38 @@ export function WorkspaceMenu() {
               <span>About</span>
             </Link>
           </DropdownMenuItem>
+          {selectedProject ? (
+            <DropdownMenuItem asChild>
+              <Link
+                to="/projects/$projectName/settings"
+                params={{ projectName: selectedProject }}
+                data-testid="workspace-menu-item-project-settings"
+              >
+                <Settings className="h-4 w-4" />
+                <span>Project Settings</span>
+              </Link>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem disabled data-testid="workspace-menu-item-project-settings">
+              <Settings className="h-4 w-4" />
+              <span>Project Settings</span>
+            </DropdownMenuItem>
+          )}
           {selectedOrg ? (
             <DropdownMenuItem asChild>
               <Link
                 to="/orgs/$orgName/settings"
                 params={{ orgName: selectedOrg }}
-                data-testid="workspace-menu-item-settings"
+                data-testid="workspace-menu-item-org-settings"
               >
                 <Settings className="h-4 w-4" />
-                <span>Settings</span>
+                <span>Organization Settings</span>
               </Link>
             </DropdownMenuItem>
           ) : (
-            <DropdownMenuItem disabled data-testid="workspace-menu-item-settings">
+            <DropdownMenuItem disabled data-testid="workspace-menu-item-org-settings">
               <Settings className="h-4 w-4" />
-              <span>Settings</span>
+              <span>Organization Settings</span>
             </DropdownMenuItem>
           )}
           {selectedOrg ? (
@@ -114,7 +133,7 @@ export function WorkspaceMenu() {
           <DropdownMenuItem asChild>
             <Link to="/organizations" data-testid="workspace-menu-item-switch-organization">
               <ArrowRightLeft className="h-4 w-4" />
-              <span>Switch organization</span>
+              <span>Switch Organization</span>
             </Link>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
