@@ -3,7 +3,6 @@ package templates
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
 
@@ -137,43 +136,9 @@ func TestConfigMapToTemplate(t *testing.T) {
 		}
 	})
 
-	t.Run("linked templates from v1alpha2 annotation", func(t *testing.T) {
-		type storedRef struct {
-			Scope     string `json:"scope"`
-			ScopeName string `json:"scope_name"`
-			Name      string `json:"name"`
-		}
-		refs := []storedRef{
-			{Scope: "organization", ScopeName: "acme", Name: "httproute"},
-			{Scope: "folder", ScopeName: "payments", Name: "payments-policy"},
-		}
-		linkedJSON, _ := json.Marshal(refs)
-		cm := &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "web-app",
-				Namespace: "prj-my-project",
-				Annotations: map[string]string{
-					v1alpha2.AnnotationLinkedTemplates: string(linkedJSON),
-				},
-			},
-			Data: map[string]string{},
-		}
-		tmpl := configMapToTemplate(cm, scopeKindProject, "my-project")
-		if len(tmpl.LinkedTemplates) != 2 {
-			t.Fatalf("expected 2 linked templates, got %d", len(tmpl.LinkedTemplates))
-		}
-		if tmpl.LinkedTemplates[0].Name != "httproute" {
-			t.Errorf("expected 'httproute', got %q", tmpl.LinkedTemplates[0].Name)
-		}
-		// Post-HOL-723 namespace is authoritative; classify via the test
-		// resolver to assert the expected scope.
-		if kind, _ := classifyNamespace(testResolver, tmpl.LinkedTemplates[0].GetNamespace()); kind != scopeKindOrganization {
-			t.Errorf("expected org scope from namespace %q, got %v", tmpl.LinkedTemplates[0].GetNamespace(), kind)
-		}
-		if kind, _ := classifyNamespace(testResolver, tmpl.LinkedTemplates[1].GetNamespace()); kind != scopeKindFolder {
-			t.Errorf("expected folder scope from namespace %q, got %v", tmpl.LinkedTemplates[1].GetNamespace(), kind)
-		}
-	})
+	// NOTE: "linked templates from v1alpha2 annotation" subtest removed in
+	// HOL-908. The LinkedTemplates field was removed from the proto Template
+	// message; configMapToTemplate no longer populates it.
 
 	t.Run("defaults from annotation fallback", func(t *testing.T) {
 		defaultsJSON := `{"image":"ghcr.io/example/app","tag":"v1.0"}`
@@ -297,187 +262,11 @@ func projectScopeRef(project string) string {
 	return testResolver.ProjectNamespace(project)
 }
 
-// TestCreateTemplate_IgnoresLinkedTemplates guards the HOL-906 invariant:
-// CreateTemplate silently ignores any linked_templates in the request and never
-// writes the console.holos.run/linked-templates annotation to the Template CRD.
+// NOTE: TestCreateTemplate_IgnoresLinkedTemplates and
+// TestUpdateTemplate_IgnoresLinkedTemplates were removed in HOL-908.
+// The linked_templates field on Template, update_linked_templates flag on
+// UpdateTemplateRequest, and LinkedTemplates on TemplateSpec are all gone.
 // Template composition is driven exclusively by TemplatePolicyBinding.
-func TestCreateTemplate_IgnoresLinkedTemplates(t *testing.T) {
-	const project = "my-project"
-	const ownerEmail = "platform@localhost"
-
-	tests := []struct {
-		name            string
-		linkedTemplates []*consolev1.LinkedTemplateRef
-	}{
-		{
-			name:            "linked templates with foreign namespace are silently ignored",
-			linkedTemplates: []*consolev1.LinkedTemplateRef{{Namespace: "default", Name: "rogue"}},
-		},
-		{
-			name:            "linked templates with org namespace are silently ignored",
-			linkedTemplates: []*consolev1.LinkedTemplateRef{orgLinkedRef("acme", "httproute")},
-		},
-		{
-			name:            "linked templates with folder namespace are silently ignored",
-			linkedTemplates: []*consolev1.LinkedTemplateRef{folderLinkedRef("payments", "payments-policy")},
-		},
-		{
-			name:            "nil linked templates succeeds",
-			linkedTemplates: nil,
-		},
-	}
-
-	for i, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ns := &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{Name: "prj-" + project},
-			}
-			fakeClient := fake.NewClientset(ns)
-			handler, k8s := newTestHandlerAndK8s(t, fakeClient, map[string]string{ownerEmail: "owner"})
-
-			templateName := fmt.Sprintf("tmpl-%d", i)
-			ctx := authedCtx(ownerEmail, nil)
-			req := connect.NewRequest(&consolev1.CreateTemplateRequest{
-				Namespace: projectScopeRef(project),
-				Template: &consolev1.Template{
-					Name:            templateName,
-					CueTemplate:     validCue,
-					LinkedTemplates: tt.linkedTemplates,
-				},
-			})
-
-			_, err := handler.CreateTemplate(ctx, req)
-			if err != nil {
-				t.Fatalf("expected no error, got %v", err)
-			}
-
-			// HOL-906: the stored CRD must not carry any linked-templates
-			// annotation, regardless of what the request contained.
-			got, getErr := k8s.GetTemplate(context.Background(), "prj-"+project, templateName)
-			if getErr != nil {
-				t.Fatalf("GetTemplate after create: %v", getErr)
-			}
-			if len(got.Spec.LinkedTemplates) != 0 {
-				t.Errorf("HOL-906: expected no linked templates in CRD spec, got %d entries: %+v",
-					len(got.Spec.LinkedTemplates), got.Spec.LinkedTemplates)
-			}
-		})
-	}
-}
-
-// TestUpdateTemplate_IgnoresLinkedTemplates guards the HOL-906 invariant:
-// UpdateTemplate silently ignores update_linked_templates=true and any
-// linked_templates payload — the flag is a no-op for the annotation.
-// Template composition is driven exclusively by TemplatePolicyBinding.
-func TestUpdateTemplate_IgnoresLinkedTemplates(t *testing.T) {
-	const project = "my-project"
-	const ownerEmail = "platform@localhost"
-	const editorEmail = "product@localhost"
-
-	// Pre-seed a template with existing linked templates in spec so the
-	// preservation check has something to observe.
-	existingLinkedJSON := `[{"scope":"organization","scope_name":"acme","name":"httproute"}]`
-
-	makeExistingTemplate := func() *corev1.ConfigMap {
-		return &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "web-app",
-				Namespace: "prj-" + project,
-				Labels: map[string]string{
-					v1alpha2.LabelManagedBy:     v1alpha2.ManagedByValue,
-					v1alpha2.LabelTemplateScope: v1alpha2.TemplateScopeProject,
-				},
-				Annotations: map[string]string{
-					v1alpha2.AnnotationDisplayName:     "Web App",
-					v1alpha2.AnnotationDescription:     "A web app",
-					v1alpha2.AnnotationEnabled:         "false",
-					v1alpha2.AnnotationLinkedTemplates: existingLinkedJSON,
-				},
-			},
-			Data: map[string]string{CueTemplateKey: validCue},
-		}
-	}
-
-	tests := []struct {
-		name             string
-		email            string
-		updateLinkedTmpl bool
-		linkedTemplates  []*consolev1.LinkedTemplateRef
-	}{
-		{
-			name:             "OWNER with update_linked_templates=true and non-empty list succeeds without error",
-			email:            ownerEmail,
-			updateLinkedTmpl: true,
-			linkedTemplates: []*consolev1.LinkedTemplateRef{
-				orgLinkedRef("acme", "httproute"),
-				folderLinkedRef("payments", "payments-policy"),
-			},
-		},
-		{
-			name:             "EDITOR with update_linked_templates=true succeeds (flag is now a no-op)",
-			email:            editorEmail,
-			updateLinkedTmpl: true,
-			linkedTemplates:  []*consolev1.LinkedTemplateRef{orgLinkedRef("acme", "new-route")},
-		},
-		{
-			name:             "OWNER with update_linked_templates=true and nil list does not clear existing",
-			email:            ownerEmail,
-			updateLinkedTmpl: true,
-			linkedTemplates:  nil,
-		},
-		{
-			name:             "EDITOR CUE-only update with update_linked_templates=false succeeds",
-			email:            editorEmail,
-			updateLinkedTmpl: false,
-			linkedTemplates:  nil,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ns := &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{Name: "prj-" + project},
-			}
-			cm := makeExistingTemplate()
-			fakeClient := fake.NewClientset(ns, cm)
-			shareUsers := map[string]string{
-				ownerEmail:  "owner",
-				editorEmail: "editor",
-			}
-			handler, k8s := newTestHandlerAndK8s(t, fakeClient, shareUsers)
-
-			ctx := authedCtx(tt.email, nil)
-			req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
-				Namespace: projectScopeRef(project),
-				Template: &consolev1.Template{
-					Name:            "web-app",
-					CueTemplate:     validCue,
-					LinkedTemplates: tt.linkedTemplates,
-				},
-				UpdateLinkedTemplates: tt.updateLinkedTmpl,
-			})
-
-			_, err := handler.UpdateTemplate(ctx, req)
-			if err != nil {
-				t.Fatalf("expected no error, got %v", err)
-			}
-
-			// HOL-906: update_linked_templates is a no-op — the spec should
-			// be unchanged (any existing links from before this phase are
-			// preserved by passing nil to K8sClient.UpdateTemplate).
-			updated, getErr := k8s.GetTemplate(context.Background(), "prj-"+project, "web-app")
-			if getErr != nil {
-				t.Fatalf("GetTemplate after update: %v", getErr)
-			}
-			// The existing links were seeded via the ConfigMap annotation
-			// bridge, so they should still be present on the CRD.
-			if len(updated.Spec.LinkedTemplates) == 0 {
-				t.Errorf("HOL-906: expected existing linked templates to be preserved (nil pass-through), got 0")
-			}
-		})
-	}
-	_ = existingLinkedJSON
-}
 
 // NOTE: TestCreateTemplateLinkPermissions, TestCreateTemplateLinkedRefsValidation,
 // and TestUpdateTemplateLinkPermissions were removed in HOL-906.
@@ -709,9 +498,8 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 
 		msg := &consolev1.RenderTemplateRequest{
 			CueTemplate: validCue,
-			LinkedTemplates: []*consolev1.LinkedTemplateRef{
-				orgLinkedRef(org, "httproute"),
-			},
+			// HOL-908: linked_templates removed from RenderTemplateRequest;
+			// ancestor template resolution is driven by TemplatePolicyBinding.
 		}
 
 		_, err := handler.renderTemplateGrouped(context.Background(), msg)
@@ -785,9 +573,8 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 		_, err := handler.renderTemplateGrouped(context.Background(), &consolev1.RenderTemplateRequest{
 			Namespace:   projectScopeRef(project),
 			CueTemplate: validCue,
-			LinkedTemplates: []*consolev1.LinkedTemplateRef{
-				folderLinkedRef(folder, "shared"),
-			},
+			// HOL-908: linked_templates removed from RenderTemplateRequest;
+			// ancestor template resolution is driven by TemplatePolicyBinding.
 		})
 		if err != nil {
 			t.Fatalf("preview render failed: %v", err)

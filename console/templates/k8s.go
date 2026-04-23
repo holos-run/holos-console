@@ -21,7 +21,6 @@ package templates
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -177,22 +176,10 @@ func (k *K8sClient) CreateTemplate(
 // UpdateTemplate mutates the addressable spec fields of an existing Template.
 //
 // Each optional pointer parameter applies only when non-nil — the helper
-// preserves nil-for-"leave alone" semantics the handler relies on. The
-// linked-template handling follows the same three-state contract the
-// pre-HOL-621 ConfigMap path used:
+// preserves nil-for-"leave alone" semantics the handler relies on.
 //
-//   - clearLinks=true          → spec.linkedTemplates is set to nil
-//   - linkedTemplates != nil   → spec.linkedTemplates is overwritten
-//     (including the "empty slice means clear" case
-//     the caller is responsible for normalizing)
-//   - linkedTemplates == nil   → spec.linkedTemplates is left untouched
-//
-// The contract is asymmetric with defaults on purpose: defaults have a
-// clearDefaults counterpart because callers sometimes legitimately want
-// a template to carry zero defaults, and distinguishing that from
-// "preserve" matters for the CRD diff; links use clearLinks for symmetry
-// and because the handler already encoded this distinction on the
-// pre-rewrite ConfigMap path.
+// HOL-908: linkedTemplates and clearLinks parameters were removed — explicit
+// linking is superseded by TemplatePolicyBinding.
 func (k *K8sClient) UpdateTemplate(
 	ctx context.Context,
 	namespace, name string,
@@ -200,8 +187,6 @@ func (k *K8sClient) UpdateTemplate(
 	defaults *consolev1.TemplateDefaults,
 	clearDefaults bool,
 	enabled *bool,
-	linkedTemplates []*consolev1.LinkedTemplateRef,
-	clearLinks bool,
 ) (*templatesv1alpha1.Template, error) {
 	slog.DebugContext(ctx, "updating template in kubernetes",
 		slog.String("namespace", namespace),
@@ -227,15 +212,6 @@ func (k *K8sClient) UpdateTemplate(
 		tmpl.Spec.Defaults = nil
 	} else if defaults != nil {
 		tmpl.Spec.Defaults = protoDefaultsToCRD(defaults)
-	}
-	if clearLinks {
-		tmpl.Spec.LinkedTemplates = nil
-	} else if linkedTemplates != nil {
-		if len(linkedTemplates) == 0 {
-			tmpl.Spec.LinkedTemplates = nil
-		} else {
-			tmpl.Spec.LinkedTemplates = protoLinkedToCRD(linkedTemplates)
-		}
 	}
 	if err := k.client.Update(ctx, tmpl); err != nil {
 		return nil, err
@@ -786,15 +762,14 @@ const (
 // extraction branch that is project-scope only.
 func templateCRDToProto(tmpl *templatesv1alpha1.Template, isProject bool) *consolev1.Template {
 	out := &consolev1.Template{
-		Name:            tmpl.Name,
-		Namespace:       tmpl.Namespace,
-		DisplayName:     tmpl.Spec.DisplayName,
-		Description:     tmpl.Spec.Description,
-		CueTemplate:     tmpl.Spec.CueTemplate,
-		Enabled:         tmpl.Spec.Enabled,
-		Version:         tmpl.Spec.Version,
-		LinkedTemplates: crdLinkedToProto(tmpl.Spec.LinkedTemplates),
-		CreatedAt:       tmpl.CreationTimestamp.UTC().Format(time.RFC3339),
+		Name:        tmpl.Name,
+		Namespace:   tmpl.Namespace,
+		DisplayName: tmpl.Spec.DisplayName,
+		Description: tmpl.Spec.Description,
+		CueTemplate: tmpl.Spec.CueTemplate,
+		Enabled:     tmpl.Spec.Enabled,
+		Version:     tmpl.Spec.Version,
+		CreatedAt:   tmpl.CreationTimestamp.UTC().Format(time.RFC3339),
 	}
 
 	// Priority 1: CUE extraction for project-scope templates (ADR 018 design,
@@ -833,78 +808,6 @@ func linkedRefFromProto(ref *consolev1.LinkedTemplateRef) linkedRef {
 		namespace: ref.GetNamespace(),
 		name:      ref.GetName(),
 	}
-}
-
-// marshalLinkedTemplates serializes LinkedTemplateRef slice to JSON. Used
-// only by the ProjectScopedResolver compatibility adapter that synthesises
-// a ConfigMap for the deployments package; once that package is rewritten
-// against the CRD this helper disappears with it. The stored shape matches
-// the applied-render-set shape in console/policyresolver/applied_state.go.
-func marshalLinkedTemplates(refs []*consolev1.LinkedTemplateRef) ([]byte, error) {
-	type storedRef struct {
-		Namespace         string `json:"namespace"`
-		Name              string `json:"name"`
-		VersionConstraint string `json:"version_constraint,omitempty"`
-	}
-	stored := make([]storedRef, 0, len(refs))
-	for _, r := range refs {
-		if r == nil {
-			continue
-		}
-		stored = append(stored, storedRef{
-			Namespace:         r.GetNamespace(),
-			Name:              r.GetName(),
-			VersionConstraint: r.GetVersionConstraint(),
-		})
-	}
-	b, err := json.Marshal(stored)
-	if err != nil {
-		return nil, fmt.Errorf("serializing linked templates: %w", err)
-	}
-	return b, nil
-}
-
-// protoLinkedToCRD translates the wire LinkedTemplateRef slice into the
-// CRD's structured spec representation. Nil or empty input yields a nil
-// slice so the apiserver sees spec.linkedTemplates as unset rather than an
-// empty array (callers that want to clear use clearLinks=true).
-func protoLinkedToCRD(refs []*consolev1.LinkedTemplateRef) []templatesv1alpha1.LinkedTemplateRef {
-	if len(refs) == 0 {
-		return nil
-	}
-	out := make([]templatesv1alpha1.LinkedTemplateRef, 0, len(refs))
-	for _, ref := range refs {
-		if ref == nil {
-			continue
-		}
-		out = append(out, templatesv1alpha1.LinkedTemplateRef{
-			Namespace:         ref.GetNamespace(),
-			Name:              ref.GetName(),
-			VersionConstraint: ref.GetVersionConstraint(),
-		})
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
-}
-
-// crdLinkedToProto translates the CRD's structured linked-template slice into
-// the wire shape. Both sides are namespace-native post-HOL-723, so the
-// conversion is a 1:1 field copy.
-func crdLinkedToProto(refs []templatesv1alpha1.LinkedTemplateRef) []*consolev1.LinkedTemplateRef {
-	if len(refs) == 0 {
-		return nil
-	}
-	out := make([]*consolev1.LinkedTemplateRef, 0, len(refs))
-	for _, ref := range refs {
-		out = append(out, &consolev1.LinkedTemplateRef{
-			Namespace:         ref.Namespace,
-			Name:              ref.Name,
-			VersionConstraint: ref.VersionConstraint,
-		})
-	}
-	return out
 }
 
 // protoDefaultsToCRD mirrors the proto TemplateDefaults into the CRD

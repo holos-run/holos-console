@@ -90,12 +90,6 @@ type TemplateSpec struct {
 	// Defaults provides optional default values for deployment form
 	// fields. Only meaningful for project-scope templates.
 	Defaults *TemplateDefaults `json:"defaults,omitempty"`
-	// LinkedTemplates lists templates in ancestor scopes to unify with
-	// this template at render time. Ancestor templates forced onto a
-	// project by a TemplatePolicy REQUIRE rule always unify regardless
-	// of this list.
-	// +listType=atomic
-	LinkedTemplates []LinkedTemplateRef `json:"linkedTemplates,omitempty"`
 	// Enabled controls whether this template is eligible to appear in
 	// selection lists and to participate in render-time unification.
 	// Disabled templates are filtered out of linkable-template pickers
@@ -117,8 +111,7 @@ type TemplateStatus struct {
 	// Template by the reconciler.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// Conditions represent the latest available observations of this
-	// Template's state. Known condition types are Accepted, CUEValid,
-	// LinkedRefsResolved, and Ready.
+	// Template's state. Known condition types are Accepted, CUEValid, and Ready.
 	// +listType=map
 	// +listMapKey=type
 	// +patchStrategy=merge

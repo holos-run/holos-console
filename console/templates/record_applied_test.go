@@ -78,12 +78,11 @@ func ownerCtx() context.Context {
 	return authedCtx("owner@localhost", nil)
 }
 
-// existingProjectTemplateWithLinks returns a seeded project-scope template
-// ConfigMap carrying the supplied explicit link list on the
-// AnnotationLinkedTemplates annotation. Used by UpdateTemplate tests that
-// exercise the "preserve existing links" branch.
-func existingProjectTemplateWithLinks(project, name string, refs []*consolev1.LinkedTemplateRef) *corev1.ConfigMap {
-	cm := &corev1.ConfigMap{
+// existingProjectTemplate returns a seeded project-scope template ConfigMap.
+// The refs parameter is accepted for call-site compatibility but ignored —
+// LinkedTemplates was removed from TemplateSpec in HOL-908.
+func existingProjectTemplateWithLinks(project, name string, _ []*consolev1.LinkedTemplateRef) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: "prj-" + project,
@@ -99,19 +98,11 @@ func existingProjectTemplateWithLinks(project, name string, refs []*consolev1.Li
 			CueTemplateKey: "#Input: { name: string }\n",
 		},
 	}
-	if len(refs) > 0 {
-		raw, err := marshalLinkedTemplatesForTest(refs)
-		if err == nil {
-			cm.Annotations[v1alpha2.AnnotationLinkedTemplates] = raw
-		}
-	}
-	return cm
 }
 
-// marshalLinkedTemplatesForTest serializes linked refs using the same JSON
-// shape the production helper emits (flat {namespace, name,
-// version_constraint}). Re-implementing the shape here avoids taking a
-// dependency on an unexported helper.
+// marshalLinkedTemplatesForTest is retained for compatibility; callers that
+// existed pre-HOL-908 are gone. The function remains only so any stale
+// test-helper references compile. TODO(HOL-909): remove entirely.
 func marshalLinkedTemplatesForTest(refs []*consolev1.LinkedTemplateRef) (string, error) {
 	type storedRef struct {
 		Namespace         string `json:"namespace"`
@@ -138,9 +129,6 @@ func marshalLinkedTemplatesForTest(refs []*consolev1.LinkedTemplateRef) (string,
 // policy-resolved effective ref set (REQUIRE − EXCLUDE) returned by the
 // resolver, forwarded verbatim to RecordApplied.
 func TestHandler_CreateTemplate_RecordsAppliedOnSuccess(t *testing.T) {
-	explicit := []*consolev1.LinkedTemplateRef{
-		orgLinkedRef("acme", "httproute"),
-	}
 	required := []*consolev1.LinkedTemplateRef{
 		orgLinkedRef("acme", "httproute"),
 		folderLinkedRef("payments", "audit"),
@@ -153,9 +141,8 @@ func TestHandler_CreateTemplate_RecordsAppliedOnSuccess(t *testing.T) {
 	req := connect.NewRequest(&consolev1.CreateTemplateRequest{
 		Namespace: projectScopeRef("my-project"),
 		Template: &consolev1.Template{
-			Name:            "web-app",
-			CueTemplate:     validCue,
-			LinkedTemplates: explicit,
+			Name:        "web-app",
+			CueTemplate: validCue,
 		},
 	})
 	if _, err := h.CreateTemplate(ownerCtx(), req); err != nil {
@@ -331,56 +318,19 @@ func TestHandler_CreateTemplate_NoRecordOnPersistFailure(t *testing.T) {
 }
 
 // TestHandler_UpdateTemplate_RecordsAppliedOnSuccess_NewLinks verifies the
-// update_linked_templates=true path: the new linked list is resolved and
-// recorded.
-func TestHandler_UpdateTemplate_RecordsAppliedOnSuccess_NewLinks(t *testing.T) {
-	newLinks := []*consolev1.LinkedTemplateRef{
+// TestHandler_UpdateTemplate_RecordsAppliedOnSuccess verifies that a
+// successful project-scope UpdateTemplate calls RecordApplied with the
+// policy-resolved effective ref set. HOL-908 removed the update_linked_templates
+// and linked_templates fields; template composition is driven exclusively by
+// TemplatePolicyBinding.
+func TestHandler_UpdateTemplate_RecordsAppliedOnSuccess(t *testing.T) {
+	resolved := []*consolev1.LinkedTemplateRef{
 		folderLinkedRef("payments", "audit"),
 	}
-	resolver := &recordingResolver{resolved: newLinks}
+	resolver := &recordingResolver{resolved: resolved}
 	checker := &stubProjectTemplateDriftChecker{}
 
-	existing := existingProjectTemplateWithLinks("my-project", "web-app", []*consolev1.LinkedTemplateRef{
-		orgLinkedRef("acme", "httproute"),
-	})
-	h := recordAppliedTemplateHandler(t, resolver, checker, existing)
-
-	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
-		Namespace: projectScopeRef("my-project"),
-		Template: &consolev1.Template{
-			Name:            "web-app",
-			CueTemplate:     validCue,
-			LinkedTemplates: newLinks,
-		},
-		UpdateLinkedTemplates: true,
-	})
-	if _, err := h.UpdateTemplate(ownerCtx(), req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if resolver.calls != 1 {
-		t.Errorf("resolver.Resolve called %d times, want 1", resolver.calls)
-	}
-	if resolver.lastTargetName != "web-app" {
-		t.Errorf("resolver targetName: got %q, want web-app", resolver.lastTargetName)
-	}
-	if checker.recordCalls != 1 {
-		t.Errorf("RecordApplied called %d times, want 1", checker.recordCalls)
-	}
-}
-
-// TestHandler_UpdateTemplate_RecordsAppliedOnSuccess_PreserveLinks verifies
-// the update_linked_templates=false path: the pre-existing linked list is
-// resolved and recorded so drift is computed against the unchanged link
-// state.
-func TestHandler_UpdateTemplate_RecordsAppliedOnSuccess_PreserveLinks(t *testing.T) {
-	existingLinks := []*consolev1.LinkedTemplateRef{
-		orgLinkedRef("acme", "httproute"),
-	}
-	resolver := &recordingResolver{}
-	checker := &stubProjectTemplateDriftChecker{}
-
-	existing := existingProjectTemplateWithLinks("my-project", "web-app", existingLinks)
+	existing := existingProjectTemplateWithLinks("my-project", "web-app", nil)
 	h := recordAppliedTemplateHandler(t, resolver, checker, existing)
 
 	req := connect.NewRequest(&consolev1.UpdateTemplateRequest{
@@ -389,14 +339,13 @@ func TestHandler_UpdateTemplate_RecordsAppliedOnSuccess_PreserveLinks(t *testing
 			Name:        "web-app",
 			CueTemplate: validCue,
 		},
-		UpdateLinkedTemplates: false,
 	})
 	if _, err := h.UpdateTemplate(ownerCtx(), req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if resolver.calls != 1 {
-		t.Fatalf("resolver.Resolve called %d times, want 1", resolver.calls)
+		t.Errorf("resolver.Resolve called %d times, want 1", resolver.calls)
 	}
 	if resolver.lastTargetName != "web-app" {
 		t.Errorf("resolver targetName: got %q, want web-app", resolver.lastTargetName)
@@ -422,7 +371,6 @@ func TestHandler_UpdateTemplate_NoRecordOnPersistFailure(t *testing.T) {
 			Name:        "web-app",
 			CueTemplate: validCue,
 		},
-		UpdateLinkedTemplates: false,
 	})
 	if _, err := h.UpdateTemplate(ownerCtx(), req); err == nil {
 		t.Fatal("expected error from missing template")
@@ -447,7 +395,6 @@ func TestHandler_UpdateTemplate_WarnButSucceedOnRecordFailure(t *testing.T) {
 			Name:        "web-app",
 			CueTemplate: validCue,
 		},
-		UpdateLinkedTemplates: false,
 	})
 	if _, err := h.UpdateTemplate(ownerCtx(), req); err != nil {
 		t.Fatalf("expected success despite record failure, got %v", err)
@@ -471,7 +418,6 @@ func TestHandler_UpdateTemplate_NilCheckerIsSafe(t *testing.T) {
 			Name:        "web-app",
 			CueTemplate: validCue,
 		},
-		UpdateLinkedTemplates: false,
 	})
 	if _, err := h.UpdateTemplate(ownerCtx(), req); err != nil {
 		t.Fatalf("unexpected error with nil checker: %v", err)
@@ -508,7 +454,6 @@ func TestHandler_UpdateTemplate_ResolverFailureIsSwallowed(t *testing.T) {
 			Name:        "web-app",
 			CueTemplate: validCue,
 		},
-		UpdateLinkedTemplates: false,
 	})
 	if _, err := h.UpdateTemplate(ownerCtx(), req); err != nil {
 		t.Fatalf("expected success despite resolver failure, got %v", err)

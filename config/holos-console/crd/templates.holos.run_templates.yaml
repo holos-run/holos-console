@@ -137,41 +137,6 @@ spec:
                   and out of the effective unification set computed when rendering
                   a downstream template or deployment.
                 type: boolean
-              linkedTemplates:
-                description: |-
-                  LinkedTemplates lists templates in ancestor scopes to unify with
-                  this template at render time. Ancestor templates forced onto a
-                  project by a TemplatePolicy REQUIRE rule always unify regardless
-                  of this list.
-                items:
-                  description: |-
-                    LinkedTemplateRef is a (namespace, name) reference to another Template
-                    used in the explicit linking list. The namespace's
-                    `console.holos.run/resource-type` label classifies the linked template's
-                    hierarchy kind at render time — callers supply the namespace only.
-                  properties:
-                    name:
-                      description: Name is the linked template's DNS label slug.
-                      minLength: 1
-                      type: string
-                    namespace:
-                      description: Namespace is the Kubernetes namespace that owns
-                        the linked template.
-                      minLength: 1
-                      type: string
-                    versionConstraint:
-                      description: |-
-                        VersionConstraint is a semver range string (for example
-                        `">=2.0.0 <3.0.0"`) that restricts which release versions of the
-                        linked template are compatible. Empty means no constraint; the
-                        latest version is used.
-                      type: string
-                  required:
-                  - name
-                  - namespace
-                  type: object
-                type: array
-                x-kubernetes-list-type: atomic
               version:
                 description: |-
                   Version is the current semver version string (for example "1.2.3")
@@ -189,8 +154,7 @@ spec:
               conditions:
                 description: |-
                   Conditions represent the latest available observations of this
-                  Template's state. Known condition types are Accepted, CUEValid,
-                  LinkedRefsResolved, and Ready.
+                  Template's state. Known condition types are Accepted, CUEValid, and Ready.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

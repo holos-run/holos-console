@@ -28,27 +28,19 @@ const (
 	// TemplateConditionCUEValid tracks whether the embedded CUE payload
 	// parses and type-checks against its own schema.
 	TemplateConditionCUEValid = "CUEValid"
-	// TemplateConditionLinkedRefsResolved tracks whether every
-	// LinkedTemplateRef in .spec.linkedTemplates resolves to an existing
-	// Template at a compatible version.
-	TemplateConditionLinkedRefsResolved = "LinkedRefsResolved"
-	// TemplateConditionReady is the aggregate: Accepted && CUEValid &&
-	// LinkedRefsResolved are all True.
+	// TemplateConditionReady is the aggregate: Accepted && CUEValid are both True.
 	TemplateConditionReady = "Ready"
 )
 
 // Template condition reasons.
 const (
-	TemplateReasonAccepted                 = "Accepted"
-	TemplateReasonInvalidSpec              = "InvalidSpec"
-	TemplateReasonCUEValid                 = "CUEValid"
-	TemplateReasonCUEParseError            = "CUEParseError"
-	TemplateReasonCUETypeError             = "CUETypeError"
-	TemplateReasonResolvedRefs             = "ResolvedRefs"
-	TemplateReasonLinkedRefNotFound        = "LinkedRefNotFound"
-	TemplateReasonLinkedRefVersionMismatch = "LinkedRefVersionMismatch"
-	TemplateReasonReady                    = "Ready"
-	TemplateReasonNotReady                 = "NotReady"
+	TemplateReasonAccepted      = "Accepted"
+	TemplateReasonInvalidSpec   = "InvalidSpec"
+	TemplateReasonCUEValid      = "CUEValid"
+	TemplateReasonCUEParseError = "CUEParseError"
+	TemplateReasonCUETypeError  = "CUETypeError"
+	TemplateReasonReady         = "Ready"
+	TemplateReasonNotReady      = "NotReady"
 )
 
 // TemplatePolicy condition types.

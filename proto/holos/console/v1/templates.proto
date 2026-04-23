@@ -72,11 +72,6 @@ service TemplateService {
   // version).
   rpc GetRelease(GetReleaseRequest) returns (GetReleaseResponse);
 
-  // CheckUpdates returns available version updates for linked templates in a
-  // given namespace, comparing current pinned versions against published
-  // releases.
-  rpc CheckUpdates(CheckUpdatesRequest) returns (CheckUpdatesResponse);
-
   // GetTemplateDefaults returns the defaults a template provides for
   // deployment form fields. The handler evaluates the template's `defaults`
   // CUE block via ExtractDefaults and returns the same TemplateDefaults
@@ -182,17 +177,13 @@ message Template {
   // defaults provides optional default values for deployment form fields.
   // Only meaningful for project-namespace templates.
   TemplateDefaults defaults = 6;
-  // linked_templates lists templates in ancestor namespaces to unify with
-  // this template at render time. Replaces linked_org_templates from
-  // v1alpha1. Ancestor templates forced onto a project by a TemplatePolicy
-  // REQUIRE rule always unify regardless of this list.
-  repeated LinkedTemplateRef linked_templates = 7;
-
+  // Field 7 previously held `repeated LinkedTemplateRef linked_templates`.
+  // Removed in HOL-908 — explicit linking is superseded by TemplatePolicyBinding.
   // Field 8 previously held `bool mandatory`. Removed in HOL-555 in favor of
-  // TemplatePolicy REQUIRE rules (TemplatePolicyService). The number and name
+  // TemplatePolicy REQUIRE rules (TemplatePolicyService). The numbers and names
   // are reserved to prevent silent reuse.
-  reserved 8;
-  reserved "mandatory";
+  reserved 7, 8;
+  reserved "linked_templates", "mandatory";
 
   // enabled controls whether this template is eligible to appear in selection
   // lists and to participate in render-time unification. Disabled templates
@@ -244,12 +235,10 @@ message CreateTemplateResponse {
 message UpdateTemplateRequest {
   string namespace = 1;
   Template template = 2;
-  // update_linked_templates signals that the linked_templates field on the template
-  // message should be written. When false (default), existing linked templates are
-  // preserved regardless of the template.linked_templates value. When true, the
-  // backend replaces the stored linked templates with template.linked_templates
-  // and enforces scoped link permissions.
-  bool update_linked_templates = 3;
+  // Field 3 previously held `bool update_linked_templates`. Removed in HOL-908
+  // — explicit linking is superseded by TemplatePolicyBinding.
+  reserved 3;
+  reserved "update_linked_templates";
 }
 
 // UpdateTemplateResponse is empty on success.
@@ -282,10 +271,10 @@ message RenderTemplateRequest {
   // cue_template at the "input" path to supply concrete values for template
   // parameters matching the ProjectInput schema.
   string cue_project_input = 4;
-  // linked_templates lists (namespace, name) template references to include
-  // in preview unification. Allows draft templates to preview their effective
-  // rendering with the chosen linking list before saving.
-  repeated LinkedTemplateRef linked_templates = 5;
+  // Field 5 previously held `repeated LinkedTemplateRef linked_templates`.
+  // Removed in HOL-908 — explicit linking is superseded by TemplatePolicyBinding.
+  reserved 5;
+  reserved "linked_templates";
 }
 
 // RenderTemplateResponse contains the rendered output in both formats.
@@ -438,8 +427,8 @@ message ListAncestorTemplatesResponse {
 }
 
 // Release is a published, immutable snapshot of a template at a specific semver
-// version. Releases enable consumers to pin to known-good versions and receive
-// upgrade notifications through the CheckUpdates RPC.
+// version. Releases enable consumers to pin to known-good versions and view
+// upgrade history via ListReleases.
 message Release {
   // template_name is the DNS label slug of the template this release belongs to.
   string template_name = 1;
@@ -458,23 +447,6 @@ message Release {
   TemplateDefaults defaults = 7;
   // created_at is the timestamp when this release was published.
   google.protobuf.Timestamp created_at = 8;
-}
-
-// TemplateUpdate describes an available version update for a linked template.
-// Returned by CheckUpdates to help consumers decide whether to upgrade.
-message TemplateUpdate {
-  // ref is the linked template reference being checked.
-  LinkedTemplateRef ref = 1;
-  // current_version is the version currently pinned by the consumer.
-  string current_version = 2;
-  // latest_compatible_version is the newest release satisfying the version
-  // constraint. Empty if no compatible update is available.
-  string latest_compatible_version = 3;
-  // latest_version is the absolute newest release regardless of constraints.
-  string latest_version = 4;
-  // breaking_update_available is true when a newer version exists that is
-  // outside the current version constraint (i.e. a major version bump).
-  bool breaking_update_available = 5;
 }
 
 // CreateReleaseRequest publishes a new release for a template.
@@ -518,29 +490,6 @@ message GetReleaseRequest {
 // GetReleaseResponse contains the requested release.
 message GetReleaseResponse {
   Release release = 1;
-}
-
-// CheckUpdatesRequest asks for available updates for linked templates in a
-// namespace.
-message CheckUpdatesRequest {
-  // namespace is the Kubernetes namespace whose linked templates should be
-  // checked.
-  string namespace = 1;
-  // template_name is the template whose linked templates should be checked.
-  // If empty, all templates in the namespace are checked.
-  string template_name = 2;
-  // include_current, when true, causes the response to include entries for
-  // linked templates that are already at their latest compatible version (i.e.
-  // no update available). This allows the version status indicator to display
-  // resolved version information for ALL linked templates, not just those with
-  // pending updates.
-  bool include_current = 3;
-}
-
-// CheckUpdatesResponse returns available updates for linked templates.
-message CheckUpdatesResponse {
-  // updates lists each linked template that has an available update.
-  repeated TemplateUpdate updates = 1;
 }
 
 // Note: PolicyState, GetDeploymentPolicyStateRequest/Response, and

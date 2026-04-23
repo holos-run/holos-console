@@ -69,9 +69,6 @@ const (
 	// TemplateServiceGetReleaseProcedure is the fully-qualified name of the TemplateService's
 	// GetRelease RPC.
 	TemplateServiceGetReleaseProcedure = "/holos.console.v1.TemplateService/GetRelease"
-	// TemplateServiceCheckUpdatesProcedure is the fully-qualified name of the TemplateService's
-	// CheckUpdates RPC.
-	TemplateServiceCheckUpdatesProcedure = "/holos.console.v1.TemplateService/CheckUpdates"
 	// TemplateServiceGetTemplateDefaultsProcedure is the fully-qualified name of the TemplateService's
 	// GetTemplateDefaults RPC.
 	TemplateServiceGetTemplateDefaultsProcedure = "/holos.console.v1.TemplateService/GetTemplateDefaults"
@@ -129,10 +126,6 @@ type TemplateServiceClient interface {
 	// GetRelease retrieves a single release by (namespace, template_name,
 	// version).
 	GetRelease(context.Context, *connect.Request[v1.GetReleaseRequest]) (*connect.Response[v1.GetReleaseResponse], error)
-	// CheckUpdates returns available version updates for linked templates in a
-	// given namespace, comparing current pinned versions against published
-	// releases.
-	CheckUpdates(context.Context, *connect.Request[v1.CheckUpdatesRequest]) (*connect.Response[v1.CheckUpdatesResponse], error)
 	// GetTemplateDefaults returns the defaults a template provides for
 	// deployment form fields. The handler evaluates the template's `defaults`
 	// CUE block via ExtractDefaults and returns the same TemplateDefaults
@@ -259,12 +252,6 @@ func NewTemplateServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(templateServiceMethods.ByName("GetRelease")),
 			connect.WithClientOptions(opts...),
 		),
-		checkUpdates: connect.NewClient[v1.CheckUpdatesRequest, v1.CheckUpdatesResponse](
-			httpClient,
-			baseURL+TemplateServiceCheckUpdatesProcedure,
-			connect.WithSchema(templateServiceMethods.ByName("CheckUpdates")),
-			connect.WithClientOptions(opts...),
-		),
 		getTemplateDefaults: connect.NewClient[v1.GetTemplateDefaultsRequest, v1.GetTemplateDefaultsResponse](
 			httpClient,
 			baseURL+TemplateServiceGetTemplateDefaultsProcedure,
@@ -306,7 +293,6 @@ type templateServiceClient struct {
 	createRelease                 *connect.Client[v1.CreateReleaseRequest, v1.CreateReleaseResponse]
 	listReleases                  *connect.Client[v1.ListReleasesRequest, v1.ListReleasesResponse]
 	getRelease                    *connect.Client[v1.GetReleaseRequest, v1.GetReleaseResponse]
-	checkUpdates                  *connect.Client[v1.CheckUpdatesRequest, v1.CheckUpdatesResponse]
 	getTemplateDefaults           *connect.Client[v1.GetTemplateDefaultsRequest, v1.GetTemplateDefaultsResponse]
 	getProjectTemplatePolicyState *connect.Client[v1.GetProjectTemplatePolicyStateRequest, v1.GetProjectTemplatePolicyStateResponse]
 	searchTemplates               *connect.Client[v1.SearchTemplatesRequest, v1.SearchTemplatesResponse]
@@ -373,11 +359,6 @@ func (c *templateServiceClient) GetRelease(ctx context.Context, req *connect.Req
 	return c.getRelease.CallUnary(ctx, req)
 }
 
-// CheckUpdates calls holos.console.v1.TemplateService.CheckUpdates.
-func (c *templateServiceClient) CheckUpdates(ctx context.Context, req *connect.Request[v1.CheckUpdatesRequest]) (*connect.Response[v1.CheckUpdatesResponse], error) {
-	return c.checkUpdates.CallUnary(ctx, req)
-}
-
 // GetTemplateDefaults calls holos.console.v1.TemplateService.GetTemplateDefaults.
 func (c *templateServiceClient) GetTemplateDefaults(ctx context.Context, req *connect.Request[v1.GetTemplateDefaultsRequest]) (*connect.Response[v1.GetTemplateDefaultsResponse], error) {
 	return c.getTemplateDefaults.CallUnary(ctx, req)
@@ -442,10 +423,6 @@ type TemplateServiceHandler interface {
 	// GetRelease retrieves a single release by (namespace, template_name,
 	// version).
 	GetRelease(context.Context, *connect.Request[v1.GetReleaseRequest]) (*connect.Response[v1.GetReleaseResponse], error)
-	// CheckUpdates returns available version updates for linked templates in a
-	// given namespace, comparing current pinned versions against published
-	// releases.
-	CheckUpdates(context.Context, *connect.Request[v1.CheckUpdatesRequest]) (*connect.Response[v1.CheckUpdatesResponse], error)
 	// GetTemplateDefaults returns the defaults a template provides for
 	// deployment form fields. The handler evaluates the template's `defaults`
 	// CUE block via ExtractDefaults and returns the same TemplateDefaults
@@ -568,12 +545,6 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 		connect.WithSchema(templateServiceMethods.ByName("GetRelease")),
 		connect.WithHandlerOptions(opts...),
 	)
-	templateServiceCheckUpdatesHandler := connect.NewUnaryHandler(
-		TemplateServiceCheckUpdatesProcedure,
-		svc.CheckUpdates,
-		connect.WithSchema(templateServiceMethods.ByName("CheckUpdates")),
-		connect.WithHandlerOptions(opts...),
-	)
 	templateServiceGetTemplateDefaultsHandler := connect.NewUnaryHandler(
 		TemplateServiceGetTemplateDefaultsProcedure,
 		svc.GetTemplateDefaults,
@@ -624,8 +595,6 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 			templateServiceListReleasesHandler.ServeHTTP(w, r)
 		case TemplateServiceGetReleaseProcedure:
 			templateServiceGetReleaseHandler.ServeHTTP(w, r)
-		case TemplateServiceCheckUpdatesProcedure:
-			templateServiceCheckUpdatesHandler.ServeHTTP(w, r)
 		case TemplateServiceGetTemplateDefaultsProcedure:
 			templateServiceGetTemplateDefaultsHandler.ServeHTTP(w, r)
 		case TemplateServiceGetProjectTemplatePolicyStateProcedure:
@@ -689,10 +658,6 @@ func (UnimplementedTemplateServiceHandler) ListReleases(context.Context, *connec
 
 func (UnimplementedTemplateServiceHandler) GetRelease(context.Context, *connect.Request[v1.GetReleaseRequest]) (*connect.Response[v1.GetReleaseResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.GetRelease is not implemented"))
-}
-
-func (UnimplementedTemplateServiceHandler) CheckUpdates(context.Context, *connect.Request[v1.CheckUpdatesRequest]) (*connect.Response[v1.CheckUpdatesResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.CheckUpdates is not implemented"))
 }
 
 func (UnimplementedTemplateServiceHandler) GetTemplateDefaults(context.Context, *connect.Request[v1.GetTemplateDefaultsRequest]) (*connect.Response[v1.GetTemplateDefaultsResponse], error) {

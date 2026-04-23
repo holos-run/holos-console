@@ -729,8 +729,8 @@ func (h *Handler) CreateTemplate(
 	// The `mandatory` annotation and its Go/proto projections were removed in
 	// HOL-565. Ancestor templates that must always apply to every project now
 	// come in via TemplatePolicy REQUIRE rules (HOL-567).
-	// HOL-906: linked_templates in the request is silently ignored; template
-	// composition is driven exclusively by TemplatePolicyBinding.
+	// HOL-908: linked_templates was removed from the proto; template composition
+	// is driven exclusively by TemplatePolicyBinding.
 	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	_, err = h.k8s.CreateTemplate(ctx, ns, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, tmpl.Enabled)
 	if err != nil {
@@ -799,13 +799,8 @@ func (h *Handler) UpdateTemplate(
 	cueTemplate := tmpl.CueTemplate
 	enabled := tmpl.Enabled
 
-	// HOL-906: update_linked_templates and linked_templates are silently
-	// ignored; template composition is driven exclusively by
-	// TemplatePolicyBinding. Pass nil for linkedTemplates so K8sClient
-	// preserves (rather than clears) any links that exist on the CRD from
-	// before this phase — they are harmless until Phase 5 removes the field.
 	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
-	_, err = h.k8s.UpdateTemplate(ctx, ns, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, &enabled, nil, false)
+	_, err = h.k8s.UpdateTemplate(ctx, ns, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, &enabled)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -1343,7 +1338,6 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeKind,
 	return result, nil
 }
 
-
 // checkAccess verifies the caller has the given permission for the requested scope.
 // All scope levels (org, folder, project) use the unified TemplateCascadePerms
 // table per ADR 021 Decision 2.
@@ -1567,154 +1561,6 @@ func (h *Handler) GetRelease(
 	return connect.NewResponse(&consolev1.GetReleaseResponse{
 		Release: releaseCRDToProto(rel),
 	}), nil
-}
-
-// CheckUpdates computes available version updates for all linked templates
-// of a template (or all templates in a scope).
-func (h *Handler) CheckUpdates(
-	ctx context.Context,
-	req *connect.Request[consolev1.CheckUpdatesRequest],
-) (*connect.Response[consolev1.CheckUpdatesResponse], error) {
-	scope, scopeName, err := h.extractScope(req.Msg.GetNamespace())
-	if err != nil {
-		return nil, err
-	}
-
-	claims := rpc.ClaimsFromContext(ctx)
-	if claims == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
-		return nil, err
-	}
-
-	// Collect templates to check. If template_name is specified, check only
-	// that template's linked refs. Otherwise check all templates in scope.
-	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
-	var templates []templatesv1alpha1.Template
-	if req.Msg.TemplateName != "" {
-		tmpl, getErr := h.k8s.GetTemplate(ctx, ns, req.Msg.TemplateName)
-		if getErr != nil {
-			return nil, mapK8sError(getErr)
-		}
-		templates = []templatesv1alpha1.Template{*tmpl}
-	} else {
-		list, listErr := h.k8s.ListTemplates(ctx, ns)
-		if listErr != nil {
-			return nil, mapK8sError(listErr)
-		}
-		templates = list
-	}
-
-	var updates []*consolev1.TemplateUpdate
-	for i := range templates {
-		refs := crdLinkedToProto(templates[i].Spec.LinkedTemplates)
-		if len(refs) == 0 {
-			continue
-		}
-		for _, ref := range refs {
-			update, err := h.checkLinkedUpdate(ctx, ref, req.Msg.GetIncludeCurrent())
-			if err != nil {
-				slog.WarnContext(ctx, "failed to check update for linked template",
-					slog.String("name", ref.Name),
-					slog.Any("error", err),
-				)
-				continue
-			}
-			if update != nil {
-				updates = append(updates, update)
-			}
-		}
-	}
-
-	slog.InfoContext(ctx, "updates checked",
-		slog.String("action", "check_updates"),
-		slog.String("scope", scope.String()),
-		slog.String("scopeName", scopeName),
-		slog.String("sub", claims.Sub),
-		slog.Int("count", len(updates)),
-	)
-
-	return connect.NewResponse(&consolev1.CheckUpdatesResponse{
-		Updates: updates,
-	}), nil
-}
-
-// checkLinkedUpdate computes the update status for a single linked template
-// reference. When includeCurrent is false (default), returns nil if no updates
-// are available. When includeCurrent is true, always returns a TemplateUpdate
-// with resolved version information even if the template is already at the
-// latest compatible version.
-func (h *Handler) checkLinkedUpdate(ctx context.Context, ref *consolev1.LinkedTemplateRef, includeCurrent bool) (*consolev1.TemplateUpdate, error) {
-	refNamespace := ref.GetNamespace()
-	refName := ref.Name
-	constraintStr := ref.VersionConstraint
-
-	// List all release versions for the linked template.
-	versions, err := h.k8s.ListReleaseVersions(ctx, refNamespace, refName)
-	if err != nil {
-		return nil, err
-	}
-	if len(versions) == 0 {
-		return nil, nil // no releases means no updates
-	}
-
-	// Parse the constraint from the linked ref.
-	constraint, err := ParseConstraint(constraintStr)
-	if err != nil {
-		return nil, err
-	}
-
-	// Approximate the current pinned version as the latest matching release.
-	// The resolver picks the highest release satisfying the constraint, so
-	// LatestMatchingVersion is a closer proxy than OldestMatchingVersion.
-	// A truly accurate value would require tracking the resolved version per
-	// deployment; this approximation is sufficient until that is implemented.
-	currentVersion := LatestMatchingVersion(versions, constraint)
-	var currentStr string
-	if currentVersion != nil {
-		currentStr = currentVersion.String()
-	}
-
-	// Find the absolute latest version (no constraint).
-	latestVersion := LatestMatchingVersion(versions, nil)
-	var latestStr string
-	if latestVersion != nil {
-		latestStr = latestVersion.String()
-	}
-
-	// Find the latest compatible version (with constraint).
-	latestCompatible := LatestMatchingVersion(versions, constraint)
-	var latestCompatibleStr string
-	if latestCompatible != nil {
-		latestCompatibleStr = latestCompatible.String()
-	}
-
-	// Determine if a breaking update exists: there is a newer version outside
-	// the constraint range.
-	breakingAvailable := false
-	if latestVersion != nil && constraint != nil {
-		if !MatchesConstraint(latestVersion, constraint) {
-			breakingAvailable = true
-		}
-	}
-
-	// Only report an update if there is something new, unless the caller
-	// requested all entries (include_current).
-	hasCompatibleUpdate := latestCompatibleStr != "" && latestCompatibleStr != currentStr
-	if !hasCompatibleUpdate && !breakingAvailable && !includeCurrent {
-		return nil, nil
-	}
-
-	update := &consolev1.TemplateUpdate{
-		Ref:                     ref,
-		CurrentVersion:          currentStr,
-		LatestCompatibleVersion: latestCompatibleStr,
-		LatestVersion:           latestStr,
-		BreakingUpdateAvailable: breakingAvailable,
-	}
-	return update, nil
 }
 
 // mustNamespaceFor returns the Kubernetes namespace owning the given

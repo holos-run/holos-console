@@ -67,10 +67,12 @@ func configMapIsTemplate(cm *corev1.ConfigMap) bool {
 
 // configMapToTemplateCRD converts a v1alpha2-labeled template ConfigMap
 // fixture to the equivalent Template CRD. Preserves name, namespace,
-// display/description/enabled fields, CUE payload, structured defaults
-// (decoded from the DefaultsKey JSON), and linkedTemplates annotation.
-// This is how the test bridge materializes existing ConfigMap fixtures
-// into the CRD the rewritten K8sClient reads from.
+// display/description/enabled fields, CUE payload, and structured defaults
+// (decoded from the DefaultsKey JSON).
+//
+// HOL-908: the linkedTemplates annotation is no longer read — LinkedTemplates
+// was removed from TemplateSpec. Fixtures that carried linked refs via
+// AnnotationLinkedTemplates compile fine; the field is just ignored.
 func configMapToTemplateCRD(cm *corev1.ConfigMap) *templatesv1alpha1.Template {
 	tmpl := &templatesv1alpha1.Template{
 		ObjectMeta: metav1.ObjectMeta{
@@ -93,54 +95,7 @@ func configMapToTemplateCRD(cm *corev1.ConfigMap) *templatesv1alpha1.Template {
 			tmpl.Spec.Defaults = protoDefaultsToCRD(&d)
 		}
 	}
-	if raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedTemplates]; ok && raw != "" {
-		tmpl.Spec.LinkedTemplates = protoLinkedToCRD(parseLinkedAnnotation(raw))
-	}
 	return tmpl
-}
-
-// parseLinkedAnnotation decodes a linked-templates JSON annotation into
-// proto LinkedTemplateRefs so ConfigMap test fixtures that still express
-// linked refs through the annotation continue to work after HOL-661 moved
-// production storage into Template.Spec.LinkedTemplates. Post-HOL-723 the
-// annotation carries a flat {namespace, name, version_constraint} shape;
-// this helper still understands the legacy {scope, scope_name, ...}
-// variant by classifying through the package-level testResolver so stale
-// fixtures keep round-tripping.
-func parseLinkedAnnotation(raw string) []*consolev1.LinkedTemplateRef {
-	type storedRef struct {
-		Namespace         string `json:"namespace,omitempty"`
-		Scope             string `json:"scope,omitempty"`
-		ScopeName         string `json:"scope_name,omitempty"`
-		Name              string `json:"name"`
-		VersionConstraint string `json:"version_constraint,omitempty"`
-	}
-	var stored []storedRef
-	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
-		return nil
-	}
-	out := make([]*consolev1.LinkedTemplateRef, 0, len(stored))
-	for _, r := range stored {
-		ns := r.Namespace
-		if ns == "" {
-			switch r.Scope {
-			case "organization":
-				ns = testResolver.OrgNamespace(r.ScopeName)
-			case "folder":
-				ns = testResolver.FolderNamespace(r.ScopeName)
-			case "project":
-				ns = testResolver.ProjectNamespace(r.ScopeName)
-			default:
-				continue
-			}
-		}
-		out = append(out, &consolev1.LinkedTemplateRef{
-			Namespace:         ns,
-			Name:              r.Name,
-			VersionConstraint: r.VersionConstraint,
-		})
-	}
-	return out
 }
 
 // seedTemplatesFromClientset extracts every template-labeled ConfigMap from

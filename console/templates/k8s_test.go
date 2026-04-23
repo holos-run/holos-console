@@ -7,10 +7,13 @@
 // Cache freshness is covered by TestK8sClient_ListReflectsCreate, which
 // creates a Template and asserts a subsequent List reflects it within the
 // resync window. The remaining fake-client tests
-// (ListEffectiveTemplateSources, LinkedTemplatesAnnotation) continue to run
-// against a fake controller-runtime client because their inputs are still
-// expressed as ConfigMap fixtures and the bridge in testhelpers_test.go
-// materializes them into CRs.
+// (ListEffectiveTemplateSources) continue to run against a fake
+// controller-runtime client because their inputs are still expressed as
+// ConfigMap fixtures and the bridge in testhelpers_test.go materializes
+// them into CRs.
+//
+// HOL-908: LinkedTemplates was removed from TemplateSpec and the
+// LinkedTemplatesAnnotation tests were retired.
 package templates
 
 import (
@@ -43,6 +46,28 @@ var (
 	orgScope    = scopeKindOrganization
 	folderScope = scopeKindFolder
 )
+
+// newLinkedRef builds a proto LinkedTemplateRef for the given scope, scope
+// name, template name, and optional version constraint. Used by
+// ListEffectiveTemplateSources tests to construct policy-effective ref slices.
+// Moved from handler_updates_test.go to this file in HOL-908 when
+// CheckUpdates tests were removed.
+func newLinkedRef(scope scopeKind, scopeName, name, constraint string) *consolev1.LinkedTemplateRef {
+	var ns string
+	switch scope {
+	case scopeKindOrganization:
+		ns = testResolver.OrgNamespace(scopeName)
+	case scopeKindFolder:
+		ns = testResolver.FolderNamespace(scopeName)
+	case scopeKindProject:
+		ns = testResolver.ProjectNamespace(scopeName)
+	}
+	return &consolev1.LinkedTemplateRef{
+		Namespace:         ns,
+		Name:              name,
+		VersionConstraint: constraint,
+	}
+}
 
 // scopeLabelValue maps a scopeKind to the v1alpha2 LabelTemplateScope
 // value used on template ConfigMap / Template CR fixtures. Replaces the
@@ -428,10 +453,7 @@ func TestCreateTemplate(t *testing.T) {
 			if tc.defaults != nil && read.Spec.Defaults == nil {
 				t.Errorf("expected defaults to be persisted")
 			}
-			// HOL-906: CreateTemplate never writes LinkedTemplates.
-			if len(read.Spec.LinkedTemplates) != 0 {
-				t.Errorf("expected no linked templates in spec (HOL-906), got %d", len(read.Spec.LinkedTemplates))
-			}
+			// HOL-908: LinkedTemplates field removed from TemplateSpec entirely.
 		})
 	}
 }
@@ -458,7 +480,7 @@ func TestUpdateTemplate(t *testing.T) {
 	_ = eventuallyGetTemplate(t, k, ns, "tmpl")
 
 	newDisplay := "After"
-	got, err := k.UpdateTemplate(context.Background(), ns, "tmpl", &newDisplay, nil, nil, nil, false, nil, nil, false)
+	got, err := k.UpdateTemplate(context.Background(), ns, "tmpl", &newDisplay, nil, nil, nil, false, nil)
 	if err != nil {
 		t.Fatalf("UpdateTemplate: %v", err)
 	}
@@ -470,7 +492,7 @@ func TestUpdateTemplate(t *testing.T) {
 	}
 
 	// nonexistent template → error.
-	_, err = k.UpdateTemplate(context.Background(), ns, "missing", &newDisplay, nil, nil, nil, false, nil, nil, false)
+	_, err = k.UpdateTemplate(context.Background(), ns, "missing", &newDisplay, nil, nil, nil, false, nil)
 	if err == nil {
 		t.Fatal("expected error updating missing template")
 	}
@@ -843,36 +865,9 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 	})
 }
 
-// TestCreateTemplate_NoLinkedTemplates guards the HOL-906 invariant:
-// CreateTemplate never writes spec.linkedTemplates regardless of what the
-// caller passes. Template composition is driven exclusively by
-// TemplatePolicyBinding (HOL-903 Phase 3).
-func TestCreateTemplate_NoLinkedTemplates(t *testing.T) {
-	e, k := newEnvtestK8sClient(t)
-
-	ns := "prj-links"
-	ctx := context.Background()
-	ensureNamespace(t, e.Direct, ns)
-
-	t.Run("CreateTemplate never writes spec.linkedTemplates", func(t *testing.T) {
-		tmpl, err := k.CreateTemplate(ctx, ns, "web-app", "Web App", "desc", "package holos\n", nil, false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		// HOL-906: CreateTemplate must not write any linked templates.
-		if len(tmpl.Spec.LinkedTemplates) != 0 {
-			t.Errorf("HOL-906: expected no linked templates in spec, got %d", len(tmpl.Spec.LinkedTemplates))
-		}
-		// Read-your-own-write via direct client Get to confirm storage.
-		read := &templatesv1alpha1.Template{}
-		if err := e.Direct.Get(ctx, types.NamespacedName{Namespace: ns, Name: "web-app"}, read); err != nil {
-			t.Fatalf("Get after Create: %v", err)
-		}
-		if len(read.Spec.LinkedTemplates) != 0 {
-			t.Errorf("HOL-906: expected no linked templates on stored CRD, got %d", len(read.Spec.LinkedTemplates))
-		}
-	})
-}
+// NOTE: TestCreateTemplate_NoLinkedTemplates was removed in HOL-908.
+// The LinkedTemplates field was removed from TemplateSpec entirely — there is
+// nothing left to assert against. The invariant was first guarded in HOL-906.
 
 // Ensure defaults serialize through the DefaultsKey JSON path the test
 // helpers use. Covers the DefaultsKey-read path in configMapToTemplateCRD.
