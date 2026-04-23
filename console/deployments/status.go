@@ -87,10 +87,7 @@ func (h *Handler) GetDeploymentStatusSummary(
 	// skip on error — drift is an advisory signal for the UI, not a
 	// first-class failure mode: an outage in the TemplatePolicy resolver
 	// MUST NOT block status reads.
-	// Pass nil for explicitRefs: policy drift is now sourced exclusively
-	// from TemplatePolicyBinding resolution, not the legacy annotation
-	// (HOL-904).
-	h.applyPolicyDrift(ctx, project, name, nil, summary)
+	h.applyPolicyDrift(ctx, project, name, summary)
 
 	return connect.NewResponse(&consolev1.GetDeploymentStatusSummaryResponse{
 		Summary: summary,
@@ -103,11 +100,11 @@ func (h *Handler) GetDeploymentStatusSummary(
 // applied render state yet (a freshly-created deployment that never ran
 // through the post-HOL-567 apply path). Errors are logged at DEBUG and
 // swallowed so drift remains advisory.
-func (h *Handler) applyPolicyDrift(ctx context.Context, project, name string, explicitRefs []*consolev1.LinkedTemplateRef, summary *consolev1.DeploymentStatusSummary) {
+func (h *Handler) applyPolicyDrift(ctx context.Context, project, name string, summary *consolev1.DeploymentStatusSummary) {
 	if h.policyDriftChecker == nil || summary == nil {
 		return
 	}
-	drift, hasApplied, err := h.policyDriftChecker.Drift(ctx, project, name, explicitRefs)
+	drift, hasApplied, err := h.policyDriftChecker.Drift(ctx, project, name)
 	if err != nil {
 		slog.DebugContext(ctx, "policy drift check failed; skipping summary.policy_drift",
 			slog.String("project", project),

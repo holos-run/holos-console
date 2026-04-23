@@ -419,7 +419,7 @@ func TestFolderResolver_EnvtestWildcardFolderCascade(t *testing.T) {
 	// injection on a project-template render of any name.
 	for _, projectNs := range []string{projectLiliesNs, projectRosesNs} {
 		for _, targetName := range []string{"web", "api", "anything"} {
-			got, err := fr.Resolve(context.Background(), projectNs, TargetKindProjectTemplate, targetName, nil)
+			got, err := fr.Resolve(context.Background(), projectNs, TargetKindProjectTemplate, targetName)
 			if err != nil {
 				t.Fatalf("Resolve(%s, project_template, %s): %v", projectNs, targetName, err)
 			}
@@ -433,7 +433,7 @@ func TestFolderResolver_EnvtestWildcardFolderCascade(t *testing.T) {
 	// kind never wildcards: a DEPLOYMENT render must NOT match the
 	// PROJECT_TEMPLATE-targeted wildcard binding even though name and
 	// project_name are both "*".
-	got, err := fr.Resolve(context.Background(), projectLiliesNs, TargetKindDeployment, "web", nil)
+	got, err := fr.Resolve(context.Background(), projectLiliesNs, TargetKindDeployment, "web")
 	if err != nil {
 		t.Fatalf("Resolve(deployment): %v", err)
 	}
@@ -514,7 +514,7 @@ func TestFolderResolver_EnvtestWildcardSiblingFolderIsolation(t *testing.T) {
 	fr := NewFolderResolverWithBindings(pl, walker, r, bl)
 
 	// Project under folder eng: wildcard binding cascades down.
-	got, err := fr.Resolve(context.Background(), projectInEngNs, TargetKindProjectTemplate, "anything", nil)
+	got, err := fr.Resolve(context.Background(), projectInEngNs, TargetKindProjectTemplate, "anything")
 	if err != nil {
 		t.Fatalf("Resolve(eng project): %v", err)
 	}
@@ -524,7 +524,7 @@ func TestFolderResolver_EnvtestWildcardSiblingFolderIsolation(t *testing.T) {
 
 	// Project under sibling folder ops: ancestor walk does not cross
 	// into folder eng, so the wildcard binding contributes nothing.
-	got, err = fr.Resolve(context.Background(), projectInOpsNs, TargetKindProjectTemplate, "anything", nil)
+	got, err = fr.Resolve(context.Background(), projectInOpsNs, TargetKindProjectTemplate, "anything")
 	if err != nil {
 		t.Fatalf("Resolve(ops project): %v", err)
 	}
@@ -665,7 +665,7 @@ func TestFolderResolver_EnvtestWildcardProjectMatchesEveryReachableProject(t *te
 
 	// Both projects' "web" deployment match.
 	for _, projectNs := range []string{projectOneNs, projectTwoNs} {
-		got, err := fr.Resolve(context.Background(), projectNs, TargetKindDeployment, "web", nil)
+		got, err := fr.Resolve(context.Background(), projectNs, TargetKindDeployment, "web")
 		if err != nil {
 			t.Fatalf("Resolve(%s, web): %v", projectNs, err)
 		}
@@ -675,7 +675,7 @@ func TestFolderResolver_EnvtestWildcardProjectMatchesEveryReachableProject(t *te
 	}
 
 	// A different deployment name does not match.
-	got, err := fr.Resolve(context.Background(), projectOneNs, TargetKindDeployment, "api", nil)
+	got, err := fr.Resolve(context.Background(), projectOneNs, TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve(api): %v", err)
 	}
@@ -752,7 +752,7 @@ func TestFolderResolver_EnvtestWildcardProjectZeroMatchesWhenNamesAbsent(t *test
 	// No render target named "web" in this hierarchy means the resolver
 	// is queried for "api" / other names and must return empty.
 	for _, targetName := range []string{"api", "background", "anything"} {
-		got, err := fr.Resolve(context.Background(), projectOnlyNs, TargetKindDeployment, targetName, nil)
+		got, err := fr.Resolve(context.Background(), projectOnlyNs, TargetKindDeployment, targetName)
 		if err != nil {
 			t.Fatalf("Resolve(%s): %v", targetName, err)
 		}
@@ -764,7 +764,7 @@ func TestFolderResolver_EnvtestWildcardProjectZeroMatchesWhenNamesAbsent(t *test
 
 	// A "web" render in the project DOES match — pinning that the
 	// binding still attaches when the literal name aligns.
-	got, err := fr.Resolve(context.Background(), projectOnlyNs, TargetKindDeployment, "web", nil)
+	got, err := fr.Resolve(context.Background(), projectOnlyNs, TargetKindDeployment, "web")
 	if err != nil {
 		t.Fatalf("Resolve(web): %v", err)
 	}

@@ -26,7 +26,7 @@ type stubProjectTemplateDriftChecker struct {
 	lastRecordRefs    []*consolev1.LinkedTemplateRef
 }
 
-func (s *stubProjectTemplateDriftChecker) PolicyState(_ context.Context, _, _ string, _ []*consolev1.LinkedTemplateRef) (*consolev1.PolicyState, error) {
+func (s *stubProjectTemplateDriftChecker) PolicyState(_ context.Context, _, _ string) (*consolev1.PolicyState, error) {
 	return s.stateResult, s.stateErr
 }
 

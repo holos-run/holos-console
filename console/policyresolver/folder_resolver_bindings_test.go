@@ -109,8 +109,7 @@ func newFolderResolverWithBindingsForTest(
 // TestFolderResolver_BindingsNonexistentPolicyIsNoopAndDoesNotError
 // asserts a binding whose policy_ref does not resolve to any policy in
 // the ancestor chain is treated as a no-op: the resolver does not
-// error, no refs are injected, and the explicit refs passed by the
-// caller are returned unchanged. This is the degrade-gracefully
+// error and returns an empty effective set. This is the degrade-gracefully
 // contract inherited from HOL-596.
 func TestFolderResolver_BindingsNonexistentPolicyIsNoopAndDoesNotError(t *testing.T) {
 	client, r, ns := buildFixture()
@@ -127,20 +126,16 @@ func TestFolderResolver_BindingsNonexistentPolicyIsNoopAndDoesNotError(t *testin
 		},
 	}
 
-	explicit := []*consolev1.LinkedTemplateRef{
-		orgTemplateRef("explicit"),
-	}
 	pl := &policyListerFromClient{items: nil}
 	bl := &bindingListerFromMap{items: bindings}
 	fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
 
-	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", explicit)
+	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve returned error on nonexistent policy; expected no-op: %v", err)
 	}
-	names := refNames(got)
-	if len(names) != 1 || names[0] != "explicit" {
-		t.Errorf("expected explicit refs passed through, got %v", names)
+	if len(got) != 0 {
+		t.Errorf("expected empty effective set for nonexistent policy, got %v", refNames(got))
 	}
 }
 
@@ -174,7 +169,7 @@ func TestFolderResolver_BindingsEmptyTargetListContributesNothing(t *testing.T) 
 	bl := &bindingListerFromMap{items: bindings}
 	fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
 
-	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", nil)
+	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -214,7 +209,7 @@ func TestFolderResolver_BindingProjectNameMismatchContributesNothing(t *testing.
 	bl := &bindingListerFromMap{items: bindings}
 	fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
 
-	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", nil)
+	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -551,7 +546,7 @@ func TestFolderResolver_WildcardBindingFolderCascade(t *testing.T) {
 
 	// projectRoses is directly under team-a: the wildcard binding MUST
 	// select every deployment in roses.
-	got, err := fr.Resolve(ctx, ns["projectRoses"], TargetKindDeployment, "api", nil)
+	got, err := fr.Resolve(ctx, ns["projectRoses"], TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve(roses/api): %v", err)
 	}
@@ -560,7 +555,7 @@ func TestFolderResolver_WildcardBindingFolderCascade(t *testing.T) {
 	}
 	// Same project, a *different* deployment name — wildcard means both
 	// match; this is the "doesn't accidentally pin to one name" check.
-	got, err = fr.Resolve(ctx, ns["projectRoses"], TargetKindDeployment, "web", nil)
+	got, err = fr.Resolve(ctx, ns["projectRoses"], TargetKindDeployment, "web")
 	if err != nil {
 		t.Fatalf("Resolve(roses/web): %v", err)
 	}
@@ -570,7 +565,7 @@ func TestFolderResolver_WildcardBindingFolderCascade(t *testing.T) {
 
 	// projectLilies is under eng (sibling of team-a): team-a's binding
 	// is NOT on its ancestor chain, so even `{*, *}` must not match.
-	got, err = fr.Resolve(ctx, ns["projectLilies"], TargetKindDeployment, "api", nil)
+	got, err = fr.Resolve(ctx, ns["projectLilies"], TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve(lilies/api): %v", err)
 	}
@@ -580,7 +575,7 @@ func TestFolderResolver_WildcardBindingFolderCascade(t *testing.T) {
 
 	// projectOrchids is directly under org (skips eng and team-a
 	// entirely): team-a's binding is not on this chain either.
-	got, err = fr.Resolve(ctx, ns["projectOrchids"], TargetKindDeployment, "api", nil)
+	got, err = fr.Resolve(ctx, ns["projectOrchids"], TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve(orchids/api): %v", err)
 	}
@@ -590,7 +585,7 @@ func TestFolderResolver_WildcardBindingFolderCascade(t *testing.T) {
 
 	// A PROJECT_TEMPLATE render target in roses must NOT be matched by
 	// the DEPLOYMENT `{*, *}` binding — kind is never wildcarded.
-	got, err = fr.Resolve(ctx, ns["projectRoses"], TargetKindProjectTemplate, "any", nil)
+	got, err = fr.Resolve(ctx, ns["projectRoses"], TargetKindProjectTemplate, "any")
 	if err != nil {
 		t.Fatalf("Resolve(roses/project-template): %v", err)
 	}

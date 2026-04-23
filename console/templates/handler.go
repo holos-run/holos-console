@@ -183,10 +183,10 @@ type OrganizationGatewayResolver interface {
 type ProjectTemplateDriftChecker interface {
 	// PolicyState returns the full TemplatePolicy drift snapshot for a
 	// project-scope template. `project` is the owning project slug;
-	// `templateName` is the template's DNS label within that project;
-	// `explicitRefs` carries the owner-linked template list read from the
-	// target template's LinkedTemplates annotation.
-	PolicyState(ctx context.Context, project, templateName string, explicitRefs []*consolev1.LinkedTemplateRef) (*consolev1.PolicyState, error)
+	// `templateName` is the template's DNS label within that project.
+	// The effective set is derived purely from TemplatePolicyBinding
+	// resolution (HOL-905); no explicit refs are passed.
+	PolicyState(ctx context.Context, project, templateName string) (*consolev1.PolicyState, error)
 	// RecordApplied persists the effective render set for the
 	// project-scope template on successful Create/Update. Idempotent.
 	RecordApplied(ctx context.Context, project, templateName string, refs []*consolev1.LinkedTemplateRef) error
@@ -753,7 +753,7 @@ func (h *Handler) CreateTemplate(
 	// cluster policy resolver) is a no-op. Record failures are logged at
 	// warn level and do not fail the RPC — the template was persisted
 	// successfully and the set is reconstructable on the next preview.
-	h.recordProjectTemplateApplied(ctx, scope, scopeName, name, tmpl.LinkedTemplates)
+	h.recordProjectTemplateApplied(ctx, scope, scopeName, name)
 
 	slog.InfoContext(ctx, "template created",
 		slog.String("action", "template_create"),
@@ -813,18 +813,7 @@ func (h *Handler) UpdateTemplate(
 	enabled := tmpl.Enabled
 
 	// Determine linked template handling based on the update_linked_templates flag.
-	// We also track the post-update effective explicit link set — new refs
-	// when the caller asked to update links, the existing refs otherwise —
-	// so the HOL-569 write-through on the success path records the right
-	// baseline against which future drift checks will compare.
-	//
-	// skipRecordPreservedLinks flips to true when the preserve-links branch
-	// could not determine the existing explicit set (read or parse failure)
-	// so the write-through can be skipped rather than recording a phantom
-	// empty set that would produce false drift on the next policy-state read.
 	var linkedTemplates []*consolev1.LinkedTemplateRef
-	var explicitRefsForRecord []*consolev1.LinkedTemplateRef
-	skipRecordPreservedLinks := false
 	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	if req.Msg.GetUpdateLinkedTemplates() {
 		// Caller wants to modify links. Check permissions based on both old
@@ -850,39 +839,9 @@ func (h *Handler) UpdateTemplate(
 		if linkedTemplates == nil {
 			linkedTemplates = []*consolev1.LinkedTemplateRef{}
 		}
-		explicitRefsForRecord = linkedTemplates
-	} else {
-		// When update_linked_templates is false, linkedTemplates stays nil,
-		// which tells K8sClient.UpdateTemplate to preserve existing links.
-		// For the HOL-569 write-through we need to know what those existing
-		// links are so the resolver sees the same explicit ref set the
-		// next preview will see. Only read the existing template when we
-		// actually intend to record — project scope with a drift checker
-		// wired — so non-project scopes don't pay an unnecessary API call.
-		//
-		// If the pre-update read or annotation parse fails, we set
-		// skipRecordPreservedLinks so the write-through is skipped
-		// entirely; recording nil in that branch would silently persist
-		// an empty applied set even though the ConfigMap kept its
-		// original links, producing false drift on the next policy-state
-		// read (review findings P2 from codex round 1).
-		if scope == scopeKindProject && h.projectTemplateDriftChecker != nil {
-			existing, getErr := h.k8s.GetTemplate(ctx, ns, name)
-			if getErr != nil {
-				slog.WarnContext(ctx, "failed to read existing template for applied-set write-through, skipping record",
-					slog.String("scope", scope.String()),
-					slog.String("scopeName", scopeName),
-					slog.String("name", name),
-					slog.Any("error", getErr),
-				)
-				skipRecordPreservedLinks = true
-			} else if refs := crdLinkedToProto(existing.Spec.LinkedTemplates); len(refs) > 0 {
-				explicitRefsForRecord = refs
-			}
-			// If the template exists with no linked templates, zero
-			// explicit links is the correct baseline and we do NOT skip.
-		}
 	}
+	// When update_linked_templates is false, linkedTemplates stays nil,
+	// which tells K8sClient.UpdateTemplate to preserve existing links.
 
 	_, err = h.k8s.UpdateTemplate(ctx, ns, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, &enabled, linkedTemplates, false)
 	if err != nil {
@@ -891,14 +850,10 @@ func (h *Handler) UpdateTemplate(
 
 	// Write-through the policy-effective ref set for project-scope templates
 	// after a successful persist so GetProjectTemplatePolicyState reflects
-	// the new linking state (HOL-569). Non-project scopes are skipped as on
-	// the create path. Record failures are logged but do not fail the RPC.
-	// Skip entirely when the preserve-links branch could not read the
-	// existing explicit set — recording nil in that case would silently
-	// persist a mismatched applied set (review round 1 P2 finding).
-	if !skipRecordPreservedLinks {
-		h.recordProjectTemplateApplied(ctx, scope, scopeName, name, explicitRefsForRecord)
-	}
+	// the current TemplatePolicyBinding-derived effective set (HOL-569).
+	// Non-project scopes are skipped as on the create path. Record failures
+	// are logged but do not fail the RPC.
+	h.recordProjectTemplateApplied(ctx, scope, scopeName, name)
 
 	slog.InfoContext(ctx, "template updated",
 		slog.String("action", "template_update"),
@@ -936,7 +891,6 @@ func (h *Handler) recordProjectTemplateApplied(
 	ctx context.Context,
 	scope scopeKind,
 	scopeName, name string,
-	explicitRefs []*consolev1.LinkedTemplateRef,
 ) {
 	if scope != scopeKindProject {
 		return
@@ -944,10 +898,10 @@ func (h *Handler) recordProjectTemplateApplied(
 	if h.projectTemplateDriftChecker == nil {
 		return
 	}
-	effectiveRefs := explicitRefs
+	var effectiveRefs []*consolev1.LinkedTemplateRef
 	if h.policyResolver != nil {
 		projectNs := h.resolver.ProjectNamespace(scopeName)
-		resolved, resolveErr := h.policyResolver.Resolve(ctx, projectNs, policyresolver.TargetKindProjectTemplate, name, explicitRefs)
+		resolved, resolveErr := h.policyResolver.Resolve(ctx, projectNs, policyresolver.TargetKindProjectTemplate, name)
 		if resolveErr != nil {
 			slog.WarnContext(ctx, "failed to resolve policy for project template applied-set write-through",
 				slog.String("project", scopeName),
@@ -1165,7 +1119,6 @@ func (h *Handler) renderTemplateGrouped(ctx context.Context, msg *consolev1.Rend
 				startNs,
 				previewTargetKindForScope(msgKind),
 				msgName,
-				msg.LinkedTemplates,
 				h.walker,
 				h.policyResolver,
 			)
@@ -2031,22 +1984,21 @@ func (h *Handler) GetProjectTemplatePolicyState(
 		return nil, err
 	}
 
-	// Read the template so we can pass its owner-linked refs to the
-	// resolver. The caller must have read access to the owning project for
-	// this to succeed.
-	projectNs := scopeNamespace(h.k8s.Resolver, scopeKindProject, project)
-	tmpl, err := h.k8s.GetTemplate(ctx, projectNs, name)
-	if err != nil {
+	// Verify the template exists before delegating to the checker so the
+	// handler returns NotFound instead of an empty-state response when the
+	// caller supplies an invalid name. The previous implementation read the
+	// template to extract explicit refs; this read preserves that existence
+	// gate without the now-removed explicit-refs parameter (HOL-905).
+	if _, err := h.k8s.GetTemplate(ctx, namespace, name); err != nil {
 		return nil, mapK8sError(err)
 	}
-	explicitRefs := crdLinkedToProto(tmpl.Spec.LinkedTemplates)
 
 	if h.projectTemplateDriftChecker == nil {
 		return connect.NewResponse(&consolev1.GetProjectTemplatePolicyStateResponse{
 			State: &consolev1.PolicyState{},
 		}), nil
 	}
-	state, err := h.projectTemplateDriftChecker.PolicyState(ctx, project, name, explicitRefs)
+	state, err := h.projectTemplateDriftChecker.PolicyState(ctx, project, name)
 	if err != nil {
 		slog.WarnContext(ctx, "project-template policy state computation failed",
 			slog.String("project", project),

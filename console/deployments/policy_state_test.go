@@ -36,11 +36,11 @@ type stubPolicyDriftChecker struct {
 	lastRecordRefs    []*consolev1.LinkedTemplateRef
 }
 
-func (s *stubPolicyDriftChecker) Drift(_ context.Context, _, _ string, _ []*consolev1.LinkedTemplateRef) (bool, bool, error) {
+func (s *stubPolicyDriftChecker) Drift(_ context.Context, _, _ string) (bool, bool, error) {
 	return s.driftResult, s.driftHasApp, s.driftErr
 }
 
-func (s *stubPolicyDriftChecker) PolicyState(_ context.Context, _, _ string, _ []*consolev1.LinkedTemplateRef) (*consolev1.PolicyState, error) {
+func (s *stubPolicyDriftChecker) PolicyState(_ context.Context, _, _ string) (*consolev1.PolicyState, error) {
 	return s.stateResult, s.stateErr
 }
 
@@ -273,7 +273,7 @@ func TestApplyPolicyDrift(t *testing.T) {
 			if c.checker != nil {
 				h = h.WithPolicyDriftChecker(c.checker)
 			}
-			h.applyPolicyDrift(context.Background(), project, name, nil, c.summary)
+			h.applyPolicyDrift(context.Background(), project, name, c.summary)
 			if c.summary == nil {
 				return // nothing to assert
 			}

@@ -58,7 +58,7 @@ func NewDeploymentDriftAdapter(d *DriftChecker) *DeploymentDriftAdapter {
 // diff completed successfully. This matches PolicyState's error contract
 // (nil, err) so callers can switch between the two methods without tracking
 // different partial-result semantics.
-func (a *DeploymentDriftAdapter) Drift(ctx context.Context, project, deploymentName string, explicitRefs []*consolev1.LinkedTemplateRef) (bool, bool, error) {
+func (a *DeploymentDriftAdapter) Drift(ctx context.Context, project, deploymentName string) (bool, bool, error) {
 	if a == nil || a.inner == nil {
 		return false, false, nil
 	}
@@ -70,7 +70,7 @@ func (a *DeploymentDriftAdapter) Drift(ctx context.Context, project, deploymentN
 	if !ok {
 		return false, false, nil
 	}
-	current, resolveErr := a.inner.Resolver.Resolve(ctx, projectNs, TargetKindDeployment, deploymentName, explicitRefs)
+	current, resolveErr := a.inner.Resolver.Resolve(ctx, projectNs, TargetKindDeployment, deploymentName)
 	if resolveErr != nil {
 		return false, false, fmt.Errorf("resolving current render set: %w", resolveErr)
 	}
@@ -79,7 +79,7 @@ func (a *DeploymentDriftAdapter) Drift(ctx context.Context, project, deploymentN
 }
 
 // PolicyState returns the full PolicyState snapshot for the deployment.
-func (a *DeploymentDriftAdapter) PolicyState(ctx context.Context, project, deploymentName string, explicitRefs []*consolev1.LinkedTemplateRef) (*consolev1.PolicyState, error) {
+func (a *DeploymentDriftAdapter) PolicyState(ctx context.Context, project, deploymentName string) (*consolev1.PolicyState, error) {
 	if a == nil || a.inner == nil {
 		return &consolev1.PolicyState{}, nil
 	}
@@ -88,7 +88,7 @@ func (a *DeploymentDriftAdapter) PolicyState(ctx context.Context, project, deplo
 	if err != nil {
 		return nil, fmt.Errorf("reading applied render set: %w", err)
 	}
-	current, err := a.inner.Resolver.Resolve(ctx, projectNs, TargetKindDeployment, deploymentName, explicitRefs)
+	current, err := a.inner.Resolver.Resolve(ctx, projectNs, TargetKindDeployment, deploymentName)
 	if err != nil {
 		return nil, fmt.Errorf("resolving current render set: %w", err)
 	}
@@ -124,7 +124,7 @@ func NewProjectTemplateDriftAdapter(d *DriftChecker) *ProjectTemplateDriftAdapte
 
 // PolicyState returns the full PolicyState snapshot for a project-scope
 // template.
-func (a *ProjectTemplateDriftAdapter) PolicyState(ctx context.Context, project, templateName string, explicitRefs []*consolev1.LinkedTemplateRef) (*consolev1.PolicyState, error) {
+func (a *ProjectTemplateDriftAdapter) PolicyState(ctx context.Context, project, templateName string) (*consolev1.PolicyState, error) {
 	if a == nil || a.inner == nil {
 		return &consolev1.PolicyState{}, nil
 	}
@@ -133,7 +133,7 @@ func (a *ProjectTemplateDriftAdapter) PolicyState(ctx context.Context, project, 
 	if err != nil {
 		return nil, fmt.Errorf("reading applied render set: %w", err)
 	}
-	current, err := a.inner.Resolver.Resolve(ctx, projectNs, TargetKindProjectTemplate, templateName, explicitRefs)
+	current, err := a.inner.Resolver.Resolve(ctx, projectNs, TargetKindProjectTemplate, templateName)
 	if err != nil {
 		return nil, fmt.Errorf("resolving current render set: %w", err)
 	}

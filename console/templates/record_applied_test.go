@@ -20,16 +20,14 @@ import (
 // recordingResolver is a PolicyResolver test double that captures its last
 // invocation and returns a caller-controlled resolved set. Tests use it to
 // assert the handler invokes the seam once with the right inputs and
-// forwards the policy-expanded set into RecordApplied (not the raw explicit
-// refs).
+// forwards the policy-expanded set into RecordApplied.
 type recordingResolver struct {
-	resolved         []*consolev1.LinkedTemplateRef
-	err              error
-	calls            int
-	lastProjectNs    string
-	lastTargetKind   policyresolver.TargetKind
-	lastTargetName   string
-	lastExplicitRefs []*consolev1.LinkedTemplateRef
+	resolved       []*consolev1.LinkedTemplateRef
+	err            error
+	calls          int
+	lastProjectNs  string
+	lastTargetKind policyresolver.TargetKind
+	lastTargetName string
 }
 
 func (r *recordingResolver) Resolve(
@@ -37,20 +35,15 @@ func (r *recordingResolver) Resolve(
 	projectNs string,
 	targetKind policyresolver.TargetKind,
 	targetName string,
-	explicitRefs []*consolev1.LinkedTemplateRef,
 ) ([]*consolev1.LinkedTemplateRef, error) {
 	r.calls++
 	r.lastProjectNs = projectNs
 	r.lastTargetKind = targetKind
 	r.lastTargetName = targetName
-	r.lastExplicitRefs = explicitRefs
 	if r.err != nil {
 		return nil, r.err
 	}
-	if r.resolved != nil {
-		return r.resolved, nil
-	}
-	return explicitRefs, nil
+	return r.resolved, nil
 }
 
 // recordAppliedTemplateHandler wires a templates handler with project-scope
@@ -142,8 +135,8 @@ func marshalLinkedTemplatesForTest(refs []*consolev1.LinkedTemplateRef) (string,
 
 // TestHandler_CreateTemplate_RecordsAppliedOnSuccess verifies that a
 // successful project-scope CreateTemplate calls RecordApplied with the
-// policy-resolved effective ref set (explicit ∪ REQUIRE − EXCLUDE), not
-// the raw explicit list.
+// policy-resolved effective ref set (REQUIRE − EXCLUDE) returned by the
+// resolver, forwarded verbatim to RecordApplied.
 func TestHandler_CreateTemplate_RecordsAppliedOnSuccess(t *testing.T) {
 	explicit := []*consolev1.LinkedTemplateRef{
 		orgLinkedRef("acme", "httproute"),
@@ -189,7 +182,7 @@ func TestHandler_CreateTemplate_RecordsAppliedOnSuccess(t *testing.T) {
 		t.Errorf("RecordApplied (project,name): got (%q,%q)", checker.lastRecordProject, checker.lastRecordName)
 	}
 	if len(checker.lastRecordRefs) != 2 {
-		t.Fatalf("RecordApplied refs length: got %d, want 2 (explicit + REQUIRE)", len(checker.lastRecordRefs))
+		t.Fatalf("RecordApplied refs length: got %d, want 2 (policy-resolved set)", len(checker.lastRecordRefs))
 	}
 	foundAudit := false
 	for _, r := range checker.lastRecordRefs {
@@ -236,7 +229,6 @@ func TestHandler_CreateTemplate_NoRecordAtOrgOrFolderScope(t *testing.T) {
 		scopeKindOrganization,
 		"acme",
 		"httproute",
-		nil,
 	)
 	if checker.recordCalls != 0 {
 		t.Errorf("RecordApplied called at org scope (%d times), want 0", checker.recordCalls)
@@ -247,7 +239,6 @@ func TestHandler_CreateTemplate_NoRecordAtOrgOrFolderScope(t *testing.T) {
 		scopeKindFolder,
 		"payments",
 		"audit",
-		nil,
 	)
 	if checker.recordCalls != 0 {
 		t.Errorf("RecordApplied called at folder scope (%d times), want 0", checker.recordCalls)
@@ -370,8 +361,8 @@ func TestHandler_UpdateTemplate_RecordsAppliedOnSuccess_NewLinks(t *testing.T) {
 	if resolver.calls != 1 {
 		t.Errorf("resolver.Resolve called %d times, want 1", resolver.calls)
 	}
-	if len(resolver.lastExplicitRefs) != 1 || resolver.lastExplicitRefs[0].GetName() != "audit" {
-		t.Errorf("resolver explicitRefs: got %+v, want [audit]", resolver.lastExplicitRefs)
+	if resolver.lastTargetName != "web-app" {
+		t.Errorf("resolver targetName: got %q, want web-app", resolver.lastTargetName)
 	}
 	if checker.recordCalls != 1 {
 		t.Errorf("RecordApplied called %d times, want 1", checker.recordCalls)
@@ -407,14 +398,11 @@ func TestHandler_UpdateTemplate_RecordsAppliedOnSuccess_PreserveLinks(t *testing
 	if resolver.calls != 1 {
 		t.Fatalf("resolver.Resolve called %d times, want 1", resolver.calls)
 	}
-	if len(resolver.lastExplicitRefs) != 1 || resolver.lastExplicitRefs[0].GetName() != "httproute" {
-		t.Errorf("resolver explicitRefs (preserve-links path): got %+v, want [httproute]", resolver.lastExplicitRefs)
+	if resolver.lastTargetName != "web-app" {
+		t.Errorf("resolver targetName: got %q, want web-app", resolver.lastTargetName)
 	}
 	if checker.recordCalls != 1 {
 		t.Errorf("RecordApplied called %d times, want 1", checker.recordCalls)
-	}
-	if len(checker.lastRecordRefs) != 1 || checker.lastRecordRefs[0].GetName() != "httproute" {
-		t.Errorf("RecordApplied refs (preserve-links path): got %+v, want [httproute]", checker.lastRecordRefs)
 	}
 }
 

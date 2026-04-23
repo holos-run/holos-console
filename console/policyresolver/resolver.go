@@ -6,8 +6,9 @@
 // The package exists so Phase 5 of HOL-562 (HOL-567) can swap the no-op
 // implementation for a real TemplatePolicy-backed resolver without touching
 // call sites. In Phase 4 (HOL-566) the interface is introduced and wired
-// everywhere, but every call path still receives the no-op implementation
-// that returns explicit refs unchanged.
+// everywhere with the no-op implementation. Phase 2 of HOL-903 (HOL-905)
+// removed the explicitRefs parameter from the interface so the resolver
+// derives the effective set from TemplatePolicyBinding rules only.
 //
 // Keeping the resolver in its own package (rather than in
 // console/templates/) prevents the PolicyResolver abstraction from leaking
@@ -37,48 +38,48 @@ const (
 	TargetKindDeployment
 )
 
-// PolicyResolver filters and augments the caller's explicit linked-template
-// refs according to TemplatePolicy REQUIRE/EXCLUDE rules before the
-// ancestor-source helper walks the namespace chain.
+// PolicyResolver computes the effective set of LinkedTemplateRef values for a
+// render target by applying TemplatePolicy REQUIRE/EXCLUDE rules from the
+// ancestor namespace chain. The effective set formula is:
 //
-// Phase 4 (HOL-566) introduces this contract; every production wire-up
-// receives a no-op implementation that returns explicitRefs unchanged. Phase
-// 5 (HOL-567) swaps in a real implementation backed by the TemplatePolicy
-// service.
+//	result = REQUIRE-injected − EXCLUDE-removed
 //
-// Implementations must not mutate the input slice. The returned slice is owned
-// by the caller and may be appended to freely.
+// Only bindings whose target_refs select the current render target contribute.
+// Policies with no covering binding contribute nothing. Callers no longer pass
+// an explicit-refs slice — the resolver derives the effective set purely from
+// policy rules (HOL-905).
+//
+// Implementations must not mutate any shared state. The returned slice is
+// owned by the caller and may be appended to freely.
 type PolicyResolver interface {
 	Resolve(
 		ctx context.Context,
 		projectNs string,
 		targetKind TargetKind,
 		targetName string,
-		explicitRefs []*consolev1.LinkedTemplateRef,
 	) ([]*consolev1.LinkedTemplateRef, error)
 }
 
-// noopResolver returns explicitRefs unchanged. It is the Phase 4 placeholder
-// that every render call site receives until Phase 5 lands a real
-// TemplatePolicy-backed implementation.
+// noopResolver returns an empty effective set. It is the placeholder wired
+// when no real TemplatePolicy-backed implementation is available (e.g.,
+// local/dev deployments without a policy resolver).
 type noopResolver struct{}
 
-// NewNoopResolver returns a PolicyResolver that returns its inputs unchanged.
-// Wire one instance at server startup and pass it into every handler that
-// owns a render path.
+// NewNoopResolver returns a PolicyResolver that always returns an empty
+// effective set. Wire one instance at server startup for local/dev wiring;
+// production wires the real folderResolver via NewFolderResolverWithBindings.
 func NewNoopResolver() PolicyResolver {
 	return noopResolver{}
 }
 
-// Resolve returns explicitRefs verbatim. The context, projectNs, targetKind,
-// and targetName arguments are accepted for signature stability — Phase 5
-// consults them, but the no-op implementation never does.
+// Resolve returns an empty slice. The context, projectNs, targetKind, and
+// targetName arguments are accepted for interface compliance — the no-op
+// implementation never consults them.
 func (noopResolver) Resolve(
 	_ context.Context,
 	_ string,
 	_ TargetKind,
 	_ string,
-	explicitRefs []*consolev1.LinkedTemplateRef,
 ) ([]*consolev1.LinkedTemplateRef, error) {
-	return explicitRefs, nil
+	return nil, nil
 }

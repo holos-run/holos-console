@@ -95,8 +95,9 @@ type AncestorWalker interface {
 // render target so the underlying PolicyResolver can key REQUIRE/EXCLUDE
 // evaluation off it (HOL-566 Phase 4).
 //
-// The second return value is the policy-effective ref set (explicit ∪
-// REQUIRE − EXCLUDE) that produced the sources. Exposing it here lets the
+// The second return value is the policy-effective ref set
+// (REQUIRE-injected − EXCLUDE-removed) that produced the sources.
+// Exposing it here lets the
 // deployments Create/Update happy paths write-through the same set to the
 // applied-render-set store via PolicyDriftChecker.RecordApplied without
 // invoking the resolver a second time (HOL-569). A second invocation would
@@ -104,7 +105,7 @@ type AncestorWalker interface {
 // from the rendered set and GetDeploymentPolicyState reports false drift.
 // Callers that only need the sources can ignore the second return.
 type AncestorTemplateProvider interface {
-	ListAncestorTemplateSources(ctx context.Context, projectNs, deploymentName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, []*consolev1.LinkedTemplateRef, error)
+	ListAncestorTemplateSources(ctx context.Context, projectNs, deploymentName string) ([]string, []*consolev1.LinkedTemplateRef, error)
 }
 
 // ResourceApplier applies and cleans up K8s resources for a deployment.
@@ -171,10 +172,10 @@ type PolicyDriftChecker interface {
 	// has not yet been rendered through the post-HOL-567 path and drift
 	// is meaningless — callers SHOULD NOT surface policy_drift in that
 	// case.
-	Drift(ctx context.Context, project, deploymentName string, explicitRefs []*consolev1.LinkedTemplateRef) (drift, hasAppliedState bool, err error)
+	Drift(ctx context.Context, project, deploymentName string) (drift, hasAppliedState bool, err error)
 	// PolicyState returns the full snapshot for the deployment: applied,
 	// current, added, removed, drift, has_applied_state.
-	PolicyState(ctx context.Context, project, deploymentName string, explicitRefs []*consolev1.LinkedTemplateRef) (*consolev1.PolicyState, error)
+	PolicyState(ctx context.Context, project, deploymentName string) (*consolev1.PolicyState, error)
 	// RecordApplied persists the effective render set for the target on
 	// successful Create/Update. Idempotent: second call with the same
 	// refs overwrites the first.
@@ -264,9 +265,7 @@ func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project, d
 		return nil, nil, false
 	}
 	projectNs := h.k8s.Resolver.ProjectNamespace(project)
-	// Pass nil for explicitRefs so the render pipeline derives the effective
-	// set exclusively from TemplatePolicyBinding resolution (HOL-904).
-	sources, effectiveRefs, err := h.ancestorTemplateProvider.ListAncestorTemplateSources(ctx, projectNs, deploymentName, nil)
+	sources, effectiveRefs, err := h.ancestorTemplateProvider.ListAncestorTemplateSources(ctx, projectNs, deploymentName)
 	if err != nil {
 		slog.WarnContext(ctx, "ancestor template resolution failed, skipping platform template unification",
 			slog.String("project", project),
@@ -1721,9 +1720,7 @@ func (h *Handler) GetDeploymentPolicyState(
 			State: &consolev1.PolicyState{},
 		}), nil
 	}
-	// Pass nil for explicitRefs: policy state is now sourced exclusively from
-	// TemplatePolicyBinding resolution, not the legacy annotation (HOL-904).
-	state, err := h.policyDriftChecker.PolicyState(ctx, project, name, nil)
+	state, err := h.policyDriftChecker.PolicyState(ctx, project, name)
 	if err != nil {
 		slog.WarnContext(ctx, "policy state computation failed",
 			slog.String("project", project),
