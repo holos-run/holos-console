@@ -20,7 +20,7 @@ import {
   type BindingDraft,
   type BindingMutationParams,
 } from './binding-draft'
-import { useListLinkableTemplatePolicies } from '@/queries/templatePolicies'
+import { useListTemplatePolicies } from '@/queries/templatePolicies'
 import {
   scopeLabelFromNamespace,
   scopeNameFromNamespace,
@@ -81,27 +81,22 @@ export function BindingForm({
   )
   const [error, setError] = useState<string | null>(null)
 
-  // Policies reachable from this scope — the ListLinkableTemplatePolicies RPC
-  // walks the ancestor chain (folder → org) and returns policies from every
-  // namespace the caller can reach, ordered child→parent (self scope first when
-  // includeSelfScope is true). The per-item namespace field lets us render a
-  // scope badge so the user can distinguish local vs. inherited policies.
-  const { data: linkablePolicies = [] } = useListLinkableTemplatePolicies(namespace)
+  // HOL-917: switch from ListLinkableTemplatePolicies (ancestor-walk RPC) to
+  // ListTemplatePolicies (namespace-only RPC from HOL-912 Phase 1). The org
+  // namespace is passed in as the `namespace` prop so only org-scoped policies
+  // appear in the picker.
+  const { data: policies = [] } = useListTemplatePolicies(namespace)
 
   const policyItems: ComboboxItem[] = useMemo(() => {
-    return linkablePolicies.flatMap((lp) => {
-      const p = lp.policy
-      if (!p) return []
+    return policies.map((p) => {
       const scopeLabel = scopeLabelFromNamespace(p.namespace) ?? 'unknown'
       const scopeName = scopeNameFromNamespace(p.namespace)
-      return [
-        {
-          value: policyKey(p.namespace, p.name),
-          label: `${scopeLabel} / ${scopeName} / ${p.name}`,
-        },
-      ]
+      return {
+        value: policyKey(p.namespace, p.name),
+        label: `${scopeLabel} / ${scopeName} / ${p.name}`,
+      }
     })
-  }, [linkablePolicies])
+  }, [policies])
 
   const selectedPolicyKey = useMemo(
     () =>
@@ -233,12 +228,12 @@ export function BindingForm({
           }}
           placeholder="Select a template policy..."
           searchPlaceholder="Search policies..."
-          emptyMessage="No template policies reachable from this scope. Policies must exist in this scope or an ancestor (folder → org)."
+          emptyMessage="No template policies exist in this org yet. Create a policy first before creating a binding."
           aria-label="Template policy"
         />
         <p className="text-xs text-muted-foreground mt-1">
-          Pick the TemplatePolicy this binding attaches. Policies in this scope
-          and its ancestors are offered.
+          Pick the TemplatePolicy this binding attaches. Policies in this
+          organization namespace are offered.
         </p>
       </div>
 

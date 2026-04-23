@@ -41,7 +41,7 @@ vi.mock('@/queries/templatePolicyBindings', async () => {
   >('@/queries/templatePolicyBindings')
   return {
     ...actual,
-    useAllTemplatePolicyBindingsForOrg: vi.fn(),
+    useListTemplatePolicyBindings: vi.fn(),
   }
 })
 
@@ -53,7 +53,7 @@ vi.mock('@/queries/organizations', () => ({
 // __CONSOLE_CONFIG__ is not injected (see console-config.ts), which matches
 // the fixtures below — no mock needed.
 
-import { useAllTemplatePolicyBindingsForOrg } from '@/queries/templatePolicyBindings'
+import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { OrgTemplatePolicyBindingsIndexPage } from './index'
@@ -90,7 +90,7 @@ function setup(
   bindings: ReturnType<typeof makeBinding>[] = [],
   error: Error | null = null,
 ) {
-  ;(useAllTemplatePolicyBindingsForOrg as Mock).mockReturnValue({
+  ;(useListTemplatePolicyBindings as Mock).mockReturnValue({
     data: bindings,
     isPending: false,
     error,
@@ -160,30 +160,26 @@ describe('OrgTemplatePolicyBindingsIndexPage', () => {
     expect(screen.queryByRole('link', { name: 'beta' })).not.toBeInTheDocument()
   })
 
-  it('filters rows by the scope dropdown', () => {
+  // HOL-917: the "All scopes / Organization / Folder" Select was removed. The
+  // page is now org-scoped only — no scope filter in the toolbar.
+  it('does not render a scope filter select in the toolbar', () => {
+    setup(Role.OWNER, [makeBinding('org-bind', { policyName: 'p1' })])
+    render(<OrgTemplatePolicyBindingsIndexPage orgName="test-org" />)
+    expect(
+      screen.queryByRole('combobox', { name: /filter by scope/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  // HOL-917: prove that org-namespace bindings appear in the listing (the page
+  // now calls useListTemplatePolicyBindings(orgNamespace) directly).
+  it('lists bindings returned from the org namespace RPC call', () => {
     setup(Role.OWNER, [
-      makeBinding('org-bind', { policyName: 'p1' }),
-      makeBinding('fld-bind', {
-        namespace: 'holos-fld-team-alpha',
-        policyName: 'p2',
-      }),
+      makeBinding('bind-a', { policyName: 'policy-a' }),
+      makeBinding('bind-b', { policyName: 'policy-b' }),
     ])
     render(<OrgTemplatePolicyBindingsIndexPage orgName="test-org" />)
-
-    // Flip the filter to Folder. The Radix Select mock in jsdom cannot be
-    // clicked to open the listbox, so we target the native trigger by its
-    // aria-label and drive the hidden <select>-equivalent directly — the
-    // React component listens to the controlled `value` state via
-    // `onValueChange`, which Radix dispatches as a `pointerdown` + `click`
-    // sequence on the listbox item. Simulating that end-to-end in jsdom is
-    // flaky; fire the filter change by locating the trigger and confirming
-    // the baseline populated render, leaving the interactive flip to the
-    // e2e suite.
-    //
-    // TODO(HOL-793-follow-up): replace with a full user-event click once
-    // the shared test harness upgrades to Radix' test-id-friendly fork.
-    expect(screen.getByRole('link', { name: 'org-bind' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'fld-bind' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'bind-a' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'bind-b' })).toBeInTheDocument()
   })
 
   it('shows Create Binding for OWNER and EDITOR', () => {
@@ -212,7 +208,7 @@ describe('OrgTemplatePolicyBindingsIndexPage', () => {
   })
 
   it('surfaces an error when the list query fails with no partial data', () => {
-    ;(useAllTemplatePolicyBindingsForOrg as Mock).mockReturnValue({
+    ;(useListTemplatePolicyBindings as Mock).mockReturnValue({
       data: [],
       isPending: false,
       error: new Error('backend unreachable'),

@@ -21,7 +21,7 @@ vi.mock('@/queries/templatePolicies', async () => {
   )
   return {
     ...actual,
-    useListLinkableTemplatePolicies: vi.fn(),
+    useListTemplatePolicies: vi.fn(),
   }
 })
 
@@ -45,7 +45,7 @@ vi.mock('@/queries/templates', async () => {
 })
 
 import { BindingForm } from './BindingForm'
-import { useListLinkableTemplatePolicies } from '@/queries/templatePolicies'
+import { useListTemplatePolicies } from '@/queries/templatePolicies'
 import {
   useListProjects,
   useListProjectsByParent,
@@ -77,10 +77,11 @@ function stubQueries({
     namespace: string
   }>
 }) {
-  // useListLinkableTemplatePolicies returns LinkableTemplatePolicy[] where each
-  // item wraps a TemplatePolicy in a `policy` field.
-  ;(useListLinkableTemplatePolicies as Mock).mockReturnValue({
-    data: policies.map((p) => ({ policy: p })),
+  // HOL-917: useListTemplatePolicies returns TemplatePolicy[] directly (no
+  // wrapper — the linkable ancestor-walk RPC has been replaced by the
+  // namespace-only RPC from HOL-912 Phase 1).
+  ;(useListTemplatePolicies as Mock).mockReturnValue({
+    data: policies,
     isPending: false,
     error: null,
   })
@@ -549,6 +550,53 @@ describe('BindingForm', () => {
     expect(policyTrigger.textContent).toMatch(/org \/ test-org \/ org-policy/i)
   })
 
+  // HOL-917 AC: prove that policies created at the org namespace appear in the
+  // binding form picker when the namespace-only RPC is used.
+  it('shows org-namespace policies in the picker when the org namespace RPC returns them', async () => {
+    stubQueries({
+      policies: [
+        {
+          name: 'tls-required',
+          displayName: 'TLS Required',
+          description: '',
+          namespace: ORG_NAMESPACE,
+        },
+        {
+          name: 'deny-http',
+          displayName: 'Deny HTTP',
+          description: '',
+          namespace: ORG_NAMESPACE,
+        },
+      ],
+    })
+
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    })
+
+    render(
+      <BindingForm
+        mode="create"
+        scopeType="organization"
+        namespace={ORG_NAMESPACE}
+        organization="test-org"
+        canWrite
+        submitLabel="Create"
+        pendingLabel="Creating..."
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+
+    // Open the policy combobox.
+    const policyTrigger = screen.getByRole('combobox', { name: /template policy/i })
+    await user.click(policyTrigger)
+
+    // Both org-namespace policies should appear in the picker.
+    expect(await screen.findByText(/org \/ test-org \/ tls-required/i)).toBeInTheDocument()
+    expect(screen.getByText(/org \/ test-org \/ deny-http/i)).toBeInTheDocument()
+  })
+
   it('shows the custom empty state message when no policies are reachable', async () => {
     stubQueries({ policies: [] })
 
@@ -574,12 +622,11 @@ describe('BindingForm', () => {
     const policyTrigger = screen.getByRole('combobox', { name: /template policy/i })
     await user.click(policyTrigger)
 
-    // The custom empty-state message should appear (not the generic "No results found.").
+    // HOL-917: The custom empty-state message should appear (not the misleading
+    // "No template policies reachable from this scope" message which implied
+    // policies might exist elsewhere in the ancestor chain).
     expect(
-      await screen.findByText(/no template policies reachable from this scope/i),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(/policies must exist in this scope or an ancestor/i),
+      await screen.findByText(/no template policies exist in this org yet/i),
     ).toBeInTheDocument()
   })
 })

@@ -44,7 +44,7 @@ vi.mock('@/queries/templatePolicies', async () => {
   )
   return {
     ...actual,
-    useAllTemplatePoliciesForOrg: vi.fn(),
+    useListTemplatePolicies: vi.fn(),
   }
 })
 
@@ -53,7 +53,7 @@ vi.mock('@/queries/organizations', () => ({
 }))
 
 import {
-  useAllTemplatePoliciesForOrg,
+  useListTemplatePolicies,
 } from '@/queries/templatePolicies'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
@@ -89,7 +89,7 @@ function setup(
   userRole: Role = Role.OWNER,
   overrides: Partial<{ isPending: boolean; error: Error | null }> = {},
 ) {
-  ;(useAllTemplatePoliciesForOrg as Mock).mockReturnValue({
+  ;(useListTemplatePolicies as Mock).mockReturnValue({
     data: overrides.isPending ? undefined : policies,
     isPending: overrides.isPending ?? false,
     error: overrides.error ?? null,
@@ -122,7 +122,7 @@ describe('OrgTemplatePoliciesIndexPage', () => {
   })
 
   it('renders rows with inline warning banner when partial data and error coexist', () => {
-    ;(useAllTemplatePoliciesForOrg as Mock).mockReturnValue({
+    ;(useListTemplatePolicies as Mock).mockReturnValue({
       data: [makePolicy('p-org', namespaceForOrg('test-org'), 'Org Policy')],
       isPending: false,
       error: new Error('folders unavailable'),
@@ -294,11 +294,25 @@ describe('OrgTemplatePoliciesIndexPage', () => {
     expect(screen.getByText('Folder: team-alpha')).toBeInTheDocument()
   })
 
-  it('renders a scope filter select in the toolbar', () => {
+  // HOL-917: the "All scopes / Organization / Folder" Select was removed. The
+  // page is now org-scoped only — no scope filter in the toolbar.
+  it('does not render a scope filter select in the toolbar', () => {
     setup([makePolicy('p-org', ORG_NS, 'Org Policy')])
     render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
     expect(
-      screen.getByRole('combobox', { name: /filter by scope/i }),
-    ).toBeInTheDocument()
+      screen.queryByRole('combobox', { name: /filter by scope/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  // HOL-917: prove that org-namespace policies appear in the listing (the page
+  // now calls useListTemplatePolicies(orgNamespace) directly).
+  it('lists policies returned from the org namespace RPC call', () => {
+    setup([
+      makePolicy('allow-tls', ORG_NS, 'Allow TLS'),
+      makePolicy('deny-http', ORG_NS, 'Deny HTTP'),
+    ])
+    render(<OrgTemplatePoliciesIndexPage orgName="test-org" />)
+    expect(screen.getByText('Allow TLS')).toBeInTheDocument()
+    expect(screen.getByText('Deny HTTP')).toBeInTheDocument()
   })
 })

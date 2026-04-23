@@ -21,21 +21,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useAllTemplatePolicyBindingsForOrg } from '@/queries/templatePolicyBindings'
+import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
 import type { TemplatePolicyBinding } from '@/queries/templatePolicyBindings'
 import { useGetOrganization } from '@/queries/organizations'
 import {
   scopeDisplayLabel,
   scopeLabelFromNamespace,
   scopeNameFromNamespace,
+  namespaceForOrg,
 } from '@/lib/scope-labels'
 
 export const Route = createFileRoute(
@@ -51,13 +45,6 @@ function OrgTemplatePolicyBindingsIndexRoute() {
 
 const columnHelper = createColumnHelper<TemplatePolicyBinding>()
 
-// Scope filter values. `all` means no filtering; `org` / `folder` match the
-// ScopeLabel returned by scopeLabelFromNamespace. `project` is intentionally
-// omitted because bindings do not exist at project scope (HOL-590), but the
-// option still appears in the filter so users learn the constraint from the
-// empty-result state rather than the UI silently hiding an option.
-type ScopeFilter = 'all' | 'org' | 'folder' | 'project'
-
 export function OrgTemplatePolicyBindingsIndexPage({
   orgName: propOrgName,
 }: { orgName?: string } = {}) {
@@ -70,8 +57,13 @@ export function OrgTemplatePolicyBindingsIndexPage({
   }
   const orgName = propOrgName ?? routeOrgName ?? ''
 
+  // HOL-917: this page is now org-scoped only. The RPC is called with the org
+  // namespace directly so only org-scoped bindings are returned. The previous
+  // fan-out across org+folder namespaces and the "All scopes" Select filter
+  // have been removed.
+  const orgNamespace = namespaceForOrg(orgName)
   const { data: bindings, isPending, error } =
-    useAllTemplatePolicyBindingsForOrg(orgName)
+    useListTemplatePolicyBindings(orgNamespace)
   const { data: org } = useGetOrganization(orgName)
 
   const userRole = org?.userRole ?? Role.VIEWER
@@ -80,13 +72,10 @@ export function OrgTemplatePolicyBindingsIndexPage({
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
   const [globalFilter, setGlobalFilter] = useState('')
-  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all')
 
   const rows = useMemo(() => {
-    const all = bindings ?? []
-    if (scopeFilter === 'all') return all
-    return all.filter((b) => scopeLabelFromNamespace(b.namespace) === scopeFilter)
-  }, [bindings, scopeFilter])
+    return bindings ?? []
+  }, [bindings])
 
   const columns = useMemo(
     () => [
@@ -205,9 +194,6 @@ export function OrgTemplatePolicyBindingsIndexPage({
     )
   }
 
-  // Fall through to the full grid when the fan-out has both an error and
-  // partial data, so successfully-loaded rows remain visible. The banner
-  // below the header surfaces the error without blanking the table.
   if (error && (bindings ?? []).length === 0) {
     return (
       <Card>
@@ -269,28 +255,11 @@ export function OrgTemplatePolicyBindingsIndexPage({
                 className="max-w-sm"
                 aria-label="Search template policy bindings"
               />
-              <Select
-                value={scopeFilter}
-                onValueChange={(v) => setScopeFilter(v as ScopeFilter)}
-              >
-                <SelectTrigger
-                  className="w-[180px]"
-                  aria-label="Filter by scope"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All scopes</SelectItem>
-                  <SelectItem value="org">Organization</SelectItem>
-                  <SelectItem value="folder">Folder</SelectItem>
-                  <SelectItem value="project">Project</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             {rows.length === 0 ? (
               <div className="rounded-md border border-dashed border-border p-6 text-center">
                 <p className="text-sm text-muted-foreground">
-                  No bindings match the current filters.
+                  No bindings match the current search.
                 </p>
               </div>
             ) : (
