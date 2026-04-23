@@ -34,7 +34,7 @@ export interface Row {
   namespace: string
   /** Stable identifier for the resource (e.g. UID or compound key). */
   id: string
-  /** Parent resource name / namespace — used by the lineage filter. */
+  /** Parent resource name / namespace. */
   parentId: string
   /** Human-readable label for the parent (e.g. project or folder name). */
   parentLabel: string
@@ -49,21 +49,6 @@ export interface Row {
 }
 
 /**
- * Lineage filter direction.  "ancestors" = rows whose parentId matches a
- * parent of the active namespace; "descendants" = rows whose parentId is a
- * child; "both" = union.
- */
-export type LineageDirection = 'ancestors' | 'descendants' | 'both'
-
-/**
- * Parsed representation of the URL lineage params.
- */
-export interface LineageFilter {
-  direction: LineageDirection
-  recursive: boolean
-}
-
-/**
  * The shape of the URL search params owned by the ResourceGrid.  Consumers
  * extend this type in their route's `validateSearch` to merge grid params with
  * any route-specific params.
@@ -73,12 +58,4 @@ export interface ResourceGridSearch {
   kind?: string
   /** Global search string. */
   search?: string
-  /** Lineage direction: "ancestors" | "descendants" | "both". */
-  lineage?: LineageDirection
-  /**
-   * Whether the lineage traversal is recursive.  "1" = true, "0" = false.
-   * We store as string so TanStack Router's `parseSearchWith` keeps it a
-   * simple literal without schema coercion.
-   */
-  recursive?: '0' | '1'
 }

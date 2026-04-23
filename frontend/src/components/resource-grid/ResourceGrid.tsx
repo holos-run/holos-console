@@ -5,7 +5,6 @@
  * Features:
  *  - TanStack Table with global search (includesString)
  *  - Multi-kind filter (URL ?kind=a,b)
- *  - Lineage filter (URL ?lineage=ancestors&recursive=0)
  *  - New button / dropdown
  *  - Row-level delete via ConfirmDeleteDialog
  *  - URL sync via TanStack Router useSearch / useNavigate
@@ -40,13 +39,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -57,7 +49,7 @@ import { Label } from '@/components/ui/label'
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
 
 import type { ColumnDef } from '@tanstack/react-table'
-import type { Kind, Row, LineageDirection, ResourceGridSearch } from './types'
+import type { Kind, Row, ResourceGridSearch } from './types'
 import { parseKindIds, serialiseKindIds } from './url-state'
 
 // ---------------------------------------------------------------------------
@@ -140,8 +132,6 @@ export function ResourceGrid({
   )
 
   const globalFilter = search.search ?? ''
-  const lineageDirection: LineageDirection = search.lineage ?? 'descendants'
-  const recursive = search.recursive === '1'
 
   // --- URL updater helpers -----------------------------------------------
 
@@ -165,20 +155,6 @@ export function ResourceGrid({
         ...prev,
         kind: serialiseKindIds(ids) ?? undefined,
       }))
-    },
-    [updateSearch],
-  )
-
-  const setLineageDirection = useCallback(
-    (dir: LineageDirection) => {
-      updateSearch((prev) => ({ ...prev, lineage: dir }))
-    },
-    [updateSearch],
-  )
-
-  const setRecursive = useCallback(
-    (val: boolean) => {
-      updateSearch((prev) => ({ ...prev, recursive: val ? '1' : '0' }))
     },
     [updateSearch],
   )
@@ -233,19 +209,6 @@ export function ResourceGrid({
     const kindSet = new Set(selectedKindIds)
     return rows.filter((r) => kindSet.has(r.kind))
   }, [rows, selectedKindIds])
-
-  // --- Lineage filter ----------------------------------------------------
-
-  const lineageFilteredRows = useMemo(() => {
-    // Lineage filtering is applied by the consumer's data-fetching layer
-    // in later phases.  The grid itself exposes the URL state; advanced
-    // multi-level walk logic belongs in the route.  We pass rows through
-    // unchanged here so the component stays data-source-agnostic.
-    //
-    // The lineage direction and recursive values are exposed via the search
-    // props so parent routes can consume them in their query hooks.
-    return kindFilteredRows
-  }, [kindFilteredRows])
 
   // --- TanStack Table columns --------------------------------------------
 
@@ -357,7 +320,7 @@ export function ResourceGrid({
   // --- TanStack Table instance -------------------------------------------
 
   const table = useReactTable({
-    data: lineageFilteredRows,
+    data: kindFilteredRows,
     columns,
     state: { globalFilter, columnVisibility },
     onGlobalFilterChange: setGlobalFilter,
@@ -450,14 +413,6 @@ export function ResourceGrid({
                 onChange={setKindIds}
               />
             )}
-
-            {/* Lineage filter */}
-            <LineageFilterControl
-              direction={lineageDirection}
-              recursive={recursive}
-              onDirectionChange={setLineageDirection}
-              onRecursiveChange={setRecursive}
-            />
           </div>
 
           {/* Empty state */}
@@ -608,52 +563,3 @@ function KindFilter({
   )
 }
 
-/** Lineage direction select + recursive checkbox. */
-function LineageFilterControl({
-  direction,
-  recursive,
-  onDirectionChange,
-  onRecursiveChange,
-}: {
-  direction: LineageDirection
-  recursive: boolean
-  onDirectionChange: (d: LineageDirection) => void
-  onRecursiveChange: (r: boolean) => void
-}) {
-  return (
-    <div
-      className="flex items-center gap-2"
-      aria-label="Lineage filter"
-      data-testid="lineage-filter"
-    >
-      <Select
-        value={direction}
-        onValueChange={(v) => onDirectionChange(v as LineageDirection)}
-      >
-        <SelectTrigger className="w-[160px]" aria-label="Lineage direction">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="ancestors">Ancestors</SelectItem>
-          <SelectItem value="descendants">Descendants</SelectItem>
-          <SelectItem value="both">Both</SelectItem>
-        </SelectContent>
-      </Select>
-      <div className="flex items-center gap-1">
-        <Checkbox
-          id="lineage-recursive"
-          checked={recursive}
-          onCheckedChange={(checked) => onRecursiveChange(checked === true)}
-          aria-label="Recursive lineage"
-          data-testid="lineage-recursive-checkbox"
-        />
-        <Label
-          htmlFor="lineage-recursive"
-          className="text-sm cursor-pointer"
-        >
-          Recursive
-        </Label>
-      </div>
-    </div>
-  )
-}

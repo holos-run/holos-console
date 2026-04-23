@@ -23,7 +23,6 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { toast } from 'sonner'
-import type { Mock } from 'vitest'
 import { ResourceGrid } from './ResourceGrid'
 import type { Kind, Row, ResourceGridSearch } from './types'
 
@@ -287,41 +286,6 @@ describe('ResourceGrid', () => {
     })
     expect(screen.getByText('My Deployment')).toBeInTheDocument()
     expect(screen.queryByText('My Secret')).not.toBeInTheDocument()
-  })
-
-  // --- Lineage filter ---
-
-  it('renders lineage filter controls', () => {
-    renderGrid()
-    expect(screen.getByTestId('lineage-filter')).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: /lineage direction/i })).toBeInTheDocument()
-    expect(
-      screen.getByTestId('lineage-recursive-checkbox'),
-    ).toBeInTheDocument()
-  })
-
-  it('recursive checkbox is unchecked by default', () => {
-    renderGrid({ search: {} })
-    const checkbox = screen.getByTestId('lineage-recursive-checkbox')
-    // The shadcn Checkbox renders as a button with aria-checked
-    expect(checkbox).toHaveAttribute('aria-checked', 'false')
-  })
-
-  it('calls onSearchChange with recursive=1 when recursive checkbox is clicked', () => {
-    const onSearchChange = vi.fn()
-    renderGrid({ onSearchChange, search: {} })
-    const checkbox = screen.getByTestId('lineage-recursive-checkbox')
-    fireEvent.click(checkbox)
-    expect(onSearchChange).toHaveBeenCalled()
-    // Verify the updater produces recursive=1
-    const updater = (onSearchChange as Mock).mock.calls[0][0]
-    expect(updater({})).toMatchObject({ recursive: '1' })
-  })
-
-  it('shows recursive checkbox as checked when search.recursive is "1"', () => {
-    renderGrid({ search: { recursive: '1' } })
-    const checkbox = screen.getByTestId('lineage-recursive-checkbox')
-    expect(checkbox).toHaveAttribute('aria-checked', 'true')
   })
 
   // --- New button ---

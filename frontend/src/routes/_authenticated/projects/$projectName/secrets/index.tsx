@@ -2,8 +2,6 @@
  * Secrets index page — reimplemented on ResourceGrid v1 (HOL-857).
  *
  * Default view: current project as the single parent with Parent column hidden.
- * Expanding the lineage filter to ancestors/both surfaces folder- and org-level
- * secrets without leaving the page.
  *
  * Detail and new/edit flows are unchanged — only the list page is rewritten.
  */
@@ -30,8 +28,7 @@ export function SecretsListPage() {
 
   const { data: project } = useGetProject(projectName)
 
-  const lineage = search.lineage ?? 'descendants'
-  const { data: secretRows = [], isPending, error } = useAllSecretsForProject(projectName, { lineage })
+  const { data: secretRows = [], isPending, error } = useAllSecretsForProject(projectName)
 
   const deleteMutation = useDeleteSecret(projectName)
 

@@ -123,12 +123,10 @@ describe('SecretsListPage (ResourceGrid v1)', () => {
     expect(screen.getByText('my-secret')).toBeInTheDocument()
   })
 
-  it('calls useAllSecretsForProject with descendants lineage by default', () => {
+  it('calls useAllSecretsForProject with the project name', () => {
     setupMocks()
     render(<SecretsListPage />)
-    expect(useAllSecretsForProject).toHaveBeenCalledWith('test-project', {
-      lineage: 'descendants',
-    })
+    expect(useAllSecretsForProject).toHaveBeenCalledWith('test-project')
   })
 
   it('shows loading skeleton when isPending is true', () => {
@@ -235,17 +233,6 @@ describe('SecretsListPage (ResourceGrid v1)', () => {
 
     await waitFor(() => {
       expect(mutateAsync).toHaveBeenCalledWith('my-secret')
-    })
-  })
-
-  it('URL state: useAllSecretsForProject is called with the search lineage', () => {
-    // The component extracts lineage from useSearch() and passes it to
-    // useAllSecretsForProject. Since our router mock returns {} for useSearch,
-    // the component defaults to "descendants".
-    setupMocks({ rows: [makeSecretRow('my-secret')] })
-    render(<SecretsListPage />)
-    expect(useAllSecretsForProject).toHaveBeenCalledWith('test-project', {
-      lineage: 'descendants',
     })
   })
 

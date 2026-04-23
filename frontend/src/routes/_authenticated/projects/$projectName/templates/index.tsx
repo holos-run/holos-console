@@ -244,16 +244,14 @@ export function ProjectTemplatesIndexPage({
   )
 
   // ---------------------------------------------------------------------------
-  // Default URL state: kind=Template, lineage=descendants
-  // Apply defaults when URL omits them so the initial view shows only
+  // Default URL state: kind=Template
+  // Apply default when URL omits it so the initial view shows only
   // the current project's Template rows.
   // ---------------------------------------------------------------------------
 
   const searchWithDefaults: ResourceGridSearch = useMemo(
     () => ({
       kind: search.kind ?? 'Template',
-      lineage: search.lineage ?? 'descendants',
-      recursive: search.recursive ?? '0',
       search: search.search,
     }),
     [search],

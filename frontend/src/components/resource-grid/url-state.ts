@@ -7,13 +7,7 @@
  * duplicated.
  */
 
-import type { LineageDirection, ResourceGridSearch } from './types'
-
-const VALID_LINEAGE_DIRECTIONS = new Set<string>([
-  'ancestors',
-  'descendants',
-  'both',
-])
+import type { ResourceGridSearch } from './types'
 
 /**
  * Parse an untrusted query-string object into a validated `ResourceGridSearch`.
@@ -44,19 +38,6 @@ export function parseGridSearch(raw: Record<string, unknown>): ResourceGridSearc
     result.search = search
   }
 
-  const lineage = raw['lineage']
-  if (typeof lineage === 'string' && VALID_LINEAGE_DIRECTIONS.has(lineage)) {
-    result.lineage = lineage as LineageDirection
-  }
-
-  const recursive = raw['recursive']
-  if (recursive === '1') {
-    result.recursive = '1'
-  } else if (recursive === '0') {
-    result.recursive = '0'
-  }
-  // Default (absent) → treated as '0' (non-recursive) by the grid.
-
   return result
 }
 
@@ -71,8 +52,6 @@ export function serialiseGridSearch(
   return {
     kind: params.kind || undefined,
     search: params.search || undefined,
-    lineage: params.lineage || undefined,
-    recursive: params.recursive,
   }
 }
 
