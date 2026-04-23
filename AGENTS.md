@@ -83,12 +83,17 @@ The UI picker on every "New Template" page is backed by a Go registry of built-i
      """
    ```
 
-2. Update `console/templates/examples/examples_test.go`:
+2. Update two test files:
 
+   In `console/templates/examples/examples_test.go`:
    - Increment the `TestExamples` count by 1.
    - Add the new example's `name` to the `wantNames` slice.
    - If the template produces concrete Kubernetes resources (i.e. it is not a policy-only template), add the name to the `exampleResourcesEmitted` switch so `TestExamplePreviewRender` asserts non-empty output.
    - Optionally add a sub-test in `TestExamplePreviewRender_KnownExamples` asserting specific resource kinds and apiVersions for regression coverage (recommended for deployment templates).
+
+   In `console/templates/handler_examples_test.go`:
+   - Increment the `wantCount` constant by 1 in `TestListTemplateExamples_HappyPath`.
+   - Add the new example's `name` to the `wantNames` slice in `TestListTemplateExamples_KnownNames`.
 
 3. Run `make test-go` to confirm the new example compiles against the `v1alpha2` generated schema and renders correctly through the preview path.
 

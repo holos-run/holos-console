@@ -275,7 +275,6 @@ func TestExamplePreviewRender_KnownExamples(t *testing.T) {
 	})
 
 	for _, name := range []string{"httpbin-v1", "podinfo-v1"} {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			ex, ok := byName[name]
 			if !ok {

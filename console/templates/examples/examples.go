@@ -7,8 +7,10 @@
 // as a multi-line string so it can reference #PlatformInput, #ProjectInput,
 // etc. without those types needing to be in scope in this file.
 //
-// Adding a new example requires only dropping a new *.cue file in this
-// directory — no Go changes are needed.
+// Adding a new example requires dropping a new *.cue file in this directory
+// and updating the test counts and name lists in examples_test.go and
+// console/templates/handler_examples_test.go. See AGENTS.md for the full
+// drop-in workflow.
 package examples
 
 import (
