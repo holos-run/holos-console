@@ -810,8 +810,8 @@ export declare const ListAncestorTemplatesResponseSchema: GenMessage<ListAncesto
 
 /**
  * Release is a published, immutable snapshot of a template at a specific semver
- * version. Releases enable consumers to pin to known-good versions and receive
- * upgrade notifications through the CheckUpdates RPC.
+ * version. Releases enable consumers to pin to known-good versions and view
+ * upgrade history via ListReleases.
  *
  * @generated from message holos.console.v1.Release
  */

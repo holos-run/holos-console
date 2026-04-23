@@ -1509,8 +1509,8 @@ func (x *ListAncestorTemplatesResponse) GetTemplates() []*Template {
 }
 
 // Release is a published, immutable snapshot of a template at a specific semver
-// version. Releases enable consumers to pin to known-good versions and receive
-// upgrade notifications through the CheckUpdates RPC.
+// version. Releases enable consumers to pin to known-good versions and view
+// upgrade history via ListReleases.
 type Release struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// template_name is the DNS label slug of the template this release belongs to.
