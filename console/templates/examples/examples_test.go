@@ -273,4 +273,45 @@ func TestExamplePreviewRender_KnownExamples(t *testing.T) {
 			t.Fatalf("allowed-project-resource-kinds-v1: RenderGrouped failed: %v", err)
 		}
 	})
+
+	for _, name := range []string{"httpbin-v1", "podinfo-v1"} {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			ex, ok := byName[name]
+			if !ok {
+				t.Fatalf("%s example not found in registry", name)
+			}
+			grouped, err := adapter.RenderGrouped(
+				context.Background(),
+				ex.CueTemplate,
+				cuePlatformInput,
+				cueProjectInput,
+			)
+			if err != nil {
+				t.Fatalf("%s: RenderGrouped failed: %v", name, err)
+			}
+
+			var projectYAML strings.Builder
+			for _, r := range grouped.Project {
+				projectYAML.WriteString(r.YAML)
+			}
+			yaml := projectYAML.String()
+
+			if yaml == "" {
+				t.Errorf("%s: expected non-empty project_resources_yaml", name)
+			}
+			for _, kind := range []string{"kind: ServiceAccount", "kind: Deployment", "kind: Service"} {
+				if !strings.Contains(yaml, kind) {
+					t.Errorf("%s: project_resources_yaml must contain %q, got:\n%s", name, kind, yaml)
+				}
+			}
+			if !strings.Contains(yaml, "apiVersion: apps/v1") {
+				t.Errorf("%s: project_resources_yaml must contain 'apiVersion: apps/v1', got:\n%s", name, yaml)
+			}
+			// Deployment resources must land in grouped.Project, not grouped.Platform.
+			if len(grouped.Platform) > 0 {
+				t.Errorf("%s: expected empty platform resources for project-only template, got %d", name, len(grouped.Platform))
+			}
+		})
+	}
 }
