@@ -104,8 +104,6 @@ projectResources: {
 export function TemplateCreateForm({
   scopeType,
   namespace,
-  organization,
-  projectName,
   canWrite,
   canLink,
   isPending = false,
