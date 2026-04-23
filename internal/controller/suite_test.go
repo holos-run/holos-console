@@ -233,7 +233,8 @@ func mustCreateNamespaceWithParent(t *testing.T, c client.Client, name, resource
 // TestTemplate_ObservedGenerationConverges creates a Template, waits for
 // Ready=True, then updates the spec and confirms observedGeneration tracks
 // metadata.generation. Also asserts the condition set contains Accepted,
-// CUEValid, LinkedRefsResolved, Ready — the documented HOL-618 surface.
+// CUEValid, and Ready — the documented HOL-618 surface (LinkedRefsResolved
+// was removed in HOL-908; explicit linking is superseded by TemplatePolicyBinding).
 func TestTemplate_ObservedGenerationConverges(t *testing.T) {
 	e := startEnv(t)
 	_, cancel, errCh := startManager(t, e.cfg)
