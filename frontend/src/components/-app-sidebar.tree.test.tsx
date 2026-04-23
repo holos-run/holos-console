@@ -41,11 +41,13 @@ vi.mock('@/components/workspace-menu', () => ({
   WorkspaceMenu: () => <div data-testid="workspace-menu" />,
 }))
 
+vi.mock('@/lib/org-context', () => ({ useOrg: vi.fn() }))
 vi.mock('@/lib/project-context', () => ({ useProject: vi.fn() }))
 vi.mock('@/queries/version', () => ({
   useVersion: () => ({ data: { version: 'v0.0.0-test' } }),
 }))
 
+import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from './app-sidebar'
@@ -54,7 +56,13 @@ function renderWithProvider(ui: React.ReactElement) {
   return render(<SidebarProvider>{ui}</SidebarProvider>)
 }
 
-function setupNoProject() {
+function setupNoOrgNoProject() {
+  ;(useOrg as Mock).mockReturnValue({
+    organizations: [],
+    selectedOrg: null,
+    setSelectedOrg: vi.fn(),
+    isLoading: false,
+  })
   ;(useProject as Mock).mockReturnValue({
     projects: [],
     selectedProject: null,
@@ -63,7 +71,13 @@ function setupNoProject() {
   })
 }
 
-function setupProjectSelected() {
+function setupOrgAndProjectSelected() {
+  ;(useOrg as Mock).mockReturnValue({
+    organizations: [{ name: 'my-org', displayName: 'My Org' }],
+    selectedOrg: 'my-org',
+    setSelectedOrg: vi.fn(),
+    isLoading: false,
+  })
   ;(useProject as Mock).mockReturnValue({
     projects: [{ name: 'my-project', displayName: 'My Project' }],
     selectedProject: 'my-project',
@@ -72,35 +86,33 @@ function setupProjectSelected() {
   })
 }
 
-describe('AppSidebar — HOL-856 flat nav (real sidebar primitives)', () => {
+describe('AppSidebar — HOL-914 flat nav (real sidebar primitives)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    setupProjectSelected()
+    setupOrgAndProjectSelected()
   })
 
-  it('renders all four nav entries when a project is selected', () => {
+  it('renders all four nav entries when org and project are selected', () => {
     renderWithProvider(<AppSidebar />)
+    expect(screen.getByRole('link', { name: /^projects$/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /^secrets$/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /^deployments$/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /^templates$/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /^resource manager$/i })).toBeInTheDocument()
   })
 
-  it('Secrets, Deployments, and Templates are disabled (not links) when no project is selected', () => {
-    setupNoProject()
+  it('does not render a Resource Manager link', () => {
+    renderWithProvider(<AppSidebar />)
+    expect(screen.queryByRole('link', { name: /^resource manager$/i })).not.toBeInTheDocument()
+  })
+
+  it('Projects, Secrets, Deployments, and Templates are disabled (not links) when no org or project is selected', () => {
+    setupNoOrgNoProject()
     renderWithProvider(<AppSidebar />)
     // Disabled entries render as buttons, not anchors
+    expect(screen.queryByRole('link', { name: /^projects$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /^secrets$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /^deployments$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /^templates$/i })).not.toBeInTheDocument()
-  })
-
-  it('Resource Manager is always rendered as a link', () => {
-    setupNoProject()
-    renderWithProvider(<AppSidebar />)
-    expect(
-      screen.getByRole('link', { name: /^resource manager$/i }),
-    ).toBeInTheDocument()
   })
 
   it('workspace-menu data-testid renders in the header', () => {
