@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -298,80 +297,46 @@ func projectScopeRef(project string) string {
 	return testResolver.ProjectNamespace(project)
 }
 
-// TestCreateTemplateLinkPermissions verifies that CreateTemplate enforces scoped
-// link permissions: OWNER can create with org and folder links, EDITOR cannot.
-func TestCreateTemplateLinkPermissions(t *testing.T) {
+// TestCreateTemplate_IgnoresLinkedTemplates guards the HOL-906 invariant:
+// CreateTemplate silently ignores any linked_templates in the request and never
+// writes the console.holos.run/linked-templates annotation to the Template CRD.
+// Template composition is driven exclusively by TemplatePolicyBinding.
+func TestCreateTemplate_IgnoresLinkedTemplates(t *testing.T) {
 	const project = "my-project"
 	const ownerEmail = "platform@localhost"
-	const editorEmail = "product@localhost"
 
 	tests := []struct {
 		name            string
-		email           string
 		linkedTemplates []*consolev1.LinkedTemplateRef
-		wantErr         bool
-		wantCode        connect.Code
 	}{
 		{
-			name:            "OWNER creates template with org-linked templates succeeds",
-			email:           ownerEmail,
+			name:            "linked templates with foreign namespace are silently ignored",
+			linkedTemplates: []*consolev1.LinkedTemplateRef{{Namespace: "default", Name: "rogue"}},
+		},
+		{
+			name:            "linked templates with org namespace are silently ignored",
 			linkedTemplates: []*consolev1.LinkedTemplateRef{orgLinkedRef("acme", "httproute")},
-			wantErr:         false,
 		},
 		{
-			name:            "OWNER creates template with folder-linked templates succeeds",
-			email:           ownerEmail,
+			name:            "linked templates with folder namespace are silently ignored",
 			linkedTemplates: []*consolev1.LinkedTemplateRef{folderLinkedRef("payments", "payments-policy")},
-			wantErr:         false,
 		},
 		{
-			name:  "OWNER creates template with both org and folder links succeeds",
-			email: ownerEmail,
-			linkedTemplates: []*consolev1.LinkedTemplateRef{
-				orgLinkedRef("acme", "httproute"),
-				folderLinkedRef("payments", "payments-policy"),
-			},
-			wantErr: false,
-		},
-		{
-			name:            "EDITOR creates template with org-linked templates fails",
-			email:           editorEmail,
-			linkedTemplates: []*consolev1.LinkedTemplateRef{orgLinkedRef("acme", "httproute")},
-			wantErr:         true,
-			wantCode:        connect.CodePermissionDenied,
-		},
-		{
-			name:            "EDITOR creates template with folder-linked templates fails",
-			email:           editorEmail,
-			linkedTemplates: []*consolev1.LinkedTemplateRef{folderLinkedRef("payments", "payments-policy")},
-			wantErr:         true,
-			wantCode:        connect.CodePermissionDenied,
-		},
-		{
-			name:            "EDITOR creates template with no linked templates succeeds",
-			email:           editorEmail,
+			name:            "nil linked templates succeeds",
 			linkedTemplates: nil,
-			wantErr:         false,
 		},
 	}
 
 	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ns := &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "prj-" + project,
-				},
+				ObjectMeta: metav1.ObjectMeta{Name: "prj-" + project},
 			}
 			fakeClient := fake.NewClientset(ns)
-			shareUsers := map[string]string{
-				ownerEmail:  "owner",
-				editorEmail: "editor",
-			}
-			handler := newTestHandler(t, fakeClient, shareUsers)
+			handler, k8s := newTestHandlerAndK8s(t, fakeClient, map[string]string{ownerEmail: "owner"})
 
-			// Use a unique template name per test to avoid AlreadyExists.
 			templateName := fmt.Sprintf("tmpl-%d", i)
-			ctx := authedCtx(tt.email, nil)
+			ctx := authedCtx(ownerEmail, nil)
 			req := connect.NewRequest(&consolev1.CreateTemplateRequest{
 				Namespace: projectScopeRef(project),
 				Template: &consolev1.Template{
@@ -382,72 +347,35 @@ func TestCreateTemplateLinkPermissions(t *testing.T) {
 			})
 
 			_, err := handler.CreateTemplate(ctx, req)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				if connectErr := new(connect.Error); connect.CodeOf(err) != tt.wantCode {
-					t.Errorf("expected code %v, got %v (%v)", tt.wantCode, connect.CodeOf(err), connectErr)
-				}
-			} else {
-				if err != nil {
-					t.Fatalf("expected no error, got %v", err)
-				}
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+
+			// HOL-906: the stored CRD must not carry any linked-templates
+			// annotation, regardless of what the request contained.
+			got, getErr := k8s.GetTemplate(context.Background(), "prj-"+project, templateName)
+			if getErr != nil {
+				t.Fatalf("GetTemplate after create: %v", getErr)
+			}
+			if len(got.Spec.LinkedTemplates) != 0 {
+				t.Errorf("HOL-906: expected no linked templates in CRD spec, got %d entries: %+v",
+					len(got.Spec.LinkedTemplates), got.Spec.LinkedTemplates)
 			}
 		})
 	}
 }
 
-// TestCreateTemplateLinkedRefsValidation covers the HOL-723 guardrail: a
-// LinkedTemplateRef whose namespace does not classify as a console-managed
-// org/folder/project namespace must be rejected before persistence, because
-// render-time resolution only walks ancestor namespaces and would silently
-// drop such a ref. HOL-619 flattened the scope enum off the wire; HOL-723
-// retired the (scope, scopeName) CRD fields that previously caught this at
-// decode time.
-func TestCreateTemplateLinkedRefsValidation(t *testing.T) {
-	const project = "my-project"
-	const ownerEmail = "platform@localhost"
-	ns := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "prj-" + project,
-		},
-	}
-	fakeClient := fake.NewClientset(ns)
-	handler := newTestHandler(t, fakeClient, map[string]string{ownerEmail: "owner"})
-	ctx := authedCtx(ownerEmail, nil)
-
-	req := connect.NewRequest(&consolev1.CreateTemplateRequest{
-		Namespace: projectScopeRef(project),
-		Template: &consolev1.Template{
-			Name:        "foreign-linked",
-			CueTemplate: validCue,
-			LinkedTemplates: []*consolev1.LinkedTemplateRef{
-				{Namespace: "default", Name: "rogue"},
-			},
-		},
-	})
-
-	_, err := handler.CreateTemplate(ctx, req)
-	if err == nil {
-		t.Fatal("expected validation error for foreign linked namespace, got nil")
-	}
-	if connect.CodeOf(err) != connect.CodeInvalidArgument {
-		t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
-	}
-	if !strings.Contains(err.Error(), "not a console-managed") {
-		t.Errorf("expected 'not a console-managed' in error, got: %v", err)
-	}
-}
-
-// TestUpdateTemplateLinkPermissions verifies that UpdateTemplate honors the
-// update_linked_templates flag and enforces scoped link permissions.
-func TestUpdateTemplateLinkPermissions(t *testing.T) {
+// TestUpdateTemplate_IgnoresLinkedTemplates guards the HOL-906 invariant:
+// UpdateTemplate silently ignores update_linked_templates=true and any
+// linked_templates payload — the flag is a no-op for the annotation.
+// Template composition is driven exclusively by TemplatePolicyBinding.
+func TestUpdateTemplate_IgnoresLinkedTemplates(t *testing.T) {
 	const project = "my-project"
 	const ownerEmail = "platform@localhost"
 	const editorEmail = "product@localhost"
 
-	// Pre-seed a template with org-linked templates for update tests.
+	// Pre-seed a template with existing linked templates in spec so the
+	// preservation check has something to observe.
 	existingLinkedJSON := `[{"scope":"organization","scope_name":"acme","name":"httproute"}]`
 
 	makeExistingTemplate := func() *corev1.ConfigMap {
@@ -466,92 +394,49 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 					v1alpha2.AnnotationLinkedTemplates: existingLinkedJSON,
 				},
 			},
-			Data: map[string]string{
-				CueTemplateKey: validCue,
-			},
+			Data: map[string]string{CueTemplateKey: validCue},
 		}
 	}
 
 	tests := []struct {
-		name               string
-		email              string
-		updateLinkedTmpl   bool
-		linkedTemplates    []*consolev1.LinkedTemplateRef
-		wantErr            bool
-		wantCode           connect.Code
-		wantLinksPreserved bool // When true, verify existing links are still present after update.
-		wantLinksCleared   bool // When true, verify linked-templates annotation is removed after update.
+		name             string
+		email            string
+		updateLinkedTmpl bool
+		linkedTemplates  []*consolev1.LinkedTemplateRef
 	}{
 		{
-			name:             "OWNER updates linked templates with update_linked_templates=true succeeds",
+			name:             "OWNER with update_linked_templates=true and non-empty list succeeds without error",
 			email:            ownerEmail,
 			updateLinkedTmpl: true,
 			linkedTemplates: []*consolev1.LinkedTemplateRef{
 				orgLinkedRef("acme", "httproute"),
 				folderLinkedRef("payments", "payments-policy"),
 			},
-			wantErr: false,
 		},
 		{
-			name:             "EDITOR updates linked templates with update_linked_templates=true fails",
+			name:             "EDITOR with update_linked_templates=true succeeds (flag is now a no-op)",
 			email:            editorEmail,
 			updateLinkedTmpl: true,
-			linkedTemplates: []*consolev1.LinkedTemplateRef{
-				orgLinkedRef("acme", "new-route"),
-			},
-			wantErr:  true,
-			wantCode: connect.CodePermissionDenied,
+			linkedTemplates:  []*consolev1.LinkedTemplateRef{orgLinkedRef("acme", "new-route")},
 		},
 		{
-			name:             "EDITOR updates folder-linked templates with update_linked_templates=true fails",
-			email:            editorEmail,
-			updateLinkedTmpl: true,
-			linkedTemplates: []*consolev1.LinkedTemplateRef{
-				folderLinkedRef("payments", "payments-policy"),
-			},
-			wantErr:  true,
-			wantCode: connect.CodePermissionDenied,
-		},
-		{
-			name:               "EDITOR updates CUE only with update_linked_templates=false succeeds and preserves links",
-			email:              editorEmail,
-			updateLinkedTmpl:   false,
-			linkedTemplates:    nil,
-			wantErr:            false,
-			wantLinksPreserved: true,
-		},
-		{
-			name:             "OWNER clears all linked templates with update_linked_templates=true empty list succeeds",
+			name:             "OWNER with update_linked_templates=true and nil list does not clear existing",
 			email:            ownerEmail,
 			updateLinkedTmpl: true,
-			linkedTemplates:  []*consolev1.LinkedTemplateRef{}, // empty list clears links
-			wantErr:          false,
-			wantLinksCleared: true,
+			linkedTemplates:  nil,
 		},
 		{
-			name:             "OWNER clears linked templates with update_linked_templates=true nil list succeeds",
-			email:            ownerEmail,
-			updateLinkedTmpl: true,
-			linkedTemplates:  nil, // protobuf binary encoding delivers nil for empty repeated fields
-			wantErr:          false,
-			wantLinksCleared: true,
-		},
-		{
-			name:             "EDITOR clears linked templates with update_linked_templates=true empty list fails",
+			name:             "EDITOR CUE-only update with update_linked_templates=false succeeds",
 			email:            editorEmail,
-			updateLinkedTmpl: true,
-			linkedTemplates:  []*consolev1.LinkedTemplateRef{}, // clearing requires permission on existing scopes
-			wantErr:          true,
-			wantCode:         connect.CodePermissionDenied,
+			updateLinkedTmpl: false,
+			linkedTemplates:  nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ns := &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "prj-" + project,
-				},
+				ObjectMeta: metav1.ObjectMeta{Name: "prj-" + project},
 			}
 			cm := makeExistingTemplate()
 			fakeClient := fake.NewClientset(ns, cm)
@@ -573,48 +458,34 @@ func TestUpdateTemplateLinkPermissions(t *testing.T) {
 			})
 
 			_, err := handler.UpdateTemplate(ctx, req)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				if connect.CodeOf(err) != tt.wantCode {
-					t.Errorf("expected code %v, got %v", tt.wantCode, connect.CodeOf(err))
-				}
-				return
-			}
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
 
-			// Post-HOL-661 linked templates live on Template.Spec.LinkedTemplates
-			// (typed), not on the legacy ConfigMap annotation. Read through the
-			// K8sClient so the assertions observe production storage.
+			// HOL-906: update_linked_templates is a no-op — the spec should
+			// be unchanged (any existing links from before this phase are
+			// preserved by passing nil to K8sClient.UpdateTemplate).
 			updated, getErr := k8s.GetTemplate(context.Background(), "prj-"+project, "web-app")
 			if getErr != nil {
-				t.Fatalf("failed to get updated Template: %v", getErr)
+				t.Fatalf("GetTemplate after update: %v", getErr)
 			}
-
-			// Verify link preservation when update_linked_templates=false.
-			if tt.wantLinksPreserved {
-				if len(updated.Spec.LinkedTemplates) == 0 {
-					t.Fatal("expected linked templates to be preserved, but spec.linkedTemplates is empty")
-				}
-				got := updated.Spec.LinkedTemplates[0]
-				if got.Namespace != testResolver.OrgNamespace("acme") || got.Name != "httproute" {
-					t.Errorf("expected preserved org/acme/httproute link, got %+v", got)
-				}
-			}
-
-			// Verify link clearing when update_linked_templates=true with empty or nil list.
-			if tt.wantLinksCleared {
-				if len(updated.Spec.LinkedTemplates) != 0 {
-					t.Errorf("expected linked templates to be cleared, but found %d entries: %+v", len(updated.Spec.LinkedTemplates), updated.Spec.LinkedTemplates)
-				}
+			// The existing links were seeded via the ConfigMap annotation
+			// bridge, so they should still be present on the CRD.
+			if len(updated.Spec.LinkedTemplates) == 0 {
+				t.Errorf("HOL-906: expected existing linked templates to be preserved (nil pass-through), got 0")
 			}
 		})
 	}
 	_ = existingLinkedJSON
 }
+
+// NOTE: TestCreateTemplateLinkPermissions, TestCreateTemplateLinkedRefsValidation,
+// and TestUpdateTemplateLinkPermissions were removed in HOL-906.
+// Those tests verified that CreateTemplate/UpdateTemplate enforced scoped link
+// permissions and rejected foreign-namespace refs. After HOL-906 the handler
+// silently ignores linked_templates in all requests — permission checks for
+// linking are no longer relevant. TestCreateTemplate_IgnoresLinkedTemplates and
+// TestUpdateTemplate_IgnoresLinkedTemplates guard the new invariant.
 
 // NOTE: TestUpdateTemplateMalformedLinkedAnnotation was removed in HOL-661.
 // Before HOL-661 linked templates were persisted as a JSON annotation on the

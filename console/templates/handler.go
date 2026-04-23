@@ -716,9 +716,6 @@ func (h *Handler) CreateTemplate(
 			return nil, err
 		}
 	}
-	if err := h.validateLinkedRefs(tmpl.LinkedTemplates); err != nil {
-		return nil, err
-	}
 
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
@@ -729,18 +726,13 @@ func (h *Handler) CreateTemplate(
 		return nil, err
 	}
 
-	// Enforce scoped link permissions when linked templates are provided.
-	if len(tmpl.LinkedTemplates) > 0 {
-		if err := h.checkLinkPermissions(ctx, claims, scope, scopeName, tmpl.LinkedTemplates); err != nil {
-			return nil, err
-		}
-	}
-
 	// The `mandatory` annotation and its Go/proto projections were removed in
 	// HOL-565. Ancestor templates that must always apply to every project now
 	// come in via TemplatePolicy REQUIRE rules (HOL-567).
+	// HOL-906: linked_templates in the request is silently ignored; template
+	// composition is driven exclusively by TemplatePolicyBinding.
 	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
-	_, err = h.k8s.CreateTemplate(ctx, ns, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, tmpl.Enabled, tmpl.LinkedTemplates)
+	_, err = h.k8s.CreateTemplate(ctx, ns, name, tmpl.DisplayName, tmpl.Description, tmpl.CueTemplate, tmpl.Defaults, tmpl.Enabled)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -792,11 +784,6 @@ func (h *Handler) UpdateTemplate(
 			return nil, err
 		}
 	}
-	if req.Msg.GetUpdateLinkedTemplates() {
-		if err := h.validateLinkedRefs(tmpl.LinkedTemplates); err != nil {
-			return nil, err
-		}
-	}
 
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
@@ -812,38 +799,13 @@ func (h *Handler) UpdateTemplate(
 	cueTemplate := tmpl.CueTemplate
 	enabled := tmpl.Enabled
 
-	// Determine linked template handling based on the update_linked_templates flag.
-	var linkedTemplates []*consolev1.LinkedTemplateRef
+	// HOL-906: update_linked_templates and linked_templates are silently
+	// ignored; template composition is driven exclusively by
+	// TemplatePolicyBinding. Pass nil for linkedTemplates so K8sClient
+	// preserves (rather than clears) any links that exist on the CRD from
+	// before this phase — they are harmless until Phase 5 removes the field.
 	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
-	if req.Msg.GetUpdateLinkedTemplates() {
-		// Caller wants to modify links. Check permissions based on both old
-		// (being removed) and new (being added) linked template scopes.
-		existing, getErr := h.k8s.GetTemplate(ctx, ns, name)
-		if getErr != nil {
-			return nil, mapK8sError(getErr)
-		}
-		existingRefs := crdLinkedToProto(existing.Spec.LinkedTemplates)
-		// Merge old and new refs to check all affected scopes.
-		allRefs := append(existingRefs, tmpl.LinkedTemplates...)
-		if len(allRefs) > 0 {
-			if err := h.checkLinkPermissions(ctx, claims, scope, scopeName, allRefs); err != nil {
-				return nil, err
-			}
-		}
-		linkedTemplates = tmpl.LinkedTemplates
-		// Protobuf binary encoding cannot distinguish an omitted repeated
-		// field from an empty one — both arrive as nil.  When the caller
-		// explicitly asked to update links, nil means "clear all links,"
-		// so normalize to a non-nil empty slice.  K8sClient.UpdateTemplate
-		// treats nil as "preserve existing" and empty as "delete annotation."
-		if linkedTemplates == nil {
-			linkedTemplates = []*consolev1.LinkedTemplateRef{}
-		}
-	}
-	// When update_linked_templates is false, linkedTemplates stays nil,
-	// which tells K8sClient.UpdateTemplate to preserve existing links.
-
-	_, err = h.k8s.UpdateTemplate(ctx, ns, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, &enabled, linkedTemplates, false)
+	_, err = h.k8s.UpdateTemplate(ctx, ns, name, &displayName, &description, &cueTemplate, tmpl.Defaults, false, &enabled, nil, false)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -1313,7 +1275,7 @@ func (h *Handler) ListAncestorTemplates(
 		return nil, err
 	}
 
-	templates, err := h.collectAncestorTemplates(ctx, scope, scopeName, nil)
+	templates, err := h.collectAncestorTemplates(ctx, scope, scopeName)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
@@ -1323,18 +1285,13 @@ func (h *Handler) ListAncestorTemplates(
 	}), nil
 }
 
-// collectAncestorTemplates walks the hierarchy and collects templates from all
-// ancestor scopes plus the current scope itself. The render-set formula is:
+// collectAncestorTemplates walks the hierarchy and collects all enabled
+// templates from ancestor scopes (organization and folder). Results are
+// returned in org→folder order for correct CUE unification.
 //
-//	enabled AND ref IN linkedRefs
-//
-// Results are returned in org→folders→project order for correct CUE
-// unification. If linkedRefs is empty, no ancestor templates are returned.
-// The "mandatory" annotation branch of the effective set was removed in
-// HOL-565; TemplatePolicy REQUIRE rules (wired in HOL-567) reintroduce
-// unconditional ancestor inclusion at render time via the policy resolver
-// that sits in front of ListEffectiveTemplateSources — not via this
-// helper, which only surfaces the caller's explicit linkedRefs.
+// HOL-906: the linkedRefs filter was removed. The enabled set is returned
+// unconditionally — template composition is now driven exclusively by
+// TemplatePolicyBinding rather than explicit linked-templates lists.
 //
 // Storage-isolation note (HOL-554): the traversal only visits ancestor
 // namespaces — organization and folder — and never reads templates from a
@@ -1343,7 +1300,7 @@ func (h *Handler) ListAncestorTemplates(
 // in folder/organization namespaces precisely because project owners can
 // write to their project namespace and would otherwise be able to tamper
 // with the constraints the platform is enforcing.
-func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeKind, scopeName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]*consolev1.Template, error) {
+func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeKind, scopeName string) ([]*consolev1.Template, error) {
 	if h.walker == nil {
 		return nil, nil
 	}
@@ -1355,16 +1312,8 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeKind,
 		return nil, fmt.Errorf("walking ancestors for %s/%s: %w", scope, scopeName, err)
 	}
 
-	// Build a set of linked refs for O(1) lookup.
-	linkedSet := make(map[linkedRef]bool, len(linkedRefs))
-	for _, ref := range linkedRefs {
-		if ref != nil {
-			linkedSet[linkedRefFromProto(ref)] = true
-		}
-	}
-
-	// Collect templates from each ancestor, in reverse (org first, child last).
-	// ancestors is child→parent order; reverse to get org→child.
+	// Collect enabled templates from each ancestor, in reverse (org first,
+	// child last). ancestors is child→parent order; reverse to get org→child.
 	var result []*consolev1.Template
 	for i := len(ancestors) - 1; i >= 0; i-- {
 		ns := ancestors[i]
@@ -1387,13 +1336,6 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeKind,
 			if !crd.Spec.Enabled {
 				continue
 			}
-			ref := linkedRef{
-				namespace: ns.Name,
-				name:      crd.Name,
-			}
-			if !linkedSet[ref] {
-				continue
-			}
 			result = append(result, templateCRDToProto(crd, ancestorKind == scopeKindProject))
 		}
 	}
@@ -1401,67 +1343,6 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeKind,
 	return result, nil
 }
 
-// validateLinkedRefs rejects linked template references whose namespace does
-// not classify as a console-managed organization/folder/project namespace.
-// HOL-619 collapsed the scope enum and HOL-723 retired the scopeshim; this
-// check preserves the guardrail the old (scope, scopeName) enum gave us for
-// free — render-time resolution only searches console-managed ancestor
-// namespaces, so a link to `default` or any other foreign namespace would
-// silently never resolve.
-func (h *Handler) validateLinkedRefs(refs []*consolev1.LinkedTemplateRef) error {
-	for i, ref := range refs {
-		if ref == nil {
-			continue
-		}
-		ns := ref.GetNamespace()
-		if ns == "" {
-			return connect.NewError(connect.CodeInvalidArgument,
-				fmt.Errorf("linked_templates[%d].namespace is required", i))
-		}
-		if ref.GetName() == "" {
-			return connect.NewError(connect.CodeInvalidArgument,
-				fmt.Errorf("linked_templates[%d].name is required", i))
-		}
-		if kind, _ := classifyNamespace(h.resolver, ns); kind == scopeKindUnspecified {
-			return connect.NewError(connect.CodeInvalidArgument,
-				fmt.Errorf("linked_templates[%d].namespace %q is not a console-managed organization, folder, or project namespace", i, ns))
-		}
-	}
-	return nil
-}
-
-// checkLinkPermissions verifies the caller has the scoped link permissions
-// required by the provided linked template references. If any ref targets an
-// org-scope template, PermissionTemplatesLinkOrgWrite is checked. If any ref
-// targets a folder-scope template, PermissionTemplatesLinkFolderWrite is checked.
-// Both checks are performed at the template's owning scope.
-func (h *Handler) checkLinkPermissions(ctx context.Context, claims *rpc.Claims, scope scopeKind, scopeName string, linkedTemplates []*consolev1.LinkedTemplateRef) error {
-	hasOrg := false
-	hasFolder := false
-	for _, ref := range linkedTemplates {
-		if ref == nil {
-			continue
-		}
-		refKind, _ := classifyNamespace(h.resolver, ref.GetNamespace())
-		switch refKind {
-		case scopeKindOrganization:
-			hasOrg = true
-		case scopeKindFolder:
-			hasFolder = true
-		}
-	}
-	if hasOrg {
-		if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesLinkOrgWrite); err != nil {
-			return err
-		}
-	}
-	if hasFolder {
-		if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesLinkFolderWrite); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
 // checkAccess verifies the caller has the given permission for the requested scope.
 // All scope levels (org, folder, project) use the unified TemplateCascadePerms

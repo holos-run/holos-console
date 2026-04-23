@@ -140,12 +140,13 @@ func (k *K8sClient) GetTemplate(ctx context.Context, namespace, name string) (*t
 }
 
 // CreateTemplate creates a new Template CRD in the given namespace.
+// HOL-906: the linkedTemplates parameter was removed; template composition
+// is driven exclusively by TemplatePolicyBinding.
 func (k *K8sClient) CreateTemplate(
 	ctx context.Context,
 	namespace, name, displayName, description, cueTemplate string,
 	defaults *consolev1.TemplateDefaults,
 	enabled bool,
-	linkedTemplates []*consolev1.LinkedTemplateRef,
 ) (*templatesv1alpha1.Template, error) {
 	slog.DebugContext(ctx, "creating template in kubernetes",
 		slog.String("namespace", namespace),
@@ -160,12 +161,11 @@ func (k *K8sClient) CreateTemplate(
 			},
 		},
 		Spec: templatesv1alpha1.TemplateSpec{
-			DisplayName:     displayName,
-			Description:     description,
-			CueTemplate:     cueTemplate,
-			Defaults:        protoDefaultsToCRD(defaults),
-			Enabled:         enabled,
-			LinkedTemplates: protoLinkedToCRD(linkedTemplates),
+			DisplayName: displayName,
+			Description: description,
+			CueTemplate: cueTemplate,
+			Defaults:    protoDefaultsToCRD(defaults),
+			Enabled:     enabled,
 		},
 	}
 	if err := k.client.Create(ctx, tmpl); err != nil {
@@ -272,7 +272,8 @@ func (k *K8sClient) CloneTemplate(ctx context.Context, namespace, sourceName, ne
 		source.Spec.CueTemplate,
 		crdDefaultsToProto(source.Spec.Defaults),
 		false, // new clones start disabled
-		crdLinkedToProto(source.Spec.LinkedTemplates),
+		// HOL-906: linked templates are not propagated to clones; template
+		// composition is driven exclusively by TemplatePolicyBinding.
 	)
 }
 
@@ -308,12 +309,16 @@ func (r *ProjectScopedResolver) GetTemplate(ctx context.Context, project, name s
 // templateCRDToConfigMap converts a Template CRD to the ConfigMap shape the
 // deployments handler still expects. This is a transitional adapter: the
 // only consumer is deployments.TemplateResolver, which receives the
-// ConfigMap and reads only Name, Namespace, Data[CueTemplateKey], and the
-// v1alpha2.AnnotationLinkedTemplates annotation. When the deployments
-// package is rewritten against the CRD this helper can be deleted with
-// ProjectScopedResolver.
+// ConfigMap and reads only Name, Namespace, and Data[CueTemplateKey].
+// When the deployments package is rewritten against the CRD this helper can
+// be deleted with ProjectScopedResolver.
+//
+// HOL-906: the AnnotationLinkedTemplates annotation is no longer written.
+// Template composition is driven exclusively by TemplatePolicyBinding; the
+// deployments handler already reads the TPB-derived effective set directly
+// (HOL-904/HOL-905).
 func templateCRDToConfigMap(tmpl *templatesv1alpha1.Template) *corev1.ConfigMap {
-	cm := &corev1.ConfigMap{
+	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        tmpl.Name,
 			Namespace:   tmpl.Namespace,
@@ -323,13 +328,6 @@ func templateCRDToConfigMap(tmpl *templatesv1alpha1.Template) *corev1.ConfigMap 
 			CueTemplateKey: tmpl.Spec.CueTemplate,
 		},
 	}
-	if len(tmpl.Spec.LinkedTemplates) > 0 {
-		refs := crdLinkedToProto(tmpl.Spec.LinkedTemplates)
-		if b, err := marshalLinkedTemplates(refs); err == nil {
-			cm.Annotations[v1alpha2.AnnotationLinkedTemplates] = string(b)
-		}
-	}
-	return cm
 }
 
 // ListTemplatesInNamespace returns every Template CRD in the given namespace.
@@ -515,7 +513,6 @@ func (k *K8sClient) SeedOrgTemplate(ctx context.Context, org string) error {
 		DefaultReferenceGrantTemplate,
 		nil,
 		true, // enabled for populate_defaults flow
-		nil,
 	)
 	return err
 }
@@ -533,7 +530,6 @@ func (k *K8sClient) SeedProjectTemplate(ctx context.Context, project string) err
 		ExampleHttpbinTemplate,
 		nil,
 		true, // enabled for populate_defaults flow
-		nil,
 	)
 	return err
 }
