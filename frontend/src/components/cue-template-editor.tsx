@@ -91,8 +91,6 @@ export interface CueTemplateEditorProps {
   onSave?: () => Promise<void>
   /** Whether a save operation is in progress */
   isSaving?: boolean
-  /** Default platform input for the preview tab */
-  defaultPlatformInput?: string
   /** Default project input for the preview tab */
   defaultProjectInput?: string
   /** Namespace used to resolve ancestor platform templates when rendering the preview */
@@ -112,13 +110,11 @@ export function CueTemplateEditor({
   readOnly = false,
   onSave,
   isSaving = false,
-  defaultPlatformInput = '',
   defaultProjectInput = '',
   namespace,
   linkedTemplates = [],
 }: CueTemplateEditorProps) {
   const [activeTab, setActiveTab] = useState('editor')
-  const [cuePlatformInput, setCuePlatformInput] = useState(() => prettyPrintJson(defaultPlatformInput))
   const [cueInput, setCueInput] = useState(() => prettyPrintJson(defaultProjectInput))
 
   // The defaults can change after first render when async data (such as the
@@ -126,17 +122,7 @@ export function CueTemplateEditor({
   // textarea state to the new default value only if the user has not edited
   // it — track the last applied default in a ref and compare with current
   // state to detect that case.
-  const lastPlatformDefaultRef = useRef(prettyPrintJson(defaultPlatformInput))
   const lastProjectDefaultRef = useRef(prettyPrintJson(defaultProjectInput))
-  useEffect(() => {
-    const next = prettyPrintJson(defaultPlatformInput)
-    if (next !== lastPlatformDefaultRef.current) {
-      setCuePlatformInput((current) =>
-        current === lastPlatformDefaultRef.current ? next : current,
-      )
-      lastPlatformDefaultRef.current = next
-    }
-  }, [defaultPlatformInput])
   useEffect(() => {
     const next = prettyPrintJson(defaultProjectInput)
     if (next !== lastProjectDefaultRef.current) {
@@ -148,12 +134,10 @@ export function CueTemplateEditor({
   }, [defaultProjectInput])
 
   const debouncedCueInput = useDebouncedValue(cueInput, 500)
-  const debouncedCuePlatformInput = useDebouncedValue(cuePlatformInput, 500)
   const debouncedCueTemplate = useDebouncedValue(cueTemplate, 500)
 
   const isStale =
     cueInput !== debouncedCueInput ||
-    cuePlatformInput !== debouncedCuePlatformInput ||
     cueTemplate !== debouncedCueTemplate
 
   const { data: renderData, error: renderError, isFetching: isRendering } = useRenderTemplate(
@@ -161,7 +145,7 @@ export function CueTemplateEditor({
     debouncedCueTemplate,
     debouncedCueInput,
     activeTab === 'preview',
-    debouncedCuePlatformInput,
+    undefined,
     linkedTemplates,
   )
 
@@ -201,20 +185,6 @@ export function CueTemplateEditor({
         )}
       </TabsContent>
       <TabsContent value="preview" className="mt-4 space-y-4 min-w-0">
-        <div className="space-y-2 min-w-0">
-          <Label htmlFor="cue-platform-input-editor">Platform Input</Label>
-          <p className="text-xs text-muted-foreground">
-            These values are set by the console at deployment time and include the authenticated user&apos;s OIDC claims.
-          </p>
-          <Textarea
-            id="cue-platform-input-editor"
-            aria-label="Platform Input"
-            value={cuePlatformInput}
-            onChange={(e) => setCuePlatformInput(e.target.value)}
-            rows={10}
-            className="font-mono text-sm field-sizing-normal max-h-64 overflow-y-auto overflow-x-auto"
-          />
-        </div>
         <div className="space-y-2 min-w-0">
           <Label htmlFor="cue-input-editor">Project Input (deployment parameters)</Label>
           <Textarea

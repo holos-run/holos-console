@@ -106,7 +106,7 @@ describe('CueTemplateEditor', () => {
     expect(onSave).toHaveBeenCalledTimes(1)
   })
 
-  it('renders preview tab with platform input, project input, and rendered YAML sections', async () => {
+  it('renders preview tab with project input and rendered YAML sections', async () => {
     const user = userEvent.setup()
     ;(useRenderTemplate as Mock).mockReturnValue({
       data: { renderedYaml: 'apiVersion: v1\nkind: ReferenceGrant', renderedJson: '' },
@@ -117,7 +117,6 @@ describe('CueTemplateEditor', () => {
       <CueTemplateEditor
         cueTemplate="content"
         onChange={vi.fn()}
-        defaultPlatformInput="platform: {}"
         defaultProjectInput="input: {}"
         namespace={testNamespace}
       />
@@ -126,7 +125,7 @@ describe('CueTemplateEditor', () => {
     // Switch to preview tab
     await user.click(screen.getByRole('tab', { name: /preview/i }))
 
-    expect(screen.getByRole('textbox', { name: /platform input/i })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /platform input/i })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /project input/i })).toBeInTheDocument()
     expect(screen.getByLabelText('Rendered YAML')).toBeInTheDocument()
     expect(screen.getByLabelText('Rendered YAML')).toHaveTextContent('ReferenceGrant')
@@ -285,7 +284,7 @@ describe('CueTemplateEditor', () => {
       expect(screen.getByLabelText('Project Resources YAML')).toHaveTextContent('ConfigMap')
     })
 
-    it('pretty-prints JSON default inputs in textareas', async () => {
+    it('pretty-prints JSON default project input in textarea', async () => {
       const user = userEvent.setup()
       ;(useRenderTemplate as Mock).mockReturnValue({
         data: undefined,
@@ -297,7 +296,6 @@ describe('CueTemplateEditor', () => {
         <CueTemplateEditor
           cueTemplate="content"
           onChange={vi.fn()}
-          defaultPlatformInput={compactJson}
           defaultProjectInput={compactJson}
           namespace={testNamespace}
         />
@@ -305,11 +303,10 @@ describe('CueTemplateEditor', () => {
       await user.click(screen.getByRole('tab', { name: /preview/i }))
 
       const expectedPretty = JSON.stringify(JSON.parse(compactJson), null, 2)
-      expect(screen.getByRole('textbox', { name: /platform input/i })).toHaveValue(expectedPretty)
       expect(screen.getByRole('textbox', { name: /project input/i })).toHaveValue(expectedPretty)
     })
 
-    it('passes CUE default inputs through unchanged', async () => {
+    it('passes CUE default project input through unchanged', async () => {
       const user = userEvent.setup()
       ;(useRenderTemplate as Mock).mockReturnValue({
         data: undefined,
@@ -321,7 +318,6 @@ describe('CueTemplateEditor', () => {
         <CueTemplateEditor
           cueTemplate="content"
           onChange={vi.fn()}
-          defaultPlatformInput={cueInput}
           defaultProjectInput={cueInput}
           namespace={testNamespace}
         />
@@ -329,7 +325,6 @@ describe('CueTemplateEditor', () => {
       await user.click(screen.getByRole('tab', { name: /preview/i }))
 
       // CUE is not valid JSON, so it should pass through unchanged
-      expect(screen.getByRole('textbox', { name: /platform input/i })).toHaveValue(cueInput)
       expect(screen.getByRole('textbox', { name: /project input/i })).toHaveValue(cueInput)
     })
 
