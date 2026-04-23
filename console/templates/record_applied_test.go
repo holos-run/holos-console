@@ -135,8 +135,8 @@ func marshalLinkedTemplatesForTest(refs []*consolev1.LinkedTemplateRef) (string,
 
 // TestHandler_CreateTemplate_RecordsAppliedOnSuccess verifies that a
 // successful project-scope CreateTemplate calls RecordApplied with the
-// policy-resolved effective ref set (explicit ∪ REQUIRE − EXCLUDE), not
-// the raw explicit list.
+// policy-resolved effective ref set (REQUIRE − EXCLUDE) returned by the
+// resolver, forwarded verbatim to RecordApplied.
 func TestHandler_CreateTemplate_RecordsAppliedOnSuccess(t *testing.T) {
 	explicit := []*consolev1.LinkedTemplateRef{
 		orgLinkedRef("acme", "httproute"),
@@ -182,7 +182,7 @@ func TestHandler_CreateTemplate_RecordsAppliedOnSuccess(t *testing.T) {
 		t.Errorf("RecordApplied (project,name): got (%q,%q)", checker.lastRecordProject, checker.lastRecordName)
 	}
 	if len(checker.lastRecordRefs) != 2 {
-		t.Fatalf("RecordApplied refs length: got %d, want 2 (explicit + REQUIRE)", len(checker.lastRecordRefs))
+		t.Fatalf("RecordApplied refs length: got %d, want 2 (policy-resolved set)", len(checker.lastRecordRefs))
 	}
 	foundAudit := false
 	for _, r := range checker.lastRecordRefs {

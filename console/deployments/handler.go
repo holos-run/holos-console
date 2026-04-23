@@ -95,8 +95,9 @@ type AncestorWalker interface {
 // render target so the underlying PolicyResolver can key REQUIRE/EXCLUDE
 // evaluation off it (HOL-566 Phase 4).
 //
-// The second return value is the policy-effective ref set (explicit ∪
-// REQUIRE − EXCLUDE) that produced the sources. Exposing it here lets the
+// The second return value is the policy-effective ref set
+// (REQUIRE-injected − EXCLUDE-removed) that produced the sources.
+// Exposing it here lets the
 // deployments Create/Update happy paths write-through the same set to the
 // applied-render-set store via PolicyDriftChecker.RecordApplied without
 // invoking the resolver a second time (HOL-569). A second invocation would

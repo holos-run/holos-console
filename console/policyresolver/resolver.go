@@ -6,8 +6,9 @@
 // The package exists so Phase 5 of HOL-562 (HOL-567) can swap the no-op
 // implementation for a real TemplatePolicy-backed resolver without touching
 // call sites. In Phase 4 (HOL-566) the interface is introduced and wired
-// everywhere, but every call path still receives the no-op implementation
-// that returns explicit refs unchanged.
+// everywhere with the no-op implementation. Phase 2 of HOL-903 (HOL-905)
+// removed the explicitRefs parameter from the interface so the resolver
+// derives the effective set from TemplatePolicyBinding rules only.
 //
 // Keeping the resolver in its own package (rather than in
 // console/templates/) prevents the PolicyResolver abstraction from leaking

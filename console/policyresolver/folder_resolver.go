@@ -183,7 +183,7 @@ func (r *folderResolver) Resolve(
 	// The returned slice preserves closest-ancestor-first order so REQUIRE
 	// injections closer to the project continue to appear later in the
 	// effective set (the dedup key is stable, so ordering only affects
-	// first-seen wins for explicit refs — which are set before this loop).
+	// first-seen wins for REQUIRE rules).
 	policies, walkErr := r.ancestorLister.ListPolicies(ctx, projectNs)
 	if walkErr != nil {
 		// Degrade gracefully: a walker failure at resolve time should

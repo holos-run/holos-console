@@ -238,9 +238,9 @@ func excludeRuleCRD(scope, scopeName, name string) templatesv1alpha1.TemplatePol
 }
 
 // orgTemplateRef / folderTemplateRef build proto template refs used as
-// explicit refs in resolver inputs. Keep them tiny so each test case reads
-// clearly. Namespaces mirror the canonical HOL-567 fixture resolver
-// (holos-org-/fld- prefixes).
+// expected resolved refs in resolver output assertions. Keep them tiny
+// so each test case reads clearly. Namespaces mirror the canonical
+// HOL-567 fixture resolver (holos-org-/fld- prefixes).
 func orgTemplateRef(name string) *consolev1.LinkedTemplateRef {
 	return &consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: name}
 }
