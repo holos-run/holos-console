@@ -18,17 +18,29 @@ import {
   useGetTemplate,
   useUpdateTemplate,
   useDeleteTemplate,
+  useGetTemplateDefaults,
 } from '@/queries/templates'
-import type { TemplateExample } from '@/queries/templates'
+import type { TemplateExample, TemplateDefaults } from '@/queries/templates'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { TemplateExamplePicker } from '@/components/templates/template-example-picker'
 
-const DEFAULT_PROJECT_INPUT = `input: {
-  name:  "example"
-  image: "nginx"
-  tag:   "latest"
-  port:  8080
-}`
+// templateDefaultsToCueInput converts a TemplateDefaults message into a CUE
+// input snippet suitable for pre-populating the Project Input textarea. Only
+// non-empty string and non-zero int32 fields are emitted; complex fields
+// (command, args, env) are skipped in this initial implementation.
+export function templateDefaultsToCueInput(defaults: TemplateDefaults | undefined): string {
+  if (!defaults) return ''
+
+  const lines: string[] = []
+  if (defaults.name) lines.push(`    name:        ${JSON.stringify(defaults.name)}`)
+  if (defaults.image) lines.push(`    image:       ${JSON.stringify(defaults.image)}`)
+  if (defaults.tag) lines.push(`    tag:         ${JSON.stringify(defaults.tag)}`)
+  if (defaults.description) lines.push(`    description: ${JSON.stringify(defaults.description)}`)
+  if (defaults.port !== 0) lines.push(`    port:        ${defaults.port}`)
+
+  if (lines.length === 0) return ''
+  return `input: {\n${lines.join('\n')}\n}`
+}
 
 export const Route = createFileRoute(
   '/_authenticated/orgs/$orgName/templates/$namespace/$name',
@@ -70,6 +82,7 @@ export function ConsolidatedTemplateEditorPage({
 
   const navigate = useNavigate()
   const { data: template, isPending, error } = useGetTemplate(namespace, name)
+  const { data: templateDefaults } = useGetTemplateDefaults({ namespace, name })
   const updateMutation = useUpdateTemplate(namespace, name)
   const deleteMutation = useDeleteTemplate(namespace)
 
@@ -197,7 +210,7 @@ export function ConsolidatedTemplateEditorPage({
             onChange={setCueTemplate}
             onSave={handleSave}
             isSaving={updateMutation.isPending}
-            defaultProjectInput={DEFAULT_PROJECT_INPUT}
+            defaultProjectInput={templateDefaultsToCueInput(templateDefaults)}
             linkedTemplates={template?.linkedTemplates ?? []}
             namespace={namespace}
           />

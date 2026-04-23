@@ -26,6 +26,7 @@ vi.mock('@/queries/templates', () => ({
   useUpdateTemplate: vi.fn(),
   useDeleteTemplate: vi.fn(),
   useListTemplateExamples: vi.fn(),
+  useGetTemplateDefaults: vi.fn(),
   useRenderTemplate: vi.fn().mockReturnValue({
     data: undefined,
     error: null,
@@ -46,9 +47,11 @@ import {
   useUpdateTemplate,
   useDeleteTemplate,
   useListTemplateExamples,
+  useGetTemplateDefaults,
 } from '@/queries/templates'
+import type { TemplateDefaults } from '@/queries/templates'
 import { toast } from 'sonner'
-import { ConsolidatedTemplateEditorPage } from './$namespace.$name'
+import { ConsolidatedTemplateEditorPage, templateDefaultsToCueInput } from './$namespace.$name'
 
 const EXAMPLE_HTTPROUTE = {
   name: 'httproute-v1',
@@ -103,11 +106,16 @@ function setupMocks(
     isPending: false,
     error: null,
   })
+  ;(useGetTemplateDefaults as Mock).mockReturnValue({
+    data: undefined,
+  })
 }
 
 describe('ConsolidatedTemplateEditorPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Default: no template defaults loaded (covers tests that don't call setupMocks).
+    ;(useGetTemplateDefaults as Mock).mockReturnValue({ data: undefined })
   })
 
   it('renders skeletons while loading', () => {
@@ -293,6 +301,96 @@ describe('ConsolidatedTemplateEditorPage', () => {
         const textarea = screen.getByRole('textbox', { name: /cue template/i }) as HTMLTextAreaElement
         expect(textarea.value).toBe(originalCue)
       })
+    })
+  })
+
+  // HOL-893: templateDefaultsToCueInput unit tests
+  describe('templateDefaultsToCueInput', () => {
+    it('returns empty string when defaults is undefined', () => {
+      expect(templateDefaultsToCueInput(undefined)).toBe('')
+    })
+
+    it('builds a CUE input snippet from non-empty fields', () => {
+      const defaults: TemplateDefaults = {
+        name: 'httpbin',
+        image: 'ghcr.io/mccutchen/go-httpbin',
+        tag: '2.21.0',
+        description: 'A simple HTTP Request & Response Service',
+        port: 8080,
+        command: [],
+        args: [],
+        env: [],
+      } as unknown as TemplateDefaults
+      const result = templateDefaultsToCueInput(defaults)
+      expect(result).toContain('input: {')
+      expect(result).toContain('"httpbin"')
+      expect(result).toContain('"ghcr.io/mccutchen/go-httpbin"')
+      expect(result).toContain('"2.21.0"')
+      expect(result).toContain('"A simple HTTP Request & Response Service"')
+      expect(result).toContain('8080')
+    })
+
+    it('omits fields with zero/empty values', () => {
+      const defaults: TemplateDefaults = {
+        name: 'myapp',
+        image: '',
+        tag: '',
+        description: '',
+        port: 0,
+        command: [],
+        args: [],
+        env: [],
+      } as unknown as TemplateDefaults
+      const result = templateDefaultsToCueInput(defaults)
+      expect(result).toContain('"myapp"')
+      expect(result).not.toContain('image')
+      expect(result).not.toContain('tag')
+      expect(result).not.toContain('port')
+    })
+
+    it('returns empty string when all fields are zero/empty', () => {
+      const defaults: TemplateDefaults = {
+        name: '',
+        image: '',
+        tag: '',
+        description: '',
+        port: 0,
+        command: [],
+        args: [],
+        env: [],
+      } as unknown as TemplateDefaults
+      expect(templateDefaultsToCueInput(defaults)).toBe('')
+    })
+  })
+
+  // HOL-893: integration — Project Input textarea pre-populated from defaults
+  describe('template defaults pre-population', () => {
+    it('pre-populates the Project Input textarea with values from useGetTemplateDefaults', async () => {
+      setupMocks()
+      ;(useGetTemplateDefaults as Mock).mockReturnValue({
+        data: {
+          name: 'httpbin',
+          image: 'ghcr.io/mccutchen/go-httpbin',
+          tag: '2.21.0',
+          description: 'A simple HTTP Request & Response Service',
+          port: 8080,
+          command: [],
+          args: [],
+          env: [],
+        } as unknown as TemplateDefaults,
+      })
+
+      const user = userEvent.setup()
+      render(<ConsolidatedTemplateEditorPage />)
+
+      // Switch to the Preview tab to reveal the Project Input textarea.
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+
+      const textarea = screen.getByRole('textbox', { name: /project input/i }) as HTMLTextAreaElement
+      expect(textarea.value).toContain('"httpbin"')
+      expect(textarea.value).toContain('"ghcr.io/mccutchen/go-httpbin"')
+      expect(textarea.value).toContain('"2.21.0"')
+      expect(textarea.value).toContain('8080')
     })
   })
 
