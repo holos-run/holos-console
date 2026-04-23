@@ -48,6 +48,8 @@ vi.mock('@/queries/templates', () => ({
   },
 }))
 
+// @/queries/organizations is no longer imported by TemplateCreateForm; the mock
+// is kept for safety in case any indirect import path references it during tests.
 vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
 }))
@@ -61,7 +63,6 @@ import {
   useListLinkableTemplates,
   useListTemplateExamples,
 } from '@/queries/templates'
-import { useGetOrganization } from '@/queries/organizations'
 import { TemplateCreateForm } from './TemplateCreateForm'
 
 const EXAMPLE_HTTPROUTE = {
@@ -84,7 +85,6 @@ function setupQueryMocks({
   linkable = [],
   linkablePending = false,
   examples = [EXAMPLE_HTTPROUTE, EXAMPLE_SECOND],
-  gatewayNamespace = '',
 }: {
   renderData?: { renderedJson?: string; platformResourcesJson?: string; projectResourcesJson?: string }
   renderError?: Error
@@ -98,7 +98,6 @@ function setupQueryMocks({
   }>
   linkablePending?: boolean
   examples?: typeof EXAMPLE_HTTPROUTE[]
-  gatewayNamespace?: string
 } = {}) {
   ;(useRenderTemplate as Mock).mockReturnValue({
     data: renderData ?? undefined,
@@ -112,11 +111,6 @@ function setupQueryMocks({
   })
   ;(useListTemplateExamples as Mock).mockReturnValue({
     data: examples,
-    isPending: false,
-    error: null,
-  })
-  ;(useGetOrganization as Mock).mockReturnValue({
-    data: { name: 'test-org', gatewayNamespace },
     isPending: false,
     error: null,
   })
@@ -611,7 +605,7 @@ describe('TemplateCreateForm — project scope', () => {
     })
   })
 
-  it('useRenderTemplate receives the mock platform input including claims', () => {
+  it('useRenderTemplate receives an empty platform input (backend injects authoritative context)', () => {
     render(
       <TemplateCreateForm
         scopeType="project"
@@ -626,9 +620,7 @@ describe('TemplateCreateForm — project scope', () => {
     const calls = (useRenderTemplate as Mock).mock.calls
     expect(calls.length).toBeGreaterThan(0)
     const platformInput = calls[0][4]
-    expect(platformInput).toContain('platform:')
-    expect(platformInput).toContain('claims')
-    expect(platformInput).toContain('email')
+    expect(platformInput).toBe('')
   })
 
   it('useRenderTemplate receives the project-only input', () => {
