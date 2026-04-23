@@ -52,9 +52,9 @@ export type TemplateCreateFormProps = {
   /** Namespace the new template lives in. Drives the linkable-templates query
    * for project scope. */
   namespace: string
-  /** Organization name. Optional; passed through to callers but no longer used
+  /** Organization name. Optional; passed through to callers but not used
    * to construct preview platform input (the backend injects authoritative
-   * platform context when cuePlatformInput is omitted). */
+   * platform context). */
   organization?: string
   /** Project name. Required for project scope; ignored for org/folder scopes. */
   projectName?: string
@@ -182,7 +182,6 @@ export function TemplateCreateForm({
     debouncedCueTemplate,
     previewCueInput,
     isProject && previewOpen,
-    '',
     previewLinkedTemplates,
   )
 

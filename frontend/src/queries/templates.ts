@@ -583,7 +583,6 @@ export function useRenderTemplate(
   cueTemplate: string,
   cueInput = '',
   enabled = true,
-  cuePlatformInput = '',
   linkedTemplates: LinkedTemplateRef[] = [],
 ) {
   const { isAuthenticated } = useAuth()
@@ -595,13 +594,12 @@ export function useRenderTemplate(
     .map(t => `${t.namespace}/${t.name}@${t.versionConstraint ?? ''}`)
     .join(',')
   return useQuery({
-    queryKey: ['templates', 'render', namespace, cueTemplate, cueInput, cuePlatformInput, linkedKey] as const,
+    queryKey: ['templates', 'render', namespace, cueTemplate, cueInput, linkedKey] as const,
     queryFn: async () => {
       const response = await client.renderTemplate({
         namespace,
         cueTemplate,
         cueProjectInput: cueInput,
-        cuePlatformInput,
         linkedTemplates,
       })
       return {
