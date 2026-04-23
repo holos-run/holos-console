@@ -1,5 +1,4 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
@@ -37,15 +36,7 @@ vi.mock('@/components/ui/tooltip', () => ({
 
 vi.mock('@/queries/templates', () => ({
   useRenderTemplate: vi.fn(),
-  useListLinkableTemplates: vi.fn().mockReturnValue({ data: [], isPending: false }),
   useListTemplateExamples: vi.fn(),
-  linkableKey: (namespace: string | undefined, name: string) =>
-    `${namespace ?? ''}/${name}`,
-  parseLinkableKey: (key: string) => {
-    const slash = key.indexOf('/')
-    if (slash < 0) return { namespace: '', name: key }
-    return { namespace: key.slice(0, slash), name: key.slice(slash + 1) }
-  },
 }))
 
 // @/queries/organizations is no longer imported by TemplateCreateForm; the mock
@@ -60,7 +51,6 @@ vi.mock('@/hooks/use-debounced-value', () => ({
 
 import {
   useRenderTemplate,
-  useListLinkableTemplates,
   useListTemplateExamples,
 } from '@/queries/templates'
 import { TemplateCreateForm } from './TemplateCreateForm'
@@ -82,21 +72,10 @@ const EXAMPLE_SECOND = {
 function setupQueryMocks({
   renderData,
   renderError,
-  linkable = [],
-  linkablePending = false,
   examples = [EXAMPLE_HTTPROUTE, EXAMPLE_SECOND],
 }: {
   renderData?: { renderedJson?: string; platformResourcesJson?: string; projectResourcesJson?: string }
   renderError?: Error
-  linkable?: Array<{
-    name: string
-    displayName: string
-    description: string
-    forced?: boolean
-    namespace: string
-    releases?: Array<{ version: string }>
-  }>
-  linkablePending?: boolean
   examples?: typeof EXAMPLE_HTTPROUTE[]
 } = {}) {
   ;(useRenderTemplate as Mock).mockReturnValue({
@@ -104,10 +83,6 @@ function setupQueryMocks({
     error: renderError ?? null,
     isLoading: false,
     isError: !!renderError,
-  })
-  ;(useListLinkableTemplates as Mock).mockReturnValue({
-    data: linkable,
-    isPending: linkablePending,
   })
   ;(useListTemplateExamples as Mock).mockReturnValue({
     data: examples,
@@ -624,291 +599,43 @@ describe('TemplateCreateForm — project scope', () => {
     expect(projectInput).not.toContain('namespace:')
   })
 
-  describe('linked platform templates', () => {
-    // `forced` signals templates that a TemplatePolicy REQUIRE rule will pin
-    // onto this project at render time. Mirrors the old per-route test setup.
-    const mockOrgTemplates = [
-      {
-        name: 'reference-grant',
-        displayName: 'Reference Grant',
-        description: 'Default ReferenceGrant for cross-namespace gateway routing',
-        forced: true,
-        namespace: 'holos-org-default',
-      },
-      {
-        name: 'httpbin-platform',
-        displayName: 'HTTPbin Platform',
-        description: 'Platform HTTPRoute for go-httpbin',
-        forced: false,
-        namespace: 'holos-org-default',
-      },
-    ]
-    const mockFolderTemplates = [
-      {
-        name: 'team-network-policy',
-        displayName: 'Team Network Policy',
-        description: 'Standard NetworkPolicy for team namespaces',
-        forced: false,
-        namespace: 'holos-fld-team-a',
-      },
-    ]
-    const allLinkable = [...mockOrgTemplates, ...mockFolderTemplates]
+  it('does not render linked platform templates section (HOL-907)', () => {
+    render(
+      <TemplateCreateForm
+        scopeType="project"
+        namespace="holos-prj-test-project"
+        organization="test-org"
+        projectName="test-project"
+        canWrite
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText(/linked platform templates/i)).not.toBeInTheDocument()
+  })
 
-    it('empty state when no linkable templates exist', () => {
-      setupQueryMocks({ linkable: [] })
-      render(
-        <TemplateCreateForm
-          scopeType="project"
-          namespace="holos-prj-test-project"
-          organization="test-org"
-          projectName="test-project"
-          canWrite
-          canLink
-          onSubmit={vi.fn()}
-          onCancel={vi.fn()}
-        />,
-      )
-      expect(screen.getByText(/linked platform templates/i)).toBeInTheDocument()
-      expect(
-        screen.getByText(/no platform templates available to link/i),
-      ).toBeInTheDocument()
+  it('submit payload does not contain linkedTemplates (HOL-907)', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined)
+    render(
+      <TemplateCreateForm
+        scopeType="project"
+        namespace="holos-prj-test-project"
+        organization="test-org"
+        projectName="test-project"
+        canWrite
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText(/display name/i), {
+      target: { value: 'My Template' },
     })
+    fireEvent.click(screen.getByRole('button', { name: /create template/i }))
 
-    it('loading state when query is pending', () => {
-      setupQueryMocks({ linkable: [], linkablePending: true })
-      render(
-        <TemplateCreateForm
-          scopeType="project"
-          namespace="holos-prj-test-project"
-          organization="test-org"
-          projectName="test-project"
-          canWrite
-          canLink
-          onSubmit={vi.fn()}
-          onCancel={vi.fn()}
-        />,
-      )
-      expect(screen.getByText(/loading platform templates/i)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalled()
     })
-
-    it('groups templates by scope with Organization and Folder headers', () => {
-      setupQueryMocks({ linkable: allLinkable })
-      render(
-        <TemplateCreateForm
-          scopeType="project"
-          namespace="holos-prj-test-project"
-          organization="test-org"
-          projectName="test-project"
-          canWrite
-          canLink
-          onSubmit={vi.fn()}
-          onCancel={vi.fn()}
-        />,
-      )
-      expect(screen.getByText(/organization templates/i)).toBeInTheDocument()
-      expect(screen.getByText(/folder templates/i)).toBeInTheDocument()
-    })
-
-    it('forced templates render checked and disabled', () => {
-      setupQueryMocks({ linkable: allLinkable })
-      render(
-        <TemplateCreateForm
-          scopeType="project"
-          namespace="holos-prj-test-project"
-          organization="test-org"
-          projectName="test-project"
-          canWrite
-          canLink
-          onSubmit={vi.fn()}
-          onCancel={vi.fn()}
-        />,
-      )
-      const checkbox = screen.getByRole('checkbox', { name: /reference grant/i })
-      expect(checkbox).toBeChecked()
-      expect(checkbox).toBeDisabled()
-      expect(screen.getByText(/always applied/i)).toBeInTheDocument()
-    })
-
-    it('non-forced templates render unchecked', () => {
-      setupQueryMocks({ linkable: allLinkable })
-      render(
-        <TemplateCreateForm
-          scopeType="project"
-          namespace="holos-prj-test-project"
-          organization="test-org"
-          projectName="test-project"
-          canWrite
-          canLink
-          onSubmit={vi.fn()}
-          onCancel={vi.fn()}
-        />,
-      )
-      const httpbin = screen.getByRole('checkbox', { name: /httpbin platform/i })
-      expect(httpbin).not.toBeChecked()
-      expect(httpbin).not.toBeDisabled()
-    })
-
-    it('shows read-only note when canLink is false', () => {
-      setupQueryMocks({ linkable: allLinkable })
-      render(
-        <TemplateCreateForm
-          scopeType="project"
-          namespace="holos-prj-test-project"
-          organization="test-org"
-          projectName="test-project"
-          canWrite
-          canLink={false}
-          onSubmit={vi.fn()}
-          onCancel={vi.fn()}
-        />,
-      )
-      expect(screen.getByText(/only owners can link platform templates/i)).toBeInTheDocument()
-    })
-
-    it('selected linked templates appear in onSubmit payload', async () => {
-      setupQueryMocks({ linkable: allLinkable })
-      const onSubmit = vi.fn().mockResolvedValue(undefined)
-      const user = userEvent.setup()
-      render(
-        <TemplateCreateForm
-          scopeType="project"
-          namespace="holos-prj-test-project"
-          organization="test-org"
-          projectName="test-project"
-          canWrite
-          canLink
-          onSubmit={onSubmit}
-          onCancel={vi.fn()}
-        />,
-      )
-      fireEvent.change(screen.getByLabelText(/display name/i), {
-        target: { value: 'My Template' },
-      })
-      await user.click(screen.getByRole('checkbox', { name: /httpbin platform/i }))
-      fireEvent.click(screen.getByRole('button', { name: /create template/i }))
-
-      await waitFor(() => {
-        expect(onSubmit).toHaveBeenCalledWith(
-          expect.objectContaining({
-            linkedTemplates: expect.arrayContaining([
-              expect.objectContaining({
-                name: 'httpbin-platform',
-                namespace: 'holos-org-default',
-              }),
-            ]),
-          }),
-        )
-      })
-    })
-
-    it('disambiguates same-name templates across org and folder scopes', async () => {
-      const sameName = [
-        {
-          name: 'shared-policy',
-          displayName: 'Shared Policy (Org)',
-          description: '',
-          forced: false,
-          namespace: 'holos-org-default',
-        },
-        {
-          name: 'shared-policy',
-          displayName: 'Shared Policy (Folder)',
-          description: '',
-          forced: false,
-          namespace: 'holos-fld-team-a',
-        },
-      ]
-      setupQueryMocks({ linkable: sameName })
-      const onSubmit = vi.fn().mockResolvedValue(undefined)
-      const user = userEvent.setup()
-      render(
-        <TemplateCreateForm
-          scopeType="project"
-          namespace="holos-prj-test-project"
-          organization="test-org"
-          projectName="test-project"
-          canWrite
-          canLink
-          onSubmit={onSubmit}
-          onCancel={vi.fn()}
-        />,
-      )
-      fireEvent.change(screen.getByLabelText(/display name/i), {
-        target: { value: 'My Template' },
-      })
-      const checkboxes = screen.getAllByRole('checkbox')
-      await user.click(checkboxes[1])
-      fireEvent.click(screen.getByRole('button', { name: /create template/i }))
-
-      await waitFor(() => {
-        expect(onSubmit).toHaveBeenCalledWith(
-          expect.objectContaining({
-            linkedTemplates: [
-              expect.objectContaining({
-                name: 'shared-policy',
-                namespace: 'holos-fld-team-a',
-              }),
-            ],
-          }),
-        )
-      })
-    })
-
-    it('empty linkedTemplates when no optional templates selected', async () => {
-      setupQueryMocks({ linkable: allLinkable })
-      const onSubmit = vi.fn().mockResolvedValue(undefined)
-      render(
-        <TemplateCreateForm
-          scopeType="project"
-          namespace="holos-prj-test-project"
-          organization="test-org"
-          projectName="test-project"
-          canWrite
-          canLink
-          onSubmit={onSubmit}
-          onCancel={vi.fn()}
-        />,
-      )
-      fireEvent.change(screen.getByLabelText(/display name/i), {
-        target: { value: 'My Template' },
-      })
-      fireEvent.click(screen.getByRole('button', { name: /create template/i }))
-
-      await waitFor(() => {
-        expect(onSubmit).toHaveBeenCalledWith(
-          expect.objectContaining({ linkedTemplates: [] }),
-        )
-      })
-    })
-
-    it('useRenderTemplate receives selected linked templates for preview', async () => {
-      setupQueryMocks({ linkable: allLinkable })
-      const user = userEvent.setup()
-      render(
-        <TemplateCreateForm
-          scopeType="project"
-          namespace="holos-prj-test-project"
-          organization="test-org"
-          projectName="test-project"
-          canWrite
-          canLink
-          onSubmit={vi.fn()}
-          onCancel={vi.fn()}
-        />,
-      )
-      await user.click(screen.getByRole('checkbox', { name: /httpbin platform/i }))
-
-      const calls = (useRenderTemplate as Mock).mock.calls
-      const lastCall = calls[calls.length - 1]
-      expect(lastCall[4]).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            name: 'httpbin-platform',
-            namespace: 'holos-org-default',
-          }),
-        ]),
-      )
-    })
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('linkedTemplates')
   })
 
   describe('per-collection preview sections', () => {
@@ -927,7 +654,6 @@ describe('TemplateCreateForm — project scope', () => {
           organization="test-org"
           projectName="test-project"
           canWrite
-          canLink
           onSubmit={vi.fn()}
           onCancel={vi.fn()}
         />,
@@ -949,7 +675,6 @@ describe('TemplateCreateForm — project scope', () => {
           organization="test-org"
           projectName="test-project"
           canWrite
-          canLink
           onSubmit={vi.fn()}
           onCancel={vi.fn()}
         />,
@@ -976,7 +701,6 @@ describe('TemplateCreateForm — project scope', () => {
           organization="test-org"
           projectName="test-project"
           canWrite
-          canLink
           onSubmit={vi.fn()}
           onCancel={vi.fn()}
         />,

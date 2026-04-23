@@ -17,10 +17,8 @@ import type {
   Release,
   Template,
   TemplateExample,
-  TemplateUpdate,
   TemplateDefaults,
 } from '@/gen/holos/console/v1/templates_pb.js'
-import type { LinkedTemplateRef } from '@/gen/holos/console/v1/policy_state_pb.js'
 import { useAuth } from '@/lib/auth'
 import { useListFolders } from '@/queries/folders'
 import { useListProjectsByParent } from '@/queries/projects'
@@ -40,10 +38,8 @@ import {
 // Re-export generated types used by consumers.
 export type {
   LinkableTemplate,
-  LinkedTemplateRef,
   Release,
   TemplateExample,
-  TemplateUpdate,
   TemplateDefaults,
 }
 
@@ -328,7 +324,6 @@ export function useCreateTemplate(namespace: string) {
       description: string
       cueTemplate: string
       enabled?: boolean
-      linkedTemplates?: LinkedTemplateRef[]
     }) => {
       return client.createTemplate({
         namespace,
@@ -339,7 +334,6 @@ export function useCreateTemplate(namespace: string) {
           description: params.description,
           cueTemplate: params.cueTemplate,
           enabled: params.enabled ?? false,
-          linkedTemplates: params.linkedTemplates ?? [],
         },
       })
     },
@@ -359,12 +353,9 @@ export function useUpdateTemplate(namespace: string, name: string) {
       description?: string
       cueTemplate?: string
       enabled?: boolean
-      linkedTemplates?: LinkedTemplateRef[]
-      updateLinkedTemplates?: boolean
     }) => {
       return client.updateTemplate({
         namespace,
-        updateLinkedTemplates: params.updateLinkedTemplates ?? false,
         template: {
           name,
           namespace,
@@ -372,16 +363,12 @@ export function useUpdateTemplate(namespace: string, name: string) {
           description: params.description ?? '',
           cueTemplate: params.cueTemplate ?? '',
           enabled: params.enabled ?? false,
-          linkedTemplates: params.linkedTemplates ?? [],
         },
       })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: templateListKey(namespace) })
       queryClient.invalidateQueries({ queryKey: templateGetKey(namespace, name) })
-      // Invalidate all check-updates queries so upgrade badges and dialogs
-      // reflect the new state immediately after a template update.
-      queryClient.invalidateQueries({ queryKey: ['templates', 'checkUpdates'] })
       // HOL-559: a successful UpdateTemplate re-renders against the
       // current TemplatePolicy chain and records a fresh applied render
       // set on the backend. Invalidate all policy-state queries for this
@@ -513,38 +500,6 @@ export function useCreateRelease(namespace: string, templateName: string) {
   })
 }
 
-// --- CheckUpdates hooks ---
-
-function checkUpdatesKey(namespace: string, templateName: string) {
-  return ['templates', 'checkUpdates', namespace, templateName] as const
-}
-
-// useCheckUpdates returns available version updates for linked templates.
-// When templateName is provided, only that template's links are checked.
-// When empty, all templates in the namespace are checked.
-// Pass options.enabled to control when the query fires (defaults to true).
-// Pass options.includeCurrent to include entries for templates already at their
-// latest version (useful for the version status indicator).
-export function useCheckUpdates(
-  namespace: string,
-  templateName = '',
-  options?: { enabled?: boolean; includeCurrent?: boolean },
-) {
-  const { isAuthenticated } = useAuth()
-  const transport = useTransport()
-  const client = useMemo(() => createClient(TemplateService, transport), [transport])
-  const callerEnabled = options?.enabled ?? true
-  const includeCurrent = options?.includeCurrent ?? false
-  return useQuery({
-    queryKey: [...checkUpdatesKey(namespace, templateName), includeCurrent] as const,
-    queryFn: async () => {
-      const response = await client.checkUpdates({ namespace, templateName, includeCurrent })
-      return response.updates
-    },
-    enabled: isAuthenticated && !!namespace && callerEnabled,
-  })
-}
-
 // useGetProjectTemplatePolicyState fetches the TemplatePolicy drift snapshot
 // for a project-scope template (HOL-567). PolicyState is sourced from the
 // folder-namespace render-state store — see PolicySection's component-level
@@ -575,32 +530,24 @@ export function useGetProjectTemplatePolicyState(namespace: string, name: string
 }
 
 // useRenderTemplate renders a CUE template with the given inputs. The namespace
-// parameter determines which ancestor platform templates are resolved.
-// linkedTemplates optionally passes explicit linked template refs to unify
-// with the project template for a combined preview.
+// parameter determines which ancestor platform templates are resolved via
+// TemplatePolicyBinding rules applied by the backend.
 export function useRenderTemplate(
   namespace: string,
   cueTemplate: string,
   cueInput = '',
   enabled = true,
-  linkedTemplates: LinkedTemplateRef[] = [],
 ) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
-  // Serialize linked templates into the query key so the query refetches when
-  // the linked selection changes.
-  const linkedKey = linkedTemplates
-    .map(t => `${t.namespace}/${t.name}@${t.versionConstraint ?? ''}`)
-    .join(',')
   return useQuery({
-    queryKey: ['templates', 'render', namespace, cueTemplate, cueInput, linkedKey] as const,
+    queryKey: ['templates', 'render', namespace, cueTemplate, cueInput] as const,
     queryFn: async () => {
       const response = await client.renderTemplate({
         namespace,
         cueTemplate,
         cueProjectInput: cueInput,
-        linkedTemplates,
       })
       return {
         renderedYaml: response.renderedYaml,

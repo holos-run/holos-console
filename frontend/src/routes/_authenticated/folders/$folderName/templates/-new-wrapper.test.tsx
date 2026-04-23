@@ -20,14 +20,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 vi.mock('@/queries/templates', () => ({
   useCreateTemplate: vi.fn(),
   useRenderTemplate: vi.fn().mockReturnValue({ data: null, isPending: false, error: null }),
-  useListLinkableTemplates: vi.fn().mockReturnValue({ data: [], isPending: false }),
   useListTemplateExamples: vi.fn().mockReturnValue({ data: [], isPending: false }),
-  linkableKey: (namespace: string | undefined, name: string) => `${namespace ?? ''}/${name}`,
-  parseLinkableKey: (key: string) => {
-    const slash = key.indexOf('/')
-    if (slash < 0) return { namespace: '', name: key }
-    return { namespace: key.slice(0, slash), name: key.slice(slash + 1) }
-  },
 }))
 
 vi.mock('@/queries/folders', () => ({ useGetFolder: vi.fn() }))

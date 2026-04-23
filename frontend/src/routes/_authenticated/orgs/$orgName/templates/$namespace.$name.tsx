@@ -114,7 +114,6 @@ export function ConsolidatedTemplateEditorPage({
         description: template?.description,
         cueTemplate,
         enabled: template?.enabled ?? false,
-        linkedTemplates: template?.linkedTemplates ?? [],
       })
       toast.success('Saved')
     } catch (err) {
@@ -211,7 +210,6 @@ export function ConsolidatedTemplateEditorPage({
             onSave={handleSave}
             isSaving={updateMutation.isPending}
             defaultProjectInput={templateDefaultsToCueInput(templateDefaults)}
-            linkedTemplates={template?.linkedTemplates ?? []}
             namespace={namespace}
           />
         </div>

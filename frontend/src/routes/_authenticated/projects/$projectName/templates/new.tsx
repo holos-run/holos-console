@@ -1,6 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useCreateTemplate } from '@/queries/templates'
 import { namespaceForProject } from '@/lib/scope-labels'
 import { useGetProject } from '@/queries/projects'
@@ -30,9 +29,6 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
   const createMutation = useCreateTemplate(namespace)
   const { data: project } = useGetProject(projectName)
 
-  const userRole = project?.userRole ?? Role.VIEWER
-  const canLink = userRole === Role.OWNER
-
   return (
     <Card>
       <CardHeader>
@@ -44,11 +40,7 @@ export function CreateTemplatePage({ projectName: propProjectName }: { projectNa
           namespace={namespace}
           organization={project?.organization ?? ''}
           projectName={projectName}
-          // Project-scope create is intentionally available to all project roles;
-          // only the linking section is OWNER-gated via canLink. Mirrors the pre-HOL-816
-          // behavior. Server-side RBAC remains the source of truth on submit.
           canWrite={true}
-          canLink={canLink}
           isPending={createMutation.isPending}
           onSubmit={async (values) => {
             await createMutation.mutateAsync(values)
