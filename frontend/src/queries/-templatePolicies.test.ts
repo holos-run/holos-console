@@ -155,7 +155,7 @@ describe('useListLinkableTemplatePolicies', () => {
     ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true })
   })
 
-  it('calls ListLinkableTemplatePolicies RPC with includeSelfScope: true', async () => {
+  it('calls ListLinkableTemplatePolicies RPC with namespace only (HOL-912)', async () => {
     const { result } = renderHook(() => useListLinkableTemplatePolicies(FOLDER_NS), {
       wrapper: makeWrapper(queryClient),
     })
@@ -164,7 +164,6 @@ describe('useListLinkableTemplatePolicies', () => {
 
     expect(mockClient.listLinkableTemplatePolicies).toHaveBeenCalledWith({
       namespace: FOLDER_NS,
-      includeSelfScope: true,
     })
   })
 

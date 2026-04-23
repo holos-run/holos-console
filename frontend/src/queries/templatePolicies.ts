@@ -63,15 +63,14 @@ export function useListTemplatePolicies(namespace: string) {
   })
 }
 
-// useListLinkableTemplatePolicies fetches all TemplatePolicies reachable from
-// the given scope namespace by walking the ancestor chain up to the org root.
-// The response carries a per-item owning namespace so the UI can render a scope
-// badge without a second round-trip. BindingForm uses this hook so folder-scoped
-// bindings can select org-scoped or parent-folder-scoped policies (HOL-835).
+// useListLinkableTemplatePolicies fetches all TemplatePolicies in the given
+// namespace. The response carries the owning namespace on each item so the UI
+// can render a scope badge. BindingForm uses this hook to populate the policy
+// picker (HOL-835).
 //
-// Do NOT use this for admin list views — those should call useListTemplatePolicies
-// to stay single-scope. This hook is additive and does not replace the single-scope
-// hook.
+// HOL-912 simplified the backend from an ancestor-walk RPC to a single-namespace
+// list. The frontend consumer update to call useListTemplatePolicies directly
+// is tracked in HOL-912 Phase 6.
 export function useListLinkableTemplatePolicies(namespace: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
@@ -84,7 +83,6 @@ export function useListLinkableTemplatePolicies(namespace: string) {
     queryFn: async () => {
       const response = await client.listLinkableTemplatePolicies({
         namespace,
-        includeSelfScope: true,
       })
       return response.policies
     },

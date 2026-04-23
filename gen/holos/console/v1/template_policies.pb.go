@@ -829,22 +829,14 @@ func (x *LinkableTemplatePolicy) GetPolicy() *TemplatePolicy {
 	return nil
 }
 
-// ListLinkableTemplatePoliciesRequest requests all TemplatePolicies reachable
-// from the given scope namespace. The handler walks the ancestor chain from
-// the scope up to the org root and returns policies from each namespace the
-// caller has permission to list.
+// ListLinkableTemplatePoliciesRequest requests every TemplatePolicy in the
+// given namespace.
 type ListLinkableTemplatePoliciesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// namespace is the starting scope namespace (org or folder). The handler
-	// walks up the hierarchy collecting TemplatePolicies from each namespace.
-	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	// include_self_scope, when true, also returns policies at the request's
-	// own namespace in addition to ancestor-namespace policies. Default false
-	// returns only ancestor-namespace policies. Mirrors the same field on
-	// ListLinkableTemplatesRequest (HOL-561).
-	IncludeSelfScope bool `protobuf:"varint,2,opt,name=include_self_scope,json=includeSelfScope,proto3" json:"include_self_scope,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// namespace is the Kubernetes namespace to list policies from.
+	Namespace     string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListLinkableTemplatePoliciesRequest) Reset() {
@@ -884,18 +876,12 @@ func (x *ListLinkableTemplatePoliciesRequest) GetNamespace() string {
 	return ""
 }
 
-func (x *ListLinkableTemplatePoliciesRequest) GetIncludeSelfScope() bool {
-	if x != nil {
-		return x.IncludeSelfScope
-	}
-	return false
-}
-
-// ListLinkableTemplatePoliciesResponse returns all linkable policies ordered
-// child→parent (same scope first when include_self_scope is true).
+// ListLinkableTemplatePoliciesResponse contains every TemplatePolicy in the
+// requested namespace, ordered alphabetically by name.
 type ListLinkableTemplatePoliciesResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// policies are the reachable TemplatePolicies, ordered child→parent.
+	// policies are the TemplatePolicies in the namespace, ordered alphabetically
+	// by name.
 	Policies      []*LinkableTemplatePolicy `protobuf:"bytes,1,rep,name=policies,proto3" json:"policies,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -979,10 +965,9 @@ const file_holos_console_v1_template_policies_proto_rawDesc = "" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"\x1e\n" +
 	"\x1cDeleteTemplatePolicyResponse\"R\n" +
 	"\x16LinkableTemplatePolicy\x128\n" +
-	"\x06policy\x18\x01 \x01(\v2 .holos.console.v1.TemplatePolicyR\x06policy\"q\n" +
+	"\x06policy\x18\x01 \x01(\v2 .holos.console.v1.TemplatePolicyR\x06policy\"C\n" +
 	"#ListLinkableTemplatePoliciesRequest\x12\x1c\n" +
-	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12,\n" +
-	"\x12include_self_scope\x18\x02 \x01(\bR\x10includeSelfScope\"l\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\"l\n" +
 	"$ListLinkableTemplatePoliciesResponse\x12D\n" +
 	"\bpolicies\x18\x01 \x03(\v2(.holos.console.v1.LinkableTemplatePolicyR\bpolicies*~\n" +
 	"\x12TemplatePolicyKind\x12$\n" +

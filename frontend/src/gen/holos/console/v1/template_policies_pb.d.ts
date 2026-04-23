@@ -380,31 +380,18 @@ export declare type LinkableTemplatePolicy = Message<"holos.console.v1.LinkableT
 export declare const LinkableTemplatePolicySchema: GenMessage<LinkableTemplatePolicy>;
 
 /**
- * ListLinkableTemplatePoliciesRequest requests all TemplatePolicies reachable
- * from the given scope namespace. The handler walks the ancestor chain from
- * the scope up to the org root and returns policies from each namespace the
- * caller has permission to list.
+ * ListLinkableTemplatePoliciesRequest requests every TemplatePolicy in the
+ * given namespace.
  *
  * @generated from message holos.console.v1.ListLinkableTemplatePoliciesRequest
  */
 export declare type ListLinkableTemplatePoliciesRequest = Message<"holos.console.v1.ListLinkableTemplatePoliciesRequest"> & {
   /**
-   * namespace is the starting scope namespace (org or folder). The handler
-   * walks up the hierarchy collecting TemplatePolicies from each namespace.
+   * namespace is the Kubernetes namespace to list policies from.
    *
    * @generated from field: string namespace = 1;
    */
   namespace: string;
-
-  /**
-   * include_self_scope, when true, also returns policies at the request's
-   * own namespace in addition to ancestor-namespace policies. Default false
-   * returns only ancestor-namespace policies. Mirrors the same field on
-   * ListLinkableTemplatesRequest (HOL-561).
-   *
-   * @generated from field: bool include_self_scope = 2;
-   */
-  includeSelfScope: boolean;
 };
 
 /**
@@ -414,14 +401,15 @@ export declare type ListLinkableTemplatePoliciesRequest = Message<"holos.console
 export declare const ListLinkableTemplatePoliciesRequestSchema: GenMessage<ListLinkableTemplatePoliciesRequest>;
 
 /**
- * ListLinkableTemplatePoliciesResponse returns all linkable policies ordered
- * child→parent (same scope first when include_self_scope is true).
+ * ListLinkableTemplatePoliciesResponse contains every TemplatePolicy in the
+ * requested namespace, ordered alphabetically by name.
  *
  * @generated from message holos.console.v1.ListLinkableTemplatePoliciesResponse
  */
 export declare type ListLinkableTemplatePoliciesResponse = Message<"holos.console.v1.ListLinkableTemplatePoliciesResponse"> & {
   /**
-   * policies are the reachable TemplatePolicies, ordered child→parent.
+   * policies are the TemplatePolicies in the namespace, ordered alphabetically
+   * by name.
    *
    * @generated from field: repeated holos.console.v1.LinkableTemplatePolicy policies = 1;
    */
@@ -554,20 +542,15 @@ export declare const TemplatePolicyService: GenService<{
     output: typeof DeleteTemplatePolicyResponseSchema;
   },
   /**
-   * ListLinkableTemplatePolicies returns all TemplatePolicies reachable from
-   * the given scope — the scope itself plus every ancestor namespace up to
-   * the org root — ordered child→parent so the UI can render the closest
-   * scope first. This mirrors ListLinkableTemplates (TemplateService) and
-   * provides the backend capability for folder-scoped TemplatePolicyBindings
-   * to select org-scoped or parent-folder-scoped policies (HOL-834).
+   * ListLinkableTemplatePolicies returns every TemplatePolicy in the given
+   * namespace, ordered alphabetically by name. The caller must hold
+   * PERMISSION_TEMPLATE_POLICIES_LIST on the namespace; callers without that
+   * permission receive a standard PermissionDenied error.
    *
-   * RBAC is enforced per-scope: if the caller lacks
-   * PERMISSION_TEMPLATE_POLICIES_LIST for an ancestor namespace, policies
-   * from that namespace are omitted silently. Reachable namespaces the
-   * caller can read still return their policies.
-   *
-   * The existing ListTemplatePolicies RPC is unchanged — it returns
-   * single-scope listings for admin views. This RPC is additive.
+   * This RPC is semantically identical to ListTemplatePolicies and is
+   * provided as a stable alias for the TemplatePolicyBinding picker UI.
+   * The frontend consumer update to switch to ListTemplatePolicies is
+   * tracked in HOL-912 Phase 6.
    *
    * @generated from rpc holos.console.v1.TemplatePolicyService.ListLinkableTemplatePolicies
    */
