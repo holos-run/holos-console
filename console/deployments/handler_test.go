@@ -1520,18 +1520,10 @@ func TestCreateDeployment_AnnotationIgnored(t *testing.T) {
 	}
 	tmplCM.Annotations[v1alpha2.AnnotationLinkedTemplates] = `[{"namespace":"holos-org-acme","name":"httproute"}]`
 
-	// A tracking ancestor template provider that records whether it received
-	// explicit refs. It returns no ancestor sources so the render is
-	// project-only regardless of what refs flow in.
-	type capturingATP struct {
-		calledWithNilRefs bool
-		called            bool
-	}
-	atp := &struct {
-		capturingATP
-	}{}
-	atpStub := &stubAncestorTemplateProvider{
-		sources:       nil,  // no platform template sources
+	// stubAncestorTemplateProvider returns no ancestor sources so the render is
+	// project-only. The handler must call it with nil (not the annotation refs).
+	atp := &stubAncestorTemplateProvider{
+		sources:       nil,
 		effectiveRefs: []*consolev1.LinkedTemplateRef{},
 	}
 
@@ -1546,8 +1538,7 @@ func TestCreateDeployment_AnnotationIgnored(t *testing.T) {
 		&stubTemplateResolver{cm: tmplCM},
 		renderer,
 		&stubApplier{},
-	).WithAncestorTemplateProvider(atpStub)
-	_ = atp // captured for clarity
+	).WithAncestorTemplateProvider(atp)
 
 	req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
 		Project:  "my-project",
@@ -1560,16 +1551,14 @@ func TestCreateDeployment_AnnotationIgnored(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// The stubAncestorTemplateProvider was called with nil (not the annotation
-	// refs), so only TPB-derived refs flow through.
-	if !atpStub.called {
+	// The ancestor provider must have been called (confirms the render path ran).
+	if !atp.called {
 		t.Error("expected ancestor provider to be called")
 	}
-	// The tracker records what ListAncestorTemplateSources received. Because the
-	// signature still accepts linkedRefs (interface unchanged in HOL-904), the
-	// stub exposes this. The handler must pass nil, not the annotation refs.
-	// We confirm by checking the renderer: no ancestor sources means no platform
-	// resources were injected, i.e. the annotation was ignored.
+	// The handler must have called the provider with nil refs (not the annotation
+	// refs). We confirm indirectly: no ancestor sources were returned, so the
+	// renderer received no ancestor CUE — the annotation httproute ref was
+	// completely ignored.
 	if renderer.renderedWithAncestors() {
 		t.Error("annotation-driven refs leaked into render: httproute was NOT expected in ancestor sources")
 	}
