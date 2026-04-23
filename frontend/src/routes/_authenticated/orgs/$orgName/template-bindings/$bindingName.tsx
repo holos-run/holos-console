@@ -29,22 +29,22 @@ import {
 import { bindingProtoToDraft } from '@/components/template-policy-bindings/binding-draft'
 
 export const Route = createFileRoute(
-  '/_authenticated/orgs/$orgName/template-policy-bindings/$bindingName',
+  '/_authenticated/orgs/$orgName/template-bindings/$bindingName',
 )({
-  component: OrgTemplatePolicyBindingDetailRoute,
+  component: OrgTemplateBindingDetailRoute,
 })
 
-function OrgTemplatePolicyBindingDetailRoute() {
+function OrgTemplateBindingDetailRoute() {
   const { orgName, bindingName } = Route.useParams()
   return (
-    <OrgTemplatePolicyBindingDetailPage
+    <OrgTemplateBindingDetailPage
       orgName={orgName}
       bindingName={bindingName}
     />
   )
 }
 
-export function OrgTemplatePolicyBindingDetailPage({
+export function OrgTemplateBindingDetailPage({
   orgName: propOrgName,
   bindingName: propBindingName,
   forcedScopeType,
@@ -129,11 +129,11 @@ export function OrgTemplatePolicyBindingDetailPage({
               </Link>
               {' / '}
               <Link
-                to="/orgs/$orgName/template-policy-bindings"
+                to="/orgs/$orgName/template-bindings"
                 params={{ orgName }}
                 className="hover:underline"
               >
-                Template Policy Bindings
+                Template Bindings
               </Link>
               {' / '}
               <span>{bindingName}</span>
@@ -172,7 +172,7 @@ export function OrgTemplatePolicyBindingDetailPage({
             }}
             onCancel={() => {
               void navigate({
-                to: '/orgs/$orgName/template-policy-bindings',
+                to: '/orgs/$orgName/template-bindings',
                 params: { orgName },
               })
             }}
@@ -183,7 +183,7 @@ export function OrgTemplatePolicyBindingDetailPage({
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Template Policy Binding</DialogTitle>
+            <DialogTitle>Delete Template Binding</DialogTitle>
             <DialogDescription>
               This will permanently delete the binding &quot;{bindingName}
               &quot;. This action cannot be undone.
@@ -201,7 +201,7 @@ export function OrgTemplatePolicyBindingDetailPage({
                   await deleteMutation.mutateAsync({ name: bindingName })
                   setDeleteOpen(false)
                   await navigate({
-                    to: '/orgs/$orgName/template-policy-bindings',
+                    to: '/orgs/$orgName/template-bindings',
                     params: { orgName },
                   })
                   toast.success('Binding deleted')

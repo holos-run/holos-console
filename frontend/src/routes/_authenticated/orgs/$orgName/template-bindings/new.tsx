@@ -10,17 +10,17 @@ import {
 } from '@/components/template-policy-bindings/BindingForm'
 
 export const Route = createFileRoute(
-  '/_authenticated/orgs/$orgName/template-policy-bindings/new',
+  '/_authenticated/orgs/$orgName/template-bindings/new',
 )({
-  component: CreateOrgTemplatePolicyBindingRoute,
+  component: CreateOrgTemplateBindingRoute,
 })
 
-function CreateOrgTemplatePolicyBindingRoute() {
+function CreateOrgTemplateBindingRoute() {
   const { orgName } = Route.useParams()
-  return <CreateOrgTemplatePolicyBindingPage orgName={orgName} />
+  return <CreateOrgTemplateBindingPage orgName={orgName} />
 }
 
-export function CreateOrgTemplatePolicyBindingPage({
+export function CreateOrgTemplateBindingPage({
   orgName: propOrgName,
   forcedScopeType,
 }: {
@@ -60,16 +60,16 @@ export function CreateOrgTemplatePolicyBindingPage({
             </Link>
             {' / '}
             <Link
-              to="/orgs/$orgName/template-policy-bindings"
+              to="/orgs/$orgName/template-bindings"
               params={{ orgName }}
               className="hover:underline"
             >
-              Template Policy Bindings
+              Template Bindings
             </Link>
             {' / New'}
           </p>
           <CardTitle className="mt-1">
-            Create Template Policy Binding
+            Create Template Binding
           </CardTitle>
         </div>
       </CardHeader>
@@ -86,13 +86,13 @@ export function CreateOrgTemplatePolicyBindingPage({
           onSubmit={async (values) => {
             await createMutation.mutateAsync(values)
             await navigate({
-              to: '/orgs/$orgName/template-policy-bindings/$bindingName',
+              to: '/orgs/$orgName/template-bindings/$bindingName',
               params: { orgName, bindingName: values.name },
             })
           }}
           onCancel={() => {
             void navigate({
-              to: '/orgs/$orgName/template-policy-bindings',
+              to: '/orgs/$orgName/template-bindings',
               params: { orgName },
             })
           }}

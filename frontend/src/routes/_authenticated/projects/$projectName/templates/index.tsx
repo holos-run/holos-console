@@ -236,7 +236,7 @@ export function ProjectTemplatesIndexPage({
       {
         id: 'TemplatePolicyBinding',
         label: 'Template Policy Binding',
-        newHref: orgName ? `/orgs/${orgName}/template-policy-bindings/new` : undefined,
+        newHref: orgName ? `/orgs/${orgName}/template-bindings/new` : undefined,
         canCreate: canCreateOrgResources,
       },
     ],
