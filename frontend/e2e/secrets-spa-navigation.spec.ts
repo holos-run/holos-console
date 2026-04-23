@@ -51,12 +51,28 @@ test.describe('Secrets SPA Navigation (HOL-923 regression)', () => {
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
     await expect(page.getByRole('link', { name: secretName })).toBeVisible({ timeout: 10000 })
 
-    // 3. Collect all request URLs during the click so we can assert that none
-    //    of them hit the Dex or PKCE endpoints (i.e. no full-page reload).
-    const requestedUrls: string[] = []
-    page.on('request', (req) => {
-      requestedUrls.push(req.url())
-    })
+    // 3. Collect top-level main-frame navigation requests during the click so
+    //    we can assert that none of them hit the Dex or PKCE endpoints.
+    //
+    //    We scope to isNavigationRequest() on the main frame deliberately:
+    //    - SPA navigation via TanStack Router <Link> does NOT trigger a
+    //      top-level document navigation — the URL changes via pushState and
+    //      no new document request is issued.
+    //    - A raw <a href="..."> tag WOULD trigger a top-level document
+    //      navigation, which the browser then follows to the new URL; because
+    //      the OIDC session lives only in sessionStorage, the new document
+    //      loses the token and the auth layout re-triggers the /dex/ redirect.
+    //    - We exclude hidden-iframe requests (automaticSilentRenew from
+    //      oidc-client-ts) to avoid flaky false-positives from background
+    //      token-refresh traffic, which hits /dex/auth even on a correct SPA
+    //      navigation.
+    const mainFrameNavUrls: string[] = []
+    const onRequest = (req: import('@playwright/test').Request) => {
+      if (req.isNavigationRequest() && req.frame() === page.mainFrame()) {
+        mainFrameNavUrls.push(req.url())
+      }
+    }
+    page.on('request', onRequest)
 
     // 4. Click the display-name link for the secret row.
     await page.getByRole('link', { name: secretName }).click()
@@ -69,13 +85,15 @@ test.describe('Secrets SPA Navigation (HOL-923 regression)', () => {
     await expect(page).toHaveURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`))
 
     // 6. Assert the page did NOT round-trip through the OIDC login flow.
-    //    A full-document navigation would trigger /dex/ or /pkce/verify.
-    const oidcUrls = requestedUrls.filter(
+    //    A full-document navigation would trigger /dex/ or /pkce/verify as
+    //    the main-frame navigation destination.
+    page.off('request', onRequest)
+    const oidcNavUrls = mainFrameNavUrls.filter(
       (url) => url.includes('/dex/') || url.includes('/pkce/verify'),
     )
     expect(
-      oidcUrls,
-      `Expected no OIDC redirect but got requests to: ${oidcUrls.join(', ')}`,
+      oidcNavUrls,
+      `Expected no OIDC redirect in main-frame navigations but got: ${oidcNavUrls.join(', ')}`,
     ).toHaveLength(0)
 
     // 7. Assert the back button returns to the list page (no extra history
