@@ -181,12 +181,10 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/routes/_authenticated/organization/-new.test.tsx` | Create organization page: heading, full-page (not dialog), fields, slug auto-derivation, validation, submit, returnTo, error |
 | `src/routes/_authenticated/folder/-new.test.tsx` | Create folder page: heading, full-page (not dialog), fields, slug auto-derivation, validation, submit, returnTo, error, orgName guard |
 | `src/routes/_authenticated/project/-new.test.tsx` | Create project page: heading, full-page (not dialog), fields, slug auto-derivation, validation, submit, returnTo, error, orgName/folderName guards |
-| `src/components/resource-grid/-resource-grid.test.tsx` | ResourceGrid v1: column headers, kind filter, lineage filter, global search, empty/loading/error states, delete-confirm dialog |
+| `src/components/resource-grid/-resource-grid.test.tsx` | ResourceGrid v1: column headers, kind filter, global search, empty/loading/error states, delete-confirm dialog |
 | `src/components/ui/-confirm-delete-dialog.test.tsx` | ConfirmDeleteDialog: open/close, confirm, error, isDeleting state |
 | `src/components/-app-sidebar.tree.test.tsx` | Sidebar integration (real primitives): enabled entries render Link, disabled entries render tooltip-wrapped button |
 | `src/components/templates/-templates-help-pane.test.tsx` | TemplatesHelpPane: renders help content sections |
-| `src/components/resource-manager/-resource-tree.test.tsx` | ResourceTree: expand/collapse, leaf nodes, empty state |
-| `src/routes/_authenticated/resource-manager/-index.test.tsx` | Resource Manager page: renders ResourceTree, loading/error states |
 | `src/routes/_authenticated/projects/$projectName/templates/-index-help.test.tsx` | Templates index with help pane: ? icon toggle, pane visibility |
 | `src/lib/-template-row-link.test.ts` | templateRowLink helper: namespace/name → detail href mapping |
 | `src/components/template-policy-bindings/BindingForm.test.tsx` | BindingForm: ProjectTemplate / Deployment / ProjectNamespace kind selection, project-name field shown/hidden, wildcard validation, submit / save paths (HOL-814) |

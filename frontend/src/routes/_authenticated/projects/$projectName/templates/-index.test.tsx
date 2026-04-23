@@ -218,7 +218,7 @@ describe('ProjectTemplatesIndexPage (ResourceGrid v1)', () => {
   // -------------------------------------------------------------------------
 
   it('renders default view showing only Template rows from the current project', () => {
-    // Default URL: kind=Template, lineage=descendants → only Template rows visible.
+    // Default URL state: kind=Template → only Template rows visible.
     setupMocks({
       templates: [makeTemplate('web-template', 'project-test-project')],
       policies: [makePolicy('strict-policy', 'org-acme')],

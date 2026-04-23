@@ -19,10 +19,6 @@ frontend/src/components/resource-grid/
 - A **global search** box (`?search=`) using `includesString` filtering.
 - A **multi-kind filter** (`?kind=a,b`) rendered as checkboxes when more than
   one `Kind` is passed. Checking all or none = show everything.
-- A **lineage filter** (`?lineage=ancestors|descendants|both` + `?recursive=1`)
-  — the grid reads these from URL state and exposes them via `search` props so
-  the parent route's data-fetching layer can act on them. The grid itself passes
-  rows through unchanged (data-source-agnostic).
 - A **"New" button** — a single Link when one creatable kind exists, a dropdown
   when multiple exist.
 - **Row-level delete** via `ConfirmDeleteDialog`; callers supply an `onDelete`
@@ -60,11 +56,6 @@ timestamp sourced from `metadata.creationTimestamp` in the API response.
   (UI hardening) to eliminate "Invalid Date" regressions. The only valid
   non-empty value is a parseable RFC 3339 date string.
 
-The Resource Manager tree (`frontend/src/components/resource-manager/`) uses
-`createdAt: undefined` in its synthetic tree-node rows because those rows do
-not correspond 1-to-1 with a single Kubernetes object. This is intentional and
-out of scope for the ResourceGrid v1 contract.
-
 ## The `Row` interface
 
 ```ts
@@ -99,10 +90,8 @@ All search params flow through `ResourceGridSearch`:
 
 ```ts
 interface ResourceGridSearch {
-  kind?: string          // comma-separated Kind.id list; absent = show all
-  search?: string        // global filter string
-  lineage?: 'ancestors' | 'descendants' | 'both'
-  recursive?: '0' | '1' // '0' / absent = non-recursive (default)
+  kind?: string   // comma-separated Kind.id list; absent = show all
+  search?: string // global filter string
 }
 ```
 
@@ -184,14 +173,12 @@ toolbar. Used by the Deployments page for its description banner.
 A `React.ReactNode` rendered in the Card header to the left of the "New"
 button. Used by the Templates page for the help-pane toggle (? icon button).
 
-## When to use ResourceGrid v1 vs. the Resource Manager tree
+## When to use ResourceGrid v1
 
 | Situation | Use |
 |---|---|
 | Flat list of resources under one project (Secrets, Deployments, Templates) | ResourceGrid v1 |
-| Cross-scope hierarchical view of all resources (org → folder → project) | Resource Manager tree |
 | A new resource kind that belongs to a single project | ResourceGrid v1 — add a `Kind` entry and map data to `Row` |
-| A new resource kind that spans the org hierarchy | Resource Manager tree — add a node type to `TreeNode` |
 
 ## Adding a new kind to an existing grid
 
@@ -221,7 +208,6 @@ No changes to `ResourceGrid` itself are required.
 
 - Column headers rendered
 - Kind-filter checkboxes (multi-kind scenario)
-- Lineage filter controls
 - Global search filtering
 - Empty state when `rows=[]`
 - Loading skeleton (`data-testid="resource-grid-loading"`)

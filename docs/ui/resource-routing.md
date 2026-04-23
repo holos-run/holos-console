@@ -67,7 +67,7 @@ URL-encoding when it serialises the `search` object.
 import { resolveReturnTo } from '@/lib/return-to'
 
 // In the onSuccess / navigate call after the resource is created:
-const target = resolveReturnTo(search.returnTo, '/resource-manager')
+const target = resolveReturnTo(search.returnTo, '/projects')
 navigate({ to: target })
 ```
 
@@ -86,15 +86,14 @@ Only same-origin, in-app paths are accepted. A valid `returnTo` value:
 
 See `frontend/src/lib/return-to.ts` for the full implementation and JSDoc.
 
-## Worked Example — Resource Manager's New Dropdown
+## Worked Example — Projects Page New Dropdown
 
-The Resource Manager page (`/resource-manager`) shows a single **New ▾**
-dropdown that navigates to all three creation routes. Each `Link` encodes the
-current URL (including the `?expanded=…` tree state) as `returnTo` so the user
-lands back on the same Resource Manager view after creating a resource.
+A page with a **New ▾** dropdown navigates to creation routes while encoding
+the current URL (including any search params) as `returnTo` so the user lands
+back on the same page after creating a resource.
 
 ```tsx
-// frontend/src/routes/_authenticated/resource-manager/index.tsx
+// Example: a page that lets the user create a new folder or project
 
 function NewDropdown({ orgName }: { orgName: string }) {
   const router = useRouter()
@@ -111,13 +110,6 @@ function NewDropdown({ orgName }: { orgName: string }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {/* Singular prefix → /organization/new */}
-        <DropdownMenuItem asChild>
-          <Link to="/organization/new" search={{ returnTo }}>
-            Organization
-          </Link>
-        </DropdownMenuItem>
-
         {/* Singular prefix → /folder/new */}
         <DropdownMenuItem asChild>
           <Link to="/folder/new" search={orgName ? { orgName, returnTo } : { returnTo }}>
@@ -140,12 +132,11 @@ function NewDropdown({ orgName }: { orgName: string }) {
 After the resource is created, each creation page calls:
 
 ```ts
-const target = resolveReturnTo(search.returnTo, '/resource-manager')
+const target = resolveReturnTo(search.returnTo, '/projects')
 navigate({ to: target })
 ```
 
-…which returns the user to `/resource-manager?expanded=…` with the tree state
-intact.
+…which returns the user to the originating page with search state intact.
 
 ## File Map
 

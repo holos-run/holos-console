@@ -7,9 +7,8 @@
  *
  * The grid fans out across the whole org tree via the three useAll*ForOrg
  * hooks so ancestor-scope templates/policies/bindings are discoverable.
- * Default URL state: kind=Template, lineage=descendants — effectively the
- * current project's own templates only, but the user can widen by toggling
- * the kind filter or lineage select.
+ * Default URL state: kind=Template — only Template rows visible. The user
+ * can widen to other kinds by toggling the kind filter checkboxes.
  *
  * orgName is derived from the OrgContext (useOrg()), not the URL, because
  * this route is project-scoped.
