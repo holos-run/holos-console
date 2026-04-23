@@ -14,7 +14,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     }: {
       children: React.ReactNode
       to?: string
-    }) => <a href={to ?? '#'}>{children}</a>,
+    }) => <a href={to ?? '#'} data-testid="router-link">{children}</a>,
     useNavigate: () => vi.fn(),
   }
 })
@@ -169,6 +169,9 @@ describe('ResourceGrid', () => {
     renderGrid()
     const link = screen.getByRole('link', { name: /my secret/i })
     expect(link).toHaveAttribute('href', '/secrets/my-secret')
+    // Assert the link comes from the TanStack Router Link component (via mock
+    // data-testid) so a future regression to a raw <a href> is caught here.
+    expect(link).toHaveAttribute('data-testid', 'router-link')
   })
 
   // --- Parent ID column hiding ---

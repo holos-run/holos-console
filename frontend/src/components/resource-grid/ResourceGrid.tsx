@@ -241,13 +241,13 @@ export function ResourceGrid({
             const label = row.original.displayName || row.original.name
             if (row.original.detailHref) {
               return (
-                <a
-                  href={row.original.detailHref}
+                <Link
+                  to={row.original.detailHref}
                   className="font-medium hover:underline"
                   title={row.original.name}
                 >
                   {label}
-                </a>
+                </Link>
               )
             }
             return (
