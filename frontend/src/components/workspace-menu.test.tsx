@@ -174,7 +174,7 @@ describe('WorkspaceMenu — items', () => {
     expect(link.getAttribute('href')).toBe('/about')
   })
 
-  it('renders Switch organization → /organizations', () => {
+  it('renders Switch Organization → /organizations', () => {
     render(<WorkspaceMenu />)
     const link = screen.getByTestId('workspace-menu-item-switch-organization')
     expect(link.getAttribute('href')).toBe('/organizations')
@@ -256,6 +256,21 @@ describe('WorkspaceMenu — items', () => {
     expect(switchProjects.tagName).toBe('DIV')
     expect(switchProjects.getAttribute('aria-disabled')).toBe('true')
     expect(switchProjects.textContent).toContain('Switch Projects')
+  })
+
+  it('renders Project Settings as a link but Organization Settings disabled when project is selected without an org (stale localStorage state)', () => {
+    ;(useProject as Mock).mockReturnValue({
+      projects: [{ name: 'my-project', displayName: 'My Project' }],
+      selectedProject: 'my-project',
+      setSelectedProject: vi.fn(),
+      isLoading: false,
+    })
+    render(<WorkspaceMenu />)
+    const projectSettings = screen.getByTestId('workspace-menu-item-project-settings')
+    expect(projectSettings.getAttribute('href')).toBe('/projects/my-project/settings')
+    const orgSettings = screen.getByTestId('workspace-menu-item-org-settings')
+    expect(orgSettings.tagName).toBe('DIV')
+    expect(orgSettings.getAttribute('aria-disabled')).toBe('true')
   })
 
   it('renders items in the canonical order: About, Project Settings, Organization Settings, Switch Projects, Switch Organization, Profile, Dev Tools', () => {
