@@ -3,9 +3,9 @@ import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
 
-// Tests for the flat 4-item sidebar nav: Secrets, Deployments, Templates,
-// Resource Manager. The workspace picker lives in SidebarHeader; the version
-// label lives in SidebarFooter.
+// Tests for the flat 4-item sidebar nav: Projects, Secrets, Deployments,
+// Templates. The workspace picker lives in SidebarHeader; the version label
+// lives in SidebarFooter.
 
 // Configurable per-test so we can drive route-based active-state gating.
 let mockPathname = '/'
@@ -137,14 +137,22 @@ vi.mock('@/components/workspace-menu', () => ({
   WorkspaceMenu: () => <div data-testid="workspace-menu" />,
 }))
 
+vi.mock('@/lib/org-context', () => ({ useOrg: vi.fn() }))
 vi.mock('@/lib/project-context', () => ({ useProject: vi.fn() }))
 vi.mock('@/queries/version', () => ({ useVersion: vi.fn() }))
 
+import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
 import { useVersion } from '@/queries/version'
 import { AppSidebar } from './app-sidebar'
 
 function setDefaults() {
+  ;(useOrg as Mock).mockReturnValue({
+    organizations: [],
+    selectedOrg: null,
+    setSelectedOrg: vi.fn(),
+    isLoading: false,
+  })
   ;(useProject as Mock).mockReturnValue({
     projects: [],
     selectedProject: null,
@@ -152,6 +160,15 @@ function setDefaults() {
     isLoading: false,
   })
   ;(useVersion as Mock).mockReturnValue({ data: { version: 'v0.0.0-test' } })
+}
+
+function setupOrgSelected(orgName = 'my-org') {
+  ;(useOrg as Mock).mockReturnValue({
+    organizations: [{ name: orgName, displayName: 'My Org' }],
+    selectedOrg: orgName,
+    setSelectedOrg: vi.fn(),
+    isLoading: false,
+  })
 }
 
 function setupProjectSelected(projectName = 'my-project') {
@@ -163,14 +180,14 @@ function setupProjectSelected(projectName = 'my-project') {
   })
 }
 
-// HOL-856: flat nav entry helpers
+// Nav entry helpers
 function getNavButton(label: string) {
   return screen.getByTestId(
     `nav-${label.toLowerCase().replace(/\s+/g, '-')}`,
   )
 }
 
-describe('AppSidebar — HOL-856 flat 4-item nav', () => {
+describe('AppSidebar — HOL-914 flat 4-item nav', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPathname = '/'
@@ -184,21 +201,28 @@ describe('AppSidebar — HOL-856 flat 4-item nav', () => {
 
   it('renders exactly four top-level nav entries', () => {
     render(<AppSidebar />)
-    // All four entries are always present (enabled or disabled)
+    expect(getNavButton('projects')).toBeInTheDocument()
     expect(getNavButton('secrets')).toBeInTheDocument()
     expect(getNavButton('deployments')).toBeInTheDocument()
     expect(getNavButton('templates')).toBeInTheDocument()
-    expect(getNavButton('resource-manager')).toBeInTheDocument()
   })
 
-  it('renders nav entries in canonical order: Secrets, Deployments, Templates, Resource Manager', () => {
+  it('does not render a Resource Manager nav entry', () => {
     render(<AppSidebar />)
-    // Compare DOM positions of the four nav entry containers
+    expect(screen.queryByTestId('nav-resource-manager')).toBeNull()
+  })
+
+  it('renders nav entries in canonical order: Projects, Secrets, Deployments, Templates', () => {
+    render(<AppSidebar />)
+    const projects = getNavButton('projects')
     const secrets = getNavButton('secrets')
     const deployments = getNavButton('deployments')
     const templates = getNavButton('templates')
-    const rm = getNavButton('resource-manager')
-    // Node.DOCUMENT_POSITION_FOLLOWING = 4: secrets precedes deployments, etc.
+    // Node.DOCUMENT_POSITION_FOLLOWING = 4
+    expect(
+      projects.compareDocumentPosition(secrets) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
     expect(
       secrets.compareDocumentPosition(deployments) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -206,9 +230,6 @@ describe('AppSidebar — HOL-856 flat 4-item nav', () => {
     expect(
       deployments.compareDocumentPosition(templates) &
         Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
-    expect(
-      templates.compareDocumentPosition(rm) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
   })
 
@@ -252,11 +273,16 @@ describe('AppSidebar — HOL-856 flat 4-item nav', () => {
   })
 })
 
-describe('AppSidebar — nav links when no project is selected', () => {
+describe('AppSidebar — nav links when no org or project is selected', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPathname = '/'
     setDefaults()
+  })
+
+  it('Projects button is disabled when no org is selected', () => {
+    render(<AppSidebar />)
+    expect(getNavButton('projects')).toBeDisabled()
   })
 
   it('Secrets, Deployments, and Templates buttons are disabled when no project is selected', () => {
@@ -266,15 +292,13 @@ describe('AppSidebar — nav links when no project is selected', () => {
     expect(getNavButton('templates')).toBeDisabled()
   })
 
-  it('Resource Manager renders as a link (not disabled) when no project is selected', () => {
+  it('Projects disabled button renders tooltip "Select an organization to view Projects"', () => {
     render(<AppSidebar />)
-    // Resource Manager is always enabled — it is a top-level route.
-    // When enabled, SidebarMenuButton asChild wraps the Link in a span.
-    const rmContainer = getNavButton('resource-manager')
-    // The container should not have the disabled attribute
-    expect(rmContainer).not.toHaveAttribute('disabled')
-    // And the link inside should be present
-    expect(rmContainer.querySelector('a[href="/resource-manager"]')).not.toBeNull()
+    const tooltips = screen.getAllByTestId('tooltip-content')
+    const projectsTooltip = tooltips.find((el) =>
+      el.textContent?.includes('Select an organization to view Projects'),
+    )
+    expect(projectsTooltip).toBeDefined()
   })
 
   it('disabled buttons render a tooltip with the prerequisite reason for Secrets', () => {
@@ -306,11 +330,35 @@ describe('AppSidebar — nav links when no project is selected', () => {
   })
 })
 
+describe('AppSidebar — Projects nav entry when org is selected', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPathname = '/'
+    setDefaults()
+    setupOrgSelected()
+  })
+
+  it('Projects link resolves to the correct org-scoped URL', () => {
+    render(<AppSidebar />)
+    expect(
+      screen.getByRole('link', { name: /^projects$/i }).getAttribute('href'),
+    ).toBe('/organizations/my-org/projects')
+  })
+
+  it('Projects nav button is enabled when an org is selected', () => {
+    render(<AppSidebar />)
+    const projectsContainer = getNavButton('projects')
+    expect(projectsContainer).not.toHaveAttribute('disabled')
+    expect(projectsContainer.querySelector('a')).not.toBeNull()
+  })
+})
+
 describe('AppSidebar — nav links when a project is selected', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPathname = '/'
     setDefaults()
+    setupOrgSelected()
     setupProjectSelected()
   })
 
@@ -335,23 +383,17 @@ describe('AppSidebar — nav links when a project is selected', () => {
     ).toBe('/projects/my-project/templates')
   })
 
-  it('Resource Manager link resolves to /resource-manager', () => {
+  it('no disabled buttons when org and project are selected', () => {
     render(<AppSidebar />)
-    expect(
-      screen.getByRole('link', { name: /^resource manager$/i }).getAttribute('href'),
-    ).toBe('/resource-manager')
-  })
-
-  it('no disabled buttons when project is selected', () => {
-    render(<AppSidebar />)
-    // When enabled, SidebarMenuButton asChild wraps the Link in a span.
-    // The span should not have disabled attribute, and should contain an <a>.
+    const projectsContainer = getNavButton('projects')
     const secretsContainer = getNavButton('secrets')
     const deploymentsContainer = getNavButton('deployments')
     const templatesContainer = getNavButton('templates')
+    expect(projectsContainer).not.toHaveAttribute('disabled')
     expect(secretsContainer).not.toHaveAttribute('disabled')
     expect(deploymentsContainer).not.toHaveAttribute('disabled')
     expect(templatesContainer).not.toHaveAttribute('disabled')
+    expect(projectsContainer.querySelector('a')).not.toBeNull()
     expect(secretsContainer.querySelector('a')).not.toBeNull()
     expect(deploymentsContainer.querySelector('a')).not.toBeNull()
     expect(templatesContainer.querySelector('a')).not.toBeNull()
@@ -362,13 +404,9 @@ describe('AppSidebar — active-state highlighting', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     setDefaults()
+    setupOrgSelected()
     setupProjectSelected()
   })
-
-  // The SidebarMenuButton mock exposes `data-active` on the button element.
-  // When asChild is used, the button renders the Link child directly.
-  // We assert isActive on the button (data-testid) indirectly via the link's
-  // parent container or the data-active attribute on the rendered button.
 
   it('workspace-menu renders in header regardless of route', () => {
     mockPathname = '/projects/my-project/secrets'
@@ -382,11 +420,9 @@ describe('AppSidebar — active-state highlighting', () => {
     expect(screen.getByRole('link', { name: /^secrets$/i })).toBeInTheDocument()
   })
 
-  it('Resource Manager link is always rendered as a link', () => {
-    mockPathname = '/resource-manager'
+  it('Projects link is rendered when org is selected', () => {
+    mockPathname = '/organizations/my-org/projects'
     render(<AppSidebar />)
-    expect(
-      screen.getByRole('link', { name: /^resource manager$/i }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /^projects$/i })).toBeInTheDocument()
   })
 })

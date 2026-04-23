@@ -1,8 +1,8 @@
 import type React from 'react'
 import { Link, useRouter } from '@tanstack/react-router'
 import {
+  Box,
   KeyRound,
-  FolderTree,
   LayoutTemplate,
   Layers,
 } from 'lucide-react'
@@ -23,6 +23,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
 import { useVersion } from '@/queries/version'
 import { WorkspaceMenu } from '@/components/workspace-menu'
@@ -46,15 +47,26 @@ export function AppSidebar() {
   const { data: versionData } = useVersion()
   const router = useRouter()
   const pathname = router.state.location.pathname
+  const { selectedOrg } = useOrg()
   const { selectedProject } = useProject()
 
+  const hasOrg = Boolean(selectedOrg)
   const hasProject = Boolean(selectedProject)
 
-  // Flat 4-item nav: Secrets, Deployments, Templates, Resource Manager.
-  // The first three items are scoped to the selected project and are disabled
-  // until a project is chosen from the WorkspaceMenu. Resource Manager is a
-  // top-level route that is always enabled.
+  // Flat 4-item nav: Projects, Secrets, Deployments, Templates.
+  // Projects is org-scoped and disabled until an org is chosen.
+  // Secrets, Deployments, and Templates are project-scoped and disabled until
+  // a project is chosen from the WorkspaceMenu.
   const navItems: NavItem[] = [
+    {
+      label: 'Projects',
+      icon: Box,
+      href: hasOrg ? `/organizations/${selectedOrg}/projects` : '#',
+      to: '/organizations/$orgName/projects',
+      params: hasOrg ? { orgName: selectedOrg! } : undefined,
+      disabled: !hasOrg,
+      disabledReason: 'Select an organization to view Projects',
+    },
     {
       label: 'Secrets',
       icon: KeyRound,
@@ -82,14 +94,6 @@ export function AppSidebar() {
       disabled: !hasProject,
       disabledReason: 'Select a project to view Templates',
     },
-    {
-      label: 'Resource Manager',
-      icon: FolderTree,
-      href: '/resource-manager',
-      to: '/resource-manager',
-      params: undefined,
-      disabled: false,
-    },
   ]
 
   return (
@@ -100,7 +104,7 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        {/* Flat 4-item nav — Secrets, Deployments, Templates, Resource Manager */}
+        {/* Flat 4-item nav — Projects, Secrets, Deployments, Templates */}
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>

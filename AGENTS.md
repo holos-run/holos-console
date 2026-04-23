@@ -21,33 +21,34 @@ All testing guidance lives in this repo. Read the entries below in order the fir
 
 **Make targets**: `make test-go` (Go tests), `make test-ui` (Vitest unit tests), `make test-e2e` (Playwright, needs `make certs` and a k3d cluster), `make test` (all three). Run `make generate` before committing if proto or generated code is affected.
 
-## MVP UI — ResourceGrid v1 and 4-item sidebar nav (HOL-854)
+## MVP UI — ResourceGrid v1 and sidebar nav (HOL-854 + HOL-911)
 
 The HOL-854 plan shipped seven phases (HOL-855 – HOL-861) that replace the old
-two-tree sidebar with a flat 4-item nav and a shared table component. Key files
-added:
+two-tree sidebar with a flat nav and a shared table component. HOL-911 (phase
+HOL-914) subsequently removed the Resource Manager and added a Projects nav
+entry and WorkspaceMenu improvements. Key files:
 
 | File / dir | Phase | Purpose |
 |---|---|---|
 | `frontend/src/components/resource-grid/` | HOL-855 | `ResourceGrid` v1 table, `types.ts`, `url-state.ts` |
 | `frontend/src/components/ui/confirm-delete-dialog.tsx` | HOL-855 | Shared delete confirmation dialog |
-| `frontend/src/components/app-sidebar.tsx` | HOL-856 | Flat 4-item nav (Secrets, Deployments, Templates, Resource Manager) |
+| `frontend/src/components/app-sidebar.tsx` | HOL-856 / HOL-914 | Flat nav (Projects, Secrets, Deployments, Templates) |
 | `frontend/src/routes/_authenticated/projects/$projectName/secrets/index.tsx` | HOL-857 | Secrets page on ResourceGrid v1 |
 | `frontend/src/routes/_authenticated/projects/$projectName/deployments/index.tsx` | HOL-858 | Deployments page on ResourceGrid v1 |
 | `frontend/src/routes/_authenticated/projects/$projectName/templates/index.tsx` | HOL-859 | Unified Templates index on ResourceGrid v1 |
 | `frontend/src/components/templates/TemplatesHelpPane.tsx` | HOL-860 | Templates help pane (? icon toggle) |
-| `frontend/src/components/resource-manager/` | HOL-861 | Resource Manager tree view at `/resource-manager` |
-| `frontend/src/routes/_authenticated/resource-manager/index.tsx` | HOL-861 | Resource Manager route |
+
+**Deleted (HOL-914)**: `frontend/src/components/resource-manager/` and
+`frontend/src/routes/_authenticated/resource-manager/` were removed when the
+Resource Manager tree view was retired in favour of the Projects listing page.
 
 **Design note**: `docs/ui/resource-grid-v1.md` — columns, filter contract, URL
-state format, extension points (`extraColumns`, `onDelete`), and when to use
-ResourceGrid v1 vs. the Resource Manager tree.
+state format, extension points (`extraColumns`, `onDelete`).
 
 **URL convention**: `docs/ui/resource-routing.md` — singular prefix for
 creation pages (`/organization/new`, `/folder/new`, `/project/new`); plural +
 identifier for scoped operations (`/organizations/$name/settings`). Includes
-the `returnTo` search-param contract and a worked example from the Resource
-Manager dropdown (HOL-867 / HOL-873).
+the `returnTo` search-param contract.
 
 **Deferred**: Legacy sidebar destinations (Project tree, Organization tree,
 `/orgs/$orgName/resources`, folder-scoped index pages) are still present in

@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Box, ChevronsUpDown, Info, Settings, ArrowRightLeft, User, Wrench } from 'lucide-react'
+import { Box, ChevronsUpDown, Info, Settings, ArrowRightLeft, FolderKanban, User, Wrench } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,13 +16,14 @@ import { getConsoleConfig } from '@/lib/console-config'
  * of the sidebar. It replaces the previous stacked OrgPicker + ProjectPicker
  * dropdowns. Menu items appear in the canonical order:
  *
- *   About, Settings, Switch organization, Profile, Dev Tools
+ *   About, Settings, Switch Projects, Switch organization, separator, Profile, Dev Tools
  *
  * Dev Tools is only visible when the server gates it on via `--enable-dev-tools`
  * (mirrored to the frontend via `getConsoleConfig().devToolsEnabled`). The
  * `Settings` item routes to org settings when an org is selected; when no org
  * is selected it is rendered disabled (there is no global settings route) so
- * the canonical item order stays visible in every state.
+ * the canonical item order stays visible in every state. `Switch Projects`
+ * links to the org-scoped projects list and is disabled when no org is selected.
  */
 export function WorkspaceMenu() {
   const { selectedOrg, organizations } = useOrg()
@@ -46,6 +47,9 @@ export function WorkspaceMenu() {
 
   return (
     <div className="px-2 py-1">
+      <p className="px-1 pb-1 text-xs font-semibold tracking-widest text-muted-foreground uppercase select-none">
+        Holos
+      </p>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
@@ -86,6 +90,23 @@ export function WorkspaceMenu() {
             <DropdownMenuItem disabled data-testid="workspace-menu-item-settings">
               <Settings className="h-4 w-4" />
               <span>Settings</span>
+            </DropdownMenuItem>
+          )}
+          {selectedOrg ? (
+            <DropdownMenuItem asChild>
+              <Link
+                to="/organizations/$orgName/projects"
+                params={{ orgName: selectedOrg }}
+                data-testid="workspace-menu-item-switch-projects"
+              >
+                <FolderKanban className="h-4 w-4" />
+                <span>Switch Projects</span>
+              </Link>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem disabled data-testid="workspace-menu-item-switch-projects">
+              <FolderKanban className="h-4 w-4" />
+              <span>Switch Projects</span>
             </DropdownMenuItem>
           )}
           <DropdownMenuItem asChild>

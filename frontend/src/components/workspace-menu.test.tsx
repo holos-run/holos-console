@@ -87,6 +87,26 @@ function setDefaults() {
   ;(getConsoleConfig as Mock).mockReturnValue({ devToolsEnabled: false })
 }
 
+describe('WorkspaceMenu — Holos brand label', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+  })
+
+  it('renders a "Holos" brand label above the workspace-menu trigger', () => {
+    render(<WorkspaceMenu />)
+    // The brand label should be present in the document
+    expect(screen.getByText('Holos')).toBeInTheDocument()
+    // The workspace-menu trigger should appear after the brand label in the DOM
+    const brandLabel = screen.getByText('Holos')
+    const trigger = screen.getByTestId('workspace-menu')
+    expect(
+      brandLabel.compareDocumentPosition(trigger) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+})
+
 describe('WorkspaceMenu — trigger label', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -198,7 +218,27 @@ describe('WorkspaceMenu — items', () => {
     expect(screen.queryByTestId('workspace-menu-item-dev-tools')).toBeNull()
   })
 
-  it('renders items in the canonical order: About, Settings, Switch organization, Profile, Dev Tools', () => {
+  it('renders Switch Projects → /organizations/$orgName/projects when an org is selected', () => {
+    ;(useOrg as Mock).mockReturnValue({
+      organizations: [{ name: 'my-org', displayName: 'My Org' }],
+      selectedOrg: 'my-org',
+      setSelectedOrg: vi.fn(),
+      isLoading: false,
+    })
+    render(<WorkspaceMenu />)
+    const link = screen.getByTestId('workspace-menu-item-switch-projects')
+    expect(link.getAttribute('href')).toBe('/organizations/my-org/projects')
+  })
+
+  it('renders Switch Projects disabled when no org is selected', () => {
+    render(<WorkspaceMenu />)
+    const switchProjects = screen.getByTestId('workspace-menu-item-switch-projects')
+    expect(switchProjects.tagName).toBe('DIV')
+    expect(switchProjects.getAttribute('aria-disabled')).toBe('true')
+    expect(switchProjects.textContent).toContain('Switch Projects')
+  })
+
+  it('renders items in the canonical order: About, Settings, Switch Projects, Switch organization, Profile, Dev Tools', () => {
     ;(useOrg as Mock).mockReturnValue({
       organizations: [{ name: 'my-org', displayName: 'My Org' }],
       selectedOrg: 'my-org',
@@ -216,13 +256,14 @@ describe('WorkspaceMenu — items', () => {
     expect(labels).toEqual([
       'workspace-menu-item-about',
       'workspace-menu-item-settings',
+      'workspace-menu-item-switch-projects',
       'workspace-menu-item-switch-organization',
       'workspace-menu-item-profile',
       'workspace-menu-item-dev-tools',
     ])
   })
 
-  it('keeps the canonical order when no org is selected (Settings is disabled but present)', () => {
+  it('keeps the canonical order when no org is selected (Settings and Switch Projects are disabled but present)', () => {
     ;(getConsoleConfig as Mock).mockReturnValue({ devToolsEnabled: true })
     render(<WorkspaceMenu />)
 
@@ -234,6 +275,7 @@ describe('WorkspaceMenu — items', () => {
     expect(labels).toEqual([
       'workspace-menu-item-about',
       'workspace-menu-item-settings',
+      'workspace-menu-item-switch-projects',
       'workspace-menu-item-switch-organization',
       'workspace-menu-item-profile',
       'workspace-menu-item-dev-tools',
