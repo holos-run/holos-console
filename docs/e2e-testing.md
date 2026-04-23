@@ -138,3 +138,4 @@ test('editor cannot delete org', async ({ page }) => {
 | `e2e/multi-persona.spec.ts` | All (Multi-Persona RBAC) | Yes |
 | `e2e/secrets.spec.ts` | sidebar navigation (first 2) | No |
 | `e2e/secrets.spec.ts` | create/update/list secrets, add key | Yes |
+| `e2e/secrets-spa-navigation.spec.ts` | SPA navigation regression (HOL-923) | Yes |
