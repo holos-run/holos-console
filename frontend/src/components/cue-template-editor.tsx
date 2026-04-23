@@ -145,7 +145,6 @@ export function CueTemplateEditor({
     debouncedCueTemplate,
     debouncedCueInput,
     activeTab === 'preview',
-    undefined,
     linkedTemplates,
   )
 

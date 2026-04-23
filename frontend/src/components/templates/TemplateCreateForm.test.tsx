@@ -605,24 +605,6 @@ describe('TemplateCreateForm — project scope', () => {
     })
   })
 
-  it('useRenderTemplate receives an empty platform input (backend injects authoritative context)', () => {
-    render(
-      <TemplateCreateForm
-        scopeType="project"
-        namespace="holos-prj-test-project"
-        organization="test-org"
-        projectName="test-project"
-        canWrite
-        onSubmit={vi.fn()}
-        onCancel={vi.fn()}
-      />,
-    )
-    const calls = (useRenderTemplate as Mock).mock.calls
-    expect(calls.length).toBeGreaterThan(0)
-    const platformInput = calls[0][4]
-    expect(platformInput).toBe('')
-  })
-
   it('useRenderTemplate receives the project-only input', () => {
     render(
       <TemplateCreateForm
@@ -918,7 +900,7 @@ describe('TemplateCreateForm — project scope', () => {
 
       const calls = (useRenderTemplate as Mock).mock.calls
       const lastCall = calls[calls.length - 1]
-      expect(lastCall[5]).toEqual(
+      expect(lastCall[4]).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             name: 'httpbin-platform',
