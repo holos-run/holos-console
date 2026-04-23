@@ -33,10 +33,10 @@ type e2eDriftChecker struct {
 	// currentFn returns the resolver output for a given (project, name).
 	// Production wires a real resolver; tests supply a closure that mimics
 	// "policy forces a REQUIRE template" without standing up a policy CRD.
-	currentFn func(project, name string, explicitRefs []*consolev1.LinkedTemplateRef) []*consolev1.LinkedTemplateRef
+	currentFn func(project, name string) []*consolev1.LinkedTemplateRef
 }
 
-func newE2EDriftChecker(currentFn func(string, string, []*consolev1.LinkedTemplateRef) []*consolev1.LinkedTemplateRef) *e2eDriftChecker {
+func newE2EDriftChecker(currentFn func(string, string) []*consolev1.LinkedTemplateRef) *e2eDriftChecker {
 	return &e2eDriftChecker{
 		applied:   map[string][]*consolev1.LinkedTemplateRef{},
 		currentFn: currentFn,
@@ -45,18 +45,18 @@ func newE2EDriftChecker(currentFn func(string, string, []*consolev1.LinkedTempla
 
 func (e *e2eDriftChecker) key(project, name string) string { return project + "/" + name }
 
-func (e *e2eDriftChecker) Drift(_ context.Context, project, name string, explicitRefs []*consolev1.LinkedTemplateRef) (bool, bool, error) {
+func (e *e2eDriftChecker) Drift(_ context.Context, project, name string) (bool, bool, error) {
 	applied, ok := e.applied[e.key(project, name)]
 	if !ok {
 		return false, false, nil
 	}
-	current := e.currentFn(project, name, explicitRefs)
+	current := e.currentFn(project, name)
 	return diffRefs(applied, current), true, nil
 }
 
-func (e *e2eDriftChecker) PolicyState(_ context.Context, project, name string, explicitRefs []*consolev1.LinkedTemplateRef) (*consolev1.PolicyState, error) {
+func (e *e2eDriftChecker) PolicyState(_ context.Context, project, name string) (*consolev1.PolicyState, error) {
 	applied, has := e.applied[e.key(project, name)]
-	current := e.currentFn(project, name, explicitRefs)
+	current := e.currentFn(project, name)
 	return &consolev1.PolicyState{
 		AppliedSet:      applied,
 		CurrentSet:      current,
@@ -140,11 +140,11 @@ func TestHandler_CreateDeployment_DriftBecomesFalseAfterRecord(t *testing.T) {
 		effectiveRefs: policyOutput,
 	}
 
-	checker := newE2EDriftChecker(func(_, _ string, _ []*consolev1.LinkedTemplateRef) []*consolev1.LinkedTemplateRef {
-		// Return the same policy output regardless of the handler-supplied
-		// explicit refs. In production the PolicyResolver consults the
-		// TemplatePolicy CRD the same way on every call, so the apply-time
-		// and query-time resolutions agree by construction.
+	checker := newE2EDriftChecker(func(_, _ string) []*consolev1.LinkedTemplateRef {
+		// Return the same policy output on every call. In production the
+		// PolicyResolver consults the TemplatePolicy CRD the same way on
+		// every call, so apply-time and query-time resolutions agree by
+		// construction.
 		return policyOutput
 	})
 

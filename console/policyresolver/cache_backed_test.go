@@ -37,7 +37,6 @@ import (
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
-	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
 // cacheBackedPolicyLister implements PolicyListerInNamespace by calling
@@ -149,7 +148,7 @@ func TestFolderResolver_CacheBackedReadPath(t *testing.T) {
 
 	// Pre-write resolve: the binding injects audit-policy into the
 	// effective set for deployment lilies/api.
-	got, err := fr.Resolve(context.Background(), projectLiliesNs, TargetKindDeployment, "api", nil)
+	got, err := fr.Resolve(context.Background(), projectLiliesNs, TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve (first call): %v", err)
 	}
@@ -187,7 +186,7 @@ func TestFolderResolver_CacheBackedReadPath(t *testing.T) {
 		t.Fatalf("creating second binding: %v", err)
 	}
 
-	got, err = fr.Resolve(context.Background(), projectLiliesNs, TargetKindDeployment, "api", nil)
+	got, err = fr.Resolve(context.Background(), projectLiliesNs, TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve (post-write): %v", err)
 	}
@@ -199,12 +198,12 @@ func TestFolderResolver_CacheBackedReadPath(t *testing.T) {
 	}
 }
 
-// TestFolderResolver_CacheBackedExplicitRefsAndExclude covers the mixed
-// case: the caller passes an explicit ref, a REQUIRE rule (via binding)
-// injects one, and a folder-level EXCLUDE rule removes a subsequently-
-// injected template. The test vectors every layer of the resolver against
-// a cache-backed read so a regression in any of them surfaces here.
-func TestFolderResolver_CacheBackedExplicitRefsAndExclude(t *testing.T) {
+// TestFolderResolver_CacheBackedRequireAndExclude covers the REQUIRE + EXCLUDE
+// formula using a cache-backed lister: a REQUIRE rule (via binding) injects
+// two templates, and a folder-level EXCLUDE rule removes one of them. The test
+// vectors every layer of the resolver against a cache-backed read so a
+// regression in any of them surfaces here.
+func TestFolderResolver_CacheBackedRequireAndExclude(t *testing.T) {
 	r := baseResolver()
 	orgNs := r.OrgNamespace("acme")
 	folderEngNs := r.FolderNamespace("eng")
@@ -258,17 +257,15 @@ func TestFolderResolver_CacheBackedExplicitRefsAndExclude(t *testing.T) {
 	bl := &cacheBackedBindingLister{c: c}
 	fr := NewFolderResolverWithBindings(pl, walker, r, bl)
 
-	explicit := []*consolev1.LinkedTemplateRef{orgTemplateRef("httproute")}
-	got, err := fr.Resolve(context.Background(), projectLiliesNs, TargetKindDeployment, "api", explicit)
+	got, err := fr.Resolve(context.Background(), projectLiliesNs, TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
 	names := refNames(got)
 	sort.Strings(names)
-	// httproute is explicit (owner-linked, EXCLUDE-protected);
 	// audit-policy is REQUIRE-injected via binding; extra is
 	// REQUIRE-then-EXCLUDE so it drops out.
-	want := []string{"audit-policy", "httproute"}
+	want := []string{"audit-policy"}
 	if !equalStringSlices(names, want) {
 		t.Errorf("mismatch: got %v, want %v", names, want)
 	}
@@ -320,7 +317,7 @@ func TestFolderResolver_CacheBackedSkipsProjectNamespacePolicies(t *testing.T) {
 	bl := &cacheBackedBindingLister{c: c}
 	fr := NewFolderResolverWithBindings(pl, walker, r, bl)
 
-	got, err := fr.Resolve(context.Background(), projectLiliesNs, TargetKindDeployment, "api", nil)
+	got, err := fr.Resolve(context.Background(), projectLiliesNs, TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}

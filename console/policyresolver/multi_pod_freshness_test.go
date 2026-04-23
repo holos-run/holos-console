@@ -319,7 +319,7 @@ func eventuallyResolveFolderResolverNames(
 	end := time.Now().Add(deadline)
 	var lastSeen []string
 	for time.Now().Before(end) {
-		got, err := fr.Resolve(context.Background(), projectNs, TargetKindDeployment, targetName, nil)
+		got, err := fr.Resolve(context.Background(), projectNs, TargetKindDeployment, targetName)
 		if err != nil {
 			t.Fatalf("Resolve: %v", err)
 		}

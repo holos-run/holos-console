@@ -631,6 +631,18 @@ func folderLinkedRefWithConstraint(folder, name, constraint string) *consolev1.L
 	return newLinkedRef(scopeKindFolder, folder, name, constraint)
 }
 
+// fixedRefsResolver is a test PolicyResolver that always returns a pre-
+// configured slice of LinkedTemplateRef values as the effective set. It
+// lets ListEffectiveTemplateSources tests control which templates the
+// resolver "injects" without depending on a real TemplatePolicy store.
+type fixedRefsResolver struct {
+	refs []*consolev1.LinkedTemplateRef
+}
+
+func (f *fixedRefsResolver) Resolve(_ context.Context, _ string, _ policyresolver.TargetKind, _ string) ([]*consolev1.LinkedTemplateRef, error) {
+	return f.refs, nil
+}
+
 // TestListEffectiveTemplateSources exercises the unified ancestor-source
 // helper that replaced the legacy per-scope helpers in HOL-564. HOL-661
 // retained the contract; only the storage substrate changed, so every
@@ -644,7 +656,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 	t.Run("nil walker returns no sources", func(t *testing.T) {
 		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj), testResolver)
 
-		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, nil, policyresolver.NewNoopResolver())
+		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -662,7 +674,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			newLinkedRef(folderScope, "payments", "payments-policy", ""),
 		}
-		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
+		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", walker, &fixedRefsResolver{refs: refs})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -686,7 +698,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 			newLinkedRef(orgScope, "my-org", "httproute", ""),
 			newLinkedRef(folderScope, "payments", "payments-policy", ""),
 		}
-		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
+		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", walker, &fixedRefsResolver{refs: refs})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -701,7 +713,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver)
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
-		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, walker, policyresolver.NewNoopResolver())
+		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", walker, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -718,7 +730,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			newLinkedRef(folderScope, "payments", "payments-policy", ""),
 		}
-		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
+		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", walker, &fixedRefsResolver{refs: refs})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -738,7 +750,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		refs := []*consolev1.LinkedTemplateRef{
 			folderLinkedRefWithConstraint("payments", "payments-policy", ">=1.0.0"),
 		}
-		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
+		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", walker, &fixedRefsResolver{refs: refs})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -754,10 +766,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		k8s := newTestK8sClient(t, fake.NewClientset(), testResolver)
 		walker := &stubHierarchyWalker{err: fmt.Errorf("walk failed")}
 
-		refs := []*consolev1.LinkedTemplateRef{
-			newLinkedRef(folderScope, "payments", "payments-policy", ""),
-		}
-		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
+		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", walker, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("expected graceful degradation, got error: %v", err)
 		}
@@ -771,7 +780,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 		k8s := newTestK8sClient(t, fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM), testResolver)
 		walker := &stubHierarchyWalker{ancestors: fullAncestors}
 
-		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", nil, walker, policyresolver.NewNoopResolver())
+		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", walker, policyresolver.NewNoopResolver())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -793,7 +802,7 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 			newLinkedRef(orgScope, "my-org", sharedName, ""),
 			newLinkedRef(folderScope, "payments", sharedName, ""),
 		}
-		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
+		sources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", walker, &fixedRefsResolver{refs: refs})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -818,11 +827,11 @@ func TestListEffectiveTemplateSources(t *testing.T) {
 			newLinkedRef(orgScope, "my-org", "httproute", ""),
 		}
 
-		deploymentSources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", refs, walker, policyresolver.NewNoopResolver())
+		deploymentSources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindDeployment, "dep", walker, &fixedRefsResolver{refs: refs})
 		if err != nil {
 			t.Fatalf("unexpected error (deployment): %v", err)
 		}
-		projectSources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindProjectTemplate, "tmpl", refs, walker, policyresolver.NewNoopResolver())
+		projectSources, _, err := k8s.ListEffectiveTemplateSources(context.Background(), "prj-my-project", TargetKindProjectTemplate, "tmpl", walker, &fixedRefsResolver{refs: refs})
 		if err != nil {
 			t.Fatalf("unexpected error (project template): %v", err)
 		}

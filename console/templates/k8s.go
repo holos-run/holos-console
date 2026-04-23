@@ -369,16 +369,15 @@ type RenderHierarchyWalker interface {
 
 // ListEffectiveTemplateSources returns the ordered, deduplicated CUE sources
 // that participate in rendering the given target, alongside the policy-
-// effective ref set that produced them. The effective set at each ancestor
-// namespace is:
+// effective ref set that produced them. The effective set is computed as:
 //
-//	enabled AND ref IN explicitRefs
+//	result = REQUIRE-injected − EXCLUDE-removed
 //
-// For linked templates that carry a version constraint, the CUE source is
-// resolved from the latest matching release via ResolveVersionedSource
-// (ADR 024); linked templates without releases fall back to the live CRD CUE
-// source. Disabled templates are never included, even when explicitly
-// linked.
+// Only templates that are enabled and whose ref appears in the resolver's
+// effective set contribute. Disabled templates are never included. Templates
+// carrying a version constraint resolve their CUE source from the latest
+// matching release via ResolveVersionedSource (ADR 024); templates without
+// releases fall back to the live CRD CUE source.
 //
 // The walker drives ancestor traversal. If walker is nil, the method returns
 // (nil, nil, nil) — see the pre-rewrite comment for the rationale. HOL-621
@@ -388,13 +387,12 @@ func (k *K8sClient) ListEffectiveTemplateSources(
 	projectNs string,
 	targetKind TargetKind,
 	targetName string,
-	explicitRefs []*consolev1.LinkedTemplateRef,
 	walker RenderHierarchyWalker,
 	policyRes policyresolver.PolicyResolver,
 ) ([]string, []*consolev1.LinkedTemplateRef, error) {
-	effectiveRefs := explicitRefs
+	var effectiveRefs []*consolev1.LinkedTemplateRef
 	if policyRes != nil {
-		resolved, resolveErr := policyRes.Resolve(ctx, projectNs, targetKind, targetName, explicitRefs)
+		resolved, resolveErr := policyRes.Resolve(ctx, projectNs, targetKind, targetName)
 		if resolveErr != nil {
 			return nil, nil, fmt.Errorf("resolving template policy for %q: %w", targetName, resolveErr)
 		}
@@ -988,6 +986,6 @@ func NewAncestorTemplateResolver(k8s *K8sClient, walker RenderHierarchyWalker, r
 }
 
 // ListAncestorTemplateSources satisfies deployments.AncestorTemplateProvider.
-func (a *AncestorTemplateResolver) ListAncestorTemplateSources(ctx context.Context, projectNs, targetName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, []*consolev1.LinkedTemplateRef, error) {
-	return a.k8s.ListEffectiveTemplateSources(ctx, projectNs, TargetKindDeployment, targetName, linkedRefs, a.walker, a.resolver)
+func (a *AncestorTemplateResolver) ListAncestorTemplateSources(ctx context.Context, projectNs, targetName string) ([]string, []*consolev1.LinkedTemplateRef, error) {
+	return a.k8s.ListEffectiveTemplateSources(ctx, projectNs, TargetKindDeployment, targetName, a.walker, a.resolver)
 }

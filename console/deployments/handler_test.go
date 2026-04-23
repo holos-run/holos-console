@@ -1325,26 +1325,20 @@ type stubAncestorTemplateProvider struct {
 	lastDeploymentName string
 }
 
-func (s *stubAncestorTemplateProvider) ListAncestorTemplateSources(_ context.Context, _ string, deploymentName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, []*consolev1.LinkedTemplateRef, error) {
+func (s *stubAncestorTemplateProvider) ListAncestorTemplateSources(_ context.Context, _ string, deploymentName string) ([]string, []*consolev1.LinkedTemplateRef, error) {
 	s.called = true
 	s.lastDeploymentName = deploymentName
 	if s.err != nil {
 		return nil, nil, s.err
 	}
-	// When no explicit override, mirror the input refs back as the "resolved"
-	// effective set so tests that do not care about policy resolution still
-	// see a non-nil ref slice flow through the write-through path. A nil
-	// input is coerced to a non-nil empty slice so callers distinguish
-	// "ancestor walk succeeded, no policy match" from "walk failed /
-	// degraded render" (the latter returns a nil effectiveRefs per the
-	// production contract in ListEffectiveTemplateSources).
+	// When no explicit override, return a non-nil empty slice so callers
+	// distinguish "ancestor walk succeeded, no policy match" from "walk
+	// failed / degraded render" (the latter returns nil effectiveRefs per
+	// the production contract in ListEffectiveTemplateSources).
 	if s.effectiveRefs != nil {
 		return s.sources, s.effectiveRefs, nil
 	}
-	if linkedRefs == nil {
-		return s.sources, []*consolev1.LinkedTemplateRef{}, nil
-	}
-	return s.sources, linkedRefs, nil
+	return s.sources, []*consolev1.LinkedTemplateRef{}, nil
 }
 
 // trackingDeploymentRenderer extends stubRenderer to record whether Render

@@ -183,7 +183,7 @@ func TestHandler_CreateDeployment_WarnButSucceedOnRecordFailure(t *testing.T) {
 // refs back as a non-nil empty slice to exercise the happy path.
 type degradedAncestorProvider struct{}
 
-func (degradedAncestorProvider) ListAncestorTemplateSources(_ context.Context, _, _ string, _ []*consolev1.LinkedTemplateRef) ([]string, []*consolev1.LinkedTemplateRef, error) {
+func (degradedAncestorProvider) ListAncestorTemplateSources(_ context.Context, _, _ string) ([]string, []*consolev1.LinkedTemplateRef, error) {
 	return nil, nil, nil
 }
 

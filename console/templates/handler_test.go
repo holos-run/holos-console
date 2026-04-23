@@ -693,6 +693,9 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 			Data: map[string]string{CueTemplateKey: folderCue},
 		}
 
+		refs := []*consolev1.LinkedTemplateRef{
+			folderLinkedRef(folder, "payments-policy"),
+		}
 		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, fldCM)
 		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
 		k8s := newTestK8sClient(t, fakeClient, r)
@@ -701,15 +704,12 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
 		}
 
-		handler := NewHandler(k8s, r, renderer, policyresolver.NewNoopResolver())
+		handler := NewHandler(k8s, r, renderer, &fixedRefsResolver{refs: refs})
 		handler.WithAncestorWalker(walker)
 
 		msg := &consolev1.RenderTemplateRequest{
 			Namespace:   projectScopeRef(project),
 			CueTemplate: validCue,
-			LinkedTemplates: []*consolev1.LinkedTemplateRef{
-				folderLinkedRef(folder, "payments-policy"),
-			},
 		}
 
 		_, err := handler.renderTemplateGrouped(context.Background(), msg)
@@ -782,6 +782,10 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 			Data: map[string]string{CueTemplateKey: folderCue},
 		}
 
+		refs := []*consolev1.LinkedTemplateRef{
+			orgLinkedRef(org, "httproute"),
+			folderLinkedRef(folder, "payments-policy"),
+		}
 		fakeClient := fake.NewClientset(orgNsObj, fldNsObj, prjNsObj, orgCM, fldCM)
 		r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
 		k8s := newTestK8sClient(t, fakeClient, r)
@@ -790,16 +794,12 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 			ancestors: []*corev1.Namespace{prjNsObj, fldNsObj, orgNsObj},
 		}
 
-		handler := NewHandler(k8s, r, renderer, policyresolver.NewNoopResolver())
+		handler := NewHandler(k8s, r, renderer, &fixedRefsResolver{refs: refs})
 		handler.WithAncestorWalker(walker)
 
 		msg := &consolev1.RenderTemplateRequest{
 			Namespace:   projectScopeRef(project),
 			CueTemplate: validCue,
-			LinkedTemplates: []*consolev1.LinkedTemplateRef{
-				orgLinkedRef(org, "httproute"),
-				folderLinkedRef(folder, "payments-policy"),
-			},
 		}
 
 		_, err := handler.renderTemplateGrouped(context.Background(), msg)
@@ -928,7 +928,6 @@ func TestRenderTemplateGroupedFolderScoped(t *testing.T) {
 			context.Background(),
 			"prj-"+project,
 			"test-deployment",
-			[]*consolev1.LinkedTemplateRef{folderLinkedRef(folder, "shared")},
 		)
 		if err != nil {
 			t.Fatalf("apply render failed: %v", err)

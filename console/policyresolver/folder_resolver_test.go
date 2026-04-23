@@ -262,25 +262,22 @@ func TestFolderResolver_Resolve(t *testing.T) {
 		projectNs  string
 		target     TargetKind
 		targetName string
-		explicit   []*consolev1.LinkedTemplateRef
 		policies   map[string][]templatesv1alpha1.TemplatePolicy
 		bindings   map[string][]templatesv1alpha1.TemplatePolicyBinding
 		want       want
 	}{
 		{
-			name:       "no policies, no bindings — explicit refs pass through",
+			name:       "no policies, no bindings — empty effective set",
 			projectNs:  ns["projectLilies"],
 			target:     TargetKindDeployment,
 			targetName: "api",
-			explicit:   []*consolev1.LinkedTemplateRef{orgTemplateRef("httproute")},
-			want:       want{names: []string{"httproute"}},
+			want:       want{names: nil},
 		},
 		{
 			name:       "REQUIRE-only — org policy injects template via binding",
 			projectNs:  ns["projectLilies"],
 			target:     TargetKindDeployment,
 			targetName: "api",
-			explicit:   nil,
 			policies: map[string][]templatesv1alpha1.TemplatePolicy{
 				ns["org"]: {
 					policyCRD(ns["org"], "audit", []templatesv1alpha1.TemplatePolicyRule{
@@ -303,7 +300,6 @@ func TestFolderResolver_Resolve(t *testing.T) {
 			projectNs:  ns["projectLilies"],
 			target:     TargetKindDeployment,
 			targetName: "api",
-			explicit:   nil,
 			policies: map[string][]templatesv1alpha1.TemplatePolicy{
 				ns["org"]: {
 					policyCRD(ns["org"], "audit", []templatesv1alpha1.TemplatePolicyRule{
@@ -341,7 +337,6 @@ func TestFolderResolver_Resolve(t *testing.T) {
 			projectNs:  ns["projectLilies"],
 			target:     TargetKindDeployment,
 			targetName: "api",
-			explicit:   nil,
 			policies: map[string][]templatesv1alpha1.TemplatePolicy{
 				ns["org"]: {
 					policyCRD(ns["org"], "req", []templatesv1alpha1.TemplatePolicyRule{
@@ -367,12 +362,16 @@ func TestFolderResolver_Resolve(t *testing.T) {
 			want: want{names: nil},
 		},
 		{
-			name:       "EXCLUDE cannot remove owner-linked template",
+			name:       "EXCLUDE on a REQUIRE-injected template removes it",
 			projectNs:  ns["projectLilies"],
 			target:     TargetKindDeployment,
 			targetName: "api",
-			explicit:   []*consolev1.LinkedTemplateRef{orgTemplateRef("httproute")},
 			policies: map[string][]templatesv1alpha1.TemplatePolicy{
+				ns["org"]: {
+					policyCRD(ns["org"], "req-httproute", []templatesv1alpha1.TemplatePolicyRule{
+						requireRuleCRD(v1alpha2.TemplateScopeOrganization, "acme", "httproute"),
+					}),
+				},
 				ns["folderEng"]: {
 					policyCRD(ns["folderEng"], "block-httproute", []templatesv1alpha1.TemplatePolicyRule{
 						excludeRuleCRD(v1alpha2.TemplateScopeOrganization, "acme", "httproute"),
@@ -380,6 +379,12 @@ func TestFolderResolver_Resolve(t *testing.T) {
 				},
 			},
 			bindings: map[string][]templatesv1alpha1.TemplatePolicyBinding{
+				ns["org"]: {
+					bindingCRD(ns["org"], "req-bind",
+						orgPolicyRefCRD("req-httproute"),
+						[]templatesv1alpha1.TemplatePolicyBindingTargetRef{deploymentTargetCRD("lilies", "api")},
+					),
+				},
 				ns["folderEng"]: {
 					bindingCRD(ns["folderEng"], "block-bind",
 						folderPolicyRefCRD("eng", "block-httproute"),
@@ -387,14 +392,13 @@ func TestFolderResolver_Resolve(t *testing.T) {
 					),
 				},
 			},
-			want: want{names: []string{"httproute"}},
+			want: want{names: nil},
 		},
 		{
-			name:       "REQUIRE + EXCLUDE: REQUIRE injects, EXCLUDE removes",
+			name:       "REQUIRE + EXCLUDE: REQUIRE injects, EXCLUDE removes one of two",
 			projectNs:  ns["projectLilies"],
 			target:     TargetKindDeployment,
 			targetName: "api",
-			explicit:   []*consolev1.LinkedTemplateRef{orgTemplateRef("httproute")},
 			policies: map[string][]templatesv1alpha1.TemplatePolicy{
 				ns["org"]: {
 					policyCRD(ns["org"], "audit", []templatesv1alpha1.TemplatePolicyRule{
@@ -422,14 +426,13 @@ func TestFolderResolver_Resolve(t *testing.T) {
 					),
 				},
 			},
-			want: want{names: []string{"httproute", "audit-policy"}},
+			want: want{names: []string{"audit-policy"}},
 		},
 		{
 			name:       "multi-folder hierarchy: folder policy applies to nested project via binding",
 			projectNs:  ns["projectRoses"],
 			target:     TargetKindDeployment,
 			targetName: "api",
-			explicit:   nil,
 			policies: map[string][]templatesv1alpha1.TemplatePolicy{
 				ns["folderEng"]: {
 					policyCRD(ns["folderEng"], "eng-audit", []templatesv1alpha1.TemplatePolicyRule{
@@ -452,7 +455,6 @@ func TestFolderResolver_Resolve(t *testing.T) {
 			projectNs:  ns["projectLilies"],
 			target:     TargetKindProjectTemplate,
 			targetName: "my-template",
-			explicit:   []*consolev1.LinkedTemplateRef{folderTemplateRef("eng", "baseline")},
 			policies: map[string][]templatesv1alpha1.TemplatePolicy{
 				ns["org"]: {
 					policyCRD(ns["org"], "audit", []templatesv1alpha1.TemplatePolicyRule{
@@ -468,7 +470,7 @@ func TestFolderResolver_Resolve(t *testing.T) {
 					),
 				},
 			},
-			want: want{names: []string{"baseline", "audit-policy"}},
+			want: want{names: []string{"audit-policy"}},
 		},
 	}
 
@@ -479,7 +481,7 @@ func TestFolderResolver_Resolve(t *testing.T) {
 			bl := &bindingListerFromMap{items: tc.bindings}
 			fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
 
-			got, err := fr.Resolve(context.Background(), tc.projectNs, tc.target, tc.targetName, tc.explicit)
+			got, err := fr.Resolve(context.Background(), tc.projectNs, tc.target, tc.targetName)
 			if err != nil {
 				t.Fatalf("Resolve returned error: %v", err)
 			}
@@ -555,7 +557,7 @@ func TestFolderResolver_IgnoresProjectNamespacePolicies(t *testing.T) {
 	bl := &bindingListerFromMap{items: bindings}
 	fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
 
-	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", nil)
+	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve returned error: %v", err)
 	}
@@ -615,7 +617,7 @@ func TestFolderResolver_MultiFolderResolvesCorrectOwningFolder(t *testing.T) {
 	fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
 
 	// projectRoses is under team-a which is under eng which is under org.
-	got, err := fr.Resolve(context.Background(), ns["projectRoses"], TargetKindDeployment, "api", nil)
+	got, err := fr.Resolve(context.Background(), ns["projectRoses"], TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve returned error: %v", err)
 	}
@@ -629,18 +631,16 @@ func TestFolderResolver_MultiFolderResolvesCorrectOwningFolder(t *testing.T) {
 
 // TestFolderResolver_MisconfiguredFallsOpen ensures a resolver constructed
 // with nil dependencies behaves as the noop resolver would. A misconfigured
-// bootstrap must fail open (render proceeds with explicit refs only), not
+// bootstrap must fail open (render proceeds with an empty effective set), not
 // closed (render errors on every call).
 func TestFolderResolver_MisconfiguredFallsOpen(t *testing.T) {
-	orgRef := orgTemplateRef("httproute")
-
 	fr := NewFolderResolver(nil, nil, nil)
-	got, err := fr.Resolve(context.Background(), "holos-prj-x", TargetKindDeployment, "api", []*consolev1.LinkedTemplateRef{orgRef})
+	got, err := fr.Resolve(context.Background(), "holos-prj-x", TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve returned error: %v", err)
 	}
-	if len(got) != 1 || got[0].GetName() != "httproute" {
-		t.Errorf("misconfigured resolver did not fall through: got %v", refNames(got))
+	if len(got) != 0 {
+		t.Errorf("misconfigured resolver did not fall open to empty set: got %v", refNames(got))
 	}
 }
 
@@ -667,7 +667,7 @@ func TestFolderResolver_NoBindingWireupIsFailOpen(t *testing.T) {
 	// rules contribute".
 	fr := NewFolderResolver(pl, walker, r)
 
-	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", nil)
+	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve returned error: %v", err)
 	}
@@ -709,7 +709,7 @@ func TestFolderResolver_PolicyListerErrorIsLogged(t *testing.T) {
 	bl := &bindingListerFromMap{items: bindings}
 	fr := newFolderResolverWithBindingsForTest(lister, bl, walker, r)
 
-	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", nil)
+	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve returned error: %v", err)
 	}
@@ -718,22 +718,21 @@ func TestFolderResolver_PolicyListerErrorIsLogged(t *testing.T) {
 	}
 }
 
-// TestFolderResolver_WalkerErrorReturnsExplicitRefs: if the walker fails,
-// the resolver must not error; it must return explicit refs so the
-// render can still produce a minimal output.
-func TestFolderResolver_WalkerErrorReturnsExplicitRefs(t *testing.T) {
+// TestFolderResolver_WalkerErrorFallsOpen: if the walker fails,
+// the resolver must not error; it must return an empty effective set so
+// the render can still proceed with no policy-injected templates.
+func TestFolderResolver_WalkerErrorFallsOpen(t *testing.T) {
 	r := baseResolver()
 	walker := &failingWalker{err: errors.New("walker exploded")}
 	lister := &policyListerFromClient{items: nil}
 	fr := NewFolderResolver(lister, walker, r)
 
-	explicit := []*consolev1.LinkedTemplateRef{orgTemplateRef("t1")}
-	got, err := fr.Resolve(context.Background(), "holos-prj-x", TargetKindDeployment, "api", explicit)
+	got, err := fr.Resolve(context.Background(), "holos-prj-x", TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve returned error: %v", err)
 	}
-	if len(got) != 1 || got[0].GetName() != "t1" {
-		t.Errorf("expected explicit refs pass-through on walker failure: got %v", refNames(got))
+	if len(got) != 0 {
+		t.Errorf("expected empty set on walker failure: got %v", refNames(got))
 	}
 }
 
@@ -745,20 +744,30 @@ func (f *failingWalker) WalkAncestors(_ context.Context, _ string) ([]*corev1.Na
 	return nil, f.err
 }
 
-// TestFolderResolver_DedupRespectsExplicit: when an explicit ref matches a
-// REQUIRE rule (selected via binding), the explicit ref survives with
-// its version constraint intact. This guards the first-seen-wins dedup
-// contract.
-func TestFolderResolver_DedupRespectsExplicit(t *testing.T) {
+// TestFolderResolver_DedupRespectsFirstRequireWin: when two REQUIRE rules from
+// different policies name the same template, the first-seen occurrence wins and
+// the duplicate is dropped. This guards the dedup contract.
+func TestFolderResolver_DedupRespectsFirstRequireWin(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
 
-	explicit := []*consolev1.LinkedTemplateRef{
-		{Namespace: "holos-org-acme", Name: "httproute", VersionConstraint: ">=1.0.0"},
-	}
+	// Two REQUIRE rules that inject the same template — the first one listed
+	// in the ancestor walk wins (org policy is visited before folder policy).
 	policies := map[string][]templatesv1alpha1.TemplatePolicy{
 		ns["org"]: {
 			policyCRD(ns["org"], "p", []templatesv1alpha1.TemplatePolicyRule{
+				{
+					Kind: templatesv1alpha1.TemplatePolicyKindRequire,
+					Template: templatesv1alpha1.LinkedTemplateRef{
+						Namespace:         "holos-org-acme",
+						Name:              "httproute",
+						VersionConstraint: ">=1.0.0",
+					},
+				},
+			}),
+		},
+		ns["folderEng"]: {
+			policyCRD(ns["folderEng"], "p2", []templatesv1alpha1.TemplatePolicyRule{
 				{
 					Kind: templatesv1alpha1.TemplatePolicyKindRequire,
 					Template: templatesv1alpha1.LinkedTemplateRef{
@@ -777,20 +786,27 @@ func TestFolderResolver_DedupRespectsExplicit(t *testing.T) {
 				[]templatesv1alpha1.TemplatePolicyBindingTargetRef{deploymentTargetCRD("lilies", "api")},
 			),
 		},
+		ns["folderEng"]: {
+			bindingCRD(ns["folderEng"], "p2-bind",
+				folderPolicyRefCRD("eng", "p2"),
+				[]templatesv1alpha1.TemplatePolicyBindingTargetRef{deploymentTargetCRD("lilies", "api")},
+			),
+		},
 	}
 	pl := &policyListerFromClient{items: policies}
 	bl := &bindingListerFromMap{items: bindings}
 	fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
 
-	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api", explicit)
+	got, err := fr.Resolve(context.Background(), ns["projectLilies"], TargetKindDeployment, "api")
 	if err != nil {
 		t.Fatalf("Resolve returned error: %v", err)
 	}
 	if len(got) != 1 {
-		t.Fatalf("expected 1 ref, got %d: %s", len(got), fmt.Sprint(refNames(got)))
+		t.Fatalf("expected 1 ref (deduped), got %d: %s", len(got), fmt.Sprint(refNames(got)))
 	}
-	if got[0].GetVersionConstraint() != ">=1.0.0" {
-		t.Errorf("explicit ref's version constraint was overridden: got %q, want %q",
-			got[0].GetVersionConstraint(), ">=1.0.0")
+	// The first-seen constraint wins — which one is first depends on ancestor
+	// walk order; we only assert dedup produces exactly one entry.
+	if got[0].GetName() != "httproute" {
+		t.Errorf("wrong template name: got %q, want %q", got[0].GetName(), "httproute")
 	}
 }

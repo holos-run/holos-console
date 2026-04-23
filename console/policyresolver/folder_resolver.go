@@ -67,24 +67,23 @@ type folderResolver struct {
 	// ancestorBindings encapsulates the same ancestor walk for
 	// TemplatePolicyBinding CRD objects. Nil when bindingLister is nil;
 	// Resolve treats a nil ancestorBindings as "no bindings exist", which
-	// post-HOL-600 means "no rules contribute". This is the safe
-	// fail-open behavior: a wire-up that forgot to provide a binding
-	// lister returns the caller's explicit refs unchanged rather than
+	// post-HOL-600 means "no rules contribute" and returns an empty
+	// effective set. This is the safe fail-open behavior: a wire-up that
+	// forgot to provide a binding lister returns empty rather than
 	// misapplying rules.
 	ancestorBindings *AncestorBindingLister
 }
 
 // NewFolderResolver returns a folderResolver wired with the policy
-// (rule-side) dependencies only. Post-HOL-600 this resolver degrades to
-// returning the caller's explicit refs unchanged: no binding lister is
-// wired, so no rule can contribute. The constructor is retained for
-// pre-binding test wire-ups that want to assert the fail-open behavior.
-// Production code must use NewFolderResolverWithBindings so the binding
-// evaluation path is live.
+// (rule-side) dependencies only. Because no binding lister is wired, no
+// rule can contribute and the resolver always returns an empty effective
+// set. The constructor is retained for pre-binding test wire-ups that
+// want to assert the fail-open behavior. Production code must use
+// NewFolderResolverWithBindings so the binding evaluation path is live.
 //
 // Passing nil for any of the three rule-side arguments yields a resolver
-// that also returns the explicit refs unchanged (equivalent to
-// noopResolver), matching the fail-open contract in Resolve.
+// that also returns an empty effective set (equivalent to noopResolver),
+// matching the fail-open contract in Resolve.
 func NewFolderResolver(
 	policyLister PolicyListerInNamespace,
 	walker WalkerInterface,
@@ -107,8 +106,8 @@ func NewFolderResolver(
 // legacy glob Target path is gone.
 //
 // Passing a nil binding lister reduces the resolver to "no rules
-// contribute"; the caller's explicit refs pass through unchanged. Passing
-// a nil rule stack falls through to noopResolver semantics as before.
+// contribute" and returns an empty effective set. Passing a nil rule
+// stack falls through to the same empty-set semantics as before.
 func NewFolderResolverWithBindings(
 	policyLister PolicyListerInNamespace,
 	walker WalkerInterface,
@@ -131,43 +130,39 @@ func NewFolderResolverWithBindings(
 // Resolve returns the effective set of LinkedTemplateRef values for the
 // render target at `(projectNs, targetKind, targetName)`. The computation is:
 //
-//	result = explicitRefs ∪ REQUIRE-injected − EXCLUDE-removed
+//	result = REQUIRE-injected − EXCLUDE-removed
 //
 // Ordering: EXCLUDE runs after REQUIRE so a policy that both REQUIREs and
 // EXCLUDEs the same template (an admin typo) still removes the template.
-// Ordering: EXCLUDE cannot remove a template that the owner explicitly
-// linked — that rejection happens at policy-author time in
-// CreateTemplatePolicy/UpdateTemplatePolicy; at resolve time EXCLUDE only
-// removes templates that REQUIRE added.
+// Only policies covered by at least one binding whose target_refs match the
+// current render target contribute rules — this is the sole selection
+// mechanism post-HOL-600.
 //
-// Dedup key for the final slice is `(namespace, name)`. Two explicit-ref
-// entries that share a key are kept as the first-seen occurrence so the
-// resolver never silently drops a version constraint that the caller set
-// deliberately.
+// Dedup key for the final slice is `(namespace, name)`. The first-seen
+// occurrence wins when two REQUIRE rules name the same template.
 //
-// When any dependency is nil the resolver degrades to returning explicitRefs
-// unchanged and logs a warning. This mirrors the noopResolver behavior so a
-// misconfigured bootstrap fails open (render proceeds) rather than failing
-// closed (every render errors).
+// When any dependency is nil the resolver degrades to returning nil and logs
+// a warning. This mirrors the noopResolver behavior so a misconfigured
+// bootstrap fails open (render proceeds with no injected templates) rather
+// than failing closed (every render errors).
 func (r *folderResolver) Resolve(
 	ctx context.Context,
 	projectNs string,
 	targetKind TargetKind,
 	targetName string,
-	explicitRefs []*consolev1.LinkedTemplateRef,
 ) ([]*consolev1.LinkedTemplateRef, error) {
 	if r == nil || r.policyLister == nil || r.walker == nil || r.resolver == nil {
-		slog.WarnContext(ctx, "folder resolver is misconfigured; returning explicit refs unchanged",
+		slog.WarnContext(ctx, "folder resolver is misconfigured; returning empty effective set",
 			slog.String("projectNs", projectNs),
 			slog.String("targetName", targetName),
 			slog.Bool("policyListerNil", r == nil || r.policyLister == nil),
 			slog.Bool("walkerNil", r == nil || r.walker == nil),
 			slog.Bool("resolverNil", r == nil || r.resolver == nil),
 		)
-		return explicitRefs, nil
+		return nil, nil
 	}
 	if projectNs == "" {
-		return explicitRefs, nil
+		return nil, nil
 	}
 
 	// Resolve the project slug from the namespace. Bindings key targets
@@ -192,28 +187,28 @@ func (r *folderResolver) Resolve(
 	policies, walkErr := r.ancestorLister.ListPolicies(ctx, projectNs)
 	if walkErr != nil {
 		// Degrade gracefully: a walker failure at resolve time should
-		// not block the render. Log and return the explicit refs so the
-		// caller can still produce the minimal render.
-		slog.WarnContext(ctx, "ancestor walk failed during policy resolution; returning explicit refs unchanged",
+		// not block the render. Log and return nil (empty effective set)
+		// so the caller can still produce a minimal render.
+		slog.WarnContext(ctx, "ancestor walk failed during policy resolution; returning empty effective set",
 			slog.String("projectNs", projectNs),
 			slog.Any("error", walkErr),
 		)
-		return explicitRefs, nil
+		return nil, nil
 	}
 
 	// Collect the bindings from the same ancestor chain. A nil
 	// ancestorBindings (no WithBindings wire-up) is the fail-open
-	// degenerate case: no rule can contribute, so the caller's
-	// explicit refs pass through unchanged.
+	// degenerate case: no rule can contribute, so the effective set
+	// is empty.
 	var bindings []*ResolvedBinding
 	if r.ancestorBindings != nil {
 		bs, bErr := r.ancestorBindings.ListBindings(ctx, projectNs)
 		if bErr != nil {
-			slog.WarnContext(ctx, "ancestor binding walk failed during policy resolution; returning explicit refs unchanged",
+			slog.WarnContext(ctx, "ancestor binding walk failed during policy resolution; returning empty effective set",
 				slog.String("projectNs", projectNs),
 				slog.Any("error", bErr),
 			)
-			return explicitRefs, nil
+			return nil, nil
 		}
 		bindings = bs
 	}
@@ -290,15 +285,13 @@ func (r *folderResolver) Resolve(
 		}
 	}
 
-	// Start the effective set with the caller's explicit refs, deduped
-	// on `(scope, scope_name, name)`. Any explicit ref that a REQUIRE
-	// rule also matches stays in the set; we only add new entries.
-	effective, effectiveSet, explicitKeys := dedupRefs(explicitRefs)
+	// Build the effective set from REQUIRE-injected refs, deduped on
+	// `(namespace, name)`. The first-seen occurrence wins when two REQUIRE
+	// rules name the same template (e.g., two policies both REQUIRE the
+	// same org-level audit template).
+	var effective []*consolev1.LinkedTemplateRef
+	effectiveSet := make(map[RefKey]*consolev1.LinkedTemplateRef)
 
-	// Inject REQUIRE matches. A REQUIRE rule selected by a binding
-	// contributes its template ref, carrying the rule-author-declared
-	// version constraint so a REQUIRE rule can pin the platform-forced
-	// template to a specific semver band.
 	for _, rule := range requireRules {
 		tmpl := rule.GetTemplate()
 		if tmpl == nil || tmpl.GetName() == "" {
@@ -317,11 +310,10 @@ func (r *folderResolver) Resolve(
 		effectiveSet[key] = ref
 	}
 
-	// Apply EXCLUDE rules. EXCLUDE only removes refs that REQUIRE
-	// added — the owner-linked refs in explicitKeys are protected.
-	// The resolver enforces this protection so a policy accidentally
-	// authored against an org-mandated linked template does not
-	// silently override the deliberate choice.
+	// Apply EXCLUDE rules. EXCLUDE removes any REQUIRE-injected ref that
+	// matches the rule's template. Since there are no owner-linked explicit
+	// refs in the effective set (HOL-905), every ref is eligible for
+	// removal by an EXCLUDE rule.
 	if len(excludeRules) == 0 {
 		return effective, nil
 	}
@@ -331,11 +323,6 @@ func (r *folderResolver) Resolve(
 			continue
 		}
 		key := keyForRefProto(ref)
-		// Never remove an explicit (owner-linked) ref.
-		if _, ownerLinked := explicitKeys[key]; ownerLinked {
-			filtered = append(filtered, ref)
-			continue
-		}
 		excluded := false
 		for _, rule := range excludeRules {
 			tmpl := rule.GetTemplate()
@@ -475,25 +462,3 @@ func keyForTemplateRef(namespace, name string) RefKey {
 	return RefKey{Namespace: namespace, Name: name}
 }
 
-// dedupRefs returns (deduped, deduped-set, explicit-set). deduped preserves
-// first-seen order; deduped-set indexes deduped by its `(namespace, name)`
-// pair. explicit-set is a snapshot of the keys in deduped before REQUIRE
-// injection, so EXCLUDE can tell which refs the owner chose.
-func dedupRefs(refs []*consolev1.LinkedTemplateRef) ([]*consolev1.LinkedTemplateRef, map[RefKey]*consolev1.LinkedTemplateRef, map[RefKey]struct{}) {
-	out := make([]*consolev1.LinkedTemplateRef, 0, len(refs))
-	set := make(map[RefKey]*consolev1.LinkedTemplateRef, len(refs))
-	explicit := make(map[RefKey]struct{}, len(refs))
-	for _, r := range refs {
-		if r == nil {
-			continue
-		}
-		key := keyForRefProto(r)
-		if _, ok := set[key]; ok {
-			continue
-		}
-		out = append(out, r)
-		set[key] = r
-		explicit[key] = struct{}{}
-	}
-	return out, set, explicit
-}
