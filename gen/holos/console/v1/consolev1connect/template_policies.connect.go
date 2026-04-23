@@ -73,20 +73,15 @@ type TemplatePolicyServiceClient interface {
 	// DeleteTemplatePolicy deletes a policy.
 	// Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the owning resource.
 	DeleteTemplatePolicy(context.Context, *connect.Request[v1.DeleteTemplatePolicyRequest]) (*connect.Response[v1.DeleteTemplatePolicyResponse], error)
-	// ListLinkableTemplatePolicies returns all TemplatePolicies reachable from
-	// the given scope — the scope itself plus every ancestor namespace up to
-	// the org root — ordered child→parent so the UI can render the closest
-	// scope first. This mirrors ListLinkableTemplates (TemplateService) and
-	// provides the backend capability for folder-scoped TemplatePolicyBindings
-	// to select org-scoped or parent-folder-scoped policies (HOL-834).
+	// ListLinkableTemplatePolicies returns every TemplatePolicy in the given
+	// namespace, ordered alphabetically by name. The caller must hold
+	// PERMISSION_TEMPLATE_POLICIES_LIST on the namespace; callers without that
+	// permission receive a standard PermissionDenied error.
 	//
-	// RBAC is enforced per-scope: if the caller lacks
-	// PERMISSION_TEMPLATE_POLICIES_LIST for an ancestor namespace, policies
-	// from that namespace are omitted silently. Reachable namespaces the
-	// caller can read still return their policies.
-	//
-	// The existing ListTemplatePolicies RPC is unchanged — it returns
-	// single-scope listings for admin views. This RPC is additive.
+	// This RPC is semantically identical to ListTemplatePolicies and is
+	// provided as a stable alias for the TemplatePolicyBinding picker UI.
+	// The frontend consumer update to switch to ListTemplatePolicies is
+	// tracked in HOL-912 Phase 6.
 	ListLinkableTemplatePolicies(context.Context, *connect.Request[v1.ListLinkableTemplatePoliciesRequest]) (*connect.Response[v1.ListLinkableTemplatePoliciesResponse], error)
 }
 
@@ -202,20 +197,15 @@ type TemplatePolicyServiceHandler interface {
 	// DeleteTemplatePolicy deletes a policy.
 	// Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the owning resource.
 	DeleteTemplatePolicy(context.Context, *connect.Request[v1.DeleteTemplatePolicyRequest]) (*connect.Response[v1.DeleteTemplatePolicyResponse], error)
-	// ListLinkableTemplatePolicies returns all TemplatePolicies reachable from
-	// the given scope — the scope itself plus every ancestor namespace up to
-	// the org root — ordered child→parent so the UI can render the closest
-	// scope first. This mirrors ListLinkableTemplates (TemplateService) and
-	// provides the backend capability for folder-scoped TemplatePolicyBindings
-	// to select org-scoped or parent-folder-scoped policies (HOL-834).
+	// ListLinkableTemplatePolicies returns every TemplatePolicy in the given
+	// namespace, ordered alphabetically by name. The caller must hold
+	// PERMISSION_TEMPLATE_POLICIES_LIST on the namespace; callers without that
+	// permission receive a standard PermissionDenied error.
 	//
-	// RBAC is enforced per-scope: if the caller lacks
-	// PERMISSION_TEMPLATE_POLICIES_LIST for an ancestor namespace, policies
-	// from that namespace are omitted silently. Reachable namespaces the
-	// caller can read still return their policies.
-	//
-	// The existing ListTemplatePolicies RPC is unchanged — it returns
-	// single-scope listings for admin views. This RPC is additive.
+	// This RPC is semantically identical to ListTemplatePolicies and is
+	// provided as a stable alias for the TemplatePolicyBinding picker UI.
+	// The frontend consumer update to switch to ListTemplatePolicies is
+	// tracked in HOL-912 Phase 6.
 	ListLinkableTemplatePolicies(context.Context, *connect.Request[v1.ListLinkableTemplatePoliciesRequest]) (*connect.Response[v1.ListLinkableTemplatePoliciesResponse], error)
 }
 

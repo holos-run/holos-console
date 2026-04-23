@@ -43,9 +43,9 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sort"
 
 	"connectrpc.com/connect"
-	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -124,14 +124,6 @@ type TemplateExistsResolver interface {
 	TemplateExists(ctx context.Context, namespace, name string) (bool, error)
 }
 
-// AncestorWalker walks the namespace hierarchy to collect ancestor namespaces.
-// Used by ListLinkableTemplatePolicies to traverse the org/folder chain. The
-// interface mirrors the one in console/templates so the same resolver.CachedWalker
-// can be injected into both handlers.
-type AncestorWalker interface {
-	WalkAncestors(ctx context.Context, startNs string) ([]*corev1.Namespace, error)
-}
-
 // Handler implements the TemplatePolicyService.
 type Handler struct {
 	consolev1connect.UnimplementedTemplatePolicyServiceHandler
@@ -140,7 +132,6 @@ type Handler struct {
 	orgGrantResolver    OrgGrantResolver
 	folderGrantResolver FolderGrantResolver
 	templateResolver    TemplateExistsResolver
-	walker              AncestorWalker
 }
 
 // NewHandler creates a TemplatePolicyService handler.
@@ -164,14 +155,6 @@ func (h *Handler) WithFolderGrantResolver(fgr FolderGrantResolver) *Handler {
 // used when validating a policy's rules.
 func (h *Handler) WithTemplateExistsResolver(ter TemplateExistsResolver) *Handler {
 	h.templateResolver = ter
-	return h
-}
-
-// WithAncestorWalker configures the handler with an AncestorWalker for
-// ListLinkableTemplatePolicies. Without a walker the RPC returns an empty
-// result (mirrors the templates handler behavior from HOL-834).
-func (h *Handler) WithAncestorWalker(w AncestorWalker) *Handler {
-	h.walker = w
 	return h
 }
 
@@ -450,15 +433,15 @@ func (h *Handler) DeleteTemplatePolicy(
 	return connect.NewResponse(&consolev1.DeleteTemplatePolicyResponse{}), nil
 }
 
-// ListLinkableTemplatePolicies returns all TemplatePolicies reachable from the
-// given scope — the scope itself plus every ancestor namespace up to the org
-// root — ordered child→parent. This mirrors ListLinkableTemplates in
-// console/templates/handler.go (HOL-834).
+// ListLinkableTemplatePolicies returns every TemplatePolicy in the given
+// namespace, ordered alphabetically by name (HOL-912). The caller must hold
+// PERMISSION_TEMPLATE_POLICIES_LIST on the namespace; callers without that
+// permission receive a PermissionDenied error.
 //
-// RBAC is enforced per-scope: if the caller lacks
-// PERMISSION_TEMPLATE_POLICIES_LIST for an ancestor namespace, policies from
-// that namespace are omitted silently. Reachable namespaces the caller can
-// read still return their policies.
+// This RPC is semantically equivalent to ListTemplatePolicies and is provided
+// as a stable alias for the TemplatePolicyBinding picker UI. The ancestor-walk
+// / per-scope RBAC logic introduced in HOL-834 has been removed; the RPC
+// now accepts only a namespace and returns the TemplatePolicies stored there.
 func (h *Handler) ListLinkableTemplatePolicies(
 	ctx context.Context,
 	req *connect.Request[consolev1.ListLinkableTemplatePoliciesRequest],
@@ -473,89 +456,44 @@ func (h *Handler) ListLinkableTemplatePolicies(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	// Validate that the starting namespace is an org or folder scope. Project
-	// namespaces are not valid starting points for policy ancestry walks —
-	// policies are stored only at org/folder, so walking from a project scope
-	// would always yield zero results and is likely a client bug.
 	scope, scopeName, err := h.extractPolicyScope(namespace)
 	if err != nil {
 		return nil, err
 	}
 
-	// Require at least LIST permission on the starting scope before walking
-	// ancestors. Individual ancestor namespaces use silent-skip semantics (see
-	// loop below) but the starting scope must be accessible so we don't reveal
-	// the existence of the ancestor chain to unauthorized callers.
 	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesList); err != nil {
 		return nil, err
 	}
 
-	if h.walker == nil {
-		return connect.NewResponse(&consolev1.ListLinkableTemplatePoliciesResponse{}), nil
+	items, err := h.k8s.ListPolicies(ctx, namespace)
+	if err != nil {
+		return nil, mapK8sError(err)
 	}
 
-	// Walk the ancestor chain starting at the given namespace. WalkAncestors
-	// returns [startNs, parent, grandparent, ...org] ordered child→parent so
-	// the result slice is already in the right presentation order.
-	ancestors, walkErr := h.walker.WalkAncestors(ctx, namespace)
-	if walkErr != nil {
-		slog.WarnContext(ctx, "failed to walk ancestors for linkable template policies",
-			slog.String("namespace", namespace),
-			slog.Any("error", walkErr),
-		)
-		return connect.NewResponse(&consolev1.ListLinkableTemplatePoliciesResponse{}), nil
+	policies := make([]*consolev1.LinkableTemplatePolicy, 0, len(items))
+	for i := range items {
+		policies = append(policies, &consolev1.LinkableTemplatePolicy{
+			Policy: templatePolicyCRDToProto(&items[i]),
+		})
 	}
-
-	includeSelfScope := req.Msg.GetIncludeSelfScope()
-
-	var result []*consolev1.LinkableTemplatePolicy
-	for i, ns := range ancestors {
-		if i == 0 && !includeSelfScope {
-			continue // skip the starting scope unless explicitly requested
-		}
-		// Classify the namespace so we can route the per-scope RBAC check.
-		entryScope, entryName := classifyNamespace(h.resolver, ns.Name)
-		if entryScope == scopeKindUnspecified || entryScope == scopeKindProject {
-			continue
-		}
-
-		// Per-scope RBAC: silently skip namespaces the caller cannot list.
-		if err := h.checkAccess(ctx, claims, entryScope, entryName, rbac.PermissionTemplatePoliciesList); err != nil {
-			slog.InfoContext(ctx, "skipping ancestor namespace: caller lacks list permission",
-				slog.String("namespace", ns.Name),
-				slog.String("scope", entryScope.String()),
-				slog.String("scopeName", entryName),
-			)
-			continue
-		}
-
-		items, listErr := h.k8s.ListPolicies(ctx, ns.Name)
-		if listErr != nil {
-			slog.WarnContext(ctx, "failed to list policies from ancestor namespace",
-				slog.String("namespace", ns.Name),
-				slog.Any("error", listErr),
-			)
-			continue
-		}
-		for i := range items {
-			result = append(result, &consolev1.LinkableTemplatePolicy{
-				Policy: templatePolicyCRDToProto(&items[i]),
-			})
-		}
-	}
+	// Stable alphabetical ordering by name satisfies the AC and makes the
+	// response deterministic regardless of Kubernetes list ordering.
+	sort.Slice(policies, func(i, j int) bool {
+		return policies[i].GetPolicy().GetName() < policies[j].GetPolicy().GetName()
+	})
 
 	slog.InfoContext(ctx, "linkable template policies listed",
 		slog.String("action", "linkable_template_policies_list"),
 		slog.String("namespace", namespace),
 		slog.String("scope", scope.String()),
 		slog.String("scopeName", scopeName),
-		slog.Bool("include_self_scope", includeSelfScope),
 		slog.String("sub", claims.Sub),
-		slog.Int("count", len(result)),
+		slog.String("email", claims.Email),
+		slog.Int("count", len(policies)),
 	)
 
 	return connect.NewResponse(&consolev1.ListLinkableTemplatePoliciesResponse{
-		Policies: result,
+		Policies: policies,
 	}), nil
 }
 
