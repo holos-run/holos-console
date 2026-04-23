@@ -63,7 +63,7 @@ in a sibling cleanup plan.
 
 ## Example Template Registry
 
-The UI picker on every "New Template" page is backed by a Go registry of built-in CUE drop-in examples. Adding a new example requires **only a single CUE file** — no Go or TypeScript changes.
+The UI picker on every "New Template" page is backed by a Go registry of built-in CUE drop-in examples.
 
 ### Adding a new example (drop-in workflow)
 
@@ -83,9 +83,21 @@ The UI picker on every "New Template" page is backed by a Go registry of built-i
      """
    ```
 
-2. Run `make test-go` to confirm the new example compiles against the `v1alpha2` generated schema. The test in `examples_test.go` verifies every registry file.
+2. Update two test files:
 
-3. That is all. The ConnectRPC `ListTemplateExamples` handler reads the registry at startup; the picker fetches from that RPC. No Go or TypeScript changes are required unless you also want to seed the example into a namespace via the populate-defaults flow.
+   In `console/templates/examples/examples_test.go`:
+   - Increment the `TestExamples` count by 1.
+   - Add the new example's `name` to the `wantNames` slice.
+   - If the template produces concrete Kubernetes resources (i.e. it is not a policy-only template), add the name to the `exampleResourcesEmitted` switch so `TestExamplePreviewRender` asserts non-empty output.
+   - Optionally add a sub-test in `TestExamplePreviewRender_KnownExamples` asserting specific resource kinds and apiVersions for regression coverage (recommended for deployment templates).
+
+   In `console/templates/handler_examples_test.go`:
+   - Increment the `wantCount` constant by 1 in `TestListTemplateExamples_HappyPath`.
+   - Add the new example's `name` to the `wantNames` slice in `TestListTemplateExamples_KnownNames`.
+
+3. Run `make test-go` to confirm the new example compiles against the `v1alpha2` generated schema and renders correctly through the preview path.
+
+The ConnectRPC `ListTemplateExamples` handler reads the registry at startup; the picker fetches from that RPC. No TypeScript changes are required.
 
 ### Docs-sync contract
 

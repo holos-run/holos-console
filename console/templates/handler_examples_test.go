@@ -1,7 +1,7 @@
 // handler_examples_test.go exercises the ListTemplateExamples RPC introduced
 // in HOL-797. The acceptance criteria are:
 //
-//   - The happy path returns exactly four examples (one per embedded *.cue file).
+//   - The happy path returns exactly six examples (one per embedded *.cue file).
 //   - Results are sorted by name ascending so the UI can rely on a stable order.
 //   - Each entry has non-empty DisplayName, Description, and CueTemplate.
 package templates
@@ -33,7 +33,7 @@ func newExamplesTestHandler(t *testing.T) *Handler {
 }
 
 // TestListTemplateExamples_HappyPath verifies that ListTemplateExamples returns
-// exactly four examples (matching the four *.cue files embedded in the examples
+// exactly six examples (matching the six *.cue files embedded in the examples
 // package), each with non-empty fields, and sorted by name ascending.
 func TestListTemplateExamples_HappyPath(t *testing.T) {
 	handler := newExamplesTestHandler(t)
@@ -46,7 +46,7 @@ func TestListTemplateExamples_HappyPath(t *testing.T) {
 	}
 
 	got := resp.Msg.GetExamples()
-	const wantCount = 4
+	const wantCount = 6
 	if len(got) != wantCount {
 		t.Fatalf("ListTemplateExamples() returned %d examples, want %d", len(got), wantCount)
 	}
@@ -91,7 +91,7 @@ func TestListTemplateExamples_SortedByName(t *testing.T) {
 	}
 }
 
-// TestListTemplateExamples_KnownNames verifies the four expected built-in
+// TestListTemplateExamples_KnownNames verifies the six expected built-in
 // example slugs are present, anchoring the test to the actual embedded files.
 func TestListTemplateExamples_KnownNames(t *testing.T) {
 	handler := newExamplesTestHandler(t)
@@ -110,7 +110,9 @@ func TestListTemplateExamples_KnownNames(t *testing.T) {
 
 	wantNames := []string{
 		"allowed-project-resource-kinds-v1",
+		"httpbin-v1",
 		"httproute-v1",
+		"podinfo-v1",
 		"project-namespace-description-annotation-v1",
 		"project-namespace-reference-grant-v1",
 	}
