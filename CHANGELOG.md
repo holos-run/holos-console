@@ -4,6 +4,43 @@ All notable changes to holos-console are documented here.
 
 ## [Unreleased]
 
+### Chore — Remove stale lineage, scope, and Resource Manager references (HOL-910 / HOL-919)
+
+The HOL-910 series (HOL-912 through HOL-919) removed the legacy Resource
+Manager tree view, All-Scopes selector, lineage filter, and related
+infrastructure. This final cleanup pass (HOL-919) removed the remaining
+doc/comment references:
+
+- **`docs/ui/resource-grid-v1.md`**: Removed the stale lineage-filter entry
+  from the "What ResourceGrid v1 does" list; removed `lineage` and `recursive`
+  fields from the `ResourceGridSearch` interface example; removed the stale
+  "Resource Manager tree" comparison table row; removed the reference to the
+  deleted `resource-manager/` component directory.
+- **`docs/ui/resource-routing.md`**: Updated the worked example to use
+  `/projects` as the default `returnTo` fallback instead of the deleted
+  `/resource-manager` route.
+- **`docs/testing.md`**: Removed two catalog entries for test files that were
+  deleted with the Resource Manager component
+  (`resource-manager/-resource-tree.test.tsx` and
+  `resource-manager/-index.test.tsx`); updated the ResourceGrid v1 test-catalog
+  entry to remove the mention of the removed lineage filter controls.
+- **`frontend/src/routes/.../templates/index.tsx`** and its test: Updated
+  stale JSDoc comment that still referenced `lineage=descendants` and the
+  removed lineage select control.
+
+### Fixed — Remove All Scopes selector and fix BindingForm policy picker (HOL-917)
+
+- **`BindingForm`**: Removed the unused All-Scopes combobox entry; the policy
+  picker now lists policies from the current scope only, matching the
+  "no policies reachable from this scope" → "no policies exist in this org
+  yet" copy change (HOL-917).
+
+### Added — Template Bindings listing page (`/orgs/$orgName/template-bindings`) (HOL-918)
+
+- New route at `/orgs/$orgName/template-bindings` listing all
+  `TemplatePolicyBinding` objects in the org. Powered by `ResourceGrid v1`
+  with sortable Created At column (HOL-918).
+
 ### Fixed — holos-secret-injector HOL-752 review follow-ups (HOL-839)
 
 - **`holos-secret-injector` CLI now exposes `--mesh-trust-domain`**
