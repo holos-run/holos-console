@@ -22,8 +22,8 @@ func TestExamples(t *testing.T) {
 		t.Fatalf("Examples() error: %v", err)
 	}
 
-	// There must be exactly four examples.
-	if got, want := len(list), 4; got != want {
+	// There must be exactly six examples.
+	if got, want := len(list), 6; got != want {
 		t.Fatalf("Examples() returned %d examples, want %d", got, want)
 	}
 
@@ -38,6 +38,8 @@ func TestExamples(t *testing.T) {
 		"allowed-project-resource-kinds-v1",
 		"project-namespace-description-annotation-v1",
 		"project-namespace-reference-grant-v1",
+		"httpbin-v1",
+		"podinfo-v1",
 	}
 	for _, name := range wantNames {
 		ex, ok := byName[name]
@@ -127,7 +129,7 @@ func buildPreviewProjectInput() string {
 // concrete objects, so they are excluded from the non-empty output assertion.
 func exampleResourcesEmitted(name string) bool {
 	switch name {
-	case "httproute-v1":
+	case "httproute-v1", "httpbin-v1", "podinfo-v1":
 		return true
 	default:
 		// Policy-only examples produce no concrete K8s resources but must still
