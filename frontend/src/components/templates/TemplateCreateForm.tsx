@@ -33,7 +33,6 @@ import type {
 } from '@/queries/templates'
 import { LinkedTemplateRefSchema } from '@/gen/holos/console/v1/policy_state_pb.js'
 import { scopeLabelFromNamespace } from '@/lib/scope-labels'
-import { useGetOrganization } from '@/queries/organizations'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { TemplateExamplePicker } from '@/components/templates/template-example-picker'
 
@@ -53,11 +52,11 @@ export type TemplateCreateFormProps = {
   /** Namespace the new template lives in. Drives the linkable-templates query
    * for project scope. */
   namespace: string
-  /** Organization name. Required for project scope (drives preview
-   * gatewayNamespace lookup); ignored for org/folder scopes. */
+  /** Organization name. Optional; passed through to callers but no longer used
+   * to construct preview platform input (the backend injects authoritative
+   * platform context when cuePlatformInput is omitted). */
   organization?: string
-  /** Project name. Required for project scope (drives preview platform-input
-   * project/namespace); ignored for org/folder scopes. */
+  /** Project name. Required for project scope; ignored for org/folder scopes. */
   projectName?: string
   /** Whether the user may fill/submit the form. */
   canWrite: boolean
@@ -99,8 +98,8 @@ projectResources: {
  *    (HOL-789 AC 5). Enabled label carries a tooltip pointing at
  *    TemplatePolicyBinding.
  *  - project:      Deployment template. No Enabled toggle. Adds the
- *    Linked Platform Templates picker and the Preview pane, which render the
- *    CUE against mock platform input + mock project input.
+ *    Linked Platform Templates picker and the Preview pane, which renders the
+ *    CUE with project input; platform context is injected by the backend.
  */
 export function TemplateCreateForm({
   scopeType,
@@ -140,8 +139,6 @@ export function TemplateCreateForm({
 
   // Project-scope preview queries. Gated by the `enabled` flag on the render
   // hook (passing previewOpen) so the org/folder forms don't fire them.
-  const { data: org, isPending: orgPending, error: orgError } =
-    useGetOrganization(isProject ? (organization ?? '') : '')
   const { data: linkableTemplates = [], isPending: linkablePending } =
     useListLinkableTemplates(isProject ? namespace : '')
 
@@ -159,33 +156,6 @@ export function TemplateCreateForm({
       ),
     [linkableTemplates],
   )
-
-  // Mirror the org-configured gatewayNamespace (HOL-526/HOL-644) in the
-  // preview platform input so previews line up with the backend's injected
-  // value. Wait for a successful org load before picking a default — a
-  // project EDITOR who cannot read the org should not see a misleading
-  // fallback value; the preview simply omits the field and the backend
-  // fills it in.
-  const orgLoaded =
-    (organization ?? '').length > 0 && !orgPending && !orgError
-  const gatewayNamespace = orgLoaded
-    ? org?.gatewayNamespace || 'istio-ingress'
-    : ''
-  const gatewayNamespaceLine = gatewayNamespace
-    ? `\tgatewayNamespace: "${gatewayNamespace}"\n`
-    : ''
-  const previewCuePlatformInput = `platform: {
-\tproject:          "${projectName ?? ''}"
-\tnamespace:        "holos-prj-${projectName ?? ''}"
-${gatewayNamespaceLine}\tclaims: {
-\t\tiss:            "https://login.example.com"
-\t\tsub:            "user-abc123"
-\t\tiat:            1743868800
-\t\texp:            1743872400
-\t\temail:          "developer@example.com"
-\t\temail_verified: true
-\t}
-}`
 
   const previewCueInput = `input: {
 \tname:  "go-httpbin"
@@ -214,7 +184,7 @@ ${gatewayNamespaceLine}\tclaims: {
     debouncedCueTemplate,
     previewCueInput,
     isProject && previewOpen,
-    previewCuePlatformInput,
+    '',
     previewLinkedTemplates,
   )
 
