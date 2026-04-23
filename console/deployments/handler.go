@@ -246,8 +246,7 @@ func (h *Handler) WithPolicyDriftChecker(c PolicyDriftChecker) *Handler {
 // resolveAncestorTemplateSources resolves platform template CUE sources from
 // the full ancestor chain when an AncestorTemplateProvider is configured.
 // deploymentName identifies the render target so the underlying
-// PolicyResolver (HOL-566 Phase 4) can key REQUIRE/EXCLUDE evaluation off
-// it in Phase 5.
+// PolicyResolver can key REQUIRE/EXCLUDE evaluation off it.
 //
 // Returns (sources, effectiveRefs, true) on success — the effectiveRefs
 // slice carries the policy-resolved ref set that produced the sources so
@@ -256,12 +255,18 @@ func (h *Handler) WithPolicyDriftChecker(c PolicyDriftChecker) *Handler {
 // resolver invocation (HOL-569). Returns (nil, nil, false) when no
 // provider is configured or the walk fails; the caller should fall back to
 // a project-only render in that case.
-func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project, deploymentName string, linkedRefs []*consolev1.LinkedTemplateRef) ([]string, []*consolev1.LinkedTemplateRef, bool) {
+//
+// HOL-904: the legacy explicit linkedRefs parameter has been removed.
+// The provider is called with nil, so only the TemplatePolicyBinding-
+// derived effective set contributes to the render.
+func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project, deploymentName string) ([]string, []*consolev1.LinkedTemplateRef, bool) {
 	if h.ancestorTemplateProvider == nil {
 		return nil, nil, false
 	}
 	projectNs := h.k8s.Resolver.ProjectNamespace(project)
-	sources, effectiveRefs, err := h.ancestorTemplateProvider.ListAncestorTemplateSources(ctx, projectNs, deploymentName, linkedRefs)
+	// Pass nil for explicitRefs so the render pipeline derives the effective
+	// set exclusively from TemplatePolicyBinding resolution (HOL-904).
+	sources, effectiveRefs, err := h.ancestorTemplateProvider.ListAncestorTemplateSources(ctx, projectNs, deploymentName, nil)
 	if err != nil {
 		slog.WarnContext(ctx, "ancestor template resolution failed, skipping platform template unification",
 			slog.String("project", project),
@@ -277,11 +282,9 @@ func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project, d
 // templates from the full ancestor chain (org + folders) when an
 // AncestorTemplateProvider is configured.
 //
-// linkedRefs contains the explicit linking list from the deployment template
-// annotation (console.holos.run/linked-templates). Each ref carries a version
-// constraint so the provider can resolve versioned release sources (ADR 024).
-// The effective template set at render time is the union of mandatory+enabled
-// templates and the explicitly linked enabled templates (ADR 019).
+// The effective template set at render time is derived exclusively from
+// TemplatePolicyBinding resolution. The legacy explicit-link annotation is
+// no longer consulted (HOL-904).
 //
 // When no AncestorTemplateProvider is configured, falls back to a plain
 // project-level render (deployment template only, no platform template
@@ -289,12 +292,8 @@ func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project, d
 //
 // This helper flattens the grouped render result into a single list. Callers
 // that need the per-origin split should use renderResourcesGrouped.
-//
-// deploymentName is the render target name plumbed through to the
-// PolicyResolver (HOL-566 Phase 4). Phase 5 (HOL-567) keys REQUIRE/EXCLUDE
-// evaluation off it; until then it is observational.
-func (h *Handler) renderResources(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) ([]unstructured.Unstructured, error) {
-	grouped, _, err := h.renderResourcesGrouped(ctx, project, deploymentName, cueSource, platform, projectInput, linkedRefs)
+func (h *Handler) renderResources(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput) ([]unstructured.Unstructured, error) {
+	grouped, _, err := h.renderResourcesGrouped(ctx, project, deploymentName, cueSource, platform, projectInput)
 	if err != nil {
 		return nil, err
 	}
@@ -314,10 +313,6 @@ func (h *Handler) renderResources(ctx context.Context, project, deploymentName, 
 // its own platformResources still emits them. When no provider is configured
 // we fall back to a project-level render (ADR 016 Decision 8).
 //
-// deploymentName is the render target name plumbed through to the
-// PolicyResolver (HOL-566 Phase 4). Phase 5 (HOL-567) keys REQUIRE/EXCLUDE
-// evaluation off it; until then it is observational.
-//
 // The second return value is the policy-effective ref set the provider
 // reported — callers on the Create/Update write path pass it to
 // PolicyDriftChecker.RecordApplied so the applied-render-set store stays
@@ -325,11 +320,15 @@ func (h *Handler) renderResources(ctx context.Context, project, deploymentName, 
 // ignore it. It is nil when no AncestorTemplateProvider is configured or the
 // provider returned an error (the render falls back to project-only in both
 // cases, so there is no rendered set to record).
-func (h *Handler) renderResourcesGrouped(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput, linkedRefs []*consolev1.LinkedTemplateRef) (*GroupedResources, []*consolev1.LinkedTemplateRef, error) {
+//
+// HOL-904: the legacy explicit linkedRefs parameter has been removed. The
+// effective set is now derived exclusively from TemplatePolicyBinding
+// resolution; the linked-templates annotation is not consulted.
+func (h *Handler) renderResourcesGrouped(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput) (*GroupedResources, []*consolev1.LinkedTemplateRef, error) {
 	var ancestorSources []string
 	var effectiveRefs []*consolev1.LinkedTemplateRef
 	readPlatformResources := false
-	if sources, refs, ok := h.resolveAncestorTemplateSources(ctx, project, deploymentName, linkedRefs); ok {
+	if sources, refs, ok := h.resolveAncestorTemplateSources(ctx, project, deploymentName); ok {
 		ancestorSources = sources
 		effectiveRefs = refs
 		readPlatformResources = true
@@ -524,17 +523,17 @@ func (h *Handler) CreateDeployment(
 		}
 	}
 
-	// Validate that the referenced template exists and get its CUE source
-	// along with the explicit linking list (ADR 019, ADR 024).
+	// Validate that the referenced template exists and get its CUE source.
+	// The legacy explicit linking list read from the annotation is no longer
+	// consumed here (HOL-904); the render pipeline uses only the
+	// TemplatePolicyBinding-derived effective set.
 	var cueSource string
-	var linkedOrgTemplates []*consolev1.LinkedTemplateRef
 	if h.templateResolver != nil {
 		tmplCM, err := h.templateResolver.GetTemplate(ctx, project, req.Msg.Template)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("template %q not found in project %q", req.Msg.Template, project))
 		}
 		cueSource = tmplCM.Data[cueTemplateKey]
-		linkedOrgTemplates = linkedTemplateRefsFromAnnotation(tmplCM)
 	}
 
 	envInputs, err := validateEnvVars(req.Msg.Env)
@@ -573,7 +572,7 @@ func (h *Handler) CreateDeployment(
 			Env:     envInputs,
 			Port:    defaultPort(int(req.Msg.Port)),
 		}
-		grouped, effectiveRefs, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn, linkedOrgTemplates)
+		grouped, effectiveRefs, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed after creating deployment — rolling back",
 				slog.String("project", project),
@@ -740,8 +739,11 @@ func (h *Handler) UpdateDeployment(
 		image := updated.Data[ImageKey]
 		tag := updated.Data[TagKey]
 
+		// Look up the template CUE source. The legacy explicit linking list
+		// read from the annotation is no longer consumed here (HOL-904); the
+		// render pipeline uses only the TemplatePolicyBinding-derived effective
+		// set.
 		var cueSource string
-		var linkedOrgTemplatesUpdate []*consolev1.LinkedTemplateRef
 		if h.templateResolver != nil && templateName != "" {
 			tmplCM, tmplErr := h.templateResolver.GetTemplate(ctx, project, templateName)
 			if tmplErr != nil {
@@ -752,7 +754,6 @@ func (h *Handler) UpdateDeployment(
 				)
 			} else {
 				cueSource = tmplCM.Data[cueTemplateKey]
-				linkedOrgTemplatesUpdate = linkedTemplateRefsFromAnnotation(tmplCM)
 			}
 		}
 
@@ -767,7 +768,7 @@ func (h *Handler) UpdateDeployment(
 			Env:     envFromConfigMapAsV1alpha2(updated),
 			Port:    defaultPort(portFromConfigMap(updated)),
 		}
-		grouped, effectiveRefs, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn, linkedOrgTemplatesUpdate)
+		grouped, effectiveRefs, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment update",
 				slog.String("project", project),
@@ -1057,7 +1058,9 @@ func (h *Handler) GetDeploymentRenderPreview(
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("template %q not found in project %q", templateName, project))
 	}
 	cueTemplate := tmplCM.Data[cueTemplateKey]
-	linkedOrgTemplatesPreview := linkedTemplateRefsFromAnnotation(tmplCM)
+	// The legacy explicit linking list read from the annotation is no longer
+	// consumed here (HOL-904); the render pipeline uses only the
+	// TemplatePolicyBinding-derived effective set.
 
 	// Build platform input from authenticated claims and resolved namespace.
 	ns := h.k8s.Resolver.ProjectNamespace(project)
@@ -1098,7 +1101,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 		var renderErr error
 		// Preview path: discard the effective-ref set (second return) — only
 		// the write-through paths on Create/Update consume it (HOL-569).
-		grouped, _, renderErr = h.renderResourcesGrouped(ctx, project, name, cueTemplate, platformIn, projectIn, linkedOrgTemplatesPreview)
+		grouped, _, renderErr = h.renderResourcesGrouped(ctx, project, name, cueTemplate, platformIn, projectIn)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment preview",
 				slog.String("project", project),
@@ -1650,50 +1653,6 @@ func (h *Handler) buildPlatformInput(ctx context.Context, project, namespace str
 	return pi
 }
 
-// linkedTemplateRefsFromAnnotation reads the linked template refs from a
-// deployment template ConfigMap. Decodes the
-// console.holos.run/linked-templates annotation (JSON array of
-// {scope, scope_name, name, version_constraint} objects). Returns nil if the
-// annotation is absent or fails to parse.
-func linkedTemplateRefsFromAnnotation(cm *corev1.ConfigMap) []*consolev1.LinkedTemplateRef {
-	if cm == nil || cm.Annotations == nil {
-		return nil
-	}
-
-	raw, ok := cm.Annotations[v1alpha2.AnnotationLinkedTemplates]
-	if !ok || raw == "" {
-		return nil
-	}
-	// Post-HOL-723 the wire shape is {namespace, name, version_constraint}
-	// (mirrors applied_state.go storedLinkedRef). The legacy
-	// {scope, scope_name} shape was retired along with the scopeshim
-	// compatibility layer.
-	var refs []struct {
-		Namespace         string `json:"namespace"`
-		Name              string `json:"name"`
-		VersionConstraint string `json:"version_constraint,omitempty"`
-	}
-	if err := json.Unmarshal([]byte(raw), &refs); err != nil {
-		slog.Warn("failed to parse linked-templates annotation",
-			slog.String("name", cm.Name),
-			slog.String("namespace", cm.Namespace),
-			slog.Any("error", err),
-		)
-		return nil
-	}
-	result := make([]*consolev1.LinkedTemplateRef, 0, len(refs))
-	for _, ref := range refs {
-		if ref.Name == "" {
-			continue
-		}
-		result = append(result, &consolev1.LinkedTemplateRef{
-			Namespace:         ref.Namespace,
-			Name:              ref.Name,
-			VersionConstraint: ref.VersionConstraint,
-		})
-	}
-	return result
-}
 
 // stringSliceFromConfigMap decodes a JSON string slice from the given ConfigMap data key.
 func stringSliceFromConfigMap(cm *corev1.ConfigMap, key string) []string {
@@ -1753,18 +1712,18 @@ func (h *Handler) GetDeploymentPolicyState(
 		return nil, err
 	}
 
-	cm, err := h.k8s.GetDeployment(ctx, project, name)
-	if err != nil {
+	if _, err := h.k8s.GetDeployment(ctx, project, name); err != nil {
 		return nil, mapK8sError(err)
 	}
-	explicitRefs := linkedTemplateRefsFromAnnotation(cm)
 
 	if h.policyDriftChecker == nil {
 		return connect.NewResponse(&consolev1.GetDeploymentPolicyStateResponse{
 			State: &consolev1.PolicyState{},
 		}), nil
 	}
-	state, err := h.policyDriftChecker.PolicyState(ctx, project, name, explicitRefs)
+	// Pass nil for explicitRefs: policy state is now sourced exclusively from
+	// TemplatePolicyBinding resolution, not the legacy annotation (HOL-904).
+	state, err := h.policyDriftChecker.PolicyState(ctx, project, name, nil)
 	if err != nil {
 		slog.WarnContext(ctx, "policy state computation failed",
 			slog.String("project", project),

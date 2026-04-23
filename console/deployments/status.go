@@ -72,11 +72,9 @@ func (h *Handler) GetDeploymentStatusSummary(
 	// clients receive the same `output.links` and promoted primary URL
 	// the list/detail RPCs serve, keeping the three read paths
 	// observably consistent.
-	var explicitRefs []*consolev1.LinkedTemplateRef
 	if cm, cmErr := h.k8s.GetDeployment(ctx, project, name); cmErr == nil {
 		mergeOutputURLAnnotation(summary, cm)
 		mergeAggregatedLinksAnnotation(summary, cm)
-		explicitRefs = linkedTemplateRefsFromAnnotation(cm)
 	} else {
 		slog.DebugContext(ctx, "could not read deployment ConfigMap for output-url merge",
 			slog.String("project", project),
@@ -89,7 +87,10 @@ func (h *Handler) GetDeploymentStatusSummary(
 	// skip on error — drift is an advisory signal for the UI, not a
 	// first-class failure mode: an outage in the TemplatePolicy resolver
 	// MUST NOT block status reads.
-	h.applyPolicyDrift(ctx, project, name, explicitRefs, summary)
+	// Pass nil for explicitRefs: policy drift is now sourced exclusively
+	// from TemplatePolicyBinding resolution, not the legacy annotation
+	// (HOL-904).
+	h.applyPolicyDrift(ctx, project, name, nil, summary)
 
 	return connect.NewResponse(&consolev1.GetDeploymentStatusSummaryResponse{
 		Summary: summary,

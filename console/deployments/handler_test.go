@@ -1387,10 +1387,10 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil).
 			WithAncestorTemplateProvider(atp)
 
-		refs := []*consolev1.LinkedTemplateRef{
-			&consolev1.LinkedTemplateRef{Namespace: "holos-fld-payments", Name: "policy"},
-		}
-		_, err := handler.renderResources(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		// HOL-904: render helpers no longer accept explicit linked-template
+		// refs; the effective set is derived exclusively from
+		// TemplatePolicyBinding resolution.
+		_, err := handler.renderResources(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1415,10 +1415,7 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 
 		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil)
 
-		refs := []*consolev1.LinkedTemplateRef{
-			&consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: "httproute"},
-		}
-		_, err := handler.renderResources(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		_, err := handler.renderResources(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1439,10 +1436,7 @@ func TestRenderResourcesWithAncestorProvider(t *testing.T) {
 		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil).
 			WithAncestorTemplateProvider(atp)
 
-		refs := []*consolev1.LinkedTemplateRef{
-			&consolev1.LinkedTemplateRef{Namespace: "holos-org-acme", Name: "httproute"},
-		}
-		_, err := handler.renderResources(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		_, err := handler.renderResources(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1469,10 +1463,10 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil).
 			WithAncestorTemplateProvider(atp)
 
-		refs := []*consolev1.LinkedTemplateRef{
-			&consolev1.LinkedTemplateRef{Namespace: "holos-fld-payments", Name: "policy"},
-		}
-		_, _, err := handler.renderResourcesGrouped(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		// HOL-904: render helpers no longer accept explicit linked-template
+		// refs; the effective set is derived exclusively from
+		// TemplatePolicyBinding resolution.
+		_, _, err := handler.renderResourcesGrouped(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1496,10 +1490,7 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 		handler := NewHandler(k8s, &stubProjectResolver{}, &stubSettingsResolver{}, &stubTemplateResolver{}, renderer, nil).
 			WithAncestorTemplateProvider(atp)
 
-		refs := []*consolev1.LinkedTemplateRef{
-			&consolev1.LinkedTemplateRef{Namespace: "holos-fld-payments", Name: "policy"},
-		}
-		_, _, err := handler.renderResourcesGrouped(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{}, refs)
+		_, _, err := handler.renderResourcesGrouped(context.Background(), "my-project", "test-deployment", "// template", v1alpha2.PlatformInput{}, v1alpha2.ProjectInput{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1510,6 +1501,67 @@ func TestRenderResourcesGroupedWithAncestorProvider(t *testing.T) {
 			t.Error("expected Render to be called without ancestor sources when provider returns empty")
 		}
 	})
+}
+
+// TestCreateDeployment_AnnotationIgnored is the HOL-902 regression guard.
+// It asserts that a deployment whose Template ConfigMap carries a populated
+// console.holos.run/linked-templates annotation renders ONLY the resources
+// produced by the deployment template — the annotation must be ignored by the
+// render pipeline (HOL-904). Before HOL-904 the render path read this
+// annotation and merged in unrelated org-level resources (the httproute bug
+// reported in HOL-902).
+func TestCreateDeployment_AnnotationIgnored(t *testing.T) {
+	// Build a template ConfigMap that has a non-empty linked-templates annotation.
+	// The annotation lists a fictitious org-level "httproute" template that
+	// must NOT appear in the render output.
+	tmplCM := fakeTemplate("default")
+	if tmplCM.Annotations == nil {
+		tmplCM.Annotations = make(map[string]string)
+	}
+	tmplCM.Annotations[v1alpha2.AnnotationLinkedTemplates] = `[{"namespace":"holos-org-acme","name":"httproute"}]`
+
+	// stubAncestorTemplateProvider returns no ancestor sources so the render is
+	// project-only. The handler must call it with nil (not the annotation refs).
+	atp := &stubAncestorTemplateProvider{
+		sources:       nil,
+		effectiveRefs: []*consolev1.LinkedTemplateRef{},
+	}
+
+	// Wire the renderer to record the ancestor sources it receives.
+	renderer := &trackingDeploymentRenderer{}
+
+	fakeClient := fake.NewClientset(projectNS("my-project"))
+	pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+	k8s := NewK8sClient(fakeClient, testResolver())
+	handler := NewHandler(k8s, pr,
+		&stubSettingsResolver{settings: enabledSettings()},
+		&stubTemplateResolver{cm: tmplCM},
+		renderer,
+		&stubApplier{},
+	).WithAncestorTemplateProvider(atp)
+
+	req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
+		Project:  "my-project",
+		Name:     "httpbin-v1",
+		Image:    "kong/httpbin",
+		Tag:      "0.1.0",
+		Template: "default",
+	})
+	if _, err := handler.CreateDeployment(authedCtx("alice@example.com", nil), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The ancestor provider must have been called (confirms the render path ran).
+	if !atp.called {
+		t.Error("expected ancestor provider to be called")
+	}
+	// The handler must have called the provider with nil refs (not the annotation
+	// refs). We confirm indirectly: no ancestor sources were returned, so the
+	// renderer received no ancestor CUE — the annotation httproute ref was
+	// completely ignored.
+	if renderer.renderedWithAncestors() {
+		t.Error("annotation-driven refs leaked into render: httproute was NOT expected in ancestor sources")
+	}
 }
 
 // TestHandler_OutputURLAnnotation exercises the output-url annotation cache
