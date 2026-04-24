@@ -58,6 +58,7 @@ in a sibling cleanup plan.
 ## Guardrails
 
 - [Resource URL Convention](docs/ui/resource-routing.md) — Use singular prefix for creation pages (`/organization/new`, `/folder/new`, `/project/new`) and plural + identifier for scoped operations (`/organizations/$name/settings`). Do NOT place creation pages under plural prefixes (e.g. `/folders/new`) — this creates a namespace collision where `new` is both a keyword and a valid resource name.
+- [Selected-Entity State Contract](docs/ui/selected-entity-state.md) — `useOrg()` / `useProject()` are the canonical stores; URL params are authoritative when present; layouts sync URL → store (never the reverse); creation pages read the store but must never write it.
 - [Demo Docs Routing](https://github.com/holos-run/holos-console-docs/tree/main/demo) — Demo setup materials and CUE example snippets belong in `holos-run/holos-console-docs/demo/`, **not** in this repo; demo-related issues must include concrete examples and operator guidance.
 - [Smoke Test Contract](https://github.com/holos-run/holos-console-docs/tree/main/demo/smoke-tests) — Smoke-test instructions must use `kubectl` commands for the resources required to observe the feature in the demo environment.
 - [Demo README](https://github.com/holos-run/holos-console-docs/blob/main/demo/README.md) — Forward pointer to the demo setup order, prerequisites, and per-template walkthroughs.
