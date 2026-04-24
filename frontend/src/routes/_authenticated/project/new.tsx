@@ -25,6 +25,7 @@ import { useCreateProject } from '@/queries/projects'
 import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 import { toSlug } from '@/lib/slug'
 import { resolveReturnTo } from '@/lib/return-to'
+import { useOrg } from '@/lib/org-context'
 
 export const Route = createFileRoute('/_authenticated/project/new')({
   validateSearch: (
@@ -43,9 +44,13 @@ export const Route = createFileRoute('/_authenticated/project/new')({
 
 function ProjectNewRoute() {
   const search = Route.useSearch()
+  const { selectedOrg } = useOrg()
+  // Resolve orgName: URL search param wins; store is a read-only safety net for
+  // refreshes or stale links. Never call setSelectedOrg from here — read-only.
+  const orgName = search.orgName ?? selectedOrg ?? undefined
   return (
     <ProjectNewPage
-      orgName={search.orgName}
+      orgName={orgName}
       folderName={search.folderName}
       returnTo={search.returnTo}
     />

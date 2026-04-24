@@ -218,7 +218,7 @@ export function OrgProjectsIndexPage({
           </div>
           <Link
             to="/project/new"
-            search={{ returnTo: `/organizations/${orgName}/projects` }}
+            search={{ orgName, returnTo: `/organizations/${orgName}/projects` }}
           >
             <Button size="sm">
               <Plus className="h-4 w-4 mr-1" />
@@ -234,7 +234,7 @@ export function OrgProjectsIndexPage({
               </p>
               <Link
                 to="/project/new"
-                search={{ returnTo: `/organizations/${orgName}/projects` }}
+                search={{ orgName, returnTo: `/organizations/${orgName}/projects` }}
               >
                 <Button size="sm">Create Project</Button>
               </Link>
