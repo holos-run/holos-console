@@ -183,3 +183,18 @@ except layouts, which write via the one-way URL → store sync.
 | `frontend/src/routes/_authenticated/orgs/$orgName.tsx` | Reference layout — syncs `$orgName` URL param → `useOrg()` store |
 | `frontend/src/routes/_authenticated/project/new.tsx` | Reference creation page — reads store, never writes it |
 | `docs/ui/resource-routing.md` | Singular-create / plural-scoped URL rule; `returnTo` contract |
+
+## CI Enforcement
+
+`frontend/src/routes/-selected-entity-state.test.tsx` is the machine-enforced
+guardrail for this contract.  It reads each layout file listed in its explicit
+allowlist as a source string and asserts:
+
+1. The file exists.
+2. It imports `useOrg` / `useProject` from the canonical context module.
+3. It calls `setSelectedOrg(` / `setSelectedProject(`.
+
+`make test-ui` runs this check on every CI push.  Adding a new
+`/organizations/$orgName/...` or `/projects/$projectName/...` URL tree without
+a compliant layout file will fail CI with an actionable error naming the missing
+file and the required imports.
