@@ -177,4 +177,34 @@ describe('OrgProjectsIndexPage', () => {
     const orgLink = screen.getByRole('link', { name: 'Organizations' })
     expect(orgLink).toHaveAttribute('href', '/organizations')
   })
+
+  // ── Create Project link regression (HOL-929) ────────────────────────────────
+  // Guards that the Create Project link always passes orgName in its search
+  // params so ProjectNewRoute can resolve the organization without a store hit.
+
+  it('Create Project header link points to /project/new with orgName in search', () => {
+    setupMocks([makeProject('alpha', 'Alpha')])
+    render(<OrgProjectsIndexPage orgName="acme" />)
+    // The mock Link renders data-search with the serialised search object.
+    // When projects exist the header shows a Create Project link.
+    const allLinks = screen.getAllByRole('link', { name: /create project/i })
+    expect(allLinks.length).toBeGreaterThanOrEqual(1)
+    const link = allLinks[0]
+    expect(link).toHaveAttribute('href', '/project/new')
+    const search = JSON.parse(link.getAttribute('data-search') ?? '{}')
+    expect(search.orgName).toBe('acme')
+  })
+
+  it('Create Project empty-state link points to /project/new with orgName in search', () => {
+    setupMocks([])
+    render(<OrgProjectsIndexPage orgName="acme" />)
+    // Empty-state renders two links: header button + body button; both must carry orgName.
+    const createLinks = screen.getAllByRole('link', { name: /create project/i })
+    expect(createLinks.length).toBeGreaterThanOrEqual(1)
+    for (const link of createLinks) {
+      expect(link).toHaveAttribute('href', '/project/new')
+      const search = JSON.parse(link.getAttribute('data-search') ?? '{}')
+      expect(search.orgName).toBe('acme')
+    }
+  })
 })
