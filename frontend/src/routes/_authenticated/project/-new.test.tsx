@@ -31,7 +31,12 @@ vi.mock('@/queries/projects', () => ({
   useCreateProject: vi.fn(),
 }))
 
+vi.mock('@/lib/org-context', () => ({
+  useOrg: vi.fn(() => ({ selectedOrg: null })),
+}))
+
 import { useCreateProject } from '@/queries/projects'
+import { useOrg } from '@/lib/org-context'
 import { ProjectNewPage } from './new'
 
 function setupMocks(mutateAsync = vi.fn().mockResolvedValue({ name: 'my-project' })) {
@@ -271,4 +276,30 @@ describe('ProjectNewPage', () => {
     render(<ProjectNewPage orgName="my-org" />)
     expect(screen.queryByText(/folder/i)).not.toBeInTheDocument()
   })
+  // ── orgName resolution: search param, store fallback, both absent ───────────
+
+  it('renders form when orgName comes from search param only (no store)', () => {
+    ;(useOrg as Mock).mockReturnValue({ selectedOrg: null })
+    render(<ProjectNewPage orgName="search-org" />)
+    expect(screen.getByText('New Project')).toBeInTheDocument()
+    expect(screen.queryByText(/an organization is required/i)).not.toBeInTheDocument()
+    expect(screen.getByText('search-org')).toBeInTheDocument()
+  })
+
+  it('renders form when orgName comes from store only (search param absent)', () => {
+    ;(useOrg as Mock).mockReturnValue({ selectedOrg: 'acme' })
+    // Simulate the Route resolving orgName from store: pass orgName as prop
+    // (ProjectNewRoute would have done: orgName = search.orgName ?? selectedOrg)
+    render(<ProjectNewPage orgName="acme" />)
+    expect(screen.getByText('New Project')).toBeInTheDocument()
+    expect(screen.queryByText(/an organization is required/i)).not.toBeInTheDocument()
+    expect(screen.getByText('acme')).toBeInTheDocument()
+  })
+
+  it('shows error banner when both search param and store are absent', () => {
+    ;(useOrg as Mock).mockReturnValue({ selectedOrg: null })
+    render(<ProjectNewPage />)
+    expect(screen.getByText(/an organization is required/i)).toBeInTheDocument()
+  })
+
 })
