@@ -25,6 +25,7 @@ import { useCreateFolder } from '@/queries/folders'
 import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 import { toSlug } from '@/lib/slug'
 import { resolveReturnTo } from '@/lib/return-to'
+import { useOrg } from '@/lib/org-context'
 
 export const Route = createFileRoute('/_authenticated/folder/new')({
   validateSearch: (
@@ -45,9 +46,13 @@ export const Route = createFileRoute('/_authenticated/folder/new')({
 
 function FolderNewRoute() {
   const search = Route.useSearch()
+  const { selectedOrg } = useOrg()
+  // Resolve orgName: URL search param wins; store is a read-only safety net for
+  // refreshes or stale links. Never call setSelectedOrg from here — read-only.
+  const orgName = search.orgName ?? selectedOrg ?? undefined
   return (
     <FolderNewPage
-      orgName={search.orgName}
+      orgName={orgName}
       parentType={search.parentType}
       parentName={search.parentName}
       returnTo={search.returnTo}
