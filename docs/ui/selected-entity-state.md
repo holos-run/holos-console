@@ -21,8 +21,8 @@
 Every component under `/_authenticated` can call `useOrg()` or `useProject()`
 without additional setup. The stores are the **single source of truth** for
 which org/project the user has active; the `WorkspaceMenu` in
-`frontend/src/components/app-sidebar.tsx` is the user-visible control that
-reads and writes those stores.
+`frontend/src/components/workspace-menu.tsx` (rendered inside `app-sidebar.tsx`) is
+the user-visible control that reads from those stores.
 
 ---
 
@@ -149,11 +149,15 @@ condition that would otherwise clear the just-set project.
 
 ## User-Visible Truth: WorkspaceMenu
 
-`WorkspaceMenu` in `frontend/src/components/app-sidebar.tsx` is the only place
-the user explicitly selects an org or project. It calls `setSelectedOrg` /
-`setSelectedProject` directly when the user picks from the dropdown. All other
-components are read-only consumers — they read from the store but do not write
-to it (except layouts, which write via the one-way URL → store sync).
+`WorkspaceMenu` (`frontend/src/components/workspace-menu.tsx`, rendered by
+`app-sidebar.tsx`) is the user-visible
+control for switching org and project. It navigates to `/organizations` (Switch
+Organization) or `/organizations/$orgName/projects` (Switch Projects) — the store
+is updated indirectly when those pages' layouts sync the URL param into the store.
+`WorkspaceMenu` reads from the stores (`selectedOrg`, `selectedProject`) to
+display the active context label; it does not call `setSelectedOrg` or
+`setSelectedProject` directly. All components are read-only consumers of the store
+except layouts, which write via the one-way URL → store sync.
 
 ---
 
@@ -174,7 +178,8 @@ to it (except layouts, which write via the one-way URL → store sync).
 |---|---|
 | `frontend/src/lib/org-context.tsx` | `useOrg()` hook and `OrgProvider` |
 | `frontend/src/lib/project-context.tsx` | `useProject()` hook and `ProjectProvider` |
-| `frontend/src/components/app-sidebar.tsx` | Sidebar; hosts `WorkspaceMenu` (user-facing org/project picker) |
+| `frontend/src/components/workspace-menu.tsx` | `WorkspaceMenu` — user-visible org/project switcher; read-only store consumer |
+| `frontend/src/components/app-sidebar.tsx` | Sidebar shell; renders `WorkspaceMenu` and flat nav |
 | `frontend/src/routes/_authenticated/orgs/$orgName.tsx` | Reference layout — syncs `$orgName` URL param → `useOrg()` store |
 | `frontend/src/routes/_authenticated/project/new.tsx` | Reference creation page — reads store, never writes it |
 | `docs/ui/resource-routing.md` | Singular-create / plural-scoped URL rule; `returnTo` contract |
