@@ -22,6 +22,8 @@ import { useCreateOrganization } from '@/queries/organizations'
 import { toSlug } from '@/lib/slug'
 import { resolveReturnTo } from '@/lib/return-to'
 
+// No orgName search param: organizations have no parent entity, so callers
+// pass only returnTo. This is an intentional omission — see HOL-934 audit.
 export const Route = createFileRoute('/_authenticated/organization/new')({
   validateSearch: (search: Record<string, unknown>): { returnTo?: string } => ({
     returnTo: typeof search.returnTo === 'string' ? search.returnTo : undefined,

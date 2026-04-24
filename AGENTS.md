@@ -37,6 +37,8 @@ entry and WorkspaceMenu improvements. Key files:
 | `frontend/src/routes/_authenticated/projects/$projectName/deployments/index.tsx` | HOL-858 | Deployments page on ResourceGrid v1 |
 | `frontend/src/routes/_authenticated/projects/$projectName/templates/index.tsx` | HOL-859 | Unified Templates index on ResourceGrid v1 |
 | `frontend/src/components/templates/TemplatesHelpPane.tsx` | HOL-860 | Templates help pane (? icon toggle) |
+| `frontend/src/routes/_authenticated/organizations/$orgName.tsx` | HOL-928 | Layout — syncs `$orgName` URL param → `useOrg()` store (one-way) |
+| `docs/ui/selected-entity-state.md` | HOL-931 | Selected-entity state contract; read-precedence rules; creation-page invariants |
 
 **Deleted (HOL-914)**: `frontend/src/components/resource-manager/` and
 `frontend/src/routes/_authenticated/resource-manager/` were removed when the
