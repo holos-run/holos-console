@@ -39,6 +39,7 @@ entry and WorkspaceMenu improvements. Key files:
 | `frontend/src/components/templates/TemplatesHelpPane.tsx` | HOL-860 | Templates help pane (? icon toggle) |
 | `frontend/src/routes/_authenticated/organizations/$orgName.tsx` | HOL-928 | Layout — syncs `$orgName` URL param → `useOrg()` store (one-way) |
 | `docs/ui/selected-entity-state.md` | HOL-931 | Selected-entity state contract; read-precedence rules; creation-page invariants |
+| `docs/agents/data-grid-conventions.md` | HOL-940 | Data grid conventions: clickable resource IDs and fully-clickable rows |
 
 **Deleted (HOL-914)**: `frontend/src/components/resource-manager/` and
 `frontend/src/routes/_authenticated/resource-manager/` were removed when the
@@ -64,6 +65,7 @@ in a sibling cleanup plan.
 - [Demo Docs Routing](https://github.com/holos-run/holos-console-docs/tree/main/demo) — Demo setup materials and CUE example snippets belong in `holos-run/holos-console-docs/demo/`, **not** in this repo; demo-related issues must include concrete examples and operator guidance.
 - [Smoke Test Contract](https://github.com/holos-run/holos-console-docs/tree/main/demo/smoke-tests) — Smoke-test instructions must use `kubectl` commands for the resources required to observe the feature in the demo environment.
 - [Demo README](https://github.com/holos-run/holos-console-docs/blob/main/demo/README.md) — Forward pointer to the demo setup order, prerequisites, and per-template walkthroughs.
+- [Data Grid Conventions](docs/agents/data-grid-conventions.md) — Every `ResourceGrid` row must have `detailHref` set so the resource ID cell and the full row are clickable links to the resource detail page. Action buttons in the row must call `e.stopPropagation()` to prevent triggering row navigation.
 
 ## Example Template Registry
 

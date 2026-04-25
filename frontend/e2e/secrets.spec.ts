@@ -58,10 +58,10 @@ test.describe('Secrets Page', () => {
 
     // Wait for redirect back to list and secret to appear
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
-    await expect(page.getByRole('link', { name: secretName })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('link', { name: secretName, exact: true })).toBeVisible({ timeout: 10000 })
 
     // Navigate to the created secret
-    await page.getByRole('link', { name: secretName }).click()
+    await page.getByRole('link', { name: secretName, exact: true }).click()
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
 
     // Verify sharing panel is present
@@ -108,10 +108,10 @@ test.describe('Secrets Page', () => {
     await page.getByPlaceholder('value').fill('KEY=value')
     await page.getByRole('button', { name: /create secret/i }).click()
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
-    await expect(page.getByRole('link', { name: secretName })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('link', { name: secretName, exact: true })).toBeVisible({ timeout: 10000 })
 
     // Navigate to the secret
-    await page.getByRole('link', { name: secretName }).click()
+    await page.getByRole('link', { name: secretName, exact: true }).click()
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
 
     // Verify sharing panel and edit button
@@ -170,7 +170,7 @@ test.describe('Secrets Page', () => {
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
 
     // Verify the secret shows in the list as a link
-    await expect(page.getByRole('link', { name: secretName })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('link', { name: secretName, exact: true })).toBeVisible({ timeout: 10000 })
 
     // Clean up: delete via the list
     await page.getByLabel(new RegExp(`delete ${secretName}`, 'i')).click()
@@ -205,10 +205,10 @@ test.describe('Secrets Page', () => {
     // Do NOT fill key/value — create an empty secret
     await page.getByRole('button', { name: /create secret/i }).click()
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
-    await expect(page.getByRole('link', { name: secretName })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('link', { name: secretName, exact: true })).toBeVisible({ timeout: 10000 })
 
     // Navigate to the detail page
-    await page.getByRole('link', { name: secretName }).click()
+    await page.getByRole('link', { name: secretName, exact: true }).click()
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
 
     // Click Edit to enter edit mode — grid should show one empty row

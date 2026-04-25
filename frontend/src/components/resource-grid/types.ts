@@ -44,7 +44,7 @@ export interface Row {
   description: string
   /** ISO-8601 creation timestamp string. */
   createdAt: string
-  /** If provided, the display name links to this href. */
+  /** If provided, the resource ID cell links here, the display name links here, and the full row is clickable. */
   detailHref?: string
 }
 
