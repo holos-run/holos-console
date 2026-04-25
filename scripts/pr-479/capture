@@ -5,9 +5,9 @@ set -euo pipefail
 # PR_SCREENSHOT_DIR and HOLOS_BACKEND_URL are set by browser-capture-pr
 
 # Capture the org settings page (shows new Platform Templates section)
-agent-browser navigate --url "${HOLOS_BACKEND_URL}/orgs/default/settings" \
+agent-browser navigate --url "${HOLOS_BACKEND_URL}/organizations/default/settings" \
   --screenshot "${PR_SCREENSHOT_DIR}/org-settings-platform-templates-link.png" || true
 
 # Capture the platform templates list page
-agent-browser navigate --url "${HOLOS_BACKEND_URL}/orgs/default/settings/org-templates" \
+agent-browser navigate --url "${HOLOS_BACKEND_URL}/organizations/default/settings/org-templates" \
   --screenshot "${PR_SCREENSHOT_DIR}/platform-templates-list.png" || true

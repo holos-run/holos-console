@@ -236,7 +236,7 @@ function searchTemplatesKey(
 
 // useSearchTemplates returns templates matching the given filters across every
 // namespace scope the caller can see. Introduced in HOL-607 for the unified
-// Templates index at /orgs/$orgName/templates. Pass `organization` to restrict
+// Templates index at /organizations/$orgName/templates. Pass `organization` to restrict
 // results to namespaces reachable from that org root; omit or pass empty
 // strings to leave a filter dimension unconstrained. The hook waits until the
 // caller has resolved an organization before firing — avoiding a transient

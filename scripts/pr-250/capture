@@ -6,7 +6,7 @@
 set -euo pipefail
 
 # Navigate directly to the settings path - renders with loading/error state showing the page layout
-agent-browser open "$HOLOS_BACKEND_URL/orgs/demo-org/settings"
+agent-browser open "$HOLOS_BACKEND_URL/organizations/demo-org/settings"
 agent-browser wait 2000
 agent-browser screenshot "$PR_SCREENSHOT_DIR/org-settings-page.png"
 

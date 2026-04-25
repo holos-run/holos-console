@@ -17,6 +17,12 @@ there is no identifier.
 **Plural + identifier** (`/folders/$name/settings`) for scoped operations —
 there is a known resource name in the path.
 
+**Idiomatic plural words.** Use the full plural noun for the path segment:
+`organizations`, `projects`, `folders`. Do not abbreviate to `orgs` or any
+other shortened form. The previous `/orgs/...` tree was migrated to
+`/organizations/...` in HOL-939; new code, links, helpers, and tests must
+generate `/organizations/...` paths.
+
 ## Why This Matters
 
 A collision occurs when the same path segment is both a literal keyword and a
@@ -146,7 +152,7 @@ navigate({ to: target })
 | `frontend/src/routes/_authenticated/folder/new.tsx` | Create folder form |
 | `frontend/src/routes/_authenticated/project/new.tsx` | Create project form |
 | `frontend/src/routes/_authenticated/organizations/index.tsx` | List organisations (plural) |
-| `frontend/src/routes/_authenticated/orgs/$orgName/settings/index.tsx` | Org settings (plural + identifier) |
+| `frontend/src/routes/_authenticated/organizations/$orgName/settings/index.tsx` | Org settings (plural + identifier) |
 | `frontend/src/routes/_authenticated/folders/$folderName/settings/index.tsx` | Folder settings (plural + identifier) |
 | `frontend/src/routes/_authenticated/projects/$projectName/settings/index.tsx` | Project settings (plural + identifier) |
 | `frontend/src/lib/return-to.ts` | `buildReturnTo` / `resolveReturnTo` / `isValidReturnTo` |

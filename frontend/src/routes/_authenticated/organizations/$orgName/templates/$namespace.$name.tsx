@@ -43,7 +43,7 @@ export function templateDefaultsToCueInput(defaults: TemplateDefaults | undefine
 }
 
 export const Route = createFileRoute(
-  '/_authenticated/orgs/$orgName/templates/$namespace/$name',
+  '/_authenticated/organizations/$orgName/templates/$namespace/$name',
 )({
   component: ConsolidatedTemplateEditorRoute,
 })
@@ -130,7 +130,7 @@ export function ConsolidatedTemplateEditorPage({
       await deleteMutation.mutateAsync({ name })
       setDeleteOpen(false)
       toast.success('Template deleted')
-      navigate({ to: '/orgs/$orgName/templates', params: { orgName } })
+      navigate({ to: '/organizations/$orgName/templates', params: { orgName } })
     } catch {
       /* error surfaced via deleteMutation.error inside the dialog */
     }

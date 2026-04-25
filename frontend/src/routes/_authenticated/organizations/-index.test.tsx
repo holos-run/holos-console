@@ -181,7 +181,7 @@ describe('OrganizationsIndexPage', () => {
     fireEvent.click(row)
     expect(mockSetSelectedOrg).toHaveBeenCalledWith('my-org')
     expect(mockNavigate).toHaveBeenCalledWith({
-      to: '/orgs/$orgName/resources',
+      to: '/organizations/$orgName/resources',
       params: { orgName: 'my-org' },
     })
   })

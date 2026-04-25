@@ -16,44 +16,41 @@ import {
 } from '@/components/ui/dialog'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import {
-  useGetTemplatePolicyBinding,
-  useUpdateTemplatePolicyBinding,
-  useDeleteTemplatePolicyBinding,
-} from '@/queries/templatePolicyBindings'
+  useGetTemplatePolicy,
+  useUpdateTemplatePolicy,
+  useDeleteTemplatePolicy,
+} from '@/queries/templatePolicies'
 import { namespaceForOrg } from '@/lib/scope-labels'
 import { useGetOrganization } from '@/queries/organizations'
+import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
 import {
-  BindingForm,
-  type BindingScope,
-} from '@/components/template-policy-bindings/BindingForm'
-import { bindingProtoToDraft } from '@/components/template-policy-bindings/binding-draft'
+  PolicyForm,
+  type PolicyScope,
+} from '@/components/template-policies/PolicyForm'
+import { ruleProtoToDraft } from '@/components/template-policies/rule-draft'
+import { PolicyBindingsSection } from '@/components/template-policies/PolicyBindingsSection'
 
 export const Route = createFileRoute(
-  '/_authenticated/orgs/$orgName/template-bindings/$bindingName',
+  '/_authenticated/organizations/$orgName/template-policies/$policyName',
 )({
-  component: OrgTemplateBindingDetailRoute,
+  component: OrgTemplatePolicyDetailRoute,
 })
 
-function OrgTemplateBindingDetailRoute() {
-  const { orgName, bindingName } = Route.useParams()
-  return (
-    <OrgTemplateBindingDetailPage
-      orgName={orgName}
-      bindingName={bindingName}
-    />
-  )
+function OrgTemplatePolicyDetailRoute() {
+  const { orgName, policyName } = Route.useParams()
+  return <OrgTemplatePolicyDetailPage orgName={orgName} policyName={policyName} />
 }
 
-export function OrgTemplateBindingDetailPage({
+export function OrgTemplatePolicyDetailPage({
   orgName: propOrgName,
-  bindingName: propBindingName,
+  policyName: propPolicyName,
   forcedScopeType,
 }: {
   orgName?: string
-  bindingName?: string
-  forcedScopeType?: BindingScope
+  policyName?: string
+  forcedScopeType?: PolicyScope
 } = {}) {
-  let routeParams: { orgName?: string; bindingName?: string } = {}
+  let routeParams: { orgName?: string; policyName?: string } = {}
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     routeParams = Route.useParams()
@@ -61,34 +58,43 @@ export function OrgTemplateBindingDetailPage({
     routeParams = {}
   }
   const orgName = propOrgName ?? routeParams.orgName ?? ''
-  const bindingName = propBindingName ?? routeParams.bindingName ?? ''
+  const policyName = propPolicyName ?? routeParams.policyName ?? ''
 
   const navigate = useNavigate()
   const namespace = namespaceForOrg(orgName)
   const { data: org } = useGetOrganization(orgName)
   const userRole = org?.userRole ?? Role.VIEWER
+  // PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors too.
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
-  // PERMISSION_TEMPLATE_POLICIES_DELETE is OWNER-only in the RBAC cascade;
-  // bindings reuse the policy permission family so the same constraint
-  // applies.
+  // PERMISSION_TEMPLATE_POLICIES_DELETE is OWNER-only in the RBAC cascade
+  // table, so editors must not see the destructive control.
   const canDelete = userRole === Role.OWNER
 
-  const scopeType: BindingScope = forcedScopeType ?? 'organization'
+  const scopeType: PolicyScope = forcedScopeType ?? 'organization'
 
   const {
-    data: binding,
+    data: policy,
     isPending,
     error,
-  } = useGetTemplatePolicyBinding(namespace, bindingName)
-  const updateMutation = useUpdateTemplatePolicyBinding(namespace, bindingName)
-  const deleteMutation = useDeleteTemplatePolicyBinding(namespace)
+  } = useGetTemplatePolicy(namespace, policyName)
+  const updateMutation = useUpdateTemplatePolicy(namespace, policyName)
+  const deleteMutation = useDeleteTemplatePolicy(namespace)
+  // HOL-598: surface TemplatePolicyBindings that reference this policy. The
+  // list RPC returns every binding at the org scope; the section filters to
+  // ones whose `policyRef.name` matches the current policy.
+  const bindingsQuery = useListTemplatePolicyBindings(namespace)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   const initialValues = useMemo(() => {
-    if (!binding) return undefined
-    return bindingProtoToDraft(binding)
-  }, [binding])
+    if (!policy) return undefined
+    return {
+      name: policy.name,
+      displayName: policy.displayName ?? '',
+      description: policy.description ?? '',
+      rules: (policy.rules ?? []).map(ruleProtoToDraft),
+    }
+  }, [policy])
 
   if (isPending) {
     return (
@@ -120,46 +126,39 @@ export function OrgTemplateBindingDetailPage({
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <div>
             <p className="text-sm text-muted-foreground">
-              <Link
-                to="/orgs/$orgName/settings"
-                params={{ orgName }}
-                className="hover:underline"
-              >
+              <Link to="/organizations/$orgName/settings" params={{ orgName }} className="hover:underline">
                 {orgName}
               </Link>
               {' / '}
               <Link
-                to="/orgs/$orgName/template-bindings"
+                to="/organizations/$orgName/template-policies"
                 params={{ orgName }}
                 className="hover:underline"
               >
-                Template Bindings
+                Template Policies
               </Link>
               {' / '}
-              <span>{bindingName}</span>
+              <span>{policyName}</span>
             </p>
-            <CardTitle className="mt-1">
-              {binding?.displayName || bindingName}
-            </CardTitle>
+            <CardTitle className="mt-1">{policy?.displayName || policyName}</CardTitle>
           </div>
           {canDelete && (
             <Button
               variant="destructive"
               size="sm"
               onClick={() => setDeleteOpen(true)}
-              aria-label="Delete binding"
+              aria-label="Delete policy"
             >
-              Delete Binding
+              Delete Policy
             </Button>
           )}
         </CardHeader>
         <CardContent>
           <Separator className="mb-4" />
-          <BindingForm
+          <PolicyForm
             mode="edit"
             scopeType={scopeType}
             namespace={namespace}
-            organization={orgName}
             canWrite={canWrite}
             initialValues={initialValues}
             lockName
@@ -168,14 +167,23 @@ export function OrgTemplateBindingDetailPage({
             isPending={updateMutation.isPending}
             onSubmit={async (values) => {
               await updateMutation.mutateAsync(values)
-              toast.success('Binding saved')
+              toast.success('Policy saved')
             }}
             onCancel={() => {
               void navigate({
-                to: '/orgs/$orgName/template-bindings',
+                to: '/organizations/$orgName/template-policies',
                 params: { orgName },
               })
             }}
+          />
+          <Separator className="my-6" />
+          <PolicyBindingsSection
+            scopeType="organization"
+            orgName={orgName}
+            policyName={policyName}
+            bindings={bindingsQuery.data ?? []}
+            isPending={bindingsQuery.isPending}
+            error={bindingsQuery.error}
           />
         </CardContent>
       </Card>
@@ -183,10 +191,10 @@ export function OrgTemplateBindingDetailPage({
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Template Binding</DialogTitle>
+            <DialogTitle>Delete Template Policy</DialogTitle>
             <DialogDescription>
-              This will permanently delete the binding &quot;{bindingName}
-              &quot;. This action cannot be undone.
+              This will permanently delete the policy &quot;{policyName}&quot;. This action cannot
+              be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -198,13 +206,13 @@ export function OrgTemplateBindingDetailPage({
               disabled={deleteMutation.isPending}
               onClick={async () => {
                 try {
-                  await deleteMutation.mutateAsync({ name: bindingName })
+                  await deleteMutation.mutateAsync({ name: policyName })
                   setDeleteOpen(false)
                   await navigate({
-                    to: '/orgs/$orgName/template-bindings',
+                    to: '/organizations/$orgName/template-policies',
                     params: { orgName },
                   })
-                  toast.success('Binding deleted')
+                  toast.success('Policy deleted')
                 } catch (err) {
                   toast.error(err instanceof Error ? err.message : String(err))
                 }

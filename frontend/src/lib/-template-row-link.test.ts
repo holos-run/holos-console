@@ -31,7 +31,7 @@ describe('resolveTemplateRowHref', () => {
   describe('Template', () => {
     it('resolves org-scope Template link', () => {
       expect(resolveTemplateRowHref('Template', 'org-acme', 'my-tpl')).toBe(
-        '/orgs/acme/templates/org-acme/my-tpl',
+        '/organizations/acme/templates/org-acme/my-tpl',
       )
     })
 
@@ -56,7 +56,7 @@ describe('resolveTemplateRowHref', () => {
   describe('TemplatePolicy', () => {
     it('resolves org-scope TemplatePolicy link', () => {
       expect(resolveTemplateRowHref('TemplatePolicy', 'org-acme', 'my-policy')).toBe(
-        '/orgs/acme/template-policies/my-policy',
+        '/organizations/acme/template-policies/my-policy',
       )
     })
 
@@ -76,7 +76,7 @@ describe('resolveTemplateRowHref', () => {
     it('resolves org-scope TemplatePolicyBinding link', () => {
       expect(
         resolveTemplateRowHref('TemplatePolicyBinding', 'org-acme', 'my-binding'),
-      ).toBe('/orgs/acme/template-bindings/my-binding')
+      ).toBe('/organizations/acme/template-bindings/my-binding')
     })
 
     it('resolves folder-scope TemplatePolicyBinding link', () => {

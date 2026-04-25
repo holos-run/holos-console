@@ -6,7 +6,7 @@ import { namespaceForOrg } from '@/lib/scope-labels'
 import { useGetOrganization } from '@/queries/organizations'
 import { TemplateCreateForm } from '@/components/templates/TemplateCreateForm'
 
-export const Route = createFileRoute('/_authenticated/orgs/$orgName/templates/new')({
+export const Route = createFileRoute('/_authenticated/organizations/$orgName/templates/new')({
   component: CreateOrgTemplateRoute,
 })
 
@@ -38,11 +38,11 @@ export function CreateOrgTemplatePage({ orgName: propOrgName }: { orgName?: stri
       <CardHeader>
         <div>
           <p className="text-sm text-muted-foreground">
-            <Link to="/orgs/$orgName/settings" params={{ orgName }} className="hover:underline">
+            <Link to="/organizations/$orgName/settings" params={{ orgName }} className="hover:underline">
               {orgName}
             </Link>
             {' / '}
-            <Link to="/orgs/$orgName/templates" params={{ orgName }} className="hover:underline">
+            <Link to="/organizations/$orgName/templates" params={{ orgName }} className="hover:underline">
               Templates
             </Link>
             {' / New'}
@@ -60,12 +60,12 @@ export function CreateOrgTemplatePage({ orgName: propOrgName }: { orgName?: stri
           onSubmit={async (values) => {
             await createMutation.mutateAsync(values)
             await navigate({
-              to: '/orgs/$orgName/templates/$namespace/$name',
+              to: '/organizations/$orgName/templates/$namespace/$name',
               params: { orgName, namespace, name: values.name },
             })
           }}
           onCancel={() => {
-            void navigate({ to: '/orgs/$orgName/templates', params: { orgName } })
+            void navigate({ to: '/organizations/$orgName/templates', params: { orgName } })
           }}
         />
       </CardContent>

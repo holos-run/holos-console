@@ -135,11 +135,11 @@ describe('FolderIndexPage', () => {
     // (the unified folders + projects view introduced in HOL-606).
     expect(screen.getByRole('link', { name: 'test-org' })).toHaveAttribute(
       'href',
-      '/orgs/test-org/settings',
+      '/organizations/test-org/settings',
     )
     expect(screen.getByRole('link', { name: 'Resources' })).toHaveAttribute(
       'href',
-      '/orgs/test-org/resources',
+      '/organizations/test-org/resources',
     )
   })
 

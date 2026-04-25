@@ -4,6 +4,20 @@ All notable changes to holos-console are documented here.
 
 ## [Unreleased]
 
+### Changed — Migrate `/orgs/$orgName` routes to `/organizations/$orgName` (HOL-939)
+
+- All organization-scoped UI routes now use the canonical `/organizations/...`
+  prefix. The legacy `/orgs/...` tree (`resources`, `settings`, `templates`,
+  `template-bindings`, `template-policies`) was renamed in place; layout files
+  for both prefixes were identical, so the moved subdirectories now sit under
+  the existing `_authenticated/organizations/$orgName/` layout.
+- Updated every link, redirect, and helper in `frontend/` (including the
+  scope-aware `template-row-link` resolver) plus all unit tests, e2e test
+  navigation, and PR-capture scripts to emit `/organizations/...` paths.
+- AGENTS.md and `docs/ui/resource-routing.md` now state the path-name
+  convention: use the full plural words `organizations` and `projects`; do
+  not use `/orgs/...` for new routes, links, or tests.
+
 ### Chore — Remove stale lineage, scope, and Resource Manager references (HOL-910 / HOL-919)
 
 The HOL-910 series (HOL-912 through HOL-919) removed the legacy Resource
@@ -35,9 +49,9 @@ doc/comment references:
   "no policies reachable from this scope" → "no policies exist in this org
   yet" copy change (HOL-917).
 
-### Added — Template Bindings listing page (`/orgs/$orgName/template-bindings`) (HOL-918)
+### Added — Template Bindings listing page (`/organizations/$orgName/template-bindings`) (HOL-918)
 
-- New route at `/orgs/$orgName/template-bindings` listing all
+- New route at `/organizations/$orgName/template-bindings` listing all
   `TemplatePolicyBinding` objects in the org. Powered by `ResourceGrid v1`
   with sortable Created At column (HOL-918).
 

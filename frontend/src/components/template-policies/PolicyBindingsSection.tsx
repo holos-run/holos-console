@@ -87,7 +87,7 @@ export function PolicyBindingsSection(props: PolicyBindingsSectionProps) {
             <li key={binding.name}>
               {props.scopeType === 'organization' ? (
                 <Link
-                  to="/orgs/$orgName/template-bindings/$bindingName"
+                  to="/organizations/$orgName/template-bindings/$bindingName"
                   params={{
                     orgName: props.orgName,
                     bindingName: binding.name,

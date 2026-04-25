@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { createFileRoute, Link } from '@tanstack/react-router'
 import {
   useReactTable,
@@ -7,10 +7,11 @@ import {
   flexRender,
   createColumnHelper,
 } from '@tanstack/react-table'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -20,42 +21,31 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useAllTemplatesForOrg } from '@/queries/templates'
+import { useListTemplatePolicies } from '@/queries/templatePolicies'
+import type { TemplatePolicy } from '@/queries/templatePolicies'
 import { useGetOrganization } from '@/queries/organizations'
-import type { Template } from '@/gen/holos/console/v1/templates_pb'
 import {
   scopeDisplayLabel,
   scopeLabelFromNamespace,
   scopeNameFromNamespace,
+  namespaceForOrg,
 } from '@/lib/scope-labels'
 
-export const Route = createFileRoute('/_authenticated/orgs/$orgName/templates/')({
-  component: OrgTemplatesIndexRoute,
+export const Route = createFileRoute(
+  '/_authenticated/organizations/$orgName/template-policies/',
+)({
+  component: OrgTemplatePoliciesIndexRoute,
 })
 
-function OrgTemplatesIndexRoute() {
+function OrgTemplatePoliciesIndexRoute() {
   const { orgName } = Route.useParams()
-  return <OrgTemplatesIndexPage orgName={orgName} />
+  return <OrgTemplatePoliciesIndexPage orgName={orgName} />
 }
 
-const columnHelper = createColumnHelper<Template>()
+const columnHelper = createColumnHelper<TemplatePolicy>()
 
-// HOL-793: the scope filter narrows the grid to rows of a single scope. The
-// `project` option is shown even though templates at project scope are
-// browsed from the project sidebar — the org-level view is for discovery
-// across all scopes, and filtering lets users zero in on one.
-type ScopeFilter = 'all' | 'org' | 'folder' | 'project'
-
-export function OrgTemplatesIndexPage({
+export function OrgTemplatePoliciesIndexPage({
   orgName: propOrgName,
 }: { orgName?: string } = {}) {
   let routeOrgName: string | undefined
@@ -67,28 +57,23 @@ export function OrgTemplatesIndexPage({
   }
   const orgName = propOrgName ?? routeOrgName ?? ''
 
-  const { data, isPending, error } = useAllTemplatesForOrg(orgName)
+  // HOL-917: this page is now org-scoped only. The RPC is called with the org
+  // namespace directly so only org-scoped policies are returned. The previous
+  // fan-out across org+folder namespaces and the "All scopes" Select filter
+  // have been removed.
+  const orgNamespace = namespaceForOrg(orgName)
+  const { data: policies, isPending, error } = useListTemplatePolicies(orgNamespace)
   const { data: org } = useGetOrganization(orgName)
-  // When orgName is empty the fan-out is effectively disabled: isPending is
-  // false (idle) and data is `[]`. The skeleton branch still needs to cover
-  // the authenticated-but-resolving case, so gate on isPending AND data not
-  // yet materialized.
-  const templates = useMemo(() => data ?? [], [data])
 
   const userRole = org?.userRole ?? Role.VIEWER
-  // Creation at org scope requires OWNER. Folder/project-scope creates use
-  // their own scoped routes (HOL-793 explicitly leaves those flows alone).
-  const canWrite = userRole === Role.OWNER
+  // PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors too.
+  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
   const [globalFilter, setGlobalFilter] = useState('')
-  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all')
 
   const rows = useMemo(() => {
-    if (scopeFilter === 'all') return templates
-    return templates.filter(
-      (t) => scopeLabelFromNamespace(t.namespace) === scopeFilter,
-    )
-  }, [templates, scopeFilter])
+    return policies ?? []
+  }, [policies])
 
   const columns = useMemo(
     () => [
@@ -96,55 +81,41 @@ export function OrgTemplatesIndexPage({
         id: 'displayName',
         header: 'Display Name',
         cell: ({ row }) => {
-          const t = row.original
-          const label = t.displayName || t.name
-          const scope = scopeLabelFromNamespace(t.namespace)
-          // Scope-aware link. A namespace that does not match any known
-          // prefix renders as plain text so we never forge a link to a 404.
-          if (scope === 'org') {
+          const p = row.original
+          const label = p.displayName || p.name
+          const scope = scopeLabelFromNamespace(p.namespace)
+          // HOL-590 guarantees policies live only at org or folder scope.
+          // If the server ever surfaces a project-scoped or unprefixed
+          // namespace (stale cache, proto drift) we render a plain cell
+          // rather than forging a link to a page that will 404.
+          if (scope === 'folder') {
+            const folderName = scopeNameFromNamespace(p.namespace)
+            if (folderName) {
+              return (
+                <Link
+                  to="/folders/$folderName/template-policies/$policyName"
+                  params={{ folderName, policyName: p.name }}
+                  title={p.name}
+                  className="hover:underline font-medium"
+                >
+                  {label}
+                </Link>
+              )
+            }
+          } else if (scope === 'org') {
             return (
               <Link
-                to="/orgs/$orgName/templates/$namespace/$name"
-                params={{ orgName, namespace: t.namespace, name: t.name }}
-                title={t.name}
+                to="/organizations/$orgName/template-policies/$policyName"
+                params={{ orgName, policyName: p.name }}
+                title={p.name}
                 className="hover:underline font-medium"
               >
                 {label}
               </Link>
             )
           }
-          if (scope === 'folder') {
-            const folderName = scopeNameFromNamespace(t.namespace)
-            if (folderName) {
-              return (
-                <Link
-                  to="/folders/$folderName/templates/$templateName"
-                  params={{ folderName, templateName: t.name }}
-                  title={t.name}
-                  className="hover:underline font-medium"
-                >
-                  {label}
-                </Link>
-              )
-            }
-          }
-          if (scope === 'project') {
-            const projectName = scopeNameFromNamespace(t.namespace)
-            if (projectName) {
-              return (
-                <Link
-                  to="/projects/$projectName/templates/$templateName"
-                  params={{ projectName, templateName: t.name }}
-                  title={t.name}
-                  className="hover:underline font-medium"
-                >
-                  {label}
-                </Link>
-              )
-            }
-          }
           return (
-            <span className="font-medium" title={t.name}>
+            <span className="font-medium" title={p.name}>
               {label}
             </span>
           )
@@ -185,15 +156,14 @@ export function OrgTemplatesIndexPage({
     getFilteredRowModel: getFilteredRowModel(),
   })
 
-  const queryDisabled = orgName === ''
-  if (isPending || queryDisabled) {
+  if (isPending) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Templates</CardTitle>
+          <CardTitle>Template Policies</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2" data-testid="templates-loading">
+          <div className="space-y-2" data-testid="policies-loading">
             {Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-10 w-full" />
             ))}
@@ -203,10 +173,7 @@ export function OrgTemplatesIndexPage({
     )
   }
 
-  // Fall through to the full grid when the fan-out has both an error and
-  // partial data, so successfully-loaded rows remain visible. The banner
-  // below the header surfaces the error without blanking the table.
-  if (error && templates.length === 0) {
+  if (error && (policies ?? []).length === 0) {
     return (
       <Card>
         <CardContent className="pt-6">
@@ -223,67 +190,46 @@ export function OrgTemplatesIndexPage({
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
         <div>
           <p className="text-sm text-muted-foreground">
-            {orgName} / Templates
+            {orgName} / Template Policies
           </p>
-          <CardTitle className="mt-1">Templates</CardTitle>
+          <CardTitle className="mt-1">Template Policies</CardTitle>
         </div>
         {canWrite && (
-          <Link to="/orgs/$orgName/templates/new" params={{ orgName }}>
-            <Button size="sm">Create Template</Button>
+          <Link to="/organizations/$orgName/template-policies/new" params={{ orgName }}>
+            <Button size="sm">Create Policy</Button>
           </Link>
         )}
       </CardHeader>
       <CardContent>
         {error && (
-          <Alert
-            variant="destructive"
-            className="mb-4"
-            data-testid="templates-partial-error"
-          >
+          <Alert variant="destructive" className="mb-4" data-testid="policies-partial-error">
             <AlertDescription>{error.message}</AlertDescription>
           </Alert>
         )}
-        {templates.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-8 text-center">
-            <p className="text-muted-foreground">
-              No templates yet.
-              {canWrite
-                ? ' Create one to get started.'
-                : ' Ask an organization owner to create one.'}
+        {(policies ?? []).length === 0 ? (
+          <div className="rounded-md border border-dashed border-border p-6 text-center">
+            <p className="text-sm font-medium">No template policies yet.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Policies attach templates to projects through REQUIRE or EXCLUDE
+              rules. Rules apply to both project templates and deployments.
+              Policies live only at folder or organization scope.
             </p>
           </div>
         ) : (
           <>
             <div className="mb-3 flex flex-col sm:flex-row gap-2 sm:items-center">
               <Input
-                placeholder="Search templates…"
+                placeholder="Search policies…"
                 value={globalFilter}
                 onChange={(e) => setGlobalFilter(e.target.value)}
                 className="max-w-sm"
-                aria-label="Search templates"
+                aria-label="Search template policies"
               />
-              <Select
-                value={scopeFilter}
-                onValueChange={(v) => setScopeFilter(v as ScopeFilter)}
-              >
-                <SelectTrigger
-                  className="w-[180px]"
-                  aria-label="Filter by scope"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All scopes</SelectItem>
-                  <SelectItem value="org">Organization</SelectItem>
-                  <SelectItem value="folder">Folder</SelectItem>
-                  <SelectItem value="project">Project</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             {rows.length === 0 && (
               <div className="mb-3 rounded-md border border-dashed border-border p-4 text-center">
                 <p className="text-sm text-muted-foreground">
-                  No templates match the current filters.
+                  No policies match the current search.
                 </p>
               </div>
             )}
@@ -326,6 +272,9 @@ export function OrgTemplatesIndexPage({
   )
 }
 
+// scopeCellText supplies the string the global search filter matches against
+// when the user types a scope label. An accessor that returns text (rather
+// than a ReactNode cell) lets `includesString` search this column.
 function scopeCellText(namespace: string): string {
   const label = scopeDisplayLabel(namespace)
   const name = scopeNameFromNamespace(namespace)

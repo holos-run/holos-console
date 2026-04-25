@@ -41,7 +41,7 @@ RESULT=$(rpc FolderService CreateFolder \
 echo "Create folder result: $RESULT"
 
 echo "=== Step 3: Capture folder detail page — Data view ==="
-$AB open "$BACKEND_URL/orgs/$ORG_NAME/folders/$FOLDER_NAME"
+$AB open "$BACKEND_URL/organizations/$ORG_NAME/folders/$FOLDER_NAME"
 $AB wait --load networkidle
 $AB wait 3000
 $AB screenshot "$SCREENSHOT_DIR/01-folder-detail-data-view.png"

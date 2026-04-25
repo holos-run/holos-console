@@ -287,11 +287,11 @@ export function FolderDetailPage({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">
-                <Link to="/orgs/$orgName/settings" params={{ orgName }} className="hover:underline">
+                <Link to="/organizations/$orgName/settings" params={{ orgName }} className="hover:underline">
                   {orgName}
                 </Link>
                 {' / '}
-                <Link to="/orgs/$orgName/resources" params={{ orgName }} className="hover:underline">
+                <Link to="/organizations/$orgName/resources" params={{ orgName }} className="hover:underline">
                   Resources
                 </Link>
                 {' / '}
@@ -596,7 +596,7 @@ export function FolderDetailPage({
                   await deleteFolderMutation.mutateAsync({ name: folderName })
                   setDeleteOpen(false)
                   navigate?.({
-                    to: '/orgs/$orgName/resources',
+                    to: '/organizations/$orgName/resources',
                     params: { orgName },
                   })
                 } catch (err) {

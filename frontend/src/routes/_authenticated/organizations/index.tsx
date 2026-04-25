@@ -159,7 +159,7 @@ export function OrganizationsIndexPage() {
     // persistent across reloads.
     setSelectedOrg(org.name)
     navigate({
-      to: '/orgs/$orgName/resources',
+      to: '/organizations/$orgName/resources',
       params: { orgName: org.name },
     })
   }

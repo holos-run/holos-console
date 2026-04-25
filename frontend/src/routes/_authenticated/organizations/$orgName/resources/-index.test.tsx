@@ -122,7 +122,7 @@ describe('ResourcesIndexPage', () => {
     render(<ResourcesIndexPage />)
 
     const orgLink = screen.getByRole('link', { name: 'Test Org' })
-    expect(orgLink).toHaveAttribute('href', '/orgs/test-org')
+    expect(orgLink).toHaveAttribute('href', '/organizations/test-org')
     expect(orgLink).toHaveAttribute('title', 'test-org')
 
     const folderLink = screen.getByRole('link', { name: /Team A/ })

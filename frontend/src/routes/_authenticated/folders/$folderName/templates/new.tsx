@@ -39,11 +39,11 @@ export function CreateFolderTemplatePage({ folderName: propFolderName }: { folde
       <CardHeader>
         <div>
           <p className="text-sm text-muted-foreground">
-            <Link to="/orgs/$orgName/settings" params={{ orgName }} className="hover:underline">
+            <Link to="/organizations/$orgName/settings" params={{ orgName }} className="hover:underline">
               {orgName}
             </Link>
             {' / '}
-            <Link to="/orgs/$orgName/resources" params={{ orgName }} className="hover:underline">
+            <Link to="/organizations/$orgName/resources" params={{ orgName }} className="hover:underline">
               Resources
             </Link>
             {' / '}

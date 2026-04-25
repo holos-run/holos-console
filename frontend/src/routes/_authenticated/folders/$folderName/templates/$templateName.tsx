@@ -25,7 +25,7 @@ export function FolderTemplateRedirect() {
   useEffect(() => {
     if (isPending || !orgName) return
     navigate({
-      to: '/orgs/$orgName/templates/$namespace/$name',
+      to: '/organizations/$orgName/templates/$namespace/$name',
       params: {
         orgName,
         namespace: namespaceForFolder(folderName),

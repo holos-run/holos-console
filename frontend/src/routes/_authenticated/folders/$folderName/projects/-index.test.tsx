@@ -73,11 +73,11 @@ describe('FolderProjectsIndexPage', () => {
     expect(headings.length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: 'test-org' })).toHaveAttribute(
       'href',
-      '/orgs/test-org/settings',
+      '/organizations/test-org/settings',
     )
     expect(screen.getByRole('link', { name: 'Resources' })).toHaveAttribute(
       'href',
-      '/orgs/test-org/resources',
+      '/organizations/test-org/resources',
     )
     expect(screen.getByRole('link', { name: 'payments' })).toHaveAttribute(
       'href',
