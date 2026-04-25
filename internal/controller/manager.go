@@ -46,6 +46,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	deploymentsv1alpha1 "github.com/holos-run/holos-console/api/deployments/v1alpha1"
 	v1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 )
 
@@ -61,6 +62,11 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(Scheme))
 	// Our custom types.
 	utilruntime.Must(v1alpha1.AddToScheme(Scheme))
+	// Deployment CRD (deployments.holos.run/v1alpha1) — registered so the
+	// controller-runtime cache-backed client can read/write Deployment CRs
+	// and the CRWriter can issue SSA patches through the manager's client
+	// (HOL-957).
+	utilruntime.Must(deploymentsv1alpha1.AddToScheme(Scheme))
 }
 
 // Options holds the knobs the console needs to construct a controller-runtime
@@ -260,6 +266,16 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 	// absent CRD / RBAC gap surfaces at Start rather than on first request.
 	if _, err := mgr.GetCache().GetInformer(context.Background(), &v1alpha1.TemplateRelease{}); err != nil {
 		return nil, fmt.Errorf("controller.NewManager: priming templaterelease informer: %w", err)
+	}
+
+	// Prime the Deployment informer (HOL-957). The CRWriter issues SSA
+	// patches through the manager's cache-backed client; without this eager
+	// registration a missing Deployment CRD or RBAC gap would surface as a
+	// silent cache-miss on first write rather than a startup failure. Register
+	// it eagerly so an absent CRD is caught at Start before the pod reports
+	// /readyz green.
+	if _, err := mgr.GetCache().GetInformer(context.Background(), &deploymentsv1alpha1.Deployment{}); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: priming deployment informer: %w", err)
 	}
 
 	return m, nil
