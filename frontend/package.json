@@ -1,5 +1,10 @@
 {
   "name": "frontend",
+  "engines": {
+    "node": ">=22",
+    "npm": ">=11"
+  },
+  "packageManager": "npm@11.3.0",
   "private": true,
   "version": "0.0.0",
   "type": "module",

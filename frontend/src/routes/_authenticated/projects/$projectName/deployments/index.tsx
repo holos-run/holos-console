@@ -35,29 +35,6 @@ export const Route = createFileRoute('/_authenticated/projects/$projectName/depl
 })
 
 // ---------------------------------------------------------------------------
-// Description banner
-// ---------------------------------------------------------------------------
-
-/**
- * DeploymentsDescription renders a static three-bullet explanation of what a
- * Deployment is. The copy is verbatim from the HOL-858 acceptance criteria.
- */
-export function DeploymentsDescription() {
-  return (
-    <div
-      className="mb-4 rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground"
-      data-testid="deployments-description"
-    >
-      <ul className="list-disc pl-5 space-y-1">
-        <li>Deployment is a collection of resource declarations (configuration).</li>
-        <li>Deploying is applying the configuration to the platform.</li>
-        <li>Controllers reconcile current state with desired state.</li>
-      </ul>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Extra columns — Phase badge and Policy Drift badge
 // ---------------------------------------------------------------------------
 
@@ -183,7 +160,6 @@ export function DeploymentsListPage() {
       search={search}
       onSearchChange={handleSearchChange}
       extraColumns={extraColumns}
-      headerContent={<DeploymentsDescription />}
     />
   )
 }
