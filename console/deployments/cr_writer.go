@@ -141,12 +141,15 @@ func (w *CRWriter) applyDeploymentCR(
 }
 
 // ApplyOnCreate writes the Deployment CR after a successful proto-store create.
-// Parameters mirror K8sClient.CreateDeployment.
+// Parameters mirror K8sClient.CreateDeployment. The env parameter is accepted
+// for API symmetry with CreateDeployment but is intentionally not written to
+// the CR: DeploymentSpec carries no Env field (env vars are proto-side only,
+// stored in the ConfigMap and surfaced via the ConnectRPC surface).
 func (w *CRWriter) ApplyOnCreate(
 	ctx context.Context,
 	project, name, image, tag, templateName, displayName, description string,
 	command, args []string,
-	env []v1alpha2.EnvVar,
+	_ []v1alpha2.EnvVar, // env — proto-store only; not reflected in DeploymentSpec
 	port int32,
 ) error {
 	if w == nil {
