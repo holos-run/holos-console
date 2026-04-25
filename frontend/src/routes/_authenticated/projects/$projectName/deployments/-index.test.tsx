@@ -2,7 +2,6 @@
  * Tests for the Deployments index page (HOL-858) — ResourceGrid v1 implementation.
  *
  * Mocks @/queries/deployments and @/queries/projects. Covers:
- *  - DeploymentsDescription banner (copy-locking assertions)
  *  - ResourceGrid renders project rows
  *  - Delete flow via ConfirmDeleteDialog
  *  - Extra columns: Phase badge and PolicyDrift badge
@@ -62,7 +61,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { useListDeployments, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
-import { DeploymentsListPage, DeploymentsDescription } from './index'
+import { DeploymentsListPage } from './index'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -150,36 +149,6 @@ function setupMocks({
 describe('DeploymentsListPage (ResourceGrid v1)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-  })
-
-  // -------------------------------------------------------------------------
-  // Description banner (copy-locking)
-  // -------------------------------------------------------------------------
-
-  describe('DeploymentsDescription banner', () => {
-    it('renders the description banner', () => {
-      render(<DeploymentsDescription />)
-      expect(screen.getByTestId('deployments-description')).toBeInTheDocument()
-    })
-
-    it('contains the three verbatim bullet points', () => {
-      render(<DeploymentsDescription />)
-      expect(
-        screen.getByText('Deployment is a collection of resource declarations (configuration).'),
-      ).toBeInTheDocument()
-      expect(
-        screen.getByText('Deploying is applying the configuration to the platform.'),
-      ).toBeInTheDocument()
-      expect(
-        screen.getByText('Controllers reconcile current state with desired state.'),
-      ).toBeInTheDocument()
-    })
-
-    it('renders the description banner inside the full page', () => {
-      setupMocks()
-      render(<DeploymentsListPage />)
-      expect(screen.getByTestId('deployments-description')).toBeInTheDocument()
-    })
   })
 
   // -------------------------------------------------------------------------

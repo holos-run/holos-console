@@ -2,7 +2,6 @@
  * Deployments index page — reimplemented on ResourceGrid v1 (HOL-858).
  *
  * Default view: current project as the single parent with Parent column hidden.
- * A static description banner at the top of the Card explains what a Deployment is.
  * Phase and PolicyDrift badges are preserved via the `extraColumns` extension
  * on ResourceGrid v1.
  *
@@ -33,29 +32,6 @@ export const Route = createFileRoute('/_authenticated/projects/$projectName/depl
   validateSearch: parseGridSearch,
   component: DeploymentsListPage,
 })
-
-// ---------------------------------------------------------------------------
-// Description banner
-// ---------------------------------------------------------------------------
-
-/**
- * DeploymentsDescription renders a static three-bullet explanation of what a
- * Deployment is. The copy is verbatim from the HOL-858 acceptance criteria.
- */
-export function DeploymentsDescription() {
-  return (
-    <div
-      className="mb-4 rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground"
-      data-testid="deployments-description"
-    >
-      <ul className="list-disc pl-5 space-y-1">
-        <li>Deployment is a collection of resource declarations (configuration).</li>
-        <li>Deploying is applying the configuration to the platform.</li>
-        <li>Controllers reconcile current state with desired state.</li>
-      </ul>
-    </div>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Extra columns — Phase badge and Policy Drift badge
@@ -183,7 +159,6 @@ export function DeploymentsListPage() {
       search={search}
       onSearchChange={handleSearchChange}
       extraColumns={extraColumns}
-      headerContent={<DeploymentsDescription />}
     />
   )
 }
