@@ -258,6 +258,20 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 		return nil, fmt.Errorf("controller.NewManager: registering TemplateGrantReconciler: %w", err)
 	}
 
+	// Register the TemplateDependencyReconciler (HOL-959). It watches
+	// TemplateDependency and Deployment objects; for each matching dependent
+	// Deployment it calls EnsureSingletonDependencyDeployment so the shared
+	// singleton Requires Deployment is materialised with the correct set of
+	// non-controller ownerReferences.
+	if err := (&TemplateDependencyReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		Recorder:  mgr.GetEventRecorderFor("template-dependency-controller"),
+		Validator: grantCache,
+	}).SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering TemplateDependencyReconciler: %w", err)
+	}
+
 	// Prime the Namespace informer so the reconcilers (HOL-621+) can read
 	// console.holos.run/resource-type labels without round-trips. Namespace
 	// is otherwise not brought into the cache by any of the three

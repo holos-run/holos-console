@@ -88,6 +88,30 @@ const (
 	TemplatePolicyBindingReasonNotReady          = "NotReady"
 )
 
+// TemplateDependency condition types.
+const (
+	// TemplateDependencyConditionAccepted tracks whether the reconciler
+	// parsed .spec and accepted it, or rejected it with a typed reason.
+	TemplateDependencyConditionAccepted = "Accepted"
+	// TemplateDependencyConditionResolvedRefs tracks whether the cross-
+	// namespace Requires reference is authorised by a TemplateGrant. Same-
+	// namespace references are always accepted without a grant.
+	TemplateDependencyConditionResolvedRefs = "ResolvedRefs"
+	// TemplateDependencyConditionReady is the aggregate: Accepted &&
+	// ResolvedRefs are both True.
+	TemplateDependencyConditionReady = "Ready"
+)
+
+// TemplateDependency condition reasons.
+const (
+	TemplateDependencyReasonAccepted        = "Accepted"
+	TemplateDependencyReasonInvalidSpec     = "InvalidSpec"
+	TemplateDependencyReasonResolvedRefs    = "ResolvedRefs"
+	TemplateDependencyReasonGrantNotFound   = "GrantNotFound"
+	TemplateDependencyReasonReady           = "Ready"
+	TemplateDependencyReasonNotReady        = "NotReady"
+)
+
 // Finalizer is the finalizer key used by reconcilers for the
 // templates.holos.run API group when non-trivial cleanup is required before
 // the API server deletes a managed object.
