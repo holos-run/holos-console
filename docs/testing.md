@@ -178,10 +178,13 @@ Test files in `src/components/` and `src/lib/` can use any name.
 | `src/queries/-organizations.test.ts` | Organization query hooks: get, update, sharing, default sharing, delete |
 | `src/queries/-projects.test.ts` | useListProjects and useCreateProject hooks |
 | `src/queries/-templatePolicies.test.ts` | `aggregateFanOut` helper: idle/disabled queries, pending while fetching, org-only and org+folder concatenation, partial-failure tolerance, non-Error wrapping, empty input |
+| `src/queries/secrets.test.ts` | Secret query hooks: list key shape, mutation invalidation (create/delete/update/sharing), keep-previous-data across project changes |
+| `src/queries/-deployments.test.ts` | Deployment query hooks: list key shape, mutation invalidation (create/delete/update + policyState), keep-previous-data across project changes |
+| `src/queries/-templates.test.ts` | Template query hooks: list key shape, mutation invalidation (create/delete/update + policyStateScope), keep-previous-data across namespace changes |
 | `src/routes/_authenticated/organization/-new.test.tsx` | Create organization page: heading, full-page (not dialog), fields, slug auto-derivation, validation, submit, returnTo, error |
 | `src/routes/_authenticated/folder/-new.test.tsx` | Create folder page: heading, full-page (not dialog), fields, slug auto-derivation, validation, submit, returnTo, error, orgName guard |
 | `src/routes/_authenticated/project/-new.test.tsx` | Create project page: heading, full-page (not dialog), fields, slug auto-derivation, validation, submit, returnTo, error, orgName/folderName guards |
-| `src/components/resource-grid/-resource-grid.test.tsx` | ResourceGrid v1: column headers, kind filter, global search, empty/loading/error states, delete-confirm dialog |
+| `src/components/resource-grid/-resource-grid.test.tsx` | ResourceGrid v1: column headers, kind filter, global search, empty/loading/error states, delete-confirm dialog, onSearchChange wiring (kind checkbox and search input) |
 | `src/components/ui/-confirm-delete-dialog.test.tsx` | ConfirmDeleteDialog: open/close, confirm, error, isDeleting state |
 | `src/components/-app-sidebar.tree.test.tsx` | Sidebar integration (real primitives): enabled entries render Link, disabled entries render tooltip-wrapped button |
 | `src/components/templates/-templates-help-pane.test.tsx` | TemplatesHelpPane: renders help content sections |
