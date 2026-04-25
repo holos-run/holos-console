@@ -20,20 +20,20 @@ package controller_test
 //
 // Test coverage:
 //
-//  1. Accepted=False surfaces for an invalid spec (missing namespace).
+//  1. Accepted=True + Ready=True for a valid spec with no matching Deployments.
 //  2. ResolvedRefs=False + GrantNotFound when a cross-namespace requires ref
 //     is not authorised by a TemplateGrant.
 //  3. The mcp-server / mcp-server-2 / waypoint smoke scenario:
-//     a. Create TemplateDependency (waypoint requires).
-//     b. Create dep1=mcp-server, dep2=mcp-server-2 — both with TemplateRef
-//        pointing at the "waypoint" template.
-//     c. Assert the singleton "waypoint-shared" Deployment is created with two
-//        non-controller ownerReferences (one per dependent).
-//     d. Delete dep1 — assert singleton still exists (dep2 still owns it).
-//     e. Delete dep2 — assert singleton is eventually reaped by GC.
+//     a. Create TemplateDependency: mcp-server-tmpl Deployments require waypoint-tmpl.
+//     b. Create dep1=mcp-server (TemplateRef=mcp-server-tmpl) → singleton
+//        "waypoint-tmpl-shared" is created with dep1's ownerReference.
+//     c. Create dep2=mcp-server-2 → reconciler appends dep2's ownerReference.
+//     d. Verify both ownerRefs are non-controller (Controller=false/nil) and
+//        BlockOwnerDeletion=true — the GC preconditions.
 //
-// Note: native GC in envtest behaves the same as in a real cluster; the test
-// polls with a generous timeout to let the garbage collector run.
+// Note: envtest boots kube-apiserver + etcd but NOT kube-controller-manager,
+// so the garbage collector is absent. Tests assert ownerRef preconditions
+// rather than waiting for GC to fire.
 
 import (
 	"context"
@@ -76,25 +76,6 @@ func waitForTemplateDependencyCondition(
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatalf("condition %q on TemplateDependency %s never reached %s", condType, key, wantStatus)
-}
-
-// waitForDeploymentGone polls until the Deployment at key is 404 or the
-// deadline expires. Used to assert native GC has reaped the singleton.
-func waitForDeploymentGone(t *testing.T, c client.Client, key client.ObjectKey) {
-	t.Helper()
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		var d deploymentsv1alpha1.Deployment
-		err := c.Get(context.Background(), key, &d)
-		if apierrors.IsNotFound(err) {
-			return
-		}
-		if err != nil {
-			t.Fatalf("get Deployment %s: %v", key, err)
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	t.Fatalf("Deployment %s still exists after deadline; native GC did not reap it", key)
 }
 
 // waitForDeploymentExists polls until the Deployment at key exists or the
