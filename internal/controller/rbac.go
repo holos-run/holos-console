@@ -37,6 +37,8 @@ limitations under the License.
 // +kubebuilder:rbac:groups=templates.holos.run,resources=renderstates,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=templates.holos.run,resources=renderstates/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=templates.holos.run,resources=renderstates/finalizers,verbs=update
+// +kubebuilder:rbac:groups=templates.holos.run,resources=templategrants,verbs=get;list;watch
+// +kubebuilder:rbac:groups=templates.holos.run,resources=templategrants/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch

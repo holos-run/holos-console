@@ -48,6 +48,7 @@ import (
 
 	deploymentsv1alpha1 "github.com/holos-run/holos-console/api/deployments/v1alpha1"
 	v1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
+	"github.com/holos-run/holos-console/console/deployments"
 )
 
 // Scheme is the controller-runtime scheme shared by the embedded manager and
@@ -114,6 +115,13 @@ type Options struct {
 	OrganizationPrefix string
 	FolderPrefix       string
 	ProjectPrefix      string
+
+	// GrantCache is the TemplateGrantCache the TemplateGrantReconciler
+	// keeps current. When nil, NewManager allocates a fresh cache so
+	// callers that only need the cache-backed client can omit it.
+	// The console wires its GrantCache here so ValidateGrant reads from
+	// the same snapshot the reconciler maintains.
+	GrantCache *deployments.TemplateGrantCache
 }
 
 // Manager wraps a sigs.k8s.io/controller-runtime manager.Manager plus a
@@ -134,6 +142,7 @@ type Manager struct {
 	ready            atomic.Bool
 	cacheSyncTimeout time.Duration
 	logger           *slog.Logger
+	grantCache       *deployments.TemplateGrantCache
 }
 
 // NewManager constructs a Manager from the provided rest config, scheme, and
@@ -234,6 +243,21 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 		return nil, fmt.Errorf("controller.NewManager: registering TemplatePolicyBindingReconciler: %w", err)
 	}
 
+	// Register the TemplateGrantReconciler (HOL-958). It watches
+	// TemplateGrant and Namespace objects and keeps the GrantCache current
+	// so ValidateGrant calls never need to round-trip to the API server.
+	grantCache := opts.GrantCache
+	if grantCache == nil {
+		grantCache = deployments.NewTemplateGrantCache()
+	}
+	if err := (&TemplateGrantReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		Cache:  grantCache,
+	}).SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering TemplateGrantReconciler: %w", err)
+	}
+
 	// Prime the Namespace informer so the reconcilers (HOL-621+) can read
 	// console.holos.run/resource-type labels without round-trips. Namespace
 	// is otherwise not brought into the cache by any of the three
@@ -278,6 +302,10 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 		return nil, fmt.Errorf("controller.NewManager: priming deployment informer: %w", err)
 	}
 
+	// Store the grant cache on the Manager so console.go can retrieve it
+	// and pass it to the validator path.
+	m.grantCache = grantCache
+
 	return m, nil
 }
 
@@ -286,6 +314,14 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 // rewires every storage client to consume this method.
 func (m *Manager) GetClient() client.Client {
 	return m.mgr.GetClient()
+}
+
+// GetGrantCache returns the TemplateGrantCache that the TemplateGrantReconciler
+// keeps current. Callers that need to perform TemplateGrant validation (e.g.,
+// the Phase 5 and Phase 6 reconcilers) should read from this cache rather than
+// issuing direct API server reads.
+func (m *Manager) GetGrantCache() *deployments.TemplateGrantCache {
+	return m.grantCache
 }
 
 // GetManager returns the underlying controller-runtime manager.Manager for
