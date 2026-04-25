@@ -69,7 +69,7 @@ test.describe('Folder detail page', () => {
 })
 
 test.describe('Nested folder workflow', () => {
-  test('creates org → parent folder → child folder, both visible in list', async ({ page }) => {
+  test('creates org → parent folder → child folder, both accessible by direct URL', async ({ page }) => {
     await loginViaProfilePage(page)
 
     const ts = Date.now()
