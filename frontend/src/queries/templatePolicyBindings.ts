@@ -3,6 +3,7 @@ import { create } from '@bufbuild/protobuf'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
 import {
+  keepPreviousData,
   useQuery,
   useQueries,
   useMutation,
@@ -49,6 +50,7 @@ export function useListTemplatePolicyBindings(namespace: string) {
       return response.bindings
     },
     enabled: isAuthenticated && !!namespace,
+    placeholderData: keepPreviousData,
   })
 }
 

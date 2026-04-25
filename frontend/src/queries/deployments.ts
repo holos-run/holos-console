@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DeploymentService } from '@/gen/holos/console/v1/deployments_pb.js'
 import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb.js'
 import { useAuth } from '@/lib/auth'
@@ -18,6 +18,7 @@ export function useListDeployments(project: string) {
       return response.deployments
     },
     enabled: isAuthenticated && !!project,
+    placeholderData: keepPreviousData,
   })
 }
 
