@@ -74,7 +74,7 @@ the same auth/parameter guard but compose multiple queries with
 
 `frontend/src/components/resource-grid/` contains:
 
-- `ResourceGrid.tsx` - shared TanStack Table wrapper, currently 590 lines.
+- `ResourceGrid.tsx` - shared TanStack Table wrapper, 470 lines after the HOL-947 split.
 - `types.ts` - `Row`, `Kind`, `LineageDirection`, and `ResourceGridSearch`.
 - `url-state.ts` - `parseGridSearch`, `serialiseGridSearch`,
   `parseKindIds`, and `serialiseKindIds`.
@@ -152,9 +152,9 @@ direct component test and callers only need page-level rendering coverage.
 - Query keys are still a convention, not a shared contract. Some modules expose
   well-named factories, while others use ad-hoc inline keys such as direct
   `['templates', 'policy-state', namespace]` invalidation from callers.
-- `ResourceGrid.tsx` is already large enough that unrelated behavior can
-  collide in one file. Loading, empty, error, toolbar, columns, row navigation,
-  and delete confirmation are all implemented together.
+- `ResourceGrid.tsx` was split in HOL-947: loading, empty, error, toolbar,
+  columns, row navigation, and delete confirmation now live in separate modules
+  (`Toolbar.tsx`, `KindFilter.tsx`, `useDeleteConfirm.ts`).
 - There is no documented virtualization decision rule. Current tables render
   straightforward in-memory rows, which is fine for current data sizes but
   leaves future high-cardinality resource lists without a trigger for when to
@@ -198,7 +198,7 @@ direct component test and callers only need page-level rendering coverage.
 
 ## Out-of-scope follow-ups
 
-- Split `ResourceGrid.tsx` into smaller internal pieces after conventions land.
+- Split `ResourceGrid.tsx` into smaller internal pieces after conventions land. **Done in HOL-947**: `Toolbar.tsx`, `KindFilter.tsx`, `useDeleteConfirm.ts` extracted.
 - Decide and document the virtualization or pagination threshold for resource
   lists.
 - Normalize TemplatePolicyBinding path spelling across organization and folder

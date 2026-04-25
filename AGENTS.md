@@ -47,7 +47,8 @@ Agent-facing frontend docs:
   `returnTo`, selected-entity sync, ConnectRPC transport, and build/test
   commands.
 - [TanStack Query Conventions](docs/agents/tanstack-query-conventions.md) —
-  placeholder for Phase 4 query-key and invalidation conventions.
+  query-key factories, transport/hook split, stale time defaults, enabled
+  guards, mutation invalidation matrix, and prefetch policy.
 - [Data Grid Architecture](docs/agents/data-grid-architecture.md) —
   source of record for `ResourceGrid` architecture conventions.
 - [Data Grid Conventions](docs/agents/data-grid-conventions.md) — quick
