@@ -49,9 +49,9 @@ Agent-facing frontend docs:
 - [TanStack Query Conventions](docs/agents/tanstack-query-conventions.md) —
   placeholder for Phase 4 query-key and invalidation conventions.
 - [Data Grid Architecture](docs/agents/data-grid-architecture.md) —
-  placeholder for Phase 5 `ResourceGrid` architecture conventions.
-- [Data Grid Conventions](docs/agents/data-grid-conventions.md) — current
-  clickable resource ID and fully-clickable row rule.
+  source of record for `ResourceGrid` architecture conventions.
+- [Data Grid Conventions](docs/agents/data-grid-conventions.md) — quick
+  pointer for the clickable resource ID and fully-clickable row rule.
 - [Frontend Audit Baseline](docs/agents/frontend-audit-2026-04.md) — Phase 1
   inventory and target conventions.
 
