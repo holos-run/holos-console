@@ -60,6 +60,7 @@ rules:
   - templates.holos.run
   resources:
   - renderstates/status
+  - templategrants/status
   - templatepolicies/status
   - templatepolicybindings/status
   - templatereleases/status
@@ -68,3 +69,11 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - templates.holos.run
+  resources:
+  - templategrants
+  verbs:
+  - get
+  - list
+  - watch
