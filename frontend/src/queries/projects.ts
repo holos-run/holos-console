@@ -9,6 +9,7 @@ import {
 } from '@/gen/holos/console/v1/projects_pb.js'
 import type { ParentType } from '@/gen/holos/console/v1/folders_pb.js'
 import { useAuth } from '@/lib/auth'
+import { keys } from '@/queries/keys'
 
 export function useListProjects(organization: string) {
   const { isAuthenticated } = useAuth()
@@ -24,7 +25,7 @@ export function useListProjectsByParent(organization: string, parentType?: Paren
   const transport = useTransport()
   const client = useMemo(() => createClient(ProjectService, transport), [transport])
   return useTanstackQuery({
-    queryKey: ['projects', 'listByParent', organization, parentType, parentName] as const,
+    queryKey: keys.projects.listByParent(organization, parentType, parentName),
     queryFn: async () => {
       const response = await client.listProjects({ organization, parentType, parentName })
       return response.projects
@@ -38,7 +39,7 @@ export function useGetProject(name: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(ProjectService, transport), [transport])
   return useTanstackQuery({
-    queryKey: ['connect-query', 'getProject', name],
+    queryKey: keys.projects.get(name),
     queryFn: async () => {
       const response = await client.getProject({ name })
       return response.project
@@ -55,7 +56,7 @@ export function useCreateProject() {
     mutationFn: (params: { name: string; displayName?: string; description?: string; organization: string; parentType?: number; parentName?: string }) =>
       client.createProject(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['connect-query'] })
+      queryClient.invalidateQueries({ queryKey: keys.connect.all() })
     },
   })
 }
@@ -68,7 +69,7 @@ export function useUpdateProject() {
     mutationFn: (params: { name: string; displayName?: string; description?: string; parentType?: ParentType; parentName?: string }) =>
       client.updateProject(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['connect-query'] })
+      queryClient.invalidateQueries({ queryKey: keys.connect.all() })
     },
   })
 }
@@ -84,7 +85,7 @@ export function useUpdateProjectSharing() {
       roleGrants: { principal: string; role: number }[]
     }) => client.updateProjectSharing(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['connect-query'] })
+      queryClient.invalidateQueries({ queryKey: keys.connect.all() })
     },
   })
 }
@@ -100,7 +101,7 @@ export function useUpdateProjectDefaultSharing() {
       defaultRoleGrants: { principal: string; role: number }[]
     }) => client.updateProjectDefaultSharing(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['connect-query'] })
+      queryClient.invalidateQueries({ queryKey: keys.connect.all() })
     },
   })
 }
@@ -112,7 +113,7 @@ export function useDeleteProject() {
   return useMutation({
     mutationFn: (params: { name: string }) => client.deleteProject(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['connect-query'] })
+      queryClient.invalidateQueries({ queryKey: keys.connect.all() })
     },
   })
 }

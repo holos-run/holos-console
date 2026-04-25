@@ -34,6 +34,7 @@ import {
   type FanOutAggregate,
   type FanOutQueryState,
 } from '@/queries/templatePolicies'
+import { keys } from '@/queries/keys'
 
 // Re-export generated types used by consumers.
 export type {
@@ -60,22 +61,6 @@ export function parseLinkableKey(key: string): { namespace: string; name: string
   return { namespace: key.slice(0, slash), name: key.slice(slash + 1) }
 }
 
-function templateListKey(namespace: string) {
-  return ['templates', 'list', namespace] as const
-}
-
-function templateGetKey(namespace: string, name: string) {
-  return ['templates', 'get', namespace, name] as const
-}
-
-function linkableTemplatesKey(namespace: string, includeSelfScope: boolean) {
-  return ['templates', 'linkable', namespace, includeSelfScope] as const
-}
-
-function templateExamplesKey() {
-  return ['templates', 'examples'] as const
-}
-
 // useListTemplateExamples fetches the built-in CUE example templates embedded
 // in the server binary (HOL-797). The template example picker UI calls this
 // hook to offer drop-in starting points when creating a new template — the
@@ -89,7 +74,7 @@ export function useListTemplateExamples() {
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: templateExamplesKey(),
+    queryKey: keys.templates.examples(),
     queryFn: async () => {
       const response = await client.listTemplateExamples({})
       return response.examples
@@ -104,7 +89,7 @@ export function useListTemplates(namespace: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: templateListKey(namespace),
+    queryKey: keys.templates.list(namespace),
     queryFn: async () => {
       const response = await client.listTemplates({ namespace })
       return response.templates
@@ -151,7 +136,7 @@ export function useAllTemplatesForOrg(orgName: string): FanOutAggregate<Template
 
   const folderQueries = useQueries({
     queries: folders.map((folder) => ({
-      queryKey: templateListKey(namespaceForFolder(folder.name)),
+      queryKey: keys.templates.list(namespaceForFolder(folder.name)),
       queryFn: async (): Promise<Template[]> => {
         const response = await client.listTemplates({
           namespace: namespaceForFolder(folder.name),
@@ -164,7 +149,7 @@ export function useAllTemplatesForOrg(orgName: string): FanOutAggregate<Template
 
   const projectQueries = useQueries({
     queries: projects.map((project) => ({
-      queryKey: templateListKey(namespaceForProject(project.name)),
+      queryKey: keys.templates.list(namespaceForProject(project.name)),
       queryFn: async (): Promise<Template[]> => {
         const response = await client.listTemplates({
           namespace: namespaceForProject(project.name),
@@ -176,7 +161,7 @@ export function useAllTemplatesForOrg(orgName: string): FanOutAggregate<Template
   })
 
   const orgQuery = useQuery({
-    queryKey: templateListKey(orgNamespace),
+    queryKey: keys.templates.list(orgNamespace),
     queryFn: async () => {
       const response = await client.listTemplates({ namespace: orgNamespace })
       return response.templates
@@ -225,15 +210,6 @@ export function useAllTemplatesForOrg(orgName: string): FanOutAggregate<Template
   ])
 }
 
-function searchTemplatesKey(
-  namespace: string,
-  name: string,
-  displayNameContains: string,
-  organization: string,
-) {
-  return ['templates', 'search', namespace, name, displayNameContains, organization] as const
-}
-
 // useSearchTemplates returns templates matching the given filters across every
 // namespace scope the caller can see. Introduced in HOL-607 for the unified
 // Templates index at /organizations/$orgName/templates. Pass `organization` to restrict
@@ -255,7 +231,7 @@ export function useSearchTemplates(params: {
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: searchTemplatesKey(namespace, name, displayNameContains, organization),
+    queryKey: keys.templates.search(namespace, name, displayNameContains, organization),
     queryFn: async () => {
       const response = await client.searchTemplates({
         namespace,
@@ -267,10 +243,6 @@ export function useSearchTemplates(params: {
     },
     enabled: isAuthenticated && organization !== '',
   })
-}
-
-function templateDefaultsKey(namespace: string, name: string) {
-  return ['templates', 'defaults', namespace, name] as const
 }
 
 // useGetTemplateDefaults fetches the TemplateDefaults payload for a given
@@ -290,7 +262,7 @@ export function useGetTemplateDefaults(
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   const callerEnabled = options?.enabled ?? true
   return useQuery({
-    queryKey: templateDefaultsKey(namespace, name),
+    queryKey: keys.templates.defaults(namespace, name),
     queryFn: async () => {
       const response = await client.getTemplateDefaults({ namespace, name })
       return response.defaults
@@ -304,7 +276,7 @@ export function useGetTemplate(namespace: string, name: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: templateGetKey(namespace, name),
+    queryKey: keys.templates.get(namespace, name),
     queryFn: async () => {
       const response = await client.getTemplate({ namespace, name })
       return response.template
@@ -338,7 +310,7 @@ export function useCreateTemplate(namespace: string) {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templateListKey(namespace) })
+      queryClient.invalidateQueries({ queryKey: keys.templates.list(namespace) })
     },
   })
 }
@@ -367,15 +339,15 @@ export function useUpdateTemplate(namespace: string, name: string) {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templateListKey(namespace) })
-      queryClient.invalidateQueries({ queryKey: templateGetKey(namespace, name) })
+      queryClient.invalidateQueries({ queryKey: keys.templates.list(namespace) })
+      queryClient.invalidateQueries({ queryKey: keys.templates.get(namespace, name) })
       // HOL-559: a successful UpdateTemplate re-renders against the
       // current TemplatePolicy chain and records a fresh applied render
       // set on the backend. Invalidate all policy-state queries for this
       // namespace so the list-row drift badge and the detail PolicySection
       // both refresh from the authoritative state rather than showing
       // the stale "drifted" snapshot after reconcile.
-      queryClient.invalidateQueries({ queryKey: ['templates', 'policy-state', namespace] })
+      queryClient.invalidateQueries({ queryKey: keys.templates.policyStateScope(namespace) })
     },
   })
 }
@@ -388,7 +360,7 @@ export function useDeleteTemplate(namespace: string) {
     mutationFn: (params: { name: string }) =>
       client.deleteTemplate({ namespace, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templateListKey(namespace) })
+      queryClient.invalidateQueries({ queryKey: keys.templates.list(namespace) })
     },
   })
 }
@@ -401,7 +373,7 @@ export function useCloneTemplate(namespace: string) {
     mutationFn: (params: { sourceName: string; name: string; displayName: string }) =>
       client.cloneTemplate({ namespace, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templateListKey(namespace) })
+      queryClient.invalidateQueries({ queryKey: keys.templates.list(namespace) })
     },
   })
 }
@@ -422,7 +394,7 @@ export function useListLinkableTemplates(
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: linkableTemplatesKey(namespace, includeSelfScope),
+    queryKey: keys.templates.linkable(namespace, includeSelfScope),
     queryFn: async () => {
       const response = await client.listLinkableTemplates({ namespace, includeSelfScope })
       return response.templates
@@ -433,20 +405,12 @@ export function useListLinkableTemplates(
 
 // --- Release hooks ---
 
-function releaseListKey(namespace: string, templateName: string) {
-  return ['releases', 'list', namespace, templateName] as const
-}
-
-function releaseGetKey(namespace: string, templateName: string, version: string) {
-  return ['releases', 'get', namespace, templateName, version] as const
-}
-
 export function useListReleases(namespace: string, templateName: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: releaseListKey(namespace, templateName),
+    queryKey: keys.releases.list(namespace, templateName),
     queryFn: async () => {
       const response = await client.listReleases({ namespace, templateName })
       return response.releases
@@ -460,7 +424,7 @@ export function useGetRelease(namespace: string, templateName: string, version: 
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: releaseGetKey(namespace, templateName, version),
+    queryKey: keys.releases.get(namespace, templateName, version),
     queryFn: async () => {
       const response = await client.getRelease({ namespace, templateName, version })
       return response.release
@@ -495,7 +459,7 @@ export function useCreateRelease(namespace: string, templateName: string) {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: releaseListKey(namespace, templateName) })
+      queryClient.invalidateQueries({ queryKey: keys.releases.list(namespace, templateName) })
     },
   })
 }
@@ -511,16 +475,12 @@ export function useCreateRelease(namespace: string, templateName: string) {
 // validates that the namespace corresponds to a project scope and rejects
 // non-project scopes with InvalidArgument; the UI should therefore only
 // invoke this hook on project-scope editor pages. See the callsite.
-function projectTemplatePolicyStateKey(namespace: string, name: string) {
-  return ['templates', 'policy-state', namespace, name] as const
-}
-
 export function useGetProjectTemplatePolicyState(namespace: string, name: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: projectTemplatePolicyStateKey(namespace, name),
+    queryKey: keys.templates.policyState(namespace, name),
     queryFn: async () => {
       const response = await client.getProjectTemplatePolicyState({ namespace, name })
       return response.state
@@ -542,7 +502,7 @@ export function useRenderTemplate(
   const transport = useTransport()
   const client = useMemo(() => createClient(TemplateService, transport), [transport])
   return useQuery({
-    queryKey: ['templates', 'render', namespace, cueTemplate, cueInput] as const,
+    queryKey: keys.templates.render(namespace, cueTemplate, cueInput),
     queryFn: async () => {
       const response = await client.renderTemplate({
         namespace,

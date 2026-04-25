@@ -20,6 +20,7 @@ vi.mock('@/lib/auth', () => ({
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
 import { useAuth } from '@/lib/auth'
+import { keys } from '@/queries/keys'
 import {
   useGetProject,
   useUpdateProject,
@@ -128,7 +129,7 @@ describe('useUpdateProject', () => {
       await result.current.mutateAsync({ name: 'my-project' })
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['connect-query'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.connect.all() })
   })
 })
 
@@ -171,7 +172,7 @@ describe('useUpdateProjectSharing', () => {
       await result.current.mutateAsync({ name: 'my-project', userGrants: [], roleGrants: [] })
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['connect-query'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.connect.all() })
   })
 })
 
@@ -214,7 +215,7 @@ describe('useUpdateProjectDefaultSharing', () => {
       await result.current.mutateAsync({ name: 'my-project', defaultUserGrants: [], defaultRoleGrants: [] })
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['connect-query'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.connect.all() })
   })
 })
 
@@ -255,6 +256,6 @@ describe('useDeleteProject', () => {
       await result.current.mutateAsync({ name: 'my-project' })
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['connect-query'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.connect.all() })
   })
 })

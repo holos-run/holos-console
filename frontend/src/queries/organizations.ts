@@ -6,6 +6,7 @@ import {
   OrganizationService,
 } from '@/gen/holos/console/v1/organizations_pb.js'
 import { useAuth } from '@/lib/auth'
+import { keys } from '@/queries/keys'
 
 export function useListOrganizations() {
   const { isAuthenticated } = useAuth()
@@ -21,7 +22,7 @@ export function useGetOrganization(name: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(OrganizationService, transport), [transport])
   return useTanstackQuery({
-    queryKey: ['connect-query', 'getOrganization', name],
+    queryKey: keys.organizations.get(name),
     queryFn: async () => {
       const response = await client.getOrganization({ name })
       return response.organization
@@ -35,7 +36,7 @@ export function useGetOrganizationRaw(name: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(OrganizationService, transport), [transport])
   return useTanstackQuery({
-    queryKey: ['connect-query', 'getOrganizationRaw', name],
+    queryKey: keys.organizations.raw(name),
     queryFn: async () => {
       const response = await client.getOrganizationRaw({ name })
       return response.raw
@@ -52,7 +53,7 @@ export function useCreateOrganization() {
     mutationFn: (params: { name: string; displayName?: string; description?: string; populateDefaults?: boolean }) =>
       client.createOrganization(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['connect-query'] })
+      queryClient.invalidateQueries({ queryKey: keys.connect.all() })
     },
   })
 }
@@ -70,7 +71,7 @@ export function useUpdateOrganization() {
       gatewayNamespace?: string
     }) => client.updateOrganization(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['connect-query'] })
+      queryClient.invalidateQueries({ queryKey: keys.connect.all() })
     },
   })
 }
@@ -86,7 +87,7 @@ export function useUpdateOrganizationSharing() {
       roleGrants: { principal: string; role: number }[]
     }) => client.updateOrganizationSharing(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['connect-query'] })
+      queryClient.invalidateQueries({ queryKey: keys.connect.all() })
     },
   })
 }
@@ -102,7 +103,7 @@ export function useUpdateOrganizationDefaultSharing() {
       defaultRoleGrants: { principal: string; role: number }[]
     }) => client.updateOrganizationDefaultSharing(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['connect-query'] })
+      queryClient.invalidateQueries({ queryKey: keys.connect.all() })
     },
   })
 }
@@ -114,7 +115,7 @@ export function useDeleteOrganization() {
   return useMutation({
     mutationFn: (params: { name: string }) => client.deleteOrganization(params),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['connect-query'] })
+      queryClient.invalidateQueries({ queryKey: keys.connect.all() })
     },
   })
 }

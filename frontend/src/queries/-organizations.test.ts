@@ -20,6 +20,7 @@ vi.mock('@/lib/auth', () => ({
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
 import { useAuth } from '@/lib/auth'
+import { keys } from '@/queries/keys'
 import {
   useGetOrganization,
   useUpdateOrganization,
@@ -127,7 +128,7 @@ describe('useUpdateOrganization', () => {
       await result.current.mutateAsync({ name: 'my-org' })
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['connect-query'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.connect.all() })
   })
 })
 
@@ -170,7 +171,7 @@ describe('useUpdateOrganizationSharing', () => {
       await result.current.mutateAsync({ name: 'my-org', userGrants: [], roleGrants: [] })
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['connect-query'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.connect.all() })
   })
 })
 
@@ -217,7 +218,7 @@ describe('useUpdateOrganizationDefaultSharing', () => {
       await result.current.mutateAsync({ name: 'my-org', defaultUserGrants: [], defaultRoleGrants: [] })
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['connect-query'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.connect.all() })
   })
 })
 
@@ -258,6 +259,6 @@ describe('useDeleteOrganization', () => {
       await result.current.mutateAsync({ name: 'my-org' })
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['connect-query'] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: keys.connect.all() })
   })
 })

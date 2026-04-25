@@ -22,6 +22,7 @@ import { useAuth } from '@/lib/auth'
 import { useListFolders } from '@/queries/folders'
 import type { Folder } from '@/gen/holos/console/v1/folders_pb.js'
 import { namespaceForFolder, namespaceForOrg } from '@/lib/scope-labels'
+import { keys } from '@/queries/keys'
 import {
   aggregateFanOut,
   type FanOutAggregate,
@@ -31,16 +32,6 @@ import {
 // Re-export generated types/enums used by UI consumers.
 export type { TemplatePolicyBinding, TemplatePolicyBindingTargetRef, LinkedTemplatePolicyRef }
 export { TemplatePolicyBindingTargetKind }
-
-/** Query key helper for the template policy bindings list at a given namespace. */
-function bindingListKey(namespace: string) {
-  return ['templatePolicyBindings', 'list', namespace] as const
-}
-
-/** Query key helper for a single template policy binding. */
-function bindingGetKey(namespace: string, name: string) {
-  return ['templatePolicyBindings', 'get', namespace, name] as const
-}
 
 // useListTemplatePolicyBindings fetches all bindings visible within a namespace.
 // Mirrors the shape of useListTemplatePolicies in queries/templatePolicies.ts.
@@ -52,7 +43,7 @@ export function useListTemplatePolicyBindings(namespace: string) {
     [transport],
   )
   return useQuery({
-    queryKey: bindingListKey(namespace),
+    queryKey: keys.templatePolicyBindings.list(namespace),
     queryFn: async () => {
       const response = await client.listTemplatePolicyBindings({ namespace })
       return response.bindings
@@ -93,7 +84,7 @@ export function useAllTemplatePolicyBindingsForOrg(
 
   const folderQueries = useQueries({
     queries: folders.map((folder) => ({
-      queryKey: bindingListKey(namespaceForFolder(folder.name)),
+      queryKey: keys.templatePolicyBindings.list(namespaceForFolder(folder.name)),
       queryFn: async (): Promise<TemplatePolicyBinding[]> => {
         const response = await client.listTemplatePolicyBindings({
           namespace: namespaceForFolder(folder.name),
@@ -105,7 +96,7 @@ export function useAllTemplatePolicyBindingsForOrg(
   })
 
   const orgQuery = useQuery({
-    queryKey: bindingListKey(orgNamespace),
+    queryKey: keys.templatePolicyBindings.list(orgNamespace),
     queryFn: async () => {
       const response = await client.listTemplatePolicyBindings({
         namespace: orgNamespace,
@@ -151,7 +142,7 @@ export function useGetTemplatePolicyBinding(namespace: string, name: string) {
     [transport],
   )
   return useQuery({
-    queryKey: bindingGetKey(namespace, name),
+    queryKey: keys.templatePolicyBindings.get(namespace, name),
     queryFn: async () => {
       const response = await client.getTemplatePolicyBinding({ namespace, name })
       return response.binding
@@ -189,7 +180,7 @@ export function useCreateTemplatePolicyBinding(namespace: string) {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: bindingListKey(namespace) })
+      queryClient.invalidateQueries({ queryKey: keys.templatePolicyBindings.list(namespace) })
     },
   })
 }
@@ -225,8 +216,8 @@ export function useUpdateTemplatePolicyBinding(
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: bindingListKey(namespace) })
-      queryClient.invalidateQueries({ queryKey: bindingGetKey(namespace, name) })
+      queryClient.invalidateQueries({ queryKey: keys.templatePolicyBindings.list(namespace) })
+      queryClient.invalidateQueries({ queryKey: keys.templatePolicyBindings.get(namespace, name) })
     },
   })
 }
@@ -243,7 +234,7 @@ export function useDeleteTemplatePolicyBinding(namespace: string) {
     mutationFn: (params: { name: string }) =>
       client.deleteTemplatePolicyBinding({ namespace, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: bindingListKey(namespace) })
+      queryClient.invalidateQueries({ queryKey: keys.templatePolicyBindings.list(namespace) })
     },
   })
 }
