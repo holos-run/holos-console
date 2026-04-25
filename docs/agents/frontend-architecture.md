@@ -137,7 +137,8 @@ unit tests unless the test strategy explicitly calls for E2E coverage.
 - [docs/agents/frontend-audit-2026-04.md](frontend-audit-2026-04.md) - current
   inventory and target conventions from Phase 1.
 - [docs/agents/tanstack-query-conventions.md](tanstack-query-conventions.md) -
-  Phase 4 placeholder for query-key and invalidation rules.
+  query-key factories, stale time defaults, mutation invalidation matrix, and
+  prefetch policy (HOL-946).
 - [docs/ui/resource-routing.md](../ui/resource-routing.md) - authoritative URL
   and `returnTo` behavior.
 - [docs/ui/selected-entity-state.md](../ui/selected-entity-state.md) -
