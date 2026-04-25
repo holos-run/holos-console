@@ -58,6 +58,10 @@ export interface ResourceGridSearch {
   kind?: string
   /** Global search string. */
   search?: string
+  /** Column ID to sort by. */
+  sort?: string
+  /** Sort direction: 'asc' or 'desc'. */
+  sortDir?: 'asc' | 'desc'
 }
 
 /** Props for the multi-kind checkbox filter. */
