@@ -96,8 +96,8 @@ type Validator interface {
 // accidentally allow cross-namespace references.
 type TemplateGrantCache struct {
 	mu         sync.RWMutex
-	grants     []v1alpha1.TemplateGrant      // snapshot of all TemplateGrants
-	namespaces map[string]corev1.Namespace   // snapshot of Namespaces keyed by name
+	grants     []v1alpha1.TemplateGrant    // snapshot of all TemplateGrants
+	namespaces map[string]corev1.Namespace // snapshot of Namespaces keyed by name
 }
 
 // NewTemplateGrantCache returns an initialised TemplateGrantCache. Callers

@@ -45,7 +45,6 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -96,9 +95,6 @@ func (r *TemplateGrantReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// Re-list all TemplateGrants.
 	var grantList v1alpha1.TemplateGrantList
 	if err := r.List(ctx, &grantList); err != nil {
-		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, nil
-		}
 		return ctrl.Result{}, fmt.Errorf("list TemplateGrants: %w", err)
 	}
 
