@@ -235,6 +235,7 @@ export function ResourceGrid({
               <Link
                 to={row.original.detailHref}
                 className="font-mono text-muted-foreground text-sm hover:underline"
+                onClick={(e) => e.stopPropagation()}
               >
                 {value}
               </Link>
@@ -260,6 +261,7 @@ export function ResourceGrid({
                   to={row.original.detailHref}
                   className="font-medium hover:underline"
                   title={row.original.name}
+                  onClick={(e) => e.stopPropagation()}
                 >
                   {label}
                 </Link>

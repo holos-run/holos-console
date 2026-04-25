@@ -39,11 +39,13 @@ Any future action button added to the actions column must also call
 
 This convention applies to all pages backed by `ResourceGrid`:
 
-| Page | `detailHref` pattern |
-|------|----------------------|
-| Secrets | `/projects/$projectName/secrets/$secretName` |
-| Deployments | `/projects/$projectName/deployments/$deploymentName` |
-| Templates | `/projects/$projectName/templates/$templateName` |
+| Page | `detailHref` pattern | Notes |
+|------|----------------------|-------|
+| Secrets | `/projects/$projectName/secrets/$secretName` | Always set |
+| Deployments | `/projects/$projectName/deployments/$deploymentName` | Always set |
+| Templates | `/projects/$projectName/templates/$templateName` | May be absent when the template namespace cannot be resolved |
 
 When adding a new resource kind to `ResourceGrid`, include a `detailHref` on
-each row unless the resource has no dedicated detail page.
+each row whenever the resource has a dedicated detail page. Rows without
+`detailHref` render the resource ID as plain text and the row is not clickable
+— the `ResourceGrid` handles both cases automatically.

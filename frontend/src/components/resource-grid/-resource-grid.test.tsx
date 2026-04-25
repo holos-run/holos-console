@@ -12,10 +12,12 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     Link: ({
       children,
       to,
+      onClick,
     }: {
       children: React.ReactNode
       to?: string
-    }) => <a href={to ?? '#'} data-testid="router-link">{children}</a>,
+      onClick?: (e: React.MouseEvent) => void
+    }) => <a href={to ?? '#'} data-testid="router-link" onClick={onClick}>{children}</a>,
     useNavigate: () => mockNavigate,
   }
 })
@@ -202,6 +204,22 @@ describe('ResourceGrid', () => {
     const deleteBtn = screen.getByRole('button', { name: /delete my secret/i })
     fireEvent.click(deleteBtn)
     await waitFor(() => screen.getByRole('dialog'))
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('does not trigger row navigate() when the resource ID link is clicked', () => {
+    renderGrid()
+    const idLink = screen.getByRole('link', { name: /abc-123/i })
+    fireEvent.click(idLink)
+    // The link handles its own navigation via href; the row handler must not
+    // also call navigate() or a double history-push occurs.
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('does not trigger row navigate() when the display name link is clicked', () => {
+    renderGrid()
+    const nameLink = screen.getByRole('link', { name: /my secret/i })
+    fireEvent.click(nameLink)
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 
