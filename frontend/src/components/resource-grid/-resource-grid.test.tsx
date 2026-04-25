@@ -2,8 +2,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import React from 'react'
 
-// Mock TanStack Router — ResourceGrid uses Link and the search/navigate props
-// are passed in directly from the parent route, so we only need Link.
+const mockNavigate = vi.fn()
+
+// Mock TanStack Router — ResourceGrid uses Link and useNavigate internally.
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
   return {
@@ -15,7 +16,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       children: React.ReactNode
       to?: string
     }) => <a href={to ?? '#'} data-testid="router-link">{children}</a>,
-    useNavigate: () => vi.fn(),
+    useNavigate: () => mockNavigate,
   }
 })
 
@@ -99,6 +100,7 @@ function renderGrid(
 describe('ResourceGrid', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockNavigate.mockReset()
   })
 
   // --- Loading state ---
@@ -172,6 +174,35 @@ describe('ResourceGrid', () => {
     // Assert the link comes from the TanStack Router Link component (via mock
     // data-testid) so a future regression to a raw <a href> is caught here.
     expect(link).toHaveAttribute('data-testid', 'router-link')
+  })
+
+  it('links resource ID cell to detailHref when detailHref is set', () => {
+    renderGrid()
+    const links = screen.getAllByRole('link', { name: /abc-123/i })
+    expect(links.length).toBeGreaterThan(0)
+    expect(links[0]).toHaveAttribute('href', '/secrets/my-secret')
+    expect(links[0]).toHaveAttribute('data-testid', 'router-link')
+  })
+
+  it('renders resource ID as plain text when detailHref is absent', () => {
+    renderGrid({ rows: [makeRow({ detailHref: undefined })] })
+    expect(screen.getByText('abc-123')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /abc-123/i })).not.toBeInTheDocument()
+  })
+
+  it('navigates to detailHref when the row is clicked', () => {
+    renderGrid()
+    const row = screen.getByText('abc-123').closest('tr')!
+    fireEvent.click(row)
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/secrets/my-secret' })
+  })
+
+  it('does not trigger row navigation when the delete button is clicked', async () => {
+    renderGrid()
+    const deleteBtn = screen.getByRole('button', { name: /delete my secret/i })
+    fireEvent.click(deleteBtn)
+    await waitFor(() => screen.getByRole('dialog'))
+    expect(mockNavigate).not.toHaveBeenCalled()
   })
 
   // --- Parent ID column hiding ---

@@ -234,8 +234,11 @@ describe('DeploymentsListPage (ResourceGrid v1)', () => {
   it('deployment name links to detail page', () => {
     setupMocks({ deployments: [makeDeployment('api')] })
     render(<DeploymentsListPage />)
-    const link = screen.getByRole('link', { name: 'api' })
-    expect(link.getAttribute('href')).toContain('deployments/api')
+    // Both the resource ID cell and the display name cell link to the detail
+    // page when id === displayName (the common case for deployments).
+    const links = screen.getAllByRole('link', { name: 'api' })
+    expect(links.length).toBeGreaterThan(0)
+    expect(links[0].getAttribute('href')).toContain('deployments/api')
   })
 
   // -------------------------------------------------------------------------

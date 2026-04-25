@@ -13,7 +13,7 @@
  */
 
 import { useState, useMemo, useCallback } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import {
   useReactTable,
@@ -124,6 +124,8 @@ export function ResourceGrid({
   headerContent,
   headerActions,
 }: ResourceGridProps) {
+  const navigate = useNavigate()
+
   // --- Derive local state from URL params --------------------------------
 
   const selectedKindIds = useMemo(
@@ -226,11 +228,24 @@ export function ResourceGrid({
       columnHelper.accessor('id', {
         id: 'resourceId',
         header: 'Resource ID',
-        cell: ({ getValue }) => (
-          <span className="font-mono text-muted-foreground text-sm">
-            {getValue()}
-          </span>
-        ),
+        cell: ({ row, getValue }) => {
+          const value = getValue()
+          if (row.original.detailHref) {
+            return (
+              <Link
+                to={row.original.detailHref}
+                className="font-mono text-muted-foreground text-sm hover:underline"
+              >
+                {value}
+              </Link>
+            )
+          }
+          return (
+            <span className="font-mono text-muted-foreground text-sm">
+              {value}
+            </span>
+          )
+        },
       }),
       columnHelper.accessor(
         (row) => row.displayName || row.name,
@@ -306,7 +321,7 @@ export function ResourceGrid({
               variant="ghost"
               size="icon"
               aria-label={`delete ${row.original.displayName || row.original.name}`}
-              onClick={() => handleDeleteClick(row.original)}
+              onClick={(e) => { e.stopPropagation(); handleDeleteClick(row.original) }}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -448,7 +463,15 @@ export function ResourceGrid({
                 </TableHeader>
                 <TableBody>
                   {table.getRowModel().rows.map((row) => (
-                    <TableRow key={row.id}>
+                    <TableRow
+                      key={row.id}
+                      className={row.original.detailHref ? 'cursor-pointer' : undefined}
+                      onClick={
+                        row.original.detailHref
+                          ? () => navigate({ to: row.original.detailHref! })
+                          : undefined
+                      }
+                    >
                       {row.getVisibleCells().map((cell) => (
                         <TableCell key={cell.id}>
                           {flexRender(
