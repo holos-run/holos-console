@@ -1,0 +1,56 @@
+# TemplateDependency records an intra-project wiring — it wires two Templates
+# together within a single project namespace. It MUST only be stored in a
+# namespace labeled `console.holos.run/resource-type: project`. Storing it in
+# a folder or organization namespace would conflate a project-scoped resource
+# with admin-scoped resources and break the dependency graph resolver.
+# (HOL-954).
+#
+# Namespace classification. The resolver.Resolver package labels every
+# console-managed namespace with `console.holos.run/resource-type`, whose
+# values are `organization`, `folder`, or `project`. This CEL policy reads
+# exactly that label and rejects admission when the label value is NOT
+# `project`. Namespaces without the label (for example, cluster-default or
+# manually-created namespaces) are not classified and therefore accepted here;
+# operators who want to bootstrap a TemplateDependency outside a classified
+# namespace may do so — the resolver will skip unclassified namespaces.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: templatedependency-project-only
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: ["templates.holos.run"]
+      apiVersions: ["v1alpha1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["templatedependencies"]
+  validations:
+  - expression: >-
+      !has(namespaceObject.metadata.labels)
+      || !("console.holos.run/resource-type" in namespaceObject.metadata.labels)
+      || namespaceObject.metadata.labels["console.holos.run/resource-type"] == "project"
+    messageExpression: >-
+      "TemplateDependency must be stored in a project namespace; namespace " +
+      namespaceObject.metadata.name + " has resource-type " +
+      (has(namespaceObject.metadata.labels) &&
+       "console.holos.run/resource-type" in namespaceObject.metadata.labels
+       ? namespaceObject.metadata.labels["console.holos.run/resource-type"]
+       : "<unset>") +
+      " (see HOL-954)."
+    reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: templatedependency-project-only
+spec:
+  policyName: templatedependency-project-only
+  validationActions:
+  - Deny
+  matchResources:
+    resourceRules:
+    - apiGroups: ["templates.holos.run"]
+      apiVersions: ["v1alpha1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["templatedependencies"]

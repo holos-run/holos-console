@@ -490,6 +490,208 @@ func TestCRDRoundTrip_TemplateRequirement(t *testing.T) {
 	deleteAndWait(t, ctx, s.client, obj)
 }
 
+// TestAdmission_TemplateGrant_AllNamespacesAllowed exercises the
+// templategrant-namespace-allowed policy. TemplateGrant is a cross-namespace
+// visibility grant that may live in organization, folder, or project namespaces,
+// so the policy is a no-op (always allows). We assert that creation succeeds in
+// all three namespace types.
+func TestAdmission_TemplateGrant_AllNamespacesAllowed(t *testing.T) {
+	s := setupEnvTest(t)
+	ctx := context.Background()
+
+	envtesthelpers.WaitForAdmissionPolicy(t, ctx, s.client, "templategrant-namespace-allowed")
+
+	tests := []struct {
+		name          string
+		nsName        string
+		nsResourceTyp string
+	}{
+		{
+			name:          "grant-in-project-accepted",
+			nsName:        "holos-prj-admission-grant-project",
+			nsResourceTyp: "project",
+		},
+		{
+			name:          "grant-in-folder-accepted",
+			nsName:        "holos-fld-admission-grant-folder",
+			nsResourceTyp: "folder",
+		},
+		{
+			name:          "grant-in-org-accepted",
+			nsName:        "holos-org-admission-grant-org",
+			nsResourceTyp: "organization",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			createNamespace(t, ctx, s.client, tc.nsName, tc.nsResourceTyp)
+			obj := &v1alpha1.TemplateGrant{
+				ObjectMeta: metav1.ObjectMeta{Name: "allow-alpha", Namespace: tc.nsName},
+				Spec: v1alpha1.TemplateGrantSpec{
+					From: []v1alpha1.TemplateGrantFromRef{
+						{Namespace: "holos-prj-alpha"},
+					},
+				},
+			}
+			if err := s.client.Create(ctx, obj); err != nil {
+				t.Fatalf("expected templategrant-namespace-allowed to accept in %q namespace, got %v", tc.nsResourceTyp, err)
+			}
+		})
+	}
+}
+
+// TestAdmission_TemplateDependency_ProjectOnly exercises the
+// templatedependency-project-only policy. TemplateDependency wires two
+// Templates together within a project namespace, so it must be rejected in
+// folder and organization namespaces and accepted in project namespaces.
+func TestAdmission_TemplateDependency_ProjectOnly(t *testing.T) {
+	s := setupEnvTest(t)
+	ctx := context.Background()
+
+	envtesthelpers.WaitForAdmissionPolicy(t, ctx, s.client, "templatedependency-project-only")
+
+	tests := []struct {
+		name          string
+		nsName        string
+		nsResourceTyp string
+		wantRejected  bool
+	}{
+		{
+			name:          "dependency-in-project-accepted",
+			nsName:        "holos-prj-admission-dep-project",
+			nsResourceTyp: "project",
+			wantRejected:  false,
+		},
+		{
+			name:          "dependency-in-folder-rejected",
+			nsName:        "holos-fld-admission-dep-folder",
+			nsResourceTyp: "folder",
+			wantRejected:  true,
+		},
+		{
+			name:          "dependency-in-org-rejected",
+			nsName:        "holos-org-admission-dep-org",
+			nsResourceTyp: "organization",
+			wantRejected:  true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			createNamespace(t, ctx, s.client, tc.nsName, tc.nsResourceTyp)
+			obj := &v1alpha1.TemplateDependency{
+				ObjectMeta: metav1.ObjectMeta{Name: "web-needs-db", Namespace: tc.nsName},
+				Spec: v1alpha1.TemplateDependencySpec{
+					Dependent: v1alpha1.LinkedTemplateRef{
+						Namespace: tc.nsName,
+						Name:      "web",
+					},
+					Requires: v1alpha1.LinkedTemplateRef{
+						Namespace: tc.nsName,
+						Name:      "db",
+					},
+				},
+			}
+			err := s.client.Create(ctx, obj)
+			if tc.wantRejected {
+				if err == nil {
+					t.Fatalf("expected admission rejection for %q namespace, got nil", tc.nsResourceTyp)
+				}
+				if !apierrors.IsInvalid(err) && !apierrors.IsForbidden(err) {
+					t.Fatalf("expected Invalid/Forbidden admission error, got %T: %v", err, err)
+				}
+				if !strings.Contains(err.Error(), "project") &&
+					!strings.Contains(err.Error(), "Forbidden") &&
+					!strings.Contains(err.Error(), "denied") {
+					t.Fatalf("expected CEL-originated rejection message, got %q", err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected admission to accept in %q namespace, got %v", tc.nsResourceTyp, err)
+			}
+		})
+	}
+}
+
+// TestAdmission_TemplateRequirement_FolderOrOrgOnly exercises the
+// templaterequirement-folder-or-org-only policy. TemplateRequirement is
+// admin-scoped (like TemplatePolicy) and must only live in folder or
+// organization namespaces, never in project namespaces.
+func TestAdmission_TemplateRequirement_FolderOrOrgOnly(t *testing.T) {
+	s := setupEnvTest(t)
+	ctx := context.Background()
+
+	envtesthelpers.WaitForAdmissionPolicy(t, ctx, s.client, "templaterequirement-folder-or-org-only")
+
+	tests := []struct {
+		name          string
+		nsName        string
+		nsResourceTyp string
+		wantRejected  bool
+	}{
+		{
+			name:          "requirement-in-project-rejected",
+			nsName:        "holos-prj-admission-req-project",
+			nsResourceTyp: "project",
+			wantRejected:  true,
+		},
+		{
+			name:          "requirement-in-folder-accepted",
+			nsName:        "holos-fld-admission-req-folder",
+			nsResourceTyp: "folder",
+			wantRejected:  false,
+		},
+		{
+			name:          "requirement-in-org-accepted",
+			nsName:        "holos-org-admission-req-org",
+			nsResourceTyp: "organization",
+			wantRejected:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			createNamespace(t, ctx, s.client, tc.nsName, tc.nsResourceTyp)
+			obj := &v1alpha1.TemplateRequirement{
+				ObjectMeta: metav1.ObjectMeta{Name: "require-istio", Namespace: tc.nsName},
+				Spec: v1alpha1.TemplateRequirementSpec{
+					Requires: v1alpha1.LinkedTemplateRef{
+						Namespace: "holos-org-acme",
+						Name:      "istio-base",
+					},
+					TargetRefs: []v1alpha1.TemplateRequirementTargetRef{
+						{
+							Kind:        v1alpha1.TemplatePolicyBindingTargetKindDeployment,
+							Name:        "web",
+							ProjectName: "alpha",
+						},
+					},
+				},
+			}
+			err := s.client.Create(ctx, obj)
+			if tc.wantRejected {
+				if err == nil {
+					t.Fatalf("expected admission rejection for project namespace, got nil")
+				}
+				if !apierrors.IsInvalid(err) && !apierrors.IsForbidden(err) {
+					t.Fatalf("expected Invalid/Forbidden admission error, got %T: %v", err, err)
+				}
+				if !strings.Contains(err.Error(), "project namespace") &&
+					!strings.Contains(err.Error(), "Forbidden") &&
+					!strings.Contains(err.Error(), "denied") {
+					t.Fatalf("expected CEL-originated rejection message, got %q", err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected admission to accept in %q namespace, got %v", tc.nsResourceTyp, err)
+			}
+		})
+	}
+}
+
 // TestAdmissionPolicy_TemplatePolicy_ProjectNamespace_Rejected and
 // TestAdmissionPolicy_TemplatePolicyBinding_ProjectNamespace_Rejected exercise
 // the CEL ValidatingAdmissionPolicy shipped in config/holos-console/admission. Table-driven

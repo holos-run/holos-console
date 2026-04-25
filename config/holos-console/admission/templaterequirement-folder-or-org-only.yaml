@@ -1,0 +1,46 @@
+# TemplateRequirement mirrors the TemplatePolicy isolation invariant: a
+# requirement that declares which Templates must be present for a given
+# deployment is admin-scoped and lives only in an organization or folder
+# namespace (HOL-954). This policy enforces that contract at API-server
+# admission time so the handler-side guard can be removed later without
+# reopening the hole.
+#
+# See config/holos-console/admission/templatepolicy-folder-or-org-only.yaml for the full
+# rationale on namespace classification and the
+# `console.holos.run/resource-type` label.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: templaterequirement-folder-or-org-only
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: ["templates.holos.run"]
+      apiVersions: ["v1alpha1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["templaterequirements"]
+  validations:
+  - expression: >-
+      !has(namespaceObject.metadata.labels)
+      || !("console.holos.run/resource-type" in namespaceObject.metadata.labels)
+      || namespaceObject.metadata.labels["console.holos.run/resource-type"] != "project"
+    messageExpression: >-
+      "TemplateRequirement cannot be stored in project namespace " + namespaceObject.metadata.name +
+      "; use the owning folder or organization namespace (see HOL-954)."
+    reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: templaterequirement-folder-or-org-only
+spec:
+  policyName: templaterequirement-folder-or-org-only
+  validationActions:
+  - Deny
+  matchResources:
+    resourceRules:
+    - apiGroups: ["templates.holos.run"]
+      apiVersions: ["v1alpha1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["templaterequirements"]
