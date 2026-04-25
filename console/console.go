@@ -593,6 +593,18 @@ func (s *Server) Serve(ctx context.Context) error {
 			// across every kind apply.go writes.
 			deploymentsK8s = deploymentsK8s.WithDynamicClient(dynamicClient)
 		}
+		// HOL-957: wire the CRWriter so every Deployment create/update/delete
+		// is dual-written to the deployments.holos.run/v1alpha1 CRD via SSA
+		// alongside the existing ConfigMap proto-store. The CRWriter is only
+		// active when the embedded controller-runtime manager is available —
+		// the manager provides the cache-backed client.Client the CRWriter
+		// uses and ensures the Deployment CRD's informer is registered before
+		// /readyz goes green.
+		if s.controllerMgr != nil {
+			deploymentsK8s = deploymentsK8s.WithCRWriter(
+				deployments.NewCRWriter(s.controllerMgr.GetClient(), nsResolver),
+			)
+		}
 		projectFolderResolver := projects.NewProjectFolderResolver(projectsK8s, nsWalker)
 		ancestorTemplateResolver := templates.NewAncestorTemplateResolver(templatesK8s, nsWalker, policyResolverSeam)
 		// Deployment status informer cache: one shared watch scoped to

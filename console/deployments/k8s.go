@@ -50,6 +50,11 @@ type K8sClient struct {
 	// working.
 	dynamic  dynamic.Interface
 	Resolver *resolver.Resolver
+	// crWriter, when non-nil, mirrors every Create/Update/Delete call to the
+	// deployments.holos.run/v1alpha1.Deployment CRD via server-side apply.
+	// A nil crWriter disables dual-write so local/dev wiring without a
+	// controller-runtime client remains unchanged.
+	crWriter *CRWriter
 }
 
 // NewK8sClient creates a client for deployment operations.
@@ -64,6 +69,15 @@ func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient 
 // every test that builds a K8sClient.
 func (k *K8sClient) WithDynamicClient(d dynamic.Interface) *K8sClient {
 	k.dynamic = d
+	return k
+}
+
+// WithCRWriter configures the K8sClient to dual-write every create, update,
+// and delete to the deployments.holos.run/v1alpha1 Deployment CRD via SSA
+// in addition to the existing ConfigMap proto-store (HOL-957). A nil writer
+// is safe — all CRWriter methods are nil-receiver no-ops.
+func (k *K8sClient) WithCRWriter(w *CRWriter) *K8sClient {
+	k.crWriter = w
 	return k
 }
 
@@ -149,7 +163,23 @@ func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, 
 	if port > 0 {
 		cm.Data[PortKey] = strconv.Itoa(int(port))
 	}
-	return k.client.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{})
+	created, err := k.client.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	// Dual-write: mirror the new Deployment to the CRD store. A nil crWriter
+	// (local/dev wiring without a controller-runtime client) is a no-op.
+	if crErr := k.crWriter.ApplyOnCreate(ctx, project, name, image, tag, tmpl, displayName, description, command, args, env, port); crErr != nil {
+		slog.WarnContext(ctx, "deployment CR dual-write failed after proto-store create",
+			slog.String("project", project),
+			slog.String("namespace", ns),
+			slog.String("name", name),
+			slog.Any("error", crErr),
+		)
+		// Do not surface the error to the caller: the ConfigMap write already
+		// succeeded. The CR will be lazily re-created on the next update.
+	}
+	return created, nil
 }
 
 // UpdateDeployment updates an existing deployment ConfigMap.
@@ -204,7 +234,75 @@ func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, 
 			delete(cm.Data, PortKey)
 		}
 	}
-	return k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
+	updated, err := k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	// Dual-write: mirror the updated Deployment to the CRD store. Extract
+	// the canonical post-update values from the updated ConfigMap so the CR
+	// always reflects what the proto-store actually recorded.
+	if k.crWriter != nil {
+		updatedImage := updated.Data[ImageKey]
+		updatedTag := updated.Data[TagKey]
+		updatedTemplate := updated.Data[TemplateKey]
+		updatedDisplayName := updated.Annotations[v1alpha2.AnnotationDisplayName]
+		updatedDescription := updated.Annotations[v1alpha2.AnnotationDescription]
+		updatedCommand := commandFromConfigMapData(updated.Data)
+		updatedArgs := argsFromConfigMapData(updated.Data)
+		updatedPort := portFromConfigMapData(updated.Data)
+		if crErr := k.crWriter.ApplyOnUpdate(ctx, project, name, updatedImage, updatedTag, updatedTemplate, updatedDisplayName, updatedDescription, updatedCommand, updatedArgs, updatedPort); crErr != nil {
+			slog.WarnContext(ctx, "deployment CR dual-write failed after proto-store update",
+				slog.String("project", project),
+				slog.String("namespace", ns),
+				slog.String("name", name),
+				slog.Any("error", crErr),
+			)
+			// Do not surface the error: the ConfigMap update succeeded.
+		}
+	}
+	return updated, nil
+}
+
+// commandFromConfigMapData returns the decoded command slice from cm data,
+// or nil when the key is absent or the JSON is malformed.
+func commandFromConfigMapData(data map[string]string) []string {
+	raw, ok := data[CommandKey]
+	if !ok || raw == "" {
+		return nil
+	}
+	var v []string
+	if err := json.Unmarshal([]byte(raw), &v); err != nil {
+		return nil
+	}
+	return v
+}
+
+// argsFromConfigMapData returns the decoded args slice from cm data, or nil
+// when the key is absent or the JSON is malformed.
+func argsFromConfigMapData(data map[string]string) []string {
+	raw, ok := data[ArgsKey]
+	if !ok || raw == "" {
+		return nil
+	}
+	var v []string
+	if err := json.Unmarshal([]byte(raw), &v); err != nil {
+		return nil
+	}
+	return v
+}
+
+// portFromConfigMapData returns the port from cm data, or 0 when the key is
+// absent or not parseable as an integer.
+func portFromConfigMapData(data map[string]string) int32 {
+	raw, ok := data[PortKey]
+	if !ok || raw == "" {
+		return 0
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0
+	}
+	return int32(v)
 }
 
 // ListDeploymentResources returns every resource currently owned by the given
@@ -378,7 +476,7 @@ func (k *K8sClient) SetOutputURLAnnotation(ctx context.Context, project, name, u
 	return nil
 }
 
-// DeleteDeployment deletes a deployment ConfigMap.
+// DeleteDeployment deletes a deployment ConfigMap and the corresponding CR.
 func (k *K8sClient) DeleteDeployment(ctx context.Context, project, name string) error {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "deleting deployment from kubernetes",
@@ -386,7 +484,20 @@ func (k *K8sClient) DeleteDeployment(ctx context.Context, project, name string) 
 		slog.String("namespace", ns),
 		slog.String("name", name),
 	)
-	return k.client.CoreV1().ConfigMaps(ns).Delete(ctx, name, metav1.DeleteOptions{})
+	if err := k.client.CoreV1().ConfigMaps(ns).Delete(ctx, name, metav1.DeleteOptions{}); err != nil {
+		return err
+	}
+	// Dual-write: delete the Deployment CR. NotFound is silenced (idempotent).
+	if crErr := k.crWriter.DeleteCR(ctx, project, name); crErr != nil {
+		slog.WarnContext(ctx, "deployment CR delete failed after proto-store delete",
+			slog.String("project", project),
+			slog.String("namespace", ns),
+			slog.String("name", name),
+			slog.Any("error", crErr),
+		)
+		// Do not surface the error: the ConfigMap delete succeeded.
+	}
+	return nil
 }
 
 // NamespaceResourceItem holds a resource name and its sorted data keys.
