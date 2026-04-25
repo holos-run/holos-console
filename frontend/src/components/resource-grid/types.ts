@@ -59,3 +59,25 @@ export interface ResourceGridSearch {
   /** Global search string. */
   search?: string
 }
+
+/** Props for the multi-kind checkbox filter. */
+export interface KindFilterProps {
+  kinds: Kind[]
+  selectedKindIds: string[]
+  onChange: (ids: string[]) => void
+}
+
+/** Props for the ResourceGrid search and filter toolbar. */
+export interface ResourceGridToolbarProps {
+  title: string
+  kinds: Kind[]
+  selectedKindIds: string[]
+  globalFilter: string
+  onGlobalFilterChange: (value: string) => void
+  onKindIdsChange: (ids: string[]) => void
+}
+
+/** Props for the ResourceGrid create button/dropdown. */
+export interface NewButtonProps {
+  kinds: Kind[]
+}

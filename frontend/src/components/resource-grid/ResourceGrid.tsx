@@ -9,12 +9,12 @@
  *  - Row-level delete via ConfirmDeleteDialog
  *  - URL sync via TanStack Router useSearch / useNavigate
  *
- * See docs/ui/resource-grid-v1.md for the design note and extension guide.
+ * See docs/agents/data-grid-architecture.md for the design note and extension
+ * guide.
  */
 
-import { useState, useMemo, useCallback } from 'react'
+import { useMemo, useCallback, type ReactNode } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { toast } from 'sonner'
 import {
   useReactTable,
   getCoreRowModel,
@@ -23,11 +23,10 @@ import {
   createColumnHelper,
   type VisibilityState,
 } from '@tanstack/react-table'
-import { Trash2, ChevronDown } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -38,18 +37,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
 
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Kind, Row, ResourceGridSearch } from './types'
+import { NewButton, Toolbar } from './Toolbar'
+import { useDeleteConfirm } from './useDeleteConfirm'
 import { parseKindIds, serialiseKindIds } from './url-state'
 
 // ---------------------------------------------------------------------------
@@ -99,12 +92,12 @@ export interface ResourceGridProps {
    * Optional node rendered inside the Card header, below the title and
    * above the table. Used for description banners.
    */
-  headerContent?: React.ReactNode
+  headerContent?: ReactNode
   /**
    * Optional extra actions rendered in the Card header to the left of the
    * New button. Use for icon buttons such as the Templates help pane toggle.
    */
-  headerActions?: React.ReactNode
+  headerActions?: ReactNode
 }
 
 // ---------------------------------------------------------------------------
@@ -161,33 +154,14 @@ export function ResourceGrid({
     [updateSearch],
   )
 
-  // --- Delete dialog state -----------------------------------------------
-
-  const [deleteTarget, setDeleteTarget] = useState<Row | null>(null)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [deleteError, setDeleteError] = useState<Error | null>(null)
-
-  const handleDeleteClick = useCallback((row: Row) => {
-    setDeleteTarget(row)
-    setDeleteError(null)
-  }, [])
-
-  const handleDeleteConfirm = useCallback(async () => {
-    if (!deleteTarget) return
-    setIsDeleting(true)
-    setDeleteError(null)
-    try {
-      await onDelete(deleteTarget)
-      setDeleteTarget(null)
-      toast.success(`Deleted ${deleteTarget.displayName || deleteTarget.name}`)
-    } catch (err) {
-      const e = err instanceof Error ? err : new Error(String(err))
-      setDeleteError(e)
-      toast.error(e.message)
-    } finally {
-      setIsDeleting(false)
-    }
-  }, [deleteTarget, onDelete])
+  const {
+    deleteTarget,
+    isDeleting,
+    deleteError,
+    handleDeleteClick,
+    handleDeleteConfirm,
+    handleDeleteOpenChange,
+  } = useDeleteConfirm({ onDelete })
 
   // --- Derive unique parent IDs in the current row set -------------------
 
@@ -412,25 +386,14 @@ export function ResourceGrid({
             </Alert>
           )}
 
-          {/* Filter toolbar */}
-          <div className="mb-3 flex flex-col sm:flex-row gap-2 sm:items-center flex-wrap">
-            <Input
-              placeholder={`Search ${title.toLowerCase()}…`}
-              value={globalFilter}
-              onChange={(e) => setGlobalFilter(e.target.value)}
-              className="max-w-sm"
-              aria-label={`Search ${title}`}
-            />
-
-            {/* Multi-kind filter — only when more than one kind */}
-            {kinds.length > 1 && (
-              <KindFilter
-                kinds={kinds}
-                selectedKindIds={selectedKindIds}
-                onChange={setKindIds}
-              />
-            )}
-          </div>
+          <Toolbar
+            title={title}
+            kinds={kinds}
+            selectedKindIds={selectedKindIds}
+            globalFilter={globalFilter}
+            onGlobalFilterChange={setGlobalFilter}
+            onKindIdsChange={setKindIds}
+          />
 
           {/* Empty state */}
           {rows.length === 0 ? (
@@ -494,9 +457,7 @@ export function ResourceGrid({
       {/* Delete confirmation dialog */}
       <ConfirmDeleteDialog
         open={deleteTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
-        }}
+        onOpenChange={handleDeleteOpenChange}
         displayName={deleteTarget?.displayName}
         name={deleteTarget?.name ?? ''}
         namespace={deleteTarget?.namespace ?? ''}
@@ -507,84 +468,3 @@ export function ResourceGrid({
     </>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-/** "New" button — single link when one kind, dropdown when multiple. */
-function NewButton({ kinds }: { kinds: Kind[] }) {
-  if (kinds.length === 0) return null
-
-  if (kinds.length === 1) {
-    const kind = kinds[0]
-    return (
-      <Link to={kind.newHref!}>
-        <Button size="sm">New {kind.label}</Button>
-      </Link>
-    )
-  }
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button size="sm">
-          New <ChevronDown className="ml-1 h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {kinds.map((kind) => (
-          <DropdownMenuItem key={kind.id} asChild>
-            <Link to={kind.newHref!}>{kind.label}</Link>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-/** Kind filter checkboxes — rendered only when kinds.length > 1. */
-function KindFilter({
-  kinds,
-  selectedKindIds,
-  onChange,
-}: {
-  kinds: Kind[]
-  selectedKindIds: string[]
-  onChange: (ids: string[]) => void
-}) {
-  const selectedSet = new Set(selectedKindIds)
-
-  const toggle = (id: string) => {
-    const next = new Set(selectedSet)
-    if (next.has(id)) {
-      next.delete(id)
-    } else {
-      next.add(id)
-    }
-    onChange(Array.from(next))
-  }
-
-  return (
-    <div
-      className="flex flex-wrap gap-2 items-center"
-      aria-label="Filter by kind"
-      data-testid="kind-filter"
-    >
-      {kinds.map((kind) => (
-        <div key={kind.id} className="flex items-center gap-1">
-          <Checkbox
-            id={`kind-${kind.id}`}
-            checked={selectedSet.size === 0 || selectedSet.has(kind.id)}
-            onCheckedChange={() => toggle(kind.id)}
-            aria-label={`Filter ${kind.label}`}
-          />
-          <Label htmlFor={`kind-${kind.id}`} className="text-sm cursor-pointer">
-            {kind.label}
-          </Label>
-        </div>
-      ))}
-    </div>
-  )
-}
-

@@ -109,9 +109,10 @@ Every `ResourceGrid` row with a detail page must set `detailHref` so both the
 resource ID cell and the whole row navigate to the detail page. Row action
 buttons must stop event propagation before opening menus or dialogs.
 
-Current conventions live in
-[docs/agents/data-grid-conventions.md](data-grid-conventions.md). Phase 5 will
-fill in [docs/agents/data-grid-architecture.md](data-grid-architecture.md).
+The source of record for shared table behavior is
+[docs/agents/data-grid-architecture.md](data-grid-architecture.md).
+[docs/agents/data-grid-conventions.md](data-grid-conventions.md) remains as a
+quick pointer for the clickable-row and action-propagation rules.
 
 ## Build and Test Commands
 
