@@ -1,0 +1,40 @@
+# TemplateGrant governs cross-namespace Template visibility. It may be created
+# in any namespace that already hosts Templates — that includes organization,
+# folder, and project namespaces — so no namespace restriction is applied.
+# This file exists as a symmetry placeholder alongside the other admission
+# YAMLs for the deployment-dependencies CRDs (HOL-954). A real CEL expression
+# can be added here later without changing the file structure.
+#
+# The policy uses an expression that always evaluates to true so it never
+# blocks admission. `failurePolicy: Fail` is still set so a misconfigured
+# admission webhook does not silently permit unexpected requests.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: templategrant-namespace-allowed
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: ["templates.holos.run"]
+      apiVersions: ["v1alpha1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["templategrants"]
+  validations:
+  - expression: "true"
+    reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: templategrant-namespace-allowed
+spec:
+  policyName: templategrant-namespace-allowed
+  validationActions:
+  - Deny
+  matchResources:
+    resourceRules:
+    - apiGroups: ["templates.holos.run"]
+      apiVersions: ["v1alpha1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["templategrants"]
