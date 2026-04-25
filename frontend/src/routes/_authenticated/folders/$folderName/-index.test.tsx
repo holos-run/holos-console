@@ -131,15 +131,14 @@ describe('FolderIndexPage', () => {
     setup()
     render(<FolderIndexPage folderName="payments" />)
     expect(screen.getByText('Payments Team')).toBeInTheDocument()
-    // Breadcrumb links back to the org settings and the org Resources listing
-    // (the unified folders + projects view introduced in HOL-606).
+    // Breadcrumb links back to the org settings and the org Projects listing.
     expect(screen.getByRole('link', { name: 'test-org' })).toHaveAttribute(
       'href',
       '/organizations/test-org/settings',
     )
-    expect(screen.getByRole('link', { name: 'Resources' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Projects' })).toHaveAttribute(
       'href',
-      '/organizations/test-org/resources',
+      '/organizations/test-org/projects',
     )
   })
 
@@ -330,9 +329,7 @@ describe('FolderIndexPage', () => {
     render(<FolderIndexPage folderName="payments" />)
     // Each "View all" link carries a section-specific aria-label so
     // the three buttons are distinguishable in a screen-reader link
-    // list. All three now target folder-scoped indexes (HOL-755 added
-    // the folder-scoped projects index so the Projects link no longer
-    // widens scope to the org-wide Resources listing).
+    // list. All three target folder-scoped indexes.
     expect(
       screen.getByRole('link', { name: 'View all templates' }),
     ).toHaveAttribute('href', '/folders/payments/templates')

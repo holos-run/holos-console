@@ -36,16 +36,6 @@ test.describe('Folder RBAC - owner can manage folder', () => {
     await apiCreateOrg(page, orgName)
     await apiCreateFolder(page, folderName, orgName, 1, orgName)
 
-    // Navigate to the org's unified Resources listing — folder should be visible (owner can list)
-    // Match by link role: the Resources page renders each folder leaf as a
-    // link in the Path column (display name) and again in the Name column
-    // (slug), so `.first()` keeps the assertion strict-mode safe.
-    await page.goto(`/organizations/${orgName}/resources`)
-    await page.waitForLoadState('networkidle')
-    await expect(
-      page.getByRole('link', { name: folderName }).first(),
-    ).toBeVisible({ timeout: 10000 })
-
     // Navigate to folder settings — delete button should be visible for owner
     await page.goto(`/folders/${folderName}/settings`)
     await page.waitForLoadState('networkidle')

@@ -61,11 +61,11 @@ export function CreateFolderTemplatePolicyBindingPage({
             </Link>
             {' / '}
             <Link
-              to="/organizations/$orgName/resources"
+              to="/organizations/$orgName/projects"
               params={{ orgName }}
               className="hover:underline"
             >
-              Resources
+              Projects
             </Link>
             {' / '}
             <Link

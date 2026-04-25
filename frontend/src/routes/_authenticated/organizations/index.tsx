@@ -153,13 +153,9 @@ export function OrganizationsIndexPage() {
   })
 
   const handleRowClick = (org: Organization) => {
-    // Switching organizations from this page sets the selected org and lands
-    // on the org's Resources listing (the unified folders + projects view,
-    // introduced in HOL-606). Reusing OrgContext keeps the selection
-    // persistent across reloads.
     setSelectedOrg(org.name)
     navigate({
-      to: '/organizations/$orgName/resources',
+      to: '/organizations/$orgName/projects',
       params: { orgName: org.name },
     })
   }

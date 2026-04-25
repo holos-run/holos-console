@@ -75,8 +75,8 @@ export function FolderProjectsIndexPage({
               {orgName}
             </Link>
             {' / '}
-            <Link to="/organizations/$orgName/resources" params={{ orgName }} className="hover:underline">
-              Resources
+            <Link to="/organizations/$orgName/projects" params={{ orgName }} className="hover:underline">
+              Projects
             </Link>
             {' / '}
             <Link
@@ -136,8 +136,8 @@ export function FolderProjectsIndexPage({
           <div className="rounded-md border border-dashed border-border p-6 text-center">
             <p className="text-sm font-medium">No projects in this folder.</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Projects are created from the organization Resources page. Once a
-              project's parent is set to this folder it will appear here.
+              Projects are created from the organization's Projects page. Once
+              a project's parent is set to this folder it will appear here.
             </p>
           </div>
         )}

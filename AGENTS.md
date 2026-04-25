@@ -54,9 +54,9 @@ identifier for scoped operations (`/organizations/$name/settings`). Includes
 the `returnTo` search-param contract.
 
 **Deferred**: Legacy sidebar destinations (Project tree, Organization tree,
-`/organizations/$orgName/resources`, folder-scoped index pages) are still present in
-the codebase but no longer reachable via the sidebar. Their removal is tracked
-in a sibling cleanup plan.
+folder-scoped index pages) are still present in the codebase but no longer
+reachable via the sidebar. Their removal is tracked in a sibling cleanup
+plan.
 
 **Path-name convention (HOL-939)**: Organization-scoped routes use the literal
 `organizations` segment, project-scoped routes use `projects`. The legacy

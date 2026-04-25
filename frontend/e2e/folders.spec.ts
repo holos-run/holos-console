@@ -29,40 +29,16 @@ test.describe('Folder list page', () => {
     await apiCreateOrg(page, orgName)
     await apiCreateFolder(page, folderName, orgName, 1, orgName)
 
-    // Navigate to the org's unified Resources listing (folders + projects)
-    await page.goto(`/organizations/${orgName}/resources`)
+    // Navigate to the folder detail page directly.
+    await page.goto(`/folders/${folderName}`)
     await page.waitForLoadState('networkidle')
 
-    // The Resources page renders each leaf resource as a link in the Path
-    // column (display name) and again in the Name column (slug). Matching
-    // by the link role avoids strict-mode violations regardless of which
-    // column the name appears in.
     await expect(
-      page.getByRole('link', { name: folderName }).first(),
+      page.locator('[data-slot="card-title"]', { hasText: folderName }),
     ).toBeVisible({ timeout: 10000 })
 
     // Cleanup
     await apiDeleteFolder(page, folderName, orgName)
-    await apiDeleteOrg(page, orgName)
-  })
-
-  test('new org has default folder', async ({ page }) => {
-    await loginViaProfilePage(page)
-
-    const orgName = `e2e-no-folders-${Date.now()}`
-    await apiCreateOrg(page, orgName)
-
-    await page.goto(`/organizations/${orgName}/resources`)
-    await page.waitForLoadState('networkidle')
-
-    // A new org auto-creates a "Default" folder — verify the folder link
-    // appears in the Resources list. The Default folder's slug and display
-    // name are both "Default", so match by link role to avoid strict mode
-    // violations across the Path and Name columns.
-    await expect(
-      page.getByRole('link', { name: 'Default' }).first(),
-    ).toBeVisible({ timeout: 10000 })
-
     await apiDeleteOrg(page, orgName)
   })
 })
@@ -93,7 +69,7 @@ test.describe('Folder detail page', () => {
 })
 
 test.describe('Nested folder workflow', () => {
-  test('creates org → parent folder → child folder, both visible in list', async ({ page }) => {
+  test('creates org → parent folder → child folder, both accessible by direct URL', async ({ page }) => {
     await loginViaProfilePage(page)
 
     const ts = Date.now()
@@ -107,17 +83,15 @@ test.describe('Nested folder workflow', () => {
     // Create child folder under parent folder
     await apiCreateFolder(page, childFolder, orgName, 2, parentFolder)
 
-    // Navigate to org's unified Resources listing — only parent folder should appear as a top-level entry
-    await page.goto(`/organizations/${orgName}/resources`)
-    await page.waitForLoadState('networkidle')
-    await expect(
-      page.getByRole('link', { name: parentFolder }).first(),
-    ).toBeVisible({ timeout: 10000 })
-
     // Navigate to parent folder index page — card title should show the folder name
     await page.goto(`/folders/${parentFolder}`)
     await page.waitForLoadState('networkidle')
     await expect(page.locator('[data-slot="card-title"]', { hasText: parentFolder })).toBeVisible({ timeout: 10000 })
+
+    // Navigate to child folder index page
+    await page.goto(`/folders/${childFolder}`)
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('[data-slot="card-title"]', { hasText: childFolder })).toBeVisible({ timeout: 10000 })
 
     // Cleanup (child first, then parent, then org)
     await apiDeleteFolder(page, childFolder, orgName)

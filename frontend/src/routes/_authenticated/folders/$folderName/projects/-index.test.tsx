@@ -67,7 +67,7 @@ describe('FolderProjectsIndexPage', () => {
   it('renders the breadcrumb and page title', () => {
     setupMocks([])
     render(<FolderProjectsIndexPage folderName="payments" />)
-    // The card title is "Projects"; the breadcrumb shows org / Resources /
+    // The card title is "Projects"; the breadcrumb shows org / Projects /
     // folder / Projects so a user always has a link back up the hierarchy.
     const headings = screen.getAllByText('Projects')
     expect(headings.length).toBeGreaterThan(0)
@@ -75,9 +75,9 @@ describe('FolderProjectsIndexPage', () => {
       'href',
       '/organizations/test-org/settings',
     )
-    expect(screen.getByRole('link', { name: 'Resources' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'Projects' })).toHaveAttribute(
       'href',
-      '/organizations/test-org/resources',
+      '/organizations/test-org/projects',
     )
     expect(screen.getByRole('link', { name: 'payments' })).toHaveAttribute(
       'href',
