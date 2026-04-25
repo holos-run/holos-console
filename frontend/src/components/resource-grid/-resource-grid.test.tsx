@@ -424,4 +424,54 @@ describe('ResourceGrid', () => {
       screen.getByText(/no resources match the current filters/i),
     ).toBeInTheDocument()
   })
+
+  // --- onSearchChange wiring — kind filter checkbox and search input ---
+
+  it('calls onSearchChange with the new kind when kind checkbox is clicked', () => {
+    const onSearchChange = vi.fn()
+    renderGrid({
+      kinds: [SECRET_KIND, DEPLOYMENT_KIND],
+      rows: [
+        makeRow({ kind: 'secret' }),
+        makeRow({ kind: 'deployment', id: 'dep-1', name: 'my-dep', displayName: 'My Deployment', description: '' }),
+      ],
+      onSearchChange,
+    })
+
+    fireEvent.click(screen.getByLabelText('Filter Deployment'))
+
+    expect(onSearchChange).toHaveBeenCalled()
+    // The updater function should produce a search with kind set
+    const updater = onSearchChange.mock.calls[0][0] as (prev: Record<string, unknown>) => Record<string, unknown>
+    const result = updater({})
+    expect(result['kind']).toBe('deployment')
+  })
+
+  it('calls onSearchChange with updated search string when search input changes', () => {
+    const onSearchChange = vi.fn()
+    renderGrid({ onSearchChange })
+
+    fireEvent.change(screen.getByRole('textbox', { name: /search/i }), {
+      target: { value: 'my query' },
+    })
+
+    expect(onSearchChange).toHaveBeenCalled()
+    const updater = onSearchChange.mock.calls[0][0] as (prev: Record<string, unknown>) => Record<string, unknown>
+    const result = updater({})
+    expect(result['search']).toBe('my query')
+  })
+
+  it('calls onSearchChange with search undefined when search input is cleared', () => {
+    const onSearchChange = vi.fn()
+    renderGrid({ onSearchChange, search: { search: 'existing' } })
+
+    fireEvent.change(screen.getByRole('textbox', { name: /search/i }), {
+      target: { value: '' },
+    })
+
+    expect(onSearchChange).toHaveBeenCalled()
+    const updater = onSearchChange.mock.calls[0][0] as (prev: Record<string, unknown>) => Record<string, unknown>
+    const result = updater({ search: 'existing' })
+    expect(result['search']).toBeUndefined()
+  })
 })
