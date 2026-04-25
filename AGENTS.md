@@ -21,6 +21,55 @@ All testing guidance lives in this repo. Read the entries below in order the fir
 
 **Make targets**: `make test-go` (Go tests), `make test-ui` (Vitest unit tests), `make test-e2e` (Playwright, needs `make certs` and a k3d cluster), `make test` (all three). Run `make generate` before committing if proto or generated code is affected.
 
+## Frontend stack and constraints
+
+The frontend under `frontend/` is a Vite single-page React app. Treat these as
+the locked stack dependencies for new UI work:
+
+| Layer | Dependency |
+|---|---|
+| Build/dev server | `vite@7.3.1`, `@vitejs/plugin-react@5.1.4` |
+| UI runtime | `react@19.2.4`, `react-dom@19.2.4` |
+| Routing | `@tanstack/react-router@1.163.3`, `@tanstack/router-plugin@1.163.3` |
+| Server state | `@tanstack/react-query@5.90.21` |
+| Tables | `@tanstack/react-table@8.21.3` |
+| RPC transport | `@connectrpc/connect@2.1.1`, `@connectrpc/connect-web@2.1.1`, `@connectrpc/connect-query@2.2.0` |
+| Styling | `tailwindcss@4.2.1`, `@tailwindcss/vite@4.2.1` |
+| UI primitives | `shadcn@3.8.5`, `radix-ui@1.4.3`, `lucide-react@0.575.0` |
+
+Do not introduce Next.js or a parallel framework. New frontend code must fit
+the existing Vite + React + TanStack Router model unless an accepted architecture
+issue explicitly changes this stack.
+
+Agent-facing frontend docs:
+
+- [Frontend Architecture](docs/agents/frontend-architecture.md) — routing,
+  `returnTo`, selected-entity sync, ConnectRPC transport, and build/test
+  commands.
+- [TanStack Query Conventions](docs/agents/tanstack-query-conventions.md) —
+  placeholder for Phase 4 query-key and invalidation conventions.
+- [Data Grid Architecture](docs/agents/data-grid-architecture.md) —
+  placeholder for Phase 5 `ResourceGrid` architecture conventions.
+- [Data Grid Conventions](docs/agents/data-grid-conventions.md) — current
+  clickable resource ID and fully-clickable row rule.
+- [Frontend Audit Baseline](docs/agents/frontend-audit-2026-04.md) — Phase 1
+  inventory and target conventions.
+
+### Security: secrets in the UI
+
+Never display raw secret values by default. Secret list pages and grid columns
+must be metadata-only: name, scope, type, sharing/usage summaries, timestamps,
+and other non-sensitive descriptors. Any reveal of secret material requires an
+explicit user action in a detail/editor flow, and the default view after
+navigation or refresh must return to a non-revealed state.
+
+Do not place secret material in CR specs or status. Template CRs carry metadata
+and `v1.Secret` refs only, and `secrets.holos.run/v1alpha1` CRs are control
+objects, not vaults. The Holos invariant forbids plaintext credentials, hash
+bytes, salt bytes, pepper bytes, API key prefixes, last-4 digits, and any other
+entropy-revealing truncation in CR fields; see
+[No-sensitive-values invariant](#no-sensitive-values-invariant-must-read-before-editing-any-cr-field).
+
 ## MVP UI — ResourceGrid v1 and sidebar nav (HOL-854 + HOL-911)
 
 The HOL-854 plan shipped seven phases (HOL-855 – HOL-861) that replace the old
