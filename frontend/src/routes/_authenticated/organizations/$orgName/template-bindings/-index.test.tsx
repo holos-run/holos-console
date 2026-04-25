@@ -125,7 +125,7 @@ describe('OrgTemplateBindingsIndexPage', () => {
     // Name cell renders as a link to the new template-bindings route.
     const orgLink = screen.getByRole('link', { name: 'org-bind' })
     expect(orgLink.getAttribute('href')).toBe(
-      '/orgs/test-org/template-bindings/org-bind',
+      '/organizations/test-org/template-bindings/org-bind',
     )
 
     // Scope and targets columns.

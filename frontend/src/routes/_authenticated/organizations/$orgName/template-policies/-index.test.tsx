@@ -178,7 +178,7 @@ describe('OrgTemplatePoliciesIndexPage', () => {
     const link = screen.getByRole('link', { name: 'Org Policy' })
     expect(link).toHaveAttribute(
       'href',
-      '/orgs/test-org/template-policies/p-org',
+      '/organizations/test-org/template-policies/p-org',
     )
   })
 

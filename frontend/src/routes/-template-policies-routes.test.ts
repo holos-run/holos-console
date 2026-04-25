@@ -27,6 +27,6 @@ describe('TemplatePolicies route tree', () => {
   })
 
   it('includes org-scoped template-policies route', () => {
-    expect(source).toMatch(/\/orgs\/\$orgName\/template-policies/)
+    expect(source).toMatch(/\/organizations\/\$orgName\/template-policies/)
   })
 })

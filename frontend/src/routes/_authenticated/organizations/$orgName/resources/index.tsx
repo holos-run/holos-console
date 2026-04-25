@@ -27,7 +27,7 @@ import {
   type Resource,
 } from '@/gen/holos/console/v1/resources_pb'
 
-export const Route = createFileRoute('/_authenticated/orgs/$orgName/resources/')({
+export const Route = createFileRoute('/_authenticated/organizations/$orgName/resources/')({
   component: ResourcesIndexPage,
 })
 
@@ -57,7 +57,7 @@ function typeBadge(type: ResourceType) {
 
 // guardOrgName logs a warning and returns a placeholder when the server
 // returns an empty path element name (contract violation). An empty slug
-// would generate broken URLs such as /orgs//folders/… that TanStack Router
+// would generate broken URLs such as /organizations//folders/… that TanStack Router
 // may 404 or throw on.
 function guardOrgName(name: string): string {
   if (!name) {
@@ -84,7 +84,7 @@ function PathCell({ resource }: { resource: Resource }) {
           <span key={`${element.name}-${i}`} className="flex items-center gap-1">
             {i === 0 ? (
               <Link
-                to="/orgs/$orgName"
+                to="/organizations/$orgName"
                 params={{ orgName: guardOrgName(element.name) }}
                 title={element.name}
                 className="hover:underline text-muted-foreground"

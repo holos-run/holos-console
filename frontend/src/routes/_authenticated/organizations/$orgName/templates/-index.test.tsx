@@ -157,7 +157,7 @@ describe('OrgTemplatesIndexPage', () => {
     const link = screen.getByRole('link', { name: 'Gateway' })
     expect(link).toHaveAttribute(
       'href',
-      `/orgs/test-org/templates/${ORG_NS}/gateway`,
+      `/organizations/test-org/templates/${ORG_NS}/gateway`,
     )
   })
 
@@ -201,7 +201,7 @@ describe('OrgTemplatesIndexPage', () => {
     expect(
       links.some(
         (l) =>
-          l.getAttribute('href') === `/orgs/test-org/templates/${ORG_NS}/ops`,
+          l.getAttribute('href') === `/organizations/test-org/templates/${ORG_NS}/ops`,
       ),
     ).toBe(true)
   })
@@ -257,7 +257,7 @@ describe('OrgTemplatesIndexPage', () => {
     setup([], Role.OWNER)
     render(<OrgTemplatesIndexPage orgName="test-org" />)
     const link = screen.getByRole('link', { name: /create template/i })
-    expect(link).toHaveAttribute('href', '/orgs/test-org/templates/new')
+    expect(link).toHaveAttribute('href', '/organizations/test-org/templates/new')
   })
 
   it('hides the Create Template button for non-OWNER users', () => {

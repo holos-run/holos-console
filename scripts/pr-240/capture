@@ -6,7 +6,7 @@
 set -euo pipefail
 
 AB="agent-browser --session-name holos-dev"
-PROJECTS_URL="$HOLOS_BACKEND_URL/orgs/test-org/projects"
+PROJECTS_URL="$HOLOS_BACKEND_URL/organizations/test-org/projects"
 
 echo "==> Navigating to org projects index page"
 $AB open "$PROJECTS_URL"

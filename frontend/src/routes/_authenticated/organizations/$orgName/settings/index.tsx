@@ -33,7 +33,7 @@ import {
 } from '@/queries/organizations'
 import { useListFolders } from '@/queries/folders'
 
-export const Route = createFileRoute('/_authenticated/orgs/$orgName/settings/')({
+export const Route = createFileRoute('/_authenticated/organizations/$orgName/settings/')({
   component: OrgSettingsRoute,
 })
 

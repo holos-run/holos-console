@@ -61,7 +61,7 @@ test('org wrapper navigates to template detail after create', async () => {
   expect(mutateAsync.mock.calls[0][0]).toMatchObject({ name: 'my-template' })
   await waitFor(() => {
     expect(mockNavigate).toHaveBeenCalledWith({
-      to: '/orgs/$orgName/templates/$namespace/$name',
+      to: '/organizations/$orgName/templates/$namespace/$name',
       params: { orgName: 'my-org', namespace: 'holos-org-my-org', name: 'my-template' },
     })
   })

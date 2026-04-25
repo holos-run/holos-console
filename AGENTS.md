@@ -54,13 +54,18 @@ identifier for scoped operations (`/organizations/$name/settings`). Includes
 the `returnTo` search-param contract.
 
 **Deferred**: Legacy sidebar destinations (Project tree, Organization tree,
-`/orgs/$orgName/resources`, folder-scoped index pages) are still present in
+`/organizations/$orgName/resources`, folder-scoped index pages) are still present in
 the codebase but no longer reachable via the sidebar. Their removal is tracked
 in a sibling cleanup plan.
 
+**Path-name convention (HOL-939)**: Organization-scoped routes use the literal
+`organizations` segment, project-scoped routes use `projects`. The legacy
+`/orgs/...` prefix has been removed — do not reintroduce it for new routes,
+links, helpers, or tests.
+
 ## Guardrails
 
-- [Resource URL Convention](docs/ui/resource-routing.md) — Use singular prefix for creation pages (`/organization/new`, `/folder/new`, `/project/new`) and plural + identifier for scoped operations (`/organizations/$name/settings`). Do NOT place creation pages under plural prefixes (e.g. `/folders/new`) — this creates a namespace collision where `new` is both a keyword and a valid resource name.
+- [Resource URL Convention](docs/ui/resource-routing.md) — Use singular prefix for creation pages (`/organization/new`, `/folder/new`, `/project/new`) and plural + identifier for scoped operations (`/organizations/$name/settings`). Do NOT place creation pages under plural prefixes (e.g. `/folders/new`) — this creates a namespace collision where `new` is both a keyword and a valid resource name. Use the full plural words `organizations` and `projects` in URL paths; do NOT use `/orgs/...` (HOL-939).
 - [Selected-Entity State Contract](docs/ui/selected-entity-state.md) — `useOrg()` / `useProject()` are the canonical stores; URL params are authoritative when present; layouts sync URL → store (never the reverse); creation pages read the store but must never write it.
 - [Demo Docs Routing](https://github.com/holos-run/holos-console-docs/tree/main/demo) — Demo setup materials and CUE example snippets belong in `holos-run/holos-console-docs/demo/`, **not** in this repo; demo-related issues must include concrete examples and operator guidance.
 - [Smoke Test Contract](https://github.com/holos-run/holos-console-docs/tree/main/demo/smoke-tests) — Smoke-test instructions must use `kubectl` commands for the resources required to observe the feature in the demo environment.

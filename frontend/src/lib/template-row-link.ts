@@ -2,7 +2,7 @@
  * template-row-link.ts — scope-aware link resolver for the three template-family
  * kinds (Template, TemplatePolicy, TemplatePolicyBinding).
  *
- * Extracted from orgs/$orgName/templates/index.tsx (lines 93-151) so the
+ * Extracted from organizations/$orgName/templates/index.tsx (lines 93-151) so the
  * project-scoped unified Templates index (HOL-859) can reuse the same routing
  * logic without duplicating it.
  *
@@ -44,7 +44,7 @@ export function resolveTemplateRowHref(
   switch (kind) {
     case 'Template': {
       if (scope === 'org') {
-        return `/orgs/${scopeName}/templates/${namespace}/${name}`
+        return `/organizations/${scopeName}/templates/${namespace}/${name}`
       }
       if (scope === 'folder') {
         return `/folders/${scopeName}/templates/${name}`
@@ -57,7 +57,7 @@ export function resolveTemplateRowHref(
 
     case 'TemplatePolicy': {
       if (scope === 'org') {
-        return `/orgs/${scopeName}/template-policies/${name}`
+        return `/organizations/${scopeName}/template-policies/${name}`
       }
       if (scope === 'folder') {
         return `/folders/${scopeName}/template-policies/${name}`
@@ -68,7 +68,7 @@ export function resolveTemplateRowHref(
 
     case 'TemplatePolicyBinding': {
       if (scope === 'org') {
-        return `/orgs/${scopeName}/template-bindings/${name}`
+        return `/organizations/${scopeName}/template-bindings/${name}`
       }
       if (scope === 'folder') {
         return `/folders/${scopeName}/template-policy-bindings/${name}`

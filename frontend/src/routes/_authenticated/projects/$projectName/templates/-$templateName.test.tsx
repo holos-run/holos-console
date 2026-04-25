@@ -70,7 +70,7 @@ describe('project-templates redirect shim', () => {
     await waitFor(() => {
       expect(navigateSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          to: '/orgs/$orgName/templates/$namespace/$name',
+          to: '/organizations/$orgName/templates/$namespace/$name',
           params: {
             orgName: 'test-org',
             namespace: namespaceForProject('billing'),

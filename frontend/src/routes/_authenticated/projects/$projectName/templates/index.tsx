@@ -229,13 +229,13 @@ export function ProjectTemplatesIndexPage({
       {
         id: 'TemplatePolicy',
         label: 'Template Policy',
-        newHref: orgName ? `/orgs/${orgName}/template-policies/new` : undefined,
+        newHref: orgName ? `/organizations/${orgName}/template-policies/new` : undefined,
         canCreate: canCreateOrgResources,
       },
       {
         id: 'TemplatePolicyBinding',
         label: 'Template Policy Binding',
-        newHref: orgName ? `/orgs/${orgName}/template-bindings/new` : undefined,
+        newHref: orgName ? `/organizations/${orgName}/template-bindings/new` : undefined,
         canCreate: canCreateOrgResources,
       },
     ],

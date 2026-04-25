@@ -230,7 +230,7 @@ describe('OrgTemplatePolicyDetailPage', () => {
       // href, so we can assert the route shape without running the router.
       expect(link).toHaveAttribute(
         'href',
-        '/orgs/$orgName/template-bindings/$bindingName',
+        '/organizations/$orgName/template-bindings/$bindingName',
       )
       const params = JSON.parse(link.getAttribute('data-params') ?? '{}')
       expect(params).toEqual({

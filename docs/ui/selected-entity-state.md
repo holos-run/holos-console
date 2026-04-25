@@ -41,12 +41,12 @@ Any route segment that owns a `$orgName` path param must include a layout
 component that syncs the param into the store:
 
 ```tsx
-// frontend/src/routes/_authenticated/orgs/$orgName.tsx
+// frontend/src/routes/_authenticated/organizations/$orgName.tsx
 import { createFileRoute, Outlet } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { useOrg } from '@/lib/org-context'
 
-export const Route = createFileRoute('/_authenticated/orgs/$orgName')({
+export const Route = createFileRoute('/_authenticated/organizations/$orgName')({
   component: RouteComponent,
 })
 
@@ -180,7 +180,7 @@ except layouts, which write via the one-way URL → store sync.
 | `frontend/src/lib/project-context.tsx` | `useProject()` hook and `ProjectProvider` |
 | `frontend/src/components/workspace-menu.tsx` | `WorkspaceMenu` — user-visible org/project switcher; read-only store consumer |
 | `frontend/src/components/app-sidebar.tsx` | Sidebar shell; renders `WorkspaceMenu` and flat nav |
-| `frontend/src/routes/_authenticated/orgs/$orgName.tsx` | Reference layout — syncs `$orgName` URL param → `useOrg()` store |
+| `frontend/src/routes/_authenticated/organizations/$orgName.tsx` | Reference layout — syncs `$orgName` URL param → `useOrg()` store |
 | `frontend/src/routes/_authenticated/project/new.tsx` | Reference creation page — reads store, never writes it |
 | `docs/ui/resource-routing.md` | Singular-create / plural-scoped URL rule; `returnTo` contract |
 

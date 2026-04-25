@@ -521,7 +521,7 @@ describe('ConsolidatedTemplateEditorPage', () => {
 
       await waitFor(() => {
         expect(mockNavigate).toHaveBeenCalledWith({
-          to: '/orgs/$orgName/templates',
+          to: '/organizations/$orgName/templates',
           params: { orgName: 'test-org' },
         })
       })

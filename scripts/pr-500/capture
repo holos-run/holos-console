@@ -15,11 +15,11 @@ echo "Logging in..."
 scripts/browser-login
 
 echo "Capturing platform templates list page with enabled/disabled badges..."
-agent-browser navigate "$BACKEND_URL/orgs/acme/settings/org-templates" \
+agent-browser navigate "$BACKEND_URL/organizations/acme/settings/org-templates" \
   --screenshot "$SCREENSHOT_DIR/platform-templates-list.png"
 
 echo "Capturing platform template detail page with enabled toggle and clone button..."
-agent-browser navigate "$BACKEND_URL/orgs/acme/settings/org-templates/reference-grant" \
+agent-browser navigate "$BACKEND_URL/organizations/acme/settings/org-templates/reference-grant" \
   --screenshot "$SCREENSHOT_DIR/platform-template-detail-enabled-toggle.png"
 
 echo "Screenshots saved to $SCREENSHOT_DIR"

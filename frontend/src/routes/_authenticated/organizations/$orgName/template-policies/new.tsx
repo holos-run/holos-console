@@ -1,31 +1,28 @@
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useCreateTemplatePolicyBinding } from '@/queries/templatePolicyBindings'
+import { useCreateTemplatePolicy } from '@/queries/templatePolicies'
 import { namespaceForOrg } from '@/lib/scope-labels'
 import { useGetOrganization } from '@/queries/organizations'
-import {
-  BindingForm,
-  type BindingScope,
-} from '@/components/template-policy-bindings/BindingForm'
+import { PolicyForm, type PolicyScope } from '@/components/template-policies/PolicyForm'
 
 export const Route = createFileRoute(
-  '/_authenticated/orgs/$orgName/template-bindings/new',
+  '/_authenticated/organizations/$orgName/template-policies/new',
 )({
-  component: CreateOrgTemplateBindingRoute,
+  component: CreateOrgTemplatePolicyRoute,
 })
 
-function CreateOrgTemplateBindingRoute() {
+function CreateOrgTemplatePolicyRoute() {
   const { orgName } = Route.useParams()
-  return <CreateOrgTemplateBindingPage orgName={orgName} />
+  return <CreateOrgTemplatePolicyPage orgName={orgName} />
 }
 
-export function CreateOrgTemplateBindingPage({
+export function CreateOrgTemplatePolicyPage({
   orgName: propOrgName,
   forcedScopeType,
 }: {
   orgName?: string
-  forcedScopeType?: BindingScope
+  forcedScopeType?: PolicyScope
 } = {}) {
   let routeOrgName: string | undefined
   try {
@@ -38,47 +35,41 @@ export function CreateOrgTemplateBindingPage({
 
   const navigate = useNavigate()
   const namespace = namespaceForOrg(orgName)
-  const createMutation = useCreateTemplatePolicyBinding(namespace)
+  const createMutation = useCreateTemplatePolicy(namespace)
   const { data: org } = useGetOrganization(orgName)
 
   const userRole = org?.userRole ?? Role.VIEWER
+  // PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors too.
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
-  const scopeType: BindingScope = forcedScopeType ?? 'organization'
+  const scopeType: PolicyScope = forcedScopeType ?? 'organization'
 
   return (
     <Card>
       <CardHeader>
         <div>
           <p className="text-sm text-muted-foreground">
-            <Link
-              to="/orgs/$orgName/settings"
-              params={{ orgName }}
-              className="hover:underline"
-            >
+            <Link to="/organizations/$orgName/settings" params={{ orgName }} className="hover:underline">
               {orgName}
             </Link>
             {' / '}
             <Link
-              to="/orgs/$orgName/template-bindings"
+              to="/organizations/$orgName/template-policies"
               params={{ orgName }}
               className="hover:underline"
             >
-              Template Bindings
+              Template Policies
             </Link>
             {' / New'}
           </p>
-          <CardTitle className="mt-1">
-            Create Template Binding
-          </CardTitle>
+          <CardTitle className="mt-1">Create Template Policy</CardTitle>
         </div>
       </CardHeader>
       <CardContent>
-        <BindingForm
+        <PolicyForm
           mode="create"
           scopeType={scopeType}
           namespace={namespace}
-          organization={orgName}
           canWrite={canWrite}
           submitLabel="Create"
           pendingLabel="Creating..."
@@ -86,13 +77,13 @@ export function CreateOrgTemplateBindingPage({
           onSubmit={async (values) => {
             await createMutation.mutateAsync(values)
             await navigate({
-              to: '/orgs/$orgName/template-bindings/$bindingName',
-              params: { orgName, bindingName: values.name },
+              to: '/organizations/$orgName/template-policies/$policyName',
+              params: { orgName, policyName: values.name },
             })
           }}
           onCancel={() => {
             void navigate({
-              to: '/orgs/$orgName/template-bindings',
+              to: '/organizations/$orgName/template-policies',
               params: { orgName },
             })
           }}

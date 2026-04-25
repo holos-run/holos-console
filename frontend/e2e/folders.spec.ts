@@ -30,7 +30,7 @@ test.describe('Folder list page', () => {
     await apiCreateFolder(page, folderName, orgName, 1, orgName)
 
     // Navigate to the org's unified Resources listing (folders + projects)
-    await page.goto(`/orgs/${orgName}/resources`)
+    await page.goto(`/organizations/${orgName}/resources`)
     await page.waitForLoadState('networkidle')
 
     // The Resources page renders each leaf resource as a link in the Path
@@ -52,7 +52,7 @@ test.describe('Folder list page', () => {
     const orgName = `e2e-no-folders-${Date.now()}`
     await apiCreateOrg(page, orgName)
 
-    await page.goto(`/orgs/${orgName}/resources`)
+    await page.goto(`/organizations/${orgName}/resources`)
     await page.waitForLoadState('networkidle')
 
     // A new org auto-creates a "Default" folder — verify the folder link
@@ -108,7 +108,7 @@ test.describe('Nested folder workflow', () => {
     await apiCreateFolder(page, childFolder, orgName, 2, parentFolder)
 
     // Navigate to org's unified Resources listing — only parent folder should appear as a top-level entry
-    await page.goto(`/orgs/${orgName}/resources`)
+    await page.goto(`/organizations/${orgName}/resources`)
     await page.waitForLoadState('networkidle')
     await expect(
       page.getByRole('link', { name: parentFolder }).first(),

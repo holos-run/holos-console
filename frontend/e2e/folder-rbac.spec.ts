@@ -40,7 +40,7 @@ test.describe('Folder RBAC - owner can manage folder', () => {
     // Match by link role: the Resources page renders each folder leaf as a
     // link in the Path column (display name) and again in the Name column
     // (slug), so `.first()` keeps the assertion strict-mode safe.
-    await page.goto(`/orgs/${orgName}/resources`)
+    await page.goto(`/organizations/${orgName}/resources`)
     await page.waitForLoadState('networkidle')
     await expect(
       page.getByRole('link', { name: folderName }).first(),

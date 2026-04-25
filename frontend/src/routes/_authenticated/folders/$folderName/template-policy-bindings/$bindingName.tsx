@@ -119,7 +119,7 @@ export function FolderTemplatePolicyBindingDetailPage({
           <div>
             <p className="text-sm text-muted-foreground">
               <Link
-                to="/orgs/$orgName/settings"
+                to="/organizations/$orgName/settings"
                 params={{ orgName }}
                 className="hover:underline"
               >
@@ -127,7 +127,7 @@ export function FolderTemplatePolicyBindingDetailPage({
               </Link>
               {' / '}
               <Link
-                to="/orgs/$orgName/resources"
+                to="/organizations/$orgName/resources"
                 params={{ orgName }}
                 className="hover:underline"
               >

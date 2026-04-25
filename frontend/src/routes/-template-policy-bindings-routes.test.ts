@@ -4,7 +4,7 @@
 // storage-isolation guarantee as the policies they reference.
 //
 // HOL-918: the org-scoped binding route was renamed from
-// /orgs/$orgName/template-policy-bindings to /orgs/$orgName/template-bindings.
+// /organizations/$orgName/template-policy-bindings to /organizations/$orgName/template-bindings.
 // The folder-scoped route is unchanged.
 //
 // This test reads the generated route tree and asserts:
@@ -30,11 +30,11 @@ describe('TemplatePolicyBindings route tree', () => {
   })
 
   it('includes org-scoped template-bindings route (HOL-918 rename)', () => {
-    expect(source).toMatch(/\/orgs\/\$orgName\/template-bindings/)
+    expect(source).toMatch(/\/organizations\/\$orgName\/template-bindings/)
   })
 
   it('does not include org-scoped template-policy-bindings route (removed by HOL-918)', () => {
-    const removed = /\/orgs\/\$orgName\/template-policy-bindings/
+    const removed = /\/organizations\/\$orgName\/template-policy-bindings/
     expect(source).not.toMatch(removed)
   })
 })

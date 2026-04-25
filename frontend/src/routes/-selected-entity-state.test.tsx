@@ -37,10 +37,6 @@ const ALLOWLISTED_ORG_TREES: Array<{ tree: string; layoutFile: string }> = [
     tree: 'organizations/$orgName (active)',
     layoutFile: path.join(authenticatedDir, 'organizations', '$orgName.tsx'),
   },
-  {
-    tree: 'orgs/$orgName (legacy)',
-    layoutFile: path.join(authenticatedDir, 'orgs', '$orgName.tsx'),
-  },
 ]
 
 /**

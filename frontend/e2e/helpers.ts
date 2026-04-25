@@ -320,7 +320,7 @@ export async function selectOrg(page: Page, orgName: string): Promise<void> {
     .first()
     .click()
 
-  await page.waitForURL(new RegExp(`/orgs/${orgName}/resources`), { timeout: 5000 })
+  await page.waitForURL(new RegExp(`/organizations/${orgName}/resources`), { timeout: 5000 })
 }
 
 /**

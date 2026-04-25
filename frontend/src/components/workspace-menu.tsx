@@ -97,7 +97,7 @@ export function WorkspaceMenu() {
           {selectedOrg ? (
             <DropdownMenuItem asChild>
               <Link
-                to="/orgs/$orgName/settings"
+                to="/organizations/$orgName/settings"
                 params={{ orgName: selectedOrg }}
                 data-testid="workspace-menu-item-org-settings"
               >

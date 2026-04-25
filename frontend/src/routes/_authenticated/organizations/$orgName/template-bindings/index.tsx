@@ -33,7 +33,7 @@ import {
 } from '@/lib/scope-labels'
 
 export const Route = createFileRoute(
-  '/_authenticated/orgs/$orgName/template-bindings/',
+  '/_authenticated/organizations/$orgName/template-bindings/',
 )({
   component: OrgTemplateBindingsIndexRoute,
 })
@@ -92,7 +92,7 @@ export function OrgTemplateBindingsIndexPage({
           if (scope === 'org') {
             return (
               <Link
-                to="/orgs/$orgName/template-bindings/$bindingName"
+                to="/organizations/$orgName/template-bindings/$bindingName"
                 params={{ orgName, bindingName: b.name }}
                 title={b.name}
                 className="hover:underline font-medium"
@@ -202,7 +202,7 @@ export function OrgTemplateBindingsIndexPage({
         </div>
         {canWrite && (
           <Link
-            to="/orgs/$orgName/template-bindings/new"
+            to="/organizations/$orgName/template-bindings/new"
             params={{ orgName }}
           >
             <Button size="sm">Create Binding</Button>

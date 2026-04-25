@@ -214,7 +214,7 @@ describe('WorkspaceMenu — items', () => {
     expect(settings.textContent).toContain('Organization Settings')
   })
 
-  it('renders Organization Settings → /orgs/$orgName/settings when an org is selected', () => {
+  it('renders Organization Settings → /organizations/$orgName/settings when an org is selected', () => {
     ;(useOrg as Mock).mockReturnValue({
       organizations: [{ name: 'my-org', displayName: 'My Org' }],
       selectedOrg: 'my-org',
@@ -223,7 +223,7 @@ describe('WorkspaceMenu — items', () => {
     })
     render(<WorkspaceMenu />)
     const link = screen.getByTestId('workspace-menu-item-org-settings')
-    expect(link.getAttribute('href')).toBe('/orgs/my-org/settings')
+    expect(link.getAttribute('href')).toBe('/organizations/my-org/settings')
   })
 
   it('renders Dev Tools when devToolsEnabled is true', () => {
