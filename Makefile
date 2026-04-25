@@ -185,17 +185,19 @@ coverage: test ## Test coverage profile.
 	go tool cover -html=coverage.out
 
 .PHONY: manifests
-# manifests generates the templates group CRDs, RBAC, and deepcopy sources.
-# Per ADR 031, each binary's API group lands in a separate config/ tree:
-# holos-console owns config/holos-console/{crd,rbac}/ for templates.holos.run,
-# while holos-secret-injector owns config/secret-injector/{crd,rbac}/ for
-# secrets.holos.run (see the manifests-secrets target below).
-manifests: ## Generate CRD, RBAC, and deepcopy sources for the templates group from +kubebuilder markers.
+# manifests generates the templates and deployments group CRDs, RBAC, and
+# deepcopy sources. Per ADR 031, each binary's API group lands in a separate
+# config/ tree: holos-console owns config/holos-console/{crd,rbac}/ for
+# templates.holos.run and deployments.holos.run, while holos-secret-injector
+# owns config/secret-injector/{crd,rbac}/ for secrets.holos.run (see the
+# manifests-secrets target below).
+manifests: ## Generate CRD, RBAC, and deepcopy sources for the templates and deployments groups from +kubebuilder markers.
 	controller-gen \
 		crd \
 		rbac:roleName=holos-console-templates \
 		object:headerFile="hack/boilerplate.go.txt" \
 		paths="./api/templates/..." \
+		paths="./api/deployments/..." \
 		paths="./internal/controller/..." \
 		output:crd:artifacts:config=config/holos-console/crd \
 		output:rbac:artifacts:config=config/holos-console/rbac
