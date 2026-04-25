@@ -34,11 +34,16 @@ import { useAuth } from '@/lib/auth'
 import { getConsoleConfig } from '@/lib/console-config'
 import { DevToolsPage } from './dev-tools'
 
+// JWT-shaped fixture: real ID tokens start with "eyJ". Using a realistic
+// shape lets tests assert the curl snippet does NOT embed the live token.
+const TEST_ID_TOKEN =
+  'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signature'
+
 function mockAuth(overrides: Partial<ReturnType<typeof useAuth>> = {}) {
   ;(useAuth as Mock).mockReturnValue({
     user: {
       access_token: 'test-access-token',
-      id_token: 'test-id-token',
+      id_token: TEST_ID_TOKEN,
       profile: {
         email: 'platform@localhost',
         sub: 'test-platform-001',
@@ -124,6 +129,32 @@ describe('DevToolsPage', () => {
     render(<DevToolsPage />)
     const card = getCardByTitle('Quick Token')
     expect(within(card).getByText(/curl example/i)).toBeInTheDocument()
+  })
+
+  it('curl snippet uses $TOKEN placeholder and does not embed the live ID token', () => {
+    render(<DevToolsPage />)
+    const card = getCardByTitle('Quick Token')
+    const snippet = within(card).getByText(/holos\.console\.v1\.OrganizationService/)
+    expect(snippet.textContent).toContain('Bearer $TOKEN')
+    // Live ID tokens are JWTs (start with "eyJ"). The snippet must not embed one.
+    expect(snippet.textContent).not.toMatch(/eyJ[A-Za-z0-9_-]+/)
+  })
+
+  it('documents where to obtain a real token via /api/dev/token', () => {
+    render(<DevToolsPage />)
+    const card = getCardByTitle('Quick Token')
+    expect(within(card).getByText('/api/dev/token')).toBeInTheDocument()
+  })
+
+  it('renders persona cards in a vertical layout (no horizontal grid)', () => {
+    render(<DevToolsPage />)
+    const card = getCardByTitle('Persona Switcher')
+    const platformLabel = within(card).getByText('Platform Engineer')
+    // Walk up to the container that wraps the persona buttons.
+    let container: HTMLElement | null = platformLabel.closest('button')?.parentElement ?? null
+    expect(container).not.toBeNull()
+    expect(container!.className).toMatch(/flex-col/)
+    expect(container!.className).not.toMatch(/grid-cols-/)
   })
 
   it('renders the current user email and role for a different persona', () => {

@@ -112,7 +112,7 @@ export function DevToolsPage() {
     `  ${origin}/holos.console.v1.OrganizationService/ListOrganizations \\\n` +
     `  -H "Content-Type: application/json" \\\n` +
     `  -H "Connect-Protocol-Version: 1" \\\n` +
-    `  -H "Authorization: Bearer ${idToken}" \\\n` +
+    `  -H "Authorization: Bearer $TOKEN" \\\n` +
     `  -d '{}'`
 
   const handleCopyCurl = () => {
@@ -214,7 +214,7 @@ function PersonaSwitcherCard({
         <CardTitle>Persona Switcher</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="flex flex-col gap-3">
           {personas.map((persona) => {
             const isCurrent = persona.email === currentEmail
             const isSwitching = switching === persona.id
@@ -310,6 +310,13 @@ function QuickTokenCard({
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-wider text-muted-foreground">
             curl example (Connect protocol)
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Set <code className="font-mono">$TOKEN</code> to an ID token before running.
+            Obtain one from the{' '}
+            <code className="font-mono">/api/dev/token</code> endpoint (see{' '}
+            <code className="font-mono">CONTRIBUTING.md</code> &rarr; Dev Tools and
+            Persona Switching).
           </p>
           <div className="relative">
             <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto whitespace-pre">
