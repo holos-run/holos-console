@@ -1,0 +1,206 @@
+/*
+Copyright 2026 The Holos Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package v1alpha1_test
+
+import (
+	"encoding/json"
+	"testing"
+	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/yaml"
+
+	v1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
+)
+
+// TestTemplateDependency_RoundTrip exercises JSON and YAML round-trip
+// marshal/unmarshal for TemplateDependency and confirms that key spec fields
+// survive without loss.
+func TestTemplateDependency_RoundTrip(t *testing.T) {
+	boolTrue := true
+	boolFalse := false
+	ready := metav1.Condition{
+		Type:               "Ready",
+		Status:             metav1.ConditionTrue,
+		Reason:             "Ready",
+		Message:            "resolved",
+		LastTransitionTime: metav1.NewTime(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)),
+		ObservedGeneration: 2,
+	}
+
+	tests := []struct {
+		name string
+		obj  v1alpha1.TemplateDependency
+	}{
+		{
+			name: "minimal",
+			obj: v1alpha1.TemplateDependency{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: v1alpha1.GroupVersion.String(),
+					Kind:       "TemplateDependency",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "web-needs-db",
+					Namespace: "holos-prj-alpha",
+				},
+				Spec: v1alpha1.TemplateDependencySpec{
+					Dependent: v1alpha1.LinkedTemplateRef{
+						Namespace: "holos-prj-alpha",
+						Name:      "web",
+					},
+					Requires: v1alpha1.LinkedTemplateRef{
+						Namespace: "holos-prj-alpha",
+						Name:      "db",
+					},
+				},
+			},
+		},
+		{
+			name: "cascade-delete-true",
+			obj: v1alpha1.TemplateDependency{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: v1alpha1.GroupVersion.String(),
+					Kind:       "TemplateDependency",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "api-needs-istio",
+					Namespace: "holos-prj-beta",
+				},
+				Spec: v1alpha1.TemplateDependencySpec{
+					Dependent: v1alpha1.LinkedTemplateRef{
+						Namespace: "holos-prj-beta",
+						Name:      "api",
+					},
+					Requires: v1alpha1.LinkedTemplateRef{
+						Namespace: "holos-org-acme",
+						Name:      "istio-base",
+					},
+					CascadeDelete: &boolTrue,
+				},
+			},
+		},
+		{
+			name: "cascade-delete-false",
+			obj: v1alpha1.TemplateDependency{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: v1alpha1.GroupVersion.String(),
+					Kind:       "TemplateDependency",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "optional-link",
+					Namespace: "holos-prj-gamma",
+				},
+				Spec: v1alpha1.TemplateDependencySpec{
+					Dependent: v1alpha1.LinkedTemplateRef{
+						Namespace: "holos-prj-gamma",
+						Name:      "frontend",
+					},
+					Requires: v1alpha1.LinkedTemplateRef{
+						Namespace: "holos-org-acme",
+						Name:      "cert-manager",
+					},
+					CascadeDelete: &boolFalse,
+				},
+			},
+		},
+		{
+			name: "with-status",
+			obj: v1alpha1.TemplateDependency{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: v1alpha1.GroupVersion.String(),
+					Kind:       "TemplateDependency",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "full",
+					Namespace:  "holos-prj-delta",
+					Generation: 2,
+				},
+				Spec: v1alpha1.TemplateDependencySpec{
+					Dependent: v1alpha1.LinkedTemplateRef{
+						Namespace: "holos-prj-delta",
+						Name:      "app",
+					},
+					Requires: v1alpha1.LinkedTemplateRef{
+						Namespace:         "holos-org-acme",
+						Name:              "ingress",
+						VersionConstraint: ">=1.0.0 <2.0.0",
+					},
+					CascadeDelete: &boolTrue,
+				},
+				Status: v1alpha1.TemplateDependencyStatus{
+					ObservedGeneration: 2,
+					Conditions:         []metav1.Condition{ready},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// JSON round-trip.
+			jsonBytes, err := json.Marshal(tc.obj)
+			if err != nil {
+				t.Fatalf("json marshal: %v", err)
+			}
+			var fromJSON v1alpha1.TemplateDependency
+			if err := json.Unmarshal(jsonBytes, &fromJSON); err != nil {
+				t.Fatalf("json unmarshal: %v", err)
+			}
+			assertTemplateDependencyEqual(t, tc.obj, fromJSON)
+
+			// YAML round-trip.
+			yamlBytes, err := yaml.Marshal(tc.obj)
+			if err != nil {
+				t.Fatalf("yaml marshal: %v", err)
+			}
+			var fromYAML v1alpha1.TemplateDependency
+			if err := yaml.Unmarshal(yamlBytes, &fromYAML); err != nil {
+				t.Fatalf("yaml unmarshal: %v", err)
+			}
+			assertTemplateDependencyEqual(t, tc.obj, fromYAML)
+		})
+	}
+}
+
+func assertTemplateDependencyEqual(t *testing.T, want, got v1alpha1.TemplateDependency) {
+	t.Helper()
+	if got.Name != want.Name || got.Namespace != want.Namespace {
+		t.Errorf("ObjectMeta name/namespace: got (%s/%s) want (%s/%s)",
+			got.Namespace, got.Name, want.Namespace, want.Name)
+	}
+	if got.Spec.Dependent != want.Spec.Dependent {
+		t.Errorf("Spec.Dependent: got %+v want %+v", got.Spec.Dependent, want.Spec.Dependent)
+	}
+	if got.Spec.Requires != want.Spec.Requires {
+		t.Errorf("Spec.Requires: got %+v want %+v", got.Spec.Requires, want.Spec.Requires)
+	}
+	// CascadeDelete pointer comparison.
+	switch {
+	case want.Spec.CascadeDelete == nil && got.Spec.CascadeDelete != nil:
+		t.Errorf("Spec.CascadeDelete: want nil got %v", *got.Spec.CascadeDelete)
+	case want.Spec.CascadeDelete != nil && got.Spec.CascadeDelete == nil:
+		t.Errorf("Spec.CascadeDelete: want %v got nil", *want.Spec.CascadeDelete)
+	case want.Spec.CascadeDelete != nil && got.Spec.CascadeDelete != nil:
+		if *got.Spec.CascadeDelete != *want.Spec.CascadeDelete {
+			t.Errorf("Spec.CascadeDelete: got %v want %v", *got.Spec.CascadeDelete, *want.Spec.CascadeDelete)
+		}
+	}
+	if got.Status.ObservedGeneration != want.Status.ObservedGeneration {
+		t.Errorf("Status.ObservedGeneration: got %d want %d",
+			got.Status.ObservedGeneration, want.Status.ObservedGeneration)
+	}
+}

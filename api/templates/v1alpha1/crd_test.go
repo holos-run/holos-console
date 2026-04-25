@@ -269,6 +269,29 @@ func assertSpecRoundTrip(t *testing.T, ctx context.Context, c client.Client, obj
 		if err := c.Update(ctx, typed); err != nil {
 			t.Fatalf("update binding: %v", err)
 		}
+	case *v1alpha1.TemplateGrant:
+		// Add a second From entry to mutate the spec.
+		typed.Spec.From = append(typed.Spec.From, v1alpha1.TemplateGrantFromRef{Namespace: "holos-prj-extra"})
+		if err := c.Update(ctx, typed); err != nil {
+			t.Fatalf("update template grant: %v", err)
+		}
+	case *v1alpha1.TemplateDependency:
+		// No description on TemplateDependency; patch CascadeDelete instead.
+		boolTrue := true
+		typed.Spec.CascadeDelete = &boolTrue
+		if err := c.Update(ctx, typed); err != nil {
+			t.Fatalf("update template dependency: %v", err)
+		}
+	case *v1alpha1.TemplateRequirement:
+		// Append an extra TargetRef to mutate the spec.
+		typed.Spec.TargetRefs = append(typed.Spec.TargetRefs, v1alpha1.TemplateRequirementTargetRef{
+			Kind:        v1alpha1.TemplatePolicyBindingTargetKindDeployment,
+			Name:        "extra",
+			ProjectName: "extra-proj",
+		})
+		if err := c.Update(ctx, typed); err != nil {
+			t.Fatalf("update template requirement: %v", err)
+		}
 	default:
 		t.Fatalf("unexpected type %T", got)
 	}
@@ -303,6 +326,15 @@ func assertStatusSubresource(t *testing.T, ctx context.Context, c client.Client,
 	case *v1alpha1.TemplatePolicyBinding:
 		typed.Status.ObservedGeneration = typed.GetGeneration()
 		typed.Status.Conditions = append(typed.Status.Conditions, cond)
+	case *v1alpha1.TemplateGrant:
+		typed.Status.ObservedGeneration = typed.GetGeneration()
+		typed.Status.Conditions = append(typed.Status.Conditions, cond)
+	case *v1alpha1.TemplateDependency:
+		typed.Status.ObservedGeneration = typed.GetGeneration()
+		typed.Status.Conditions = append(typed.Status.Conditions, cond)
+	case *v1alpha1.TemplateRequirement:
+		typed.Status.ObservedGeneration = typed.GetGeneration()
+		typed.Status.Conditions = append(typed.Status.Conditions, cond)
 	default:
 		t.Fatalf("unexpected type %T", fresh)
 	}
@@ -322,6 +354,12 @@ func assertStatusSubresource(t *testing.T, ctx context.Context, c client.Client,
 	case *v1alpha1.TemplatePolicy:
 		conds = typed.Status.Conditions
 	case *v1alpha1.TemplatePolicyBinding:
+		conds = typed.Status.Conditions
+	case *v1alpha1.TemplateGrant:
+		conds = typed.Status.Conditions
+	case *v1alpha1.TemplateDependency:
+		conds = typed.Status.Conditions
+	case *v1alpha1.TemplateRequirement:
 		conds = typed.Status.Conditions
 	}
 	if len(conds) == 0 {
@@ -363,9 +401,93 @@ func emptyFor(obj client.Object) client.Object {
 		return &v1alpha1.TemplatePolicy{}
 	case *v1alpha1.TemplatePolicyBinding:
 		return &v1alpha1.TemplatePolicyBinding{}
+	case *v1alpha1.TemplateGrant:
+		return &v1alpha1.TemplateGrant{}
+	case *v1alpha1.TemplateDependency:
+		return &v1alpha1.TemplateDependency{}
+	case *v1alpha1.TemplateRequirement:
+		return &v1alpha1.TemplateRequirement{}
 	default:
 		panic(fmt.Sprintf("emptyFor: unsupported %T", obj))
 	}
+}
+
+// TestCRDRoundTrip_TemplateGrant confirms the envtest API server installs the
+// TemplateGrant CRD cleanly and that spec + status round-trips survive the API
+// server.
+func TestCRDRoundTrip_TemplateGrant(t *testing.T) {
+	s := setupEnvTest(t)
+	ctx := context.Background()
+	nsName := "holos-org-roundtrip-grant"
+	createNamespace(t, ctx, s.client, nsName, "organization")
+
+	obj := &v1alpha1.TemplateGrant{
+		ObjectMeta: metav1.ObjectMeta{Name: "allow-alpha", Namespace: nsName},
+		Spec: v1alpha1.TemplateGrantSpec{
+			From: []v1alpha1.TemplateGrantFromRef{
+				{Namespace: "holos-prj-alpha"},
+			},
+		},
+	}
+	assertSpecRoundTrip(t, ctx, s.client, obj)
+	assertStatusSubresource(t, ctx, s.client, obj, &v1alpha1.TemplateGrant{})
+	deleteAndWait(t, ctx, s.client, obj)
+}
+
+// TestCRDRoundTrip_TemplateDependency confirms the envtest API server installs
+// the TemplateDependency CRD cleanly and that spec + status round-trips survive.
+func TestCRDRoundTrip_TemplateDependency(t *testing.T) {
+	s := setupEnvTest(t)
+	ctx := context.Background()
+	nsName := "holos-prj-roundtrip-dep"
+	createNamespace(t, ctx, s.client, nsName, "project")
+
+	obj := &v1alpha1.TemplateDependency{
+		ObjectMeta: metav1.ObjectMeta{Name: "web-needs-db", Namespace: nsName},
+		Spec: v1alpha1.TemplateDependencySpec{
+			Dependent: v1alpha1.LinkedTemplateRef{
+				Namespace: nsName,
+				Name:      "web",
+			},
+			Requires: v1alpha1.LinkedTemplateRef{
+				Namespace: nsName,
+				Name:      "db",
+			},
+		},
+	}
+	assertSpecRoundTrip(t, ctx, s.client, obj)
+	assertStatusSubresource(t, ctx, s.client, obj, &v1alpha1.TemplateDependency{})
+	deleteAndWait(t, ctx, s.client, obj)
+}
+
+// TestCRDRoundTrip_TemplateRequirement confirms the envtest API server installs
+// the TemplateRequirement CRD cleanly and that spec + status round-trips
+// survive.
+func TestCRDRoundTrip_TemplateRequirement(t *testing.T) {
+	s := setupEnvTest(t)
+	ctx := context.Background()
+	nsName := "holos-fld-roundtrip-req"
+	createNamespace(t, ctx, s.client, nsName, "folder")
+
+	obj := &v1alpha1.TemplateRequirement{
+		ObjectMeta: metav1.ObjectMeta{Name: "require-istio", Namespace: nsName},
+		Spec: v1alpha1.TemplateRequirementSpec{
+			Requires: v1alpha1.LinkedTemplateRef{
+				Namespace: "holos-org-acme",
+				Name:      "istio-base",
+			},
+			TargetRefs: []v1alpha1.TemplateRequirementTargetRef{
+				{
+					Kind:        v1alpha1.TemplatePolicyBindingTargetKindDeployment,
+					Name:        "web",
+					ProjectName: "alpha",
+				},
+			},
+		},
+	}
+	assertSpecRoundTrip(t, ctx, s.client, obj)
+	assertStatusSubresource(t, ctx, s.client, obj, &v1alpha1.TemplateRequirement{})
+	deleteAndWait(t, ctx, s.client, obj)
 }
 
 // TestAdmissionPolicy_TemplatePolicy_ProjectNamespace_Rejected and
