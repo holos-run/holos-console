@@ -53,6 +53,14 @@ function template(name: string, namespace = 'project-demo') {
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
+
 // ---------------------------------------------------------------------------
 // Query key shape
 // ---------------------------------------------------------------------------
@@ -195,14 +203,11 @@ describe('template list keep-previous-data', () => {
   })
 
   it('keeps previous list data while the next namespace list is loading', async () => {
-    let resolveAlpha!: (value: { templates: ReturnType<typeof template>[] }) => void
-    let resolveBeta!: (value: { templates: ReturnType<typeof template>[] }) => void
-    const alphaPromise = new Promise<{ templates: ReturnType<typeof template>[] }>((res) => { resolveAlpha = res })
-    const betaPromise = new Promise<{ templates: ReturnType<typeof template>[] }>((res) => { resolveBeta = res })
-
+    const alpha = deferred<{ templates: ReturnType<typeof template>[] }>()
+    const beta = deferred<{ templates: ReturnType<typeof template>[] }>()
     mockClient.listTemplates.mockImplementation(({ namespace }: { namespace: string }) => {
-      if (namespace === 'project-alpha') return alphaPromise
-      if (namespace === 'project-beta') return betaPromise
+      if (namespace === 'project-alpha') return alpha.promise
+      if (namespace === 'project-beta') return beta.promise
       throw new Error(`unexpected namespace ${namespace}`)
     })
 
@@ -215,8 +220,8 @@ describe('template list keep-previous-data', () => {
     )
 
     await act(async () => {
-      resolveAlpha({ templates: [template('alpha-tpl', 'project-alpha')] })
-      await alphaPromise
+      alpha.resolve({ templates: [template('alpha-tpl', 'project-alpha')] })
+      await alpha.promise
     })
     await waitFor(() => expect(result.current.data?.[0]?.name).toBe('alpha-tpl'))
 
@@ -229,8 +234,8 @@ describe('template list keep-previous-data', () => {
     expect(result.current.isPlaceholderData).toBe(true)
 
     await act(async () => {
-      resolveBeta({ templates: [template('beta-tpl', 'project-beta')] })
-      await betaPromise
+      beta.resolve({ templates: [template('beta-tpl', 'project-beta')] })
+      await beta.promise
     })
     await waitFor(() => expect(result.current.data?.[0]?.name).toBe('beta-tpl'))
     expect(result.current.isPlaceholderData).toBe(false)
