@@ -1,40 +1,49 @@
-import { useMemo, useState } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import {
-  useReactTable,
-  getCoreRowModel,
-  getFilteredRowModel,
-  flexRender,
-  createColumnHelper,
-} from '@tanstack/react-table'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Skeleton } from '@/components/ui/skeleton'
+/**
+ * Organization-scoped TemplatePolicy index — migrated to ResourceGrid v1 (HOL-948).
+ *
+ * Shows org-scoped policies only. The RPC is called with the org namespace directly
+ * so only org-scoped policies are returned (HOL-917). Folder-scoped policy browsing
+ * lives on the folder detail pages.
+ *
+ * Extra columns:
+ *   - Scope  — badge showing org or folder scope
+ *   - Rules  — REQUIRE / EXCLUDE rule counts
+ */
+
+import { useCallback, useMemo } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { useListTemplatePolicies } from '@/queries/templatePolicies'
+import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
+import type { Row } from '@/components/resource-grid/types'
+import { parseGridSearch } from '@/components/resource-grid/url-state'
+import type { ResourceGridSearch } from '@/components/resource-grid/types'
+import {
+  useListTemplatePolicies,
+  useDeleteTemplatePolicy,
+  countRulesByKind,
+} from '@/queries/templatePolicies'
 import type { TemplatePolicy } from '@/queries/templatePolicies'
 import { useGetOrganization } from '@/queries/organizations'
 import {
   scopeDisplayLabel,
-  scopeLabelFromNamespace,
   scopeNameFromNamespace,
   namespaceForOrg,
 } from '@/lib/scope-labels'
+import {
+  resolveTemplateRowHref,
+  parentLabelFromNamespace,
+} from '@/lib/template-row-link'
+import type { ColumnDef } from '@tanstack/react-table'
+
+// ---------------------------------------------------------------------------
+// Route
+// ---------------------------------------------------------------------------
 
 export const Route = createFileRoute(
   '/_authenticated/organizations/$orgName/template-policies/',
 )({
+  validateSearch: parseGridSearch,
   component: OrgTemplatePoliciesIndexRoute,
 })
 
@@ -43,7 +52,89 @@ function OrgTemplatePoliciesIndexRoute() {
   return <OrgTemplatePoliciesIndexPage orgName={orgName} />
 }
 
-const columnHelper = createColumnHelper<TemplatePolicy>()
+// ---------------------------------------------------------------------------
+// Extra columns — Scope badge and rule counts
+// ---------------------------------------------------------------------------
+
+function usePolicyExtraColumns(
+  policiesByName: Map<string, TemplatePolicy>,
+): ColumnDef<Row>[] {
+  return useMemo(
+    () => [
+      {
+        id: 'scope',
+        header: 'Scope',
+        accessorFn: (row: Row) => {
+          const label = scopeDisplayLabel(row.namespace)
+          const name = scopeNameFromNamespace(row.namespace)
+          if (!label) return ''
+          return name ? `${label}: ${name}` : label
+        },
+        cell: ({ row }: { row: { original: Row } }) => {
+          const label = scopeDisplayLabel(row.original.namespace)
+          const name = scopeNameFromNamespace(row.original.namespace)
+          if (!label) {
+            return (
+              <Badge variant="outline" className="text-xs">
+                unknown
+              </Badge>
+            )
+          }
+          return (
+            <Badge variant="outline" className="text-xs">
+              {label}
+              {name ? `: ${name}` : ''}
+            </Badge>
+          )
+        },
+      },
+      {
+        id: 'rules',
+        header: 'Rules',
+        accessorFn: (row: Row) => {
+          const p = policiesByName.get(`${row.namespace}/${row.name}`)
+          const counts = countRulesByKind(p)
+          return `${counts.require}R ${counts.exclude}E`
+        },
+        cell: ({ row }: { row: { original: Row } }) => {
+          const p = policiesByName.get(`${row.original.namespace}/${row.original.name}`)
+          const counts = countRulesByKind(p)
+          return (
+            <div className="flex items-center gap-1">
+              {counts.require > 0 && (
+                <Badge variant="outline" className="text-xs font-mono">
+                  {counts.require} REQUIRE
+                </Badge>
+              )}
+              {counts.exclude > 0 && (
+                <Badge variant="destructive" className="text-xs font-mono">
+                  {counts.exclude} EXCLUDE
+                </Badge>
+              )}
+              {counts.require === 0 && counts.exclude === 0 && (
+                <span className="text-muted-foreground text-xs">—</span>
+              )}
+            </div>
+          )
+        },
+      },
+    ],
+    [policiesByName],
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function timestampToISOString(ts: { seconds: bigint } | undefined): string {
+  if (!ts) return ''
+  return new Date(Number(ts.seconds) * 1000).toISOString()
+}
+
+// ---------------------------------------------------------------------------
+// Page component (exported for tests)
+// ---------------------------------------------------------------------------
 
 export function OrgTemplatePoliciesIndexPage({
   orgName: propOrgName,
@@ -57,245 +148,86 @@ export function OrgTemplatePoliciesIndexPage({
   }
   const orgName = propOrgName ?? routeOrgName ?? ''
 
-  // HOL-917: this page is now org-scoped only. The RPC is called with the org
-  // namespace directly so only org-scoped policies are returned. The previous
-  // fan-out across org+folder namespaces and the "All scopes" Select filter
-  // have been removed.
+  const search = Route.useSearch()
+  const navigate = useNavigate({ from: Route.fullPath })
+
   const orgNamespace = namespaceForOrg(orgName)
-  const { data: policies, isPending, error } = useListTemplatePolicies(orgNamespace)
+  const { data: policies = [], isPending, error } = useListTemplatePolicies(orgNamespace)
   const { data: org } = useGetOrganization(orgName)
+  const deleteMutation = useDeleteTemplatePolicy(orgNamespace)
 
   const userRole = org?.userRole ?? Role.VIEWER
-  // PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors too.
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
-  const [globalFilter, setGlobalFilter] = useState('')
-
-  const rows = useMemo(() => {
-    return policies ?? []
+  // Build a lookup map for extra columns to access the original policy object.
+  const policiesByName = useMemo(() => {
+    const map = new Map<string, TemplatePolicy>()
+    for (const p of policies) {
+      if (p) map.set(`${p.namespace}/${p.name}`, p)
+    }
+    return map
   }, [policies])
 
-  const columns = useMemo(
+  // Map TemplatePolicy → ResourceGrid Row
+  const rows: Row[] = useMemo(
+    () =>
+      policies.map((p) => ({
+        kind: 'TemplatePolicy',
+        name: p.name,
+        namespace: p.namespace,
+        id: `${p.namespace}/${p.name}`,
+        parentId: p.namespace,
+        parentLabel: parentLabelFromNamespace(p.namespace),
+        displayName: p.displayName || p.name,
+        description: p.description ?? '',
+        createdAt: timestampToISOString(p.createdAt),
+        detailHref: resolveTemplateRowHref('TemplatePolicy', p.namespace, p.name),
+      })),
+    [policies],
+  )
+
+  const kinds = useMemo(
     () => [
-      columnHelper.accessor((row) => row.displayName || row.name, {
-        id: 'displayName',
-        header: 'Display Name',
-        cell: ({ row }) => {
-          const p = row.original
-          const label = p.displayName || p.name
-          const scope = scopeLabelFromNamespace(p.namespace)
-          // HOL-590 guarantees policies live only at org or folder scope.
-          // If the server ever surfaces a project-scoped or unprefixed
-          // namespace (stale cache, proto drift) we render a plain cell
-          // rather than forging a link to a page that will 404.
-          if (scope === 'folder') {
-            const folderName = scopeNameFromNamespace(p.namespace)
-            if (folderName) {
-              return (
-                <Link
-                  to="/folders/$folderName/template-policies/$policyName"
-                  params={{ folderName, policyName: p.name }}
-                  title={p.name}
-                  className="hover:underline font-medium"
-                >
-                  {label}
-                </Link>
-              )
-            }
-          } else if (scope === 'org') {
-            return (
-              <Link
-                to="/organizations/$orgName/template-policies/$policyName"
-                params={{ orgName, policyName: p.name }}
-                title={p.name}
-                className="hover:underline font-medium"
-              >
-                {label}
-              </Link>
-            )
-          }
-          return (
-            <span className="font-medium" title={p.name}>
-              {label}
-            </span>
-          )
-        },
-      }),
-      columnHelper.accessor((row) => scopeCellText(row.namespace), {
-        id: 'scope',
-        header: 'Scope',
-        cell: ({ row }) => <ScopeBadge namespace={row.original.namespace} />,
-      }),
-      columnHelper.accessor('namespace', {
-        header: 'Namespace',
-        cell: ({ getValue }) => (
-          <span className="text-muted-foreground font-mono text-sm">
-            {getValue()}
-          </span>
-        ),
-      }),
-      columnHelper.accessor('name', {
-        header: 'Name',
-        cell: ({ getValue }) => (
-          <span className="text-muted-foreground font-mono text-sm">
-            {getValue()}
-          </span>
-        ),
-      }),
+      {
+        id: 'TemplatePolicy',
+        label: 'Template Policy',
+        newHref: `/organizations/${orgName}/template-policies/new`,
+        canCreate: canWrite,
+      },
     ],
-    [orgName],
+    [orgName, canWrite],
   )
 
-  const table = useReactTable({
-    data: rows,
-    columns,
-    state: { globalFilter },
-    onGlobalFilterChange: setGlobalFilter,
-    globalFilterFn: 'includesString',
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-  })
+  const extraColumns = usePolicyExtraColumns(policiesByName)
 
-  if (isPending) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Template Policies</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2" data-testid="policies-loading">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (error && (policies ?? []).length === 0) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <Alert variant="destructive">
-            <AlertDescription>{error.message}</AlertDescription>
-          </Alert>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  return (
-    <Card>
-      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {orgName} / Template Policies
-          </p>
-          <CardTitle className="mt-1">Template Policies</CardTitle>
-        </div>
-        {canWrite && (
-          <Link to="/organizations/$orgName/template-policies/new" params={{ orgName }}>
-            <Button size="sm">Create Policy</Button>
-          </Link>
-        )}
-      </CardHeader>
-      <CardContent>
-        {error && (
-          <Alert variant="destructive" className="mb-4" data-testid="policies-partial-error">
-            <AlertDescription>{error.message}</AlertDescription>
-          </Alert>
-        )}
-        {(policies ?? []).length === 0 ? (
-          <div className="rounded-md border border-dashed border-border p-6 text-center">
-            <p className="text-sm font-medium">No template policies yet.</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Policies attach templates to projects through REQUIRE or EXCLUDE
-              rules. Rules apply to both project templates and deployments.
-              Policies live only at folder or organization scope.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="mb-3 flex flex-col sm:flex-row gap-2 sm:items-center">
-              <Input
-                placeholder="Search policies…"
-                value={globalFilter}
-                onChange={(e) => setGlobalFilter(e.target.value)}
-                className="max-w-sm"
-                aria-label="Search template policies"
-              />
-            </div>
-            {rows.length === 0 && (
-              <div className="mb-3 rounded-md border border-dashed border-border p-4 text-center">
-                <p className="text-sm text-muted-foreground">
-                  No policies match the current search.
-                </p>
-              </div>
-            )}
-            <Table>
-              <TableHeader>
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => (
-                      <TableHead key={header.id}>
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(
-                              header.column.columnDef.header,
-                              header.getContext(),
-                            )}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id}>
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </>
-        )}
-      </CardContent>
-    </Card>
+  const handleDelete = useCallback(
+    async (row: Row) => {
+      await deleteMutation.mutateAsync({ name: row.name })
+    },
+    [deleteMutation],
   )
-}
 
-// scopeCellText supplies the string the global search filter matches against
-// when the user types a scope label. An accessor that returns text (rather
-// than a ReactNode cell) lets `includesString` search this column.
-function scopeCellText(namespace: string): string {
-  const label = scopeDisplayLabel(namespace)
-  const name = scopeNameFromNamespace(namespace)
-  if (!label) return ''
-  return name ? `${label}: ${name}` : label
-}
+  const handleSearchChange = useCallback(
+    (updater: (prev: ResourceGridSearch) => ResourceGridSearch) => {
+      navigate({
+        search: (prev) => updater(prev as ResourceGridSearch),
+        replace: true,
+      })
+    },
+    [navigate],
+  )
 
-function ScopeBadge({ namespace }: { namespace: string }) {
-  const label = scopeDisplayLabel(namespace)
-  const name = scopeNameFromNamespace(namespace)
-  if (!label) {
-    return (
-      <Badge variant="outline" className="text-xs">
-        unknown
-      </Badge>
-    )
-  }
   return (
-    <Badge variant="outline" className="text-xs">
-      {label}
-      {name ? `: ${name}` : ''}
-    </Badge>
+    <ResourceGrid
+      title={`${orgName} / Template Policies`}
+      kinds={kinds}
+      rows={rows}
+      onDelete={handleDelete}
+      isLoading={isPending}
+      error={error}
+      search={search}
+      onSearchChange={handleSearchChange}
+      extraColumns={extraColumns}
+    />
   )
 }

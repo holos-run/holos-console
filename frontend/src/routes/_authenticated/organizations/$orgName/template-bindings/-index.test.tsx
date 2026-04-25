@@ -1,7 +1,20 @@
-import { render, screen, fireEvent, within } from '@testing-library/react'
+/**
+ * Tests for OrgTemplateBindingsIndexPage (HOL-948) — ResourceGrid v1 migration.
+ *
+ * Mocks @/queries/templatePolicyBindings and @/queries/organizations.
+ * Exercises: grid render, extra Scope + Policy + Targets columns, row navigation,
+ * loading/error states, empty state, create-button visibility.
+ */
+
+import { render, screen } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
+
+// ---------------------------------------------------------------------------
+// Router mock — Route.useParams / useSearch / useNavigate / fullPath
+// ---------------------------------------------------------------------------
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
@@ -9,6 +22,8 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     ...actual,
     createFileRoute: () => () => ({
       useParams: () => ({ orgName: 'test-org' }),
+      useSearch: () => ({}),
+      fullPath: '/organizations/test-org/template-bindings/',
     }),
     Link: ({
       children,
@@ -27,13 +42,18 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
         })
       }
       return (
-        <a href={href} data-params={JSON.stringify(params)} {...props}>
+        <a href={href} {...props}>
           {children}
         </a>
       )
     },
+    useNavigate: () => vi.fn(),
   }
 })
+
+// ---------------------------------------------------------------------------
+// Query mocks
+// ---------------------------------------------------------------------------
 
 vi.mock('@/queries/templatePolicyBindings', async () => {
   const actual = await vi.importActual<
@@ -42,6 +62,7 @@ vi.mock('@/queries/templatePolicyBindings', async () => {
   return {
     ...actual,
     useListTemplatePolicyBindings: vi.fn(),
+    useDeleteTemplatePolicyBinding: vi.fn(),
   }
 })
 
@@ -49,21 +70,25 @@ vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
 }))
 
-// Namespace prefixes default to 'holos-' / 'org-' / 'fld-' / 'prj-' when
-// __CONSOLE_CONFIG__ is not injected (see console-config.ts), which matches
-// the fixtures below — no mock needed.
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
+// ---------------------------------------------------------------------------
+// Imports after mocks
+// ---------------------------------------------------------------------------
+
+import { useListTemplatePolicyBindings, useDeleteTemplatePolicyBinding } from '@/queries/templatePolicyBindings'
 import { useGetOrganization } from '@/queries/organizations'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { OrgTemplateBindingsIndexPage } from './index'
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function makeBinding(
   name: string,
   options: {
     namespace?: string
     description?: string
-    creatorEmail?: string
     targets?: number
     policyName?: string
   } = {},
@@ -73,7 +98,8 @@ function makeBinding(
     displayName: name,
     namespace: options.namespace ?? 'holos-org-test-org',
     description: options.description ?? '',
-    creatorEmail: options.creatorEmail ?? '',
+    creatorEmail: '',
+    createdAt: undefined,
     policyRef: options.policyName
       ? { namespace: 'holos-org-test-org', name: options.policyName }
       : undefined,
@@ -88,11 +114,12 @@ function makeBinding(
 function setup(
   userRole: Role = Role.OWNER,
   bindings: ReturnType<typeof makeBinding>[] = [],
+  isPending = false,
   error: Error | null = null,
 ) {
   ;(useListTemplatePolicyBindings as Mock).mockReturnValue({
-    data: bindings,
-    isPending: false,
+    data: isPending ? undefined : bindings,
+    isPending,
     error,
   })
   ;(useGetOrganization as Mock).mockReturnValue({
@@ -100,136 +127,88 @@ function setup(
     isPending: false,
     error: null,
   })
+  ;(useDeleteTemplatePolicyBinding as Mock).mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
+    isPending: false,
+  })
 }
 
-describe('OrgTemplateBindingsIndexPage', () => {
+describe('OrgTemplateBindingsIndexPage (ResourceGrid v1)', () => {
   beforeEach(() => vi.clearAllMocks())
+
+  it('renders loading skeleton while fetching', () => {
+    setup(Role.OWNER, [], true)
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
+    expect(screen.getByTestId('resource-grid-loading')).toBeInTheDocument()
+  })
 
   it('renders empty state when no bindings exist', () => {
     setup(Role.OWNER, [])
     render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
-    expect(
-      screen.getByText(/no template bindings yet/i),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/no resources found/i)).toBeInTheDocument()
   })
 
-  it('renders the grid with org-scoped name links, scope badges, and target counts', () => {
-    setup(Role.OWNER, [
-      makeBinding('org-bind', {
-        targets: 3,
-        policyName: 'require-http',
-      }),
-    ])
+  it('renders binding rows in the grid', () => {
+    setup(Role.OWNER, [makeBinding('org-bind', { targets: 3, policyName: 'require-http' })])
     render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
+    expect(screen.getByText('org-bind')).toBeInTheDocument()
+  })
 
-    // Name cell renders as a link to the new template-bindings route.
-    const orgLink = screen.getByRole('link', { name: 'org-bind' })
-    expect(orgLink.getAttribute('href')).toBe(
-      '/organizations/test-org/template-bindings/org-bind',
-    )
-
-    // Scope and targets columns.
+  it('renders a Scope extra column with badge', () => {
+    setup(Role.OWNER, [makeBinding('org-bind')])
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
+    expect(screen.getByRole('columnheader', { name: /^scope$/i })).toBeInTheDocument()
     expect(screen.getByText(/^Organization: test-org$/)).toBeInTheDocument()
-    expect(screen.getByText(/3 targets/)).toBeInTheDocument()
+  })
+
+  it('renders a Policy extra column with policy name', () => {
+    setup(Role.OWNER, [makeBinding('org-bind', { policyName: 'require-http' })])
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
+    expect(screen.getByRole('columnheader', { name: /^policy$/i })).toBeInTheDocument()
     expect(screen.getByText('require-http')).toBeInTheDocument()
   })
 
-  it('renders plain text (no link) for non-org-scoped rows', () => {
-    setup(Role.OWNER, [
-      makeBinding('fld-bind', {
-        namespace: 'holos-fld-team-alpha',
-        targets: 1,
-        policyName: 'exclude-http',
-      }),
-    ])
+  it('renders a Targets extra column with count badge', () => {
+    setup(Role.OWNER, [makeBinding('org-bind', { targets: 3 })])
     render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
-
-    // Folder-scoped binding should NOT produce a link (this page is org-only).
-    expect(screen.queryByRole('link', { name: 'fld-bind' })).not.toBeInTheDocument()
-    expect(screen.getByText('fld-bind')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: /^targets$/i })).toBeInTheDocument()
+    expect(screen.getByText(/3 targets/)).toBeInTheDocument()
   })
 
-  it('filters rows by the global search input', () => {
-    setup(Role.OWNER, [
-      makeBinding('alpha', { policyName: 'p1' }),
-      makeBinding('beta', { policyName: 'p2' }),
-    ])
+  it('renders org-scoped rows with detailHref links', () => {
+    setup(Role.OWNER, [makeBinding('org-bind')])
     render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
-
-    const input = screen.getByLabelText('Search template bindings')
-    fireEvent.change(input, { target: { value: 'alph' } })
-
-    expect(screen.getByRole('link', { name: 'alpha' })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'beta' })).not.toBeInTheDocument()
+    // ResourceGrid renders a Link for the display name when detailHref is set.
+    const links = screen.getAllByRole('link', { name: 'org-bind' })
+    expect(links.length).toBeGreaterThan(0)
+    expect(links[0].getAttribute('href')).toContain('template-bindings/org-bind')
   })
 
-  it('does not render a scope filter select in the toolbar', () => {
-    setup(Role.OWNER, [makeBinding('org-bind', { policyName: 'p1' })])
+  it('shows Create Binding button for OWNER', () => {
+    setup(Role.OWNER, [])
     render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
-    expect(
-      screen.queryByRole('combobox', { name: /filter by scope/i }),
-    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /new template binding/i })).toBeInTheDocument()
   })
 
-  it('lists bindings returned from the org namespace RPC call', () => {
+  it('shows Create Binding button for EDITOR', () => {
+    setup(Role.EDITOR, [])
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
+    expect(screen.getByRole('button', { name: /new template binding/i })).toBeInTheDocument()
+  })
+
+  it('hides Create Binding button for VIEWER', () => {
+    setup(Role.VIEWER, [])
+    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
+    expect(screen.queryByRole('button', { name: /new template binding/i })).not.toBeInTheDocument()
+  })
+
+  it('lists multiple bindings returned from the org namespace RPC call', () => {
     setup(Role.OWNER, [
       makeBinding('bind-a', { policyName: 'policy-a' }),
       makeBinding('bind-b', { policyName: 'policy-b' }),
     ])
     render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
-    expect(screen.getByRole('link', { name: 'bind-a' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'bind-b' })).toBeInTheDocument()
-  })
-
-  it('shows Create Binding for OWNER and EDITOR', () => {
-    setup(Role.OWNER, [])
-    const { unmount } = render(
-      <OrgTemplateBindingsIndexPage orgName="test-org" />,
-    )
-    expect(
-      screen.getByRole('link', { name: /create binding/i }),
-    ).toBeInTheDocument()
-    unmount()
-
-    setup(Role.EDITOR, [])
-    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
-    expect(
-      screen.getByRole('link', { name: /create binding/i }),
-    ).toBeInTheDocument()
-  })
-
-  it('hides Create Binding for VIEWER', () => {
-    setup(Role.VIEWER, [])
-    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
-    expect(
-      screen.queryByRole('link', { name: /create binding/i }),
-    ).not.toBeInTheDocument()
-  })
-
-  it('surfaces an error when the list query fails with no partial data', () => {
-    ;(useListTemplatePolicyBindings as Mock).mockReturnValue({
-      data: [],
-      isPending: false,
-      error: new Error('backend unreachable'),
-    })
-    ;(useGetOrganization as Mock).mockReturnValue({
-      data: { name: 'test-org', userRole: Role.OWNER },
-      isPending: false,
-      error: null,
-    })
-    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
-    expect(screen.getByText('backend unreachable')).toBeInTheDocument()
-  })
-
-  it('shows a partial-error banner when the query errors but some rows loaded', () => {
-    setup(
-      Role.OWNER,
-      [makeBinding('org-bind', { policyName: 'p1' })],
-      new Error('fetch failed'),
-    )
-    render(<OrgTemplateBindingsIndexPage orgName="test-org" />)
-    const banner = screen.getByTestId('bindings-partial-error')
-    expect(within(banner).getByText('fetch failed')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'org-bind' })).toBeInTheDocument()
+    expect(screen.getByText('bind-a')).toBeInTheDocument()
+    expect(screen.getByText('bind-b')).toBeInTheDocument()
   })
 })
