@@ -40,6 +40,7 @@ entry and WorkspaceMenu improvements. Key files:
 | `frontend/src/routes/_authenticated/organizations/$orgName.tsx` | HOL-928 | Layout — syncs `$orgName` URL param → `useOrg()` store (one-way) |
 | `docs/ui/selected-entity-state.md` | HOL-931 | Selected-entity state contract; read-precedence rules; creation-page invariants |
 | `docs/agents/data-grid-conventions.md` | HOL-940 | Data grid conventions: clickable resource IDs and fully-clickable rows |
+| `docs/agents/frontend-audit-2026-04.md` | HOL-943 | Phase 2 audit baseline — current frontend architecture, gaps, and target conventions |
 
 **Deleted (HOL-914)**: `frontend/src/components/resource-manager/` and
 `frontend/src/routes/_authenticated/resource-manager/` were removed when the
