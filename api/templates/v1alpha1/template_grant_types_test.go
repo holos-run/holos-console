@@ -31,7 +31,6 @@ import (
 // marshal/unmarshal for TemplateGrant and confirms that key spec fields
 // survive without loss.
 func TestTemplateGrant_RoundTrip(t *testing.T) {
-	boolTrue := true
 	ready := metav1.Condition{
 		Type:               "Ready",
 		Status:             metav1.ConditionTrue,
@@ -40,7 +39,6 @@ func TestTemplateGrant_RoundTrip(t *testing.T) {
 		LastTransitionTime: metav1.NewTime(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)),
 		ObservedGeneration: 3,
 	}
-	_ = boolTrue
 
 	tests := []struct {
 		name string

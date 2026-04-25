@@ -14,13 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package v1alpha1 contains API Schema definitions for the deployments.holos.run
-// v1alpha1 API group. The Deployment CRD captures the existing proto-defined
-// Deployment shape so both the proto store and the CR can coexist; Phase 3
-// (HOL-957) wires the dual-write path.
-//
-// +kubebuilder:object:generate=true
-// +groupName=deployments.holos.run
 package v1alpha1
 
 import (
