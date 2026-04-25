@@ -168,8 +168,8 @@ export function FolderTemplatesIndexPage({
                 {orgName}
               </Link>
               {' / '}
-              <Link to="/organizations/$orgName/resources" params={{ orgName }} className="hover:underline">
-                Resources
+              <Link to="/organizations/$orgName/projects" params={{ orgName }} className="hover:underline">
+                Projects
               </Link>
               {' / '}
               <Link

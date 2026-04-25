@@ -4,6 +4,29 @@ All notable changes to holos-console are documented here.
 
 ## [Unreleased]
 
+### Removed — `/organizations/$orgName/resources` route and ResourceGrid consumer (HOL-938)
+
+- Deleted the org-scoped Resources page at
+  `/organizations/$orgName/resources` along with its only-consumer query
+  (`useListResources`) and the `ResourceTypeIcon` component (also unused after
+  the page was removed). Clicking an organization on the `/organizations`
+  index now lands on the org-scoped Projects listing
+  (`/organizations/$orgName/projects`).
+- All breadcrumbs that previously linked back to the org Resources page
+  (folder index, folder settings, folder templates, folder template policies,
+  folder template-policy bindings, folder projects index, folder
+  template-policies/new, folder template-policy-bindings/new, folder
+  templates/new, folder template-policies/$policyName, folder
+  template-policy-bindings/$bindingName) now link to
+  `/organizations/$orgName/projects` and label the link "Projects".
+- Removed the `selectOrg` Playwright helper's wait on the `/resources` URL —
+  the helper now waits for `/projects` instead.
+- Removed e2e assertions that exercised the deleted Resources listing
+  (`folders.spec.ts`, `folder-rbac.spec.ts`); the underlying behavior is now
+  exercised by direct navigation to the folder detail pages.
+- Updated the AGENTS.md "Deferred" entry to drop the reference to the removed
+  route.
+
 ### Changed — Migrate `/orgs/$orgName` routes to `/organizations/$orgName` (HOL-939)
 
 - All organization-scoped UI routes now use the canonical `/organizations/...`

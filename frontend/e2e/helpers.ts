@@ -299,12 +299,9 @@ export async function apiDeleteFolder(
 }
 
 /**
- * Select an org via the /organizations page. HOL-603 removed the sidebar
- * org picker in favor of the workspace menu -> "Switch organization" flow,
- * which lands on /organizations. We navigate there, filter the table by
- * org name, and click the matching row. This both sets the org in
- * OrgContext and navigates to the org-scoped Resources listing (the
- * unified folders + projects view introduced in HOL-606).
+ * Select an org via the /organizations page. We navigate there, filter the
+ * table by org name, and click the matching row. This both sets the org in
+ * OrgContext and navigates to the org-scoped Projects listing.
  */
 export async function selectOrg(page: Page, orgName: string): Promise<void> {
   await page.goto('/organizations')
@@ -320,7 +317,7 @@ export async function selectOrg(page: Page, orgName: string): Promise<void> {
     .first()
     .click()
 
-  await page.waitForURL(new RegExp(`/organizations/${orgName}/resources`), { timeout: 5000 })
+  await page.waitForURL(new RegExp(`/organizations/${orgName}/projects`), { timeout: 5000 })
 }
 
 /**

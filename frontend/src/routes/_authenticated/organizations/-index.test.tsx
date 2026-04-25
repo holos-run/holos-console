@@ -174,14 +174,14 @@ describe('OrganizationsIndexPage', () => {
     expect(screen.getByText('Beta Org')).toBeInTheDocument()
   })
 
-  it('clicking an organization row sets selectedOrg via OrgContext and navigates to its Resources listing', () => {
+  it('clicking an organization row sets selectedOrg via OrgContext and navigates to its Projects listing', () => {
     setupMocks([makeOrg('my-org', 'My Org')])
     render(<OrganizationsIndexPage />)
     const row = screen.getByText('My Org').closest('tr')!
     fireEvent.click(row)
     expect(mockSetSelectedOrg).toHaveBeenCalledWith('my-org')
     expect(mockNavigate).toHaveBeenCalledWith({
-      to: '/organizations/$orgName/resources',
+      to: '/organizations/$orgName/projects',
       params: { orgName: 'my-org' },
     })
   })

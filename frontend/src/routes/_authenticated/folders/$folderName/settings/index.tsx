@@ -291,8 +291,8 @@ export function FolderDetailPage({
                   {orgName}
                 </Link>
                 {' / '}
-                <Link to="/organizations/$orgName/resources" params={{ orgName }} className="hover:underline">
-                  Resources
+                <Link to="/organizations/$orgName/projects" params={{ orgName }} className="hover:underline">
+                  Projects
                 </Link>
                 {' / '}
                 <Link to="/folders/$folderName/settings" params={{ folderName }} className="hover:underline">
@@ -596,7 +596,7 @@ export function FolderDetailPage({
                   await deleteFolderMutation.mutateAsync({ name: folderName })
                   setDeleteOpen(false)
                   navigate?.({
-                    to: '/organizations/$orgName/resources',
+                    to: '/organizations/$orgName/projects',
                     params: { orgName },
                   })
                 } catch (err) {
