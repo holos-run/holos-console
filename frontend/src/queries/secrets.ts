@@ -1,14 +1,26 @@
 import { useMemo } from 'react'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query'
 import { SecretsService } from '@/gen/holos/console/v1/secrets_pb.js'
 import type { SecretMetadata } from '@/gen/holos/console/v1/secrets_pb.js'
 import { useAuth } from '@/lib/auth'
 import { aggregateFanOut, type FanOutAggregate, type FanOutQueryState } from '@/queries/templatePolicies'
+import { keys } from '@/queries/keys'
 
-function listSecretsKey(project: string) {
-  return ['secrets', 'list', project] as const
+function invalidateSecretListAndDetail(
+  queryClient: QueryClient,
+  project: string,
+  name: string,
+) {
+  queryClient.invalidateQueries({ queryKey: keys.secrets.list(project) })
+  queryClient.invalidateQueries({ queryKey: keys.secrets.get(project, name) })
 }
 
 export function useListSecrets(project: string) {
@@ -16,12 +28,13 @@ export function useListSecrets(project: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(SecretsService, transport), [transport])
   return useQuery({
-    queryKey: listSecretsKey(project),
+    queryKey: keys.secrets.list(project),
     queryFn: async () => {
       const response = await client.listSecrets({ project })
       return response.secrets
     },
     enabled: isAuthenticated && !!project,
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -30,7 +43,7 @@ export function useGetSecret(project: string, name: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(SecretsService, transport), [transport])
   return useQuery({
-    queryKey: ['secrets', 'get', project, name],
+    queryKey: keys.secrets.get(project, name),
     queryFn: async () => {
       const response = await client.getSecret({ name, project })
       return response.data as Record<string, Uint8Array>
@@ -48,7 +61,7 @@ export function useGetSecretMetadata(project: string, name: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(SecretsService, transport), [transport])
   return useQuery({
-    queryKey: listSecretsKey(project),
+    queryKey: keys.secrets.list(project),
     queryFn: async () => {
       const response = await client.listSecrets({ project })
       return response.secrets
@@ -71,8 +84,8 @@ export function useCreateSecret(project: string) {
       description?: string
       url?: string
     }) => client.createSecret({ ...params, project }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: listSecretsKey(project) })
+    onSuccess: (_data, variables) => {
+      invalidateSecretListAndDetail(queryClient, project, variables.name)
     },
   })
 }
@@ -83,8 +96,8 @@ export function useDeleteSecret(project: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (name: string) => client.deleteSecret({ name, project }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: listSecretsKey(project) })
+    onSuccess: (_data, name) => {
+      invalidateSecretListAndDetail(queryClient, project, name)
     },
   })
 }
@@ -92,6 +105,7 @@ export function useDeleteSecret(project: string) {
 export function useUpdateSecret(project: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(SecretsService, transport), [transport])
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (params: {
       name: string
@@ -99,6 +113,9 @@ export function useUpdateSecret(project: string) {
       description?: string
       url?: string
     }) => client.updateSecret({ ...params, project }),
+    onSuccess: (_data, variables) => {
+      invalidateSecretListAndDetail(queryClient, project, variables.name)
+    },
   })
 }
 
@@ -112,8 +129,8 @@ export function useUpdateSecretSharing(project: string) {
       userGrants: { principal: string; role: number }[]
       roleGrants: { principal: string; role: number }[]
     }) => client.updateSharing({ ...params, project }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: listSecretsKey(project) })
+    onSuccess: (_data, variables) => {
+      invalidateSecretListAndDetail(queryClient, project, variables.name)
     },
   })
 }
@@ -138,12 +155,13 @@ export function useAllSecretsForProject(
   const client = useMemo(() => createClient(SecretsService, transport), [transport])
 
   const projectSecretsQuery = useQuery({
-    queryKey: [...listSecretsKey(projectName), 'fanout'] as const,
+    queryKey: keys.secrets.fanout(projectName),
     queryFn: async (): Promise<SecretRow[]> => {
       const response = await client.listSecrets({ project: projectName })
       return response.secrets.map((s) => ({ secret: s, scope: projectName }))
     },
     enabled: isAuthenticated && !!projectName,
+    placeholderData: keepPreviousData,
   })
 
   const projectAsQuery: FanOutQueryState<SecretRow[]> = {
@@ -155,4 +173,3 @@ export function useAllSecretsForProject(
 
   return aggregateFanOut<SecretRow>([projectAsQuery])
 }
-

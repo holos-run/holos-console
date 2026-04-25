@@ -32,6 +32,7 @@ import { Button } from '@/components/ui/button'
 import { TemplatesHelpPane } from '@/components/templates/TemplatesHelpPane'
 import { useGetProject } from '@/queries/projects'
 import { useGetOrganization } from '@/queries/organizations'
+import { keys } from '@/queries/keys'
 import { useAllTemplatesForOrg } from '@/queries/templates'
 import { useAllTemplatePoliciesForOrg } from '@/queries/templatePolicies'
 import { useAllTemplatePolicyBindingsForOrg } from '@/queries/templatePolicyBindings'
@@ -273,7 +274,7 @@ export function ProjectTemplatesIndexPage({
           const client = createClient(TemplateService, transport)
           await client.deleteTemplate({ namespace, name })
           await queryClient.invalidateQueries({
-            queryKey: ['templates', 'list', namespace],
+            queryKey: keys.templates.list(namespace),
           })
           break
         }
@@ -281,7 +282,7 @@ export function ProjectTemplatesIndexPage({
           const client = createClient(TemplatePolicyService, transport)
           await client.deleteTemplatePolicy({ namespace, name })
           await queryClient.invalidateQueries({
-            queryKey: ['templatePolicies', 'list', namespace],
+            queryKey: keys.templatePolicies.list(namespace),
           })
           break
         }
@@ -289,7 +290,7 @@ export function ProjectTemplatesIndexPage({
           const client = createClient(TemplatePolicyBindingService, transport)
           await client.deleteTemplatePolicyBinding({ namespace, name })
           await queryClient.invalidateQueries({
-            queryKey: ['templatePolicyBindings', 'list', namespace],
+            queryKey: keys.templatePolicyBindings.list(namespace),
           })
           break
         }

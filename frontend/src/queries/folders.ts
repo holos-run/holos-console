@@ -5,21 +5,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { FolderService } from '@/gen/holos/console/v1/folders_pb.js'
 import type { ParentType } from '@/gen/holos/console/v1/folders_pb.js'
 import { useAuth } from '@/lib/auth'
-
-function folderListKey(organization: string, parentType?: number, parentName?: string) {
-  return ['folders', 'list', organization, parentType, parentName] as const
-}
-
-function folderGetKey(name: string, organization?: string) {
-  return ['folders', 'get', organization ?? '', name] as const
-}
+import { keys } from '@/queries/keys'
 
 export function useListFolders(organization: string, parentType?: ParentType, parentName?: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()
   const client = useMemo(() => createClient(FolderService, transport), [transport])
   return useQuery({
-    queryKey: folderListKey(organization, parentType, parentName),
+    queryKey: keys.folders.list(organization, parentType, parentName),
     queryFn: async () => {
       const response = await client.listFolders({ organization, parentType, parentName })
       return response.folders
@@ -33,7 +26,7 @@ export function useGetFolder(name: string, organization?: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(FolderService, transport), [transport])
   return useQuery({
-    queryKey: folderGetKey(name, organization),
+    queryKey: keys.folders.get(name, organization),
     queryFn: async () => {
       const response = await client.getFolder({ organization: organization ?? '', name })
       return response.folder
@@ -47,7 +40,7 @@ export function useGetFolderRaw(name: string, organization?: string) {
   const transport = useTransport()
   const client = useMemo(() => createClient(FolderService, transport), [transport])
   return useQuery({
-    queryKey: ['folders', 'raw', organization ?? '', name] as const,
+    queryKey: keys.folders.raw(organization, name),
     queryFn: async () => {
       const response = await client.getFolderRaw({ organization: organization ?? '', name })
       return response.raw
@@ -72,7 +65,7 @@ export function useCreateFolder(organization: string) {
     }) =>
       client.createFolder({ organization, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['folders', 'list', organization] })
+      queryClient.invalidateQueries({ queryKey: keys.folders.listScope(organization) })
     },
   })
 }
@@ -85,8 +78,8 @@ export function useUpdateFolder(organization: string, name: string) {
     mutationFn: (params: { displayName?: string; description?: string; parentType?: ParentType; parentName?: string }) =>
       client.updateFolder({ organization, name, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: folderListKey(organization) })
-      queryClient.invalidateQueries({ queryKey: ['folders', 'get'] })
+      queryClient.invalidateQueries({ queryKey: keys.folders.list(organization) })
+      queryClient.invalidateQueries({ queryKey: keys.folders.getScope() })
     },
   })
 }
@@ -101,8 +94,8 @@ export function useUpdateFolderSharing(organization: string, name: string) {
       roleGrants: { principal: string; role: number }[]
     }) => client.updateFolderSharing({ name, organization, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: folderListKey(organization) })
-      queryClient.invalidateQueries({ queryKey: ['folders', 'get'] })
+      queryClient.invalidateQueries({ queryKey: keys.folders.list(organization) })
+      queryClient.invalidateQueries({ queryKey: keys.folders.getScope() })
     },
   })
 }
@@ -117,8 +110,8 @@ export function useUpdateFolderDefaultSharing(organization: string, name: string
       defaultRoleGrants: { principal: string; role: number }[]
     }) => client.updateFolderDefaultSharing({ name, organization, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: folderListKey(organization) })
-      queryClient.invalidateQueries({ queryKey: ['folders', 'get'] })
+      queryClient.invalidateQueries({ queryKey: keys.folders.list(organization) })
+      queryClient.invalidateQueries({ queryKey: keys.folders.getScope() })
     },
   })
 }
@@ -131,8 +124,8 @@ export function useDeleteFolder(organization: string) {
     mutationFn: (params: { name: string }) =>
       client.deleteFolder({ organization, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: folderListKey(organization) })
-      queryClient.invalidateQueries({ queryKey: ['folders', 'get'] })
+      queryClient.invalidateQueries({ queryKey: keys.folders.list(organization) })
+      queryClient.invalidateQueries({ queryKey: keys.folders.getScope() })
     },
   })
 }

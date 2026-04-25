@@ -22,27 +22,13 @@ import { useAuth } from '@/lib/auth'
 import { useListFolders } from '@/queries/folders'
 import type { Folder } from '@/gen/holos/console/v1/folders_pb.js'
 import { namespaceForFolder, namespaceForOrg } from '@/lib/scope-labels'
+import { keys } from '@/queries/keys'
 
 // Re-export generated types/enums used by UI consumers. HOL-600 removed
 // TemplatePolicyTarget from the proto — render-target selection now
 // lives on TemplatePolicyBinding.
 export type { TemplatePolicy, TemplatePolicyRule, LinkableTemplatePolicy }
 export { TemplatePolicyKind }
-
-/** Query key helper for the template policies list at a given namespace. */
-function templatePolicyListKey(namespace: string) {
-  return ['templatePolicies', 'list', namespace] as const
-}
-
-/** Query key helper for a single template policy. */
-function templatePolicyGetKey(namespace: string, name: string) {
-  return ['templatePolicies', 'get', namespace, name] as const
-}
-
-/** Query key helper for the linkable template policies list at a given namespace. */
-function linkableTemplatePolicyListKey(namespace: string) {
-  return ['templatePolicies', 'linkable', namespace] as const
-}
 
 // useListTemplatePolicies fetches all policies visible within a namespace.
 // Mirrors the shape of useListTemplates in queries/templates.ts.
@@ -54,7 +40,7 @@ export function useListTemplatePolicies(namespace: string) {
     [transport],
   )
   return useQuery({
-    queryKey: templatePolicyListKey(namespace),
+    queryKey: keys.templatePolicies.list(namespace),
     queryFn: async () => {
       const response = await client.listTemplatePolicies({ namespace })
       return response.policies
@@ -79,7 +65,7 @@ export function useListLinkableTemplatePolicies(namespace: string) {
     [transport],
   )
   return useQuery({
-    queryKey: linkableTemplatePolicyListKey(namespace),
+    queryKey: keys.templatePolicies.linkable(namespace),
     queryFn: async () => {
       const response = await client.listLinkableTemplatePolicies({
         namespace,
@@ -178,7 +164,7 @@ export function useAllTemplatePoliciesForOrg(
 
   const folderQueries = useQueries({
     queries: folders.map((folder) => ({
-      queryKey: templatePolicyListKey(namespaceForFolder(folder.name)),
+      queryKey: keys.templatePolicies.list(namespaceForFolder(folder.name)),
       queryFn: async (): Promise<TemplatePolicy[]> => {
         const response = await client.listTemplatePolicies({
           namespace: namespaceForFolder(folder.name),
@@ -190,7 +176,7 @@ export function useAllTemplatePoliciesForOrg(
   })
 
   const orgQuery = useQuery({
-    queryKey: templatePolicyListKey(orgNamespace),
+    queryKey: keys.templatePolicies.list(orgNamespace),
     queryFn: async () => {
       const response = await client.listTemplatePolicies({
         namespace: orgNamespace,
@@ -240,7 +226,7 @@ export function useGetTemplatePolicy(namespace: string, name: string) {
     [transport],
   )
   return useQuery({
-    queryKey: templatePolicyGetKey(namespace, name),
+    queryKey: keys.templatePolicies.get(namespace, name),
     queryFn: async () => {
       const response = await client.getTemplatePolicy({ namespace, name })
       return response.policy
@@ -276,7 +262,7 @@ export function useCreateTemplatePolicy(namespace: string) {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templatePolicyListKey(namespace) })
+      queryClient.invalidateQueries({ queryKey: keys.templatePolicies.list(namespace) })
     },
   })
 }
@@ -307,8 +293,8 @@ export function useUpdateTemplatePolicy(namespace: string, name: string) {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templatePolicyListKey(namespace) })
-      queryClient.invalidateQueries({ queryKey: templatePolicyGetKey(namespace, name) })
+      queryClient.invalidateQueries({ queryKey: keys.templatePolicies.list(namespace) })
+      queryClient.invalidateQueries({ queryKey: keys.templatePolicies.get(namespace, name) })
     },
   })
 }
@@ -325,7 +311,7 @@ export function useDeleteTemplatePolicy(namespace: string) {
     mutationFn: (params: { name: string }) =>
       client.deleteTemplatePolicy({ namespace, ...params }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: templatePolicyListKey(namespace) })
+      queryClient.invalidateQueries({ queryKey: keys.templatePolicies.list(namespace) })
     },
   })
 }
