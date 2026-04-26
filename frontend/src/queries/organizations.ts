@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { createClient } from '@connectrpc/connect'
 import { useQuery, useTransport } from '@connectrpc/connect-query'
-import { keepPreviousData, useQuery as useTanstackQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery as useTanstackQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   OrganizationService,
 } from '@/gen/holos/console/v1/organizations_pb.js'
@@ -18,9 +18,13 @@ export function useListOrganizations() {
 }
 
 /**
- * TanStack-native list hook with keepPreviousData for ResourceGrid v1 pages.
- * Uses keys.organizations.list() so search-param changes do not blank the
- * table while the fresh response is in flight.
+ * TanStack-native list hook for ResourceGrid v1 pages.
+ * Uses keys.organizations.list() for consistent cache targeting.
+ * keepPreviousData is intentionally omitted: the organizations list uses a
+ * user-identity-agnostic key on a shared QueryClient, so KPD would return a
+ * prior user's cached rows when a different user logs in (E2E cross-user
+ * scenario). The ConnectRPC transport already carries the current user's auth
+ * token, so the response is always scoped to the current session.
  */
 export function useListOrganizationsKPD() {
   const { isAuthenticated } = useAuth()
@@ -33,7 +37,6 @@ export function useListOrganizationsKPD() {
       return response.organizations
     },
     enabled: isAuthenticated,
-    placeholderData: keepPreviousData,
   })
 }
 
