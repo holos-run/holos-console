@@ -17,6 +17,29 @@ export function useListOrganizations() {
   )
 }
 
+/**
+ * TanStack-native list hook for ResourceGrid v1 pages.
+ * Uses keys.organizations.list() for consistent cache targeting.
+ * keepPreviousData is intentionally omitted: the organizations list uses a
+ * user-identity-agnostic key on a shared QueryClient, so KPD would return a
+ * prior user's cached rows when a different user logs in (E2E cross-user
+ * scenario). The ConnectRPC transport already carries the current user's auth
+ * token, so the response is always scoped to the current session.
+ */
+export function useListOrganizationsKPD() {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(OrganizationService, transport), [transport])
+  return useTanstackQuery({
+    queryKey: keys.organizations.list(),
+    queryFn: async () => {
+      const response = await client.listOrganizations({})
+      return response.organizations
+    },
+    enabled: isAuthenticated,
+  })
+}
+
 export function useGetOrganization(name: string) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()

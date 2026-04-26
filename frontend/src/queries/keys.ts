@@ -45,6 +45,7 @@ export const keys = {
       ['folders', 'raw', organization ?? '', name] as const,
   },
   organizations: {
+    list: () => ['organizations', 'list'] as const,
     get: (name: string) => keys.connect.getOrganization(name),
     raw: (name: string) => keys.connect.getOrganizationRaw(name),
   },
