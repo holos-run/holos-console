@@ -195,9 +195,9 @@ describe('ProjectNewPage', () => {
     })
   })
 
-  // ── Default fallback: /projects/$name/secrets (no returnTo) ─────────────────
+  // ── Default fallback: /projects/$name (no returnTo) ─────────────────────────
 
-  it('navigates to /projects/$name/secrets after success when no returnTo', async () => {
+  it('navigates to /projects/$name after success when no returnTo', async () => {
     const mutateAsync = vi.fn().mockResolvedValue({ name: 'my-project' })
     setupMocks(mutateAsync)
     render(<ProjectNewPage orgName="my-org" />)
@@ -206,7 +206,7 @@ describe('ProjectNewPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /create project/i }))
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith({ to: '/projects/my-project/secrets' })
+      expect(mockNavigate).toHaveBeenCalledWith({ to: '/projects/my-project' })
     })
   })
 
@@ -223,7 +223,7 @@ describe('ProjectNewPage', () => {
     })
   })
 
-  it('falls back to /projects/$name/secrets for invalid returnTo after success', async () => {
+  it('falls back to /projects/$name for invalid returnTo after success', async () => {
     const mutateAsync = vi.fn().mockResolvedValue({ name: 'my-project' })
     setupMocks(mutateAsync)
     render(<ProjectNewPage orgName="my-org" returnTo="javascript:alert(1)" />)
@@ -232,7 +232,7 @@ describe('ProjectNewPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /create project/i }))
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith({ to: '/projects/my-project/secrets' })
+      expect(mockNavigate).toHaveBeenCalledWith({ to: '/projects/my-project' })
     })
   })
 

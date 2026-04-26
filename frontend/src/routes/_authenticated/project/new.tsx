@@ -6,9 +6,8 @@
  *   - folderName (optional) — the folder under which the project is nested
  *   - returnTo   (optional) — post-create redirect (validated by resolveReturnTo)
  *
- * On success navigates to `resolveReturnTo(search.returnTo, '/projects/$name/secrets')`.
- * The default fallback preserves the existing behaviour from create-project-dialog.tsx
- * (lines 101-104) where post-create navigation always went to the project's secrets page.
+ * On success navigates to `resolveReturnTo(search.returnTo, '/projects/$name')`.
+ * The default fallback routes to the project home (thin landing), per HOL-977.
  *
  * Replaces CreateProjectDialog modal (HOL-871).
  */
@@ -112,9 +111,8 @@ export function ProjectNewPage({ orgName, folderName, returnTo }: ProjectNewPage
         parentType,
         parentName,
       })
-      // Default fallback: navigate to the newly created project's secrets page,
-      // preserving the behaviour that was hard-coded in create-project-dialog.tsx.
-      const fallback = `/projects/${response.name}/secrets`
+      // Default fallback: navigate to the newly created project's home page.
+      const fallback = `/projects/${response.name}`
       const target = resolveReturnTo(returnTo, fallback)
       navigate({ to: target })
     } catch (err) {
