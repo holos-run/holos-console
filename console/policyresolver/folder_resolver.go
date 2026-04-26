@@ -41,12 +41,10 @@ type PolicyListerInNamespace interface {
 // a project owner cannot tamper with the policies the platform means to
 // constrain them with (HOL-554 storage-isolation guardrail).
 //
-// HOL-600 removed the legacy glob-based TemplatePolicyRule.Target
-// evaluation path. A rule contributes to the current render target only
-// when a TemplatePolicyBinding names its owning policy and selects that
-// target (matching on (kind, name, project_name)). Policies not covered
-// by any matching binding for the render target contribute nothing; an
-// annotated `target` field still present on a stale ConfigMap is ignored.
+// A rule contributes to the current render target only when a
+// TemplatePolicyBinding names its owning policy and selects that target
+// (matching on (kind, name, project_name)). Policies not covered by any
+// matching binding for the render target contribute nothing.
 //
 // HOL-662 removed the RuleUnmarshaler / BindingUnmarshaler seams — the CRD
 // spec stores rules and bindings as structured fields, so there is no
@@ -102,8 +100,7 @@ func NewFolderResolver(
 // (HOL-600). A binding whose target_refs match the current render target
 // dereferences its policy_ref and injects (REQUIRE) / removes (EXCLUDE)
 // the bound policy's template refs. Policies that no matching binding
-// names for the current target contribute nothing — the pre-HOL-600
-// legacy glob Target path is gone.
+// names for the current target contribute nothing.
 //
 // Passing a nil binding lister reduces the resolver to "no rules
 // contribute" and returns an empty effective set. Passing a nil rule
@@ -260,9 +257,7 @@ func (r *folderResolver) Resolve(
 
 	// Collect REQUIRE and EXCLUDE rules only from policies a matching
 	// binding covers for this render target. Every other policy in the
-	// ancestor chain contributes nothing — pre-HOL-600 the legacy
-	// glob Target path would have evaluated those policies' rules
-	// against the rule's (project_pattern, deployment_pattern).
+	// ancestor chain contributes nothing.
 	var requireRules []*consolev1.TemplatePolicyRule
 	var excludeRules []*consolev1.TemplatePolicyRule
 	for _, p := range policies {
@@ -460,4 +455,3 @@ func keyForRefProto(r *consolev1.LinkedTemplateRef) RefKey {
 func keyForTemplateRef(namespace, name string) RefKey {
 	return RefKey{Namespace: namespace, Name: name}
 }
-

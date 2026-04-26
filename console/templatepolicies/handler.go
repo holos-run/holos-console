@@ -9,7 +9,7 @@
 //   - Stores policies as ConfigMaps in the folder or organization namespace
 //     with the console.holos.run/resource-type=template-policy label and a
 //     JSON-serialized rules annotation.
-//   - Enforces RBAC through the TemplatePolicyCascadePerms table using the
+//   - Enforces RBAC through the TemplatePolicyPerms table using the
 //     PERMISSION_TEMPLATE_POLICIES_* permissions, so WRITE/DELETE/ADMIN can
 //     only be granted at organization or folder scope.
 //

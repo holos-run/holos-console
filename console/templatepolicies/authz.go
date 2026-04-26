@@ -24,11 +24,10 @@ type FolderGrantResolver interface {
 	GetFolderGrants(ctx context.Context, folder string) (users, roles map[string]string, err error)
 }
 
-// checkAccess enforces the TemplatePolicyCascadePerms RBAC table on the
-// policy's owning scope. Project scope is rejected up front — the cascade
-// table exists only at org/folder, so any attempt to check a project-scope
-// policy here is a programming error that earlier handler validation should
-// have caught.
+// checkAccess enforces the TemplatePolicyPerms RBAC table on the policy's
+// owning scope. Project scope is rejected up front; the table exists only at
+// org/folder, so any attempt to check a project-scope policy here is a
+// programming error that earlier handler validation should have caught.
 func (h *Handler) checkAccess(ctx context.Context, claims *rpc.Claims, scope scopeKind, scopeName string, perm rbac.Permission) error {
 	switch scope {
 	case scopeKindOrganization:
@@ -51,7 +50,7 @@ func (h *Handler) checkOrgAccess(ctx context.Context, claims *rpc.Claims, org st
 		slog.WarnContext(ctx, "failed to resolve org grants", slog.String("org", org), slog.Any("error", err))
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
 	}
-	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplatePolicyCascadePerms)
+	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplatePolicyPerms)
 }
 
 func (h *Handler) checkFolderAccess(ctx context.Context, claims *rpc.Claims, folder string, perm rbac.Permission) error {
@@ -63,5 +62,5 @@ func (h *Handler) checkFolderAccess(ctx context.Context, claims *rpc.Claims, fol
 		slog.WarnContext(ctx, "failed to resolve folder grants", slog.String("folder", folder), slog.Any("error", err))
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
 	}
-	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplatePolicyCascadePerms)
+	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplatePolicyPerms)
 }

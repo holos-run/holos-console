@@ -67,7 +67,7 @@ func NewAppliedRenderStateClient(client ctrlclient.Client, r *resolver.Resolver,
 // non-project ancestor wins. If the project's immediate parent is the
 // organization namespace (no folder in between), the organization namespace
 // is returned. Returns an error only when the walker fails — the project
-// namespace always has at least one ancestor because of the hierarchy
+// namespace always has at least one ancestor because of the namespace-ancestry
 // invariants enforced elsewhere (ADR 020 Decision 3).
 func (c *AppliedRenderStateClient) FolderNamespaceForProject(ctx context.Context, projectNs string) (string, error) {
 	if c == nil || c.walker == nil {
