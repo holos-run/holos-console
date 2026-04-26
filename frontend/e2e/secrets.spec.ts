@@ -166,7 +166,7 @@ test.describe('Secrets Page', () => {
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
 
     // Verify the secret shows in the list as a link
-    await expect(page.getByRole('link', { name: secretName, exact: true })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('link', { name: secretName, exact: true }).first()).toBeVisible({ timeout: 10000 })
 
     // Clean up: delete via the list
     await page.getByLabel(new RegExp(`delete ${secretName}`, 'i')).click()

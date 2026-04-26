@@ -18,7 +18,6 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import {
   useReactTable,
   getCoreRowModel,
-  getFilteredRowModel,
   getSortedRowModel,
   flexRender,
   createColumnHelper,
@@ -42,10 +41,22 @@ import {
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
 
 import type { ColumnDef } from '@tanstack/react-table'
-import type { Kind, Row, ResourceGridSearch } from './types'
+import type {
+  ExtraSearchField,
+  Kind,
+  Row,
+  ResourceGridSearch,
+} from './types'
+import { DEFAULT_SEARCH_FIELD_IDS } from './types'
 import { NewButton, Toolbar } from './Toolbar'
+import { SearchFieldsFilter } from './SearchFieldsFilter'
 import { useDeleteConfirm } from './useDeleteConfirm'
-import { parseKindIds, serialiseKindIds } from './url-state'
+import {
+  parseKindIds,
+  parseSearchFieldIds,
+  serialiseKindIds,
+  serialiseSearchFieldIds,
+} from './url-state'
 
 // ---------------------------------------------------------------------------
 // Column helper
@@ -102,10 +113,37 @@ export interface ResourceGridProps {
   headerActions?: ReactNode
   /**
    * Optional set of column IDs that should be rendered with a sort toggle
-   * button. Defaults to ['createdAt'] when unset so the Created At column is
-   * always sortable. Pass an empty array to disable all sorting.
+   * button. Defaults to ['parentId', 'resourceId', 'displayName', 'createdAt']
+   * when unset so all visible key fields are sortable (HOL-990 AC1.3).
+   * Pass an empty array to disable all sorting.
    */
   sortableColumns?: string[]
+  /**
+   * Caller-supplied hidden search fields (e.g. `creator`). Each field appears
+   * as a checkbox in the search-fields filter popover. The values are read
+   * from `Row.extraSearch[id]`. Hidden fields contribute to the global search
+   * only when checked; they are never rendered as table columns.
+   */
+  extraSearchFields?: ExtraSearchField[]
+  /**
+   * Default sort applied when the URL omits `?sort=`. Defaults to
+   * `{ id: 'createdAt', desc: true }` (newest first) so every grid is
+   * always sorted (HOL-990 AC1.3).
+   */
+  defaultSort?: { id: string; desc: boolean }
+  /**
+   * Optional override for the empty state body. When provided and there are
+   * zero rows, this is rendered in place of the default "No resources found."
+   * message. Use it to surface a context-specific call-to-action (e.g. an
+   * organization-scoped Create Project link).
+   */
+  emptyStateContent?: ReactNode
+  /**
+   * When true (default) each row renders a trash-icon delete action. Set to
+   * false on indexes that intentionally do not expose row-level deletion
+   * (e.g. the Projects index, where delete lives on the project detail page).
+   */
+  showDeleteAction?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -124,7 +162,11 @@ export function ResourceGrid({
   extraColumns = [],
   headerContent,
   headerActions,
-  sortableColumns = ['createdAt'],
+  sortableColumns = ['parentId', 'resourceId', 'displayName', 'createdAt'],
+  extraSearchFields = [],
+  defaultSort = { id: 'createdAt', desc: true },
+  emptyStateContent,
+  showDeleteAction = true,
 }: ResourceGridProps) {
   const navigate = useNavigate()
 
@@ -137,11 +179,24 @@ export function ResourceGrid({
 
   const globalFilter = search.search ?? ''
 
-  // Derive sorting state from URL params.
+  // Derive sorting state from URL params, falling back to defaultSort so the
+  // grid is always sorted on first render (HOL-990 AC1.3). The URL still
+  // wins when present so back/forward state is stable.
   const sorting: SortingState = useMemo(() => {
-    if (!search.sort) return []
-    return [{ id: search.sort, desc: search.sortDir === 'desc' }]
-  }, [search.sort, search.sortDir])
+    if (search.sort) {
+      return [{ id: search.sort, desc: search.sortDir === 'desc' }]
+    }
+    return [{ id: defaultSort.id, desc: defaultSort.desc }]
+  }, [search.sort, search.sortDir, defaultSort.id, defaultSort.desc])
+
+  // --- Search-field selection (HOL-990 AC1.3) ----------------------------
+  // The IDs in this list determine which fields the global search input
+  // matches against. URL omission means "use the key-field defaults".
+
+  const selectedSearchFieldIds = useMemo(
+    () => parseSearchFieldIds(search.fields, DEFAULT_SEARCH_FIELD_IDS),
+    [search.fields],
+  )
 
   // --- URL updater helpers -----------------------------------------------
 
@@ -164,6 +219,18 @@ export function ResourceGrid({
       updateSearch((prev) => ({
         ...prev,
         kind: serialiseKindIds(ids) ?? undefined,
+      }))
+    },
+    [updateSearch],
+  )
+
+  const setSearchFieldIds = useCallback(
+    (ids: string[]) => {
+      updateSearch((prev) => ({
+        ...prev,
+        fields:
+          serialiseSearchFieldIds(ids, [...DEFAULT_SEARCH_FIELD_IDS]) ??
+          undefined,
       }))
     },
     [updateSearch],
@@ -214,6 +281,41 @@ export function ResourceGrid({
     return rows.filter((r) => kindSet.has(r.kind))
   }, [rows, selectedKindIds])
 
+  // --- Pre-filter rows by global search + selected search fields ---------
+  // We perform the search-field-aware filter outside of TanStack Table.
+  // TanStack's `getFilteredRowModel` memoizes on
+  // `[preRowModel, columnFilters, globalFilter]` only, so toggling a
+  // search-field checkbox while text is in the search box would not
+  // invalidate the cached row model. By filtering here first and feeding
+  // TanStack pre-filtered data, every change to either input recomputes.
+
+  const filteredRows = useMemo(() => {
+    if (!globalFilter) return kindFilteredRows
+    const needle = globalFilter.toLowerCase()
+    return kindFilteredRows.filter((r) => {
+      for (const fieldId of selectedSearchFieldIds) {
+        let haystack = ''
+        switch (fieldId) {
+          case 'parent':
+            haystack = r.parentLabel || r.parentId
+            break
+          case 'name':
+            haystack = r.name
+            break
+          case 'displayName':
+            haystack = r.displayName || r.name
+            break
+          default:
+            haystack = r.extraSearch?.[fieldId] ?? ''
+        }
+        if (haystack && haystack.toLowerCase().includes(needle)) {
+          return true
+        }
+      }
+      return false
+    })
+  }, [kindFilteredRows, globalFilter, selectedSearchFieldIds])
+
   // --- Stable set of sortable column IDs --------------------------------
 
   const sortableSet = useMemo(() => new Set(sortableColumns), [sortableColumns])
@@ -222,9 +324,37 @@ export function ResourceGrid({
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor('parentId', {
+      columnHelper.accessor((row) => row.parentLabel || row.parentId, {
         id: 'parentId',
-        header: 'Parent',
+        header: ({ column }) => {
+          if (!sortableSet.has('parentId')) {
+            return <span>Parent</span>
+          }
+          const isSorted = column.getIsSorted()
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="-ml-3 h-8 font-normal"
+              onClick={() => column.toggleSorting(isSorted === 'asc')}
+              aria-label="Sort by Parent"
+            >
+              Parent
+              {isSorted === 'asc' ? (
+                <ArrowUp className="ml-1 h-4 w-4" aria-hidden="true" />
+              ) : isSorted === 'desc' ? (
+                <ArrowDown className="ml-1 h-4 w-4" aria-hidden="true" />
+              ) : (
+                <ArrowUpDown
+                  className="ml-1 h-4 w-4 opacity-50"
+                  aria-hidden="true"
+                />
+              )}
+            </Button>
+          )
+        },
+        enableSorting: sortableSet.has('parentId'),
+        sortingFn: 'alphanumeric',
         cell: ({ row }) => (
           <span className="text-muted-foreground text-sm">
             {row.original.parentLabel || row.original.parentId}
@@ -233,7 +363,35 @@ export function ResourceGrid({
       }),
       columnHelper.accessor('id', {
         id: 'resourceId',
-        header: 'Resource ID',
+        header: ({ column }) => {
+          if (!sortableSet.has('resourceId')) {
+            return <span>Name</span>
+          }
+          const isSorted = column.getIsSorted()
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="-ml-3 h-8 font-normal"
+              onClick={() => column.toggleSorting(isSorted === 'asc')}
+              aria-label="Sort by Name"
+            >
+              Name
+              {isSorted === 'asc' ? (
+                <ArrowUp className="ml-1 h-4 w-4" aria-hidden="true" />
+              ) : isSorted === 'desc' ? (
+                <ArrowDown className="ml-1 h-4 w-4" aria-hidden="true" />
+              ) : (
+                <ArrowUpDown
+                  className="ml-1 h-4 w-4 opacity-50"
+                  aria-hidden="true"
+                />
+              )}
+            </Button>
+          )
+        },
+        enableSorting: sortableSet.has('resourceId'),
+        sortingFn: 'alphanumeric',
         cell: ({ row, getValue }) => {
           const value = getValue()
           if (row.original.detailHref) {
@@ -258,7 +416,35 @@ export function ResourceGrid({
         (row) => row.displayName || row.name,
         {
           id: 'displayName',
-          header: 'Display Name',
+          header: ({ column }) => {
+            if (!sortableSet.has('displayName')) {
+              return <span>Display Name</span>
+            }
+            const isSorted = column.getIsSorted()
+            return (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="-ml-3 h-8 font-normal"
+                onClick={() => column.toggleSorting(isSorted === 'asc')}
+                aria-label="Sort by Display Name"
+              >
+                Display Name
+                {isSorted === 'asc' ? (
+                  <ArrowUp className="ml-1 h-4 w-4" aria-hidden="true" />
+                ) : isSorted === 'desc' ? (
+                  <ArrowDown className="ml-1 h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <ArrowUpDown
+                    className="ml-1 h-4 w-4 opacity-50"
+                    aria-hidden="true"
+                  />
+                )}
+              </Button>
+            )
+          },
+          enableSorting: sortableSet.has('displayName'),
+          sortingFn: 'alphanumeric',
           cell: ({ row }) => {
             const label = row.original.displayName || row.original.name
             if (row.original.detailHref) {
@@ -351,38 +537,47 @@ export function ResourceGrid({
           )
         },
       }),
-      // Actions column — no accessor, uses the full row
-      columnHelper.display({
-        id: 'actions',
-        header: '',
-        cell: ({ row }) => (
-          <div className="flex justify-end">
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={`delete ${row.original.displayName || row.original.name}`}
-              onClick={(e) => { e.stopPropagation(); handleDeleteClick(row.original) }}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        ),
-      }),
+      // Actions column — only mounted when row-level delete is enabled.
+      ...(showDeleteAction
+        ? [
+            columnHelper.display({
+              id: 'actions',
+              header: '',
+              cell: ({ row }) => (
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`delete ${row.original.displayName || row.original.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDeleteClick(row.original)
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ),
+            }),
+          ]
+        : []),
     ],
-    [handleDeleteClick, extraColumns, sortableSet],
+    [handleDeleteClick, extraColumns, sortableSet, showDeleteAction],
   )
 
   // --- TanStack Table instance -------------------------------------------
 
   const table = useReactTable({
-    data: kindFilteredRows,
+    data: filteredRows,
     columns,
-    state: { globalFilter, columnVisibility, sorting },
-    onGlobalFilterChange: setGlobalFilter,
+    state: { columnVisibility, sorting },
     onSortingChange: handleSortingChange,
-    globalFilterFn: 'includesString',
+    // Stable, kind-aware row identity: HOL-990 changed the visible Resource
+    // ID column to bare metadata.name, which is only unique within a
+    // (kind, namespace) tuple. React keys and any future TanStack row
+    // selection rely on this id, so keep all three fields in the key.
+    getRowId: (row) => `${row.kind}/${row.parentId}/${row.name}`,
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
   })
 
@@ -429,7 +624,14 @@ export function ResourceGrid({
     <>
       <Card>
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-          <CardTitle>{title}</CardTitle>
+          <div className="flex items-center gap-1">
+            <CardTitle>{title}</CardTitle>
+            <SearchFieldsFilter
+              extraFields={extraSearchFields}
+              selectedIds={selectedSearchFieldIds}
+              onChange={setSearchFieldIds}
+            />
+          </div>
           <div className="flex items-center gap-2">
             {headerActions}
             <NewButton kinds={creatableKinds} />
@@ -463,9 +665,11 @@ export function ResourceGrid({
 
           {/* Empty state */}
           {rows.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <p className="text-muted-foreground">No resources found.</p>
-            </div>
+            emptyStateContent ?? (
+              <div className="flex flex-col items-center gap-3 py-8 text-center">
+                <p className="text-muted-foreground">No resources found.</p>
+              </div>
+            )
           ) : (
             <>
               {table.getRowModel().rows.length === 0 && (

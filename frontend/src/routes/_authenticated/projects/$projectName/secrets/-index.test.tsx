@@ -121,8 +121,11 @@ describe('SecretsListPage (ResourceGrid v1)', () => {
   it('renders default project rows in the grid', () => {
     setupMocks({ rows: [makeSecretRow('my-secret', 'test-project')] })
     render(<SecretsListPage />)
-    // The secret name should appear as a link in the grid
-    expect(screen.getByText('my-secret')).toBeInTheDocument()
+    // Per HOL-990 AC1.1 the resource ID column shows `metadata.name`, so
+    // 'my-secret' renders both as the ID cell and as the display-name cell
+    // (the secret has no separate displayName). Use getAllByText to allow
+    // both occurrences.
+    expect(screen.getAllByText('my-secret').length).toBeGreaterThan(0)
   })
 
   it('calls useAllSecretsForProject with the project name', () => {
@@ -169,8 +172,10 @@ describe('SecretsListPage (ResourceGrid v1)', () => {
       ],
     })
     render(<SecretsListPage />)
-    expect(screen.getByText('alpha-secret')).toBeInTheDocument()
-    expect(screen.getByText('beta-secret')).toBeInTheDocument()
+    // Each name appears in both the ID and display-name cells (no separate
+    // displayName), so allow multiple matches.
+    expect(screen.getAllByText('alpha-secret').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('beta-secret').length).toBeGreaterThan(0)
   })
 
   it('single parent hides Parent column', () => {

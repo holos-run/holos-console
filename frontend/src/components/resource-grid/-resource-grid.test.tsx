@@ -27,7 +27,12 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { toast } from 'sonner'
 import { ResourceGrid } from './ResourceGrid'
-import type { Kind, Row, ResourceGridSearch } from './types'
+import type {
+  ExtraSearchField,
+  Kind,
+  Row,
+  ResourceGridSearch,
+} from './types'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -79,6 +84,7 @@ function renderGrid(
     onSearchChange: (
       updater: (prev: ResourceGridSearch) => ResourceGridSearch,
     ) => void
+    extraSearchFields: ExtraSearchField[]
   }> = {},
 ) {
   const props = {
@@ -293,6 +299,113 @@ describe('ResourceGrid', () => {
     // Only the Beta row should be visible
     expect(screen.getByText('Beta Resource')).toBeInTheDocument()
     expect(screen.queryByText('Alpha Resource')).not.toBeInTheDocument()
+  })
+
+  // --- Search fields filter (HOL-990 AC1.3) ---
+
+  // Default fields are Parent + Name + Display Name. Creator is opt-in via
+  // the search-fields filter popover. Without it selected, a search for the
+  // creator email must NOT match — even though the row carries that value
+  // in extraSearch.creator.
+  it('does not match extraSearch.creator when Creator field is not selected', () => {
+    renderGrid({
+      rows: [
+        makeRow({
+          name: 'alpha',
+          displayName: 'Alpha Resource',
+          extraSearch: { creator: 'alice@example.com' },
+        }),
+      ],
+      extraSearchFields: [{ id: 'creator', label: 'Creator' }],
+      search: { search: 'alice' },
+    })
+    expect(screen.queryByText('Alpha Resource')).not.toBeInTheDocument()
+  })
+
+  // When Creator is included via ?fields=, a search for the creator email
+  // matches rows whose extraSearch.creator contains that string.
+  it('matches extraSearch.creator when Creator field is selected via fields URL param', () => {
+    renderGrid({
+      rows: [
+        makeRow({
+          name: 'alpha',
+          displayName: 'Alpha Resource',
+          extraSearch: { creator: 'alice@example.com' },
+        }),
+        makeRow({
+          name: 'beta',
+          id: 'beta-1',
+          displayName: 'Beta Resource',
+          extraSearch: { creator: 'bob@example.com' },
+        }),
+      ],
+      extraSearchFields: [{ id: 'creator', label: 'Creator' }],
+      search: { search: 'alice', fields: 'parent,name,displayName,creator' },
+    })
+    expect(screen.getByText('Alpha Resource')).toBeInTheDocument()
+    expect(screen.queryByText('Beta Resource')).not.toBeInTheDocument()
+  })
+
+  // Regression guard: TanStack Table's getFilteredRowModel memoizes on
+  // [preRowModel, columnFilters, globalFilter] — toggling a search field
+  // while text is in the box previously left the cached row model stale.
+  // ResourceGrid now pre-filters outside the table; this test enforces
+  // that contract by toggling the Creator checkbox at runtime and verifying
+  // matching rows appear without a search-text edit.
+  it('updates visible rows immediately when a search field is toggled while a filter is active', async () => {
+    const onSearchChange = vi.fn()
+    let currentSearch: ResourceGridSearch = { search: 'alice' }
+    const handleChange = (
+      updater: (prev: ResourceGridSearch) => ResourceGridSearch,
+    ) => {
+      currentSearch = updater(currentSearch)
+      onSearchChange(currentSearch)
+      rerender(
+        <ResourceGrid
+          title="Test Resources"
+          kinds={[SECRET_KIND]}
+          rows={rows}
+          onDelete={vi.fn().mockResolvedValue(undefined)}
+          isLoading={false}
+          error={null}
+          search={currentSearch}
+          onSearchChange={handleChange}
+          extraSearchFields={[{ id: 'creator', label: 'Creator' }]}
+        />,
+      )
+    }
+    const rows: Row[] = [
+      makeRow({
+        name: 'alpha',
+        displayName: 'Alpha Resource',
+        extraSearch: { creator: 'alice@example.com' },
+      }),
+    ]
+    const { rerender } = render(
+      <ResourceGrid
+        title="Test Resources"
+        kinds={[SECRET_KIND]}
+        rows={rows}
+        onDelete={vi.fn().mockResolvedValue(undefined)}
+        isLoading={false}
+        error={null}
+        search={currentSearch}
+        onSearchChange={handleChange}
+        extraSearchFields={[{ id: 'creator', label: 'Creator' }]}
+      />,
+    )
+
+    // Pre-condition: with Creator unchecked, "alice" matches nothing.
+    expect(screen.queryByText('Alpha Resource')).not.toBeInTheDocument()
+
+    // Open the popover and toggle Creator on.
+    fireEvent.click(screen.getByLabelText('Search fields'))
+    fireEvent.click(screen.getByLabelText('Search Creator'))
+
+    // The row must appear without re-typing the search text.
+    await waitFor(() => {
+      expect(screen.getByText('Alpha Resource')).toBeInTheDocument()
+    })
   })
 
   // --- Kind filter ---

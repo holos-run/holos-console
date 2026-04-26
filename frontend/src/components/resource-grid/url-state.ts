@@ -48,6 +48,11 @@ export function parseGridSearch(raw: Record<string, unknown>): ResourceGridSearc
     result.sortDir = sortDir
   }
 
+  const fields = raw['fields']
+  if (typeof fields === 'string' && fields.length > 0) {
+    result.fields = fields
+  }
+
   return result
 }
 
@@ -64,6 +69,7 @@ export function serialiseGridSearch(
     search: params.search || undefined,
     sort: params.sort || undefined,
     sortDir: params.sortDir || undefined,
+    fields: params.fields || undefined,
   }
 }
 
@@ -79,5 +85,47 @@ export function parseKindIds(raw: string | undefined): string[] {
 /** Serialise an array of kind IDs to the `?kind=` param value. */
 export function serialiseKindIds(ids: string[]): string | undefined {
   if (ids.length === 0) return undefined
+  return ids.join(',')
+}
+
+/**
+ * Parse the comma-separated `?fields=` param. Falls back to `defaults` when
+ * the param is missing so callers do not have to inline the default list at
+ * each render.
+ */
+export function parseSearchFieldIds(
+  raw: string | undefined,
+  defaults: string[],
+): string[] {
+  if (!raw) return [...defaults]
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+/**
+ * Serialise the search-field selection to the `?fields=` param value.
+ * Returns undefined when the selection equals `defaults`, so the URL stays
+ * clean for users who never opened the filter popover.
+ */
+export function serialiseSearchFieldIds(
+  ids: string[],
+  defaults: string[],
+): string | undefined {
+  if (ids.length === 0) return undefined
+  // Match against defaults treated as a set (order-independent).
+  const idSet = new Set(ids)
+  const defaultSet = new Set(defaults)
+  if (idSet.size === defaultSet.size) {
+    let same = true
+    for (const id of idSet) {
+      if (!defaultSet.has(id)) {
+        same = false
+        break
+      }
+    }
+    if (same) return undefined
+  }
   return ids.join(',')
 }

@@ -49,7 +49,7 @@ export function NewButton({ kinds }: NewButtonProps) {
   if (kinds.length === 1) {
     const kind = kinds[0]
     return (
-      <Link to={kind.newHref!}>
+      <Link to={kind.newHref!} search={kind.newSearch}>
         <Button size="sm">New {kind.label}</Button>
       </Link>
     )
@@ -65,7 +65,9 @@ export function NewButton({ kinds }: NewButtonProps) {
       <DropdownMenuContent align="end">
         {kinds.map((kind) => (
           <DropdownMenuItem key={kind.id} asChild>
-            <Link to={kind.newHref!}>{kind.label}</Link>
+            <Link to={kind.newHref!} search={kind.newSearch}>
+              {kind.label}
+            </Link>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

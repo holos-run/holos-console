@@ -15,8 +15,19 @@ Source issue: HOL-947. This document is the source of record for shared
 - `search` and `onSearchChange` bind grid-owned URL params to TanStack Router.
 - `extraColumns` inserts caller-owned TanStack Table columns after Description
   and before Created At.
+- `extraSearchFields` registers hidden, opt-in search fields (e.g. `creator`)
+  that appear as checkboxes in the search-fields filter popover next to the
+  card title (HOL-990 AC1.3). Hidden values are read from `Row.extraSearch`
+  and never become columns.
 - `headerContent` renders banners or descriptions below the card title.
 - `headerActions` renders compact icon actions next to the create control.
+- `defaultSort` overrides the default `{ id: 'createdAt', desc: true }` sort
+  applied when the URL omits `?sort=` (HOL-990 AC1.3 — every grid is always
+  sorted on first render).
+- `emptyStateContent` overrides the default "No resources found." empty body
+  with a context-specific call-to-action (e.g. an org-scoped Create button).
+- `showDeleteAction` (default `true`) toggles the row-level trash column. Set
+  to `false` for indexes whose deletion lives elsewhere.
 
 The shell owns TanStack Table setup, row rendering, empty/no-match states,
 parent-column visibility, and the delete confirmation dialog. Search toolbar,
@@ -40,8 +51,25 @@ interface Row {
   description: string
   createdAt: string
   detailHref?: string
+  /** Bag of search-only string values keyed by ExtraSearchField.id (HOL-990). */
+  extraSearch?: Record<string, string>
 }
 ```
+
+**HOL-990 guard rails — apply to every row mapper:**
+
+- `id` MUST equal the resource `metadata.name`. It is rendered in the "Name"
+  column and used as the row's stable identity. Never compose it as
+  `"<Kind>/<namespace>/<name>"` or any other multi-segment string. Cross-namespace
+  uniqueness is preserved via `parentId` + `name` + `kind` + `detailHref`, not
+  by inflating the visible identifier.
+- The "Parent" column comes first. Provide `parentLabel` (and `parentId`) for
+  every row even when the column will be hidden — the shell hides it
+  automatically when all rows share one parent, but it must surface the moment
+  rows fan out across scopes (folders, ancestors, multi-namespace queries).
+- Surface high-value hidden fields (e.g. `creatorEmail`) by populating
+  `extraSearch[fieldId]` and registering the matching `ExtraSearchField` via
+  `extraSearchFields`. Operators opt in via the search-fields filter popover.
 
 Default columns render in this order:
 
@@ -146,6 +174,12 @@ Grid search params flow through `ResourceGridSearch` and
 interface ResourceGridSearch {
   kind?: string
   search?: string
+  /** Sort column ID (HOL-971). */
+  sort?: string
+  /** Sort direction (HOL-971). */
+  sortDir?: 'asc' | 'desc'
+  /** Comma-separated search-field IDs the global search applies to (HOL-990). */
+  fields?: string
 }
 ```
 
@@ -181,10 +215,16 @@ navigation, and `returnTo` behavior after awaiting the mutation.
 ## Adding A New Kind
 
 1. Add a `Kind` entry in the owning route.
-2. Map API results into `Row` objects with a matching `kind` value.
+2. Map API results into `Row` objects with a matching `kind` value. Set
+   `id = metadata.name` (HOL-990 AC1.1) — never a composite string. Populate
+   `parentLabel` so the Parent column is meaningful when the row set spans
+   multiple scopes.
 3. Set `detailHref` whenever the resource has a detail page.
 4. Add kind-specific columns via `extraColumns`.
-5. Add route-level tests that assert the grid renders, and component tests only
+5. If the resource carries useful hidden metadata (e.g. creator email), add it
+   to `Row.extraSearch` and register the corresponding entry in the route's
+   `extraSearchFields` prop so operators can opt the global search into it.
+6. Add route-level tests that assert the grid renders, and component tests only
    when new grid behavior is introduced.
 
 No ResourceGrid code change is required for a new project-scoped kind that fits

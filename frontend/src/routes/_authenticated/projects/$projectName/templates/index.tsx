@@ -124,6 +124,9 @@ export function ProjectTemplatesIndexPage({
         displayName: t.displayName || t.name,
         description: t.description ?? '',
         createdAt: t.createdAt,
+        // Template proto does not expose creator_email yet; set the bag so the
+        // Creator search field stays consistent across kinds (HOL-990).
+        extraSearch: { creator: '' },
         detailHref: `/projects/${projectName}/templates/${t.name}`,
       })),
     [templates, namespace, projectName],
@@ -198,6 +201,7 @@ export function ProjectTemplatesIndexPage({
         search={search}
         onSearchChange={handleSearchChange}
         headerActions={helpButton}
+        extraSearchFields={[{ id: 'creator', label: 'Creator' }]}
       />
       <TemplatesHelpPane open={helpOpen} onOpenChange={handleHelpOpenChange} />
     </>
