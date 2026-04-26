@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,13 +9,18 @@ import { Combobox } from '@/components/ui/combobox'
 import { StringListInput } from '@/components/string-list-input'
 import { EnvVarEditor, filterEnvVars } from '@/components/env-var-editor'
 import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb'
-import { useCreateDeployment } from '@/queries/deployments'
+import { PlannedDeploymentSchema } from '@/gen/holos/console/v1/deployments_pb'
+import { LinkedTemplateRefSchema } from '@/gen/holos/console/v1/policy_state_pb'
+import { create } from '@bufbuild/protobuf'
+import { useCreateDeployment, usePreflightCheck } from '@/queries/deployments'
 import {
   useListTemplates,
   useGetTemplateDefaults,
   type TemplateDefaults,
 } from '@/queries/templates'
 import { namespaceForProject } from '@/lib/scope-labels'
+import { PreflightConflicts, hasConflicts } from '@/components/deployments/PreflightConflicts'
+import { CascadeDeleteToggle } from '@/components/deployments/CascadeDeleteToggle'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/new')({
   component: CreateDeploymentRoute,
@@ -69,6 +74,45 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
   const [args, setArgs] = useState<string[]>([])
   const [env, setEnv] = useState<EnvVar[]>([])
   const [error, setError] = useState<string | null>(null)
+  // cascadeDelete controls whether deleting this deployment cascades to the
+  // shared singleton. Default true per the owner-reference model (HOL-963).
+  // NOTE: not yet wired to the backend proto (deferred AC).
+  const [cascadeDelete, setCascadeDelete] = useState(true)
+
+  // Build the PlannedDeployment list for PreflightCheck.
+  // The template's namespace comes from the templates list returned by
+  // useListTemplates (scoped to the project namespace). When the user hasn't
+  // selected a template yet, the planned list is empty and the query is
+  // disabled.
+  const templatesByName = useMemo(() => {
+    const m = new Map<string, { namespace: string; name: string }>()
+    for (const t of templates) {
+      if (t && t.name) m.set(t.name, { namespace: t.namespace, name: t.name })
+    }
+    return m
+  }, [templates])
+
+  const plannedDeployments = useMemo(() => {
+    if (!name.trim() || !template) return []
+    const tmpl = templatesByName.get(template)
+    if (!tmpl) return []
+    return [
+      create(PlannedDeploymentSchema, {
+        name: name.trim(),
+        linkedTemplateRef: create(LinkedTemplateRefSchema, {
+          namespace: tmpl.namespace,
+          name: tmpl.name,
+          versionConstraint: '',
+        }),
+        versionConstraint: '',
+      }),
+    ]
+  }, [name, template, templatesByName])
+
+  const preflightQuery = usePreflightCheck(projectName, plannedDeployments)
+  const preflightCollisions = preflightQuery.data?.collisions ?? []
+  const preflightVersionConflicts = preflightQuery.data?.versionConflicts ?? []
+  const applyBlocked = hasConflicts(preflightCollisions, preflightVersionConflicts)
 
   // ADR 027 §3: track a single isPristine boolean. Starts true; flips to false
   // on any user edit of a defaultable field; resets to true on a successful
@@ -438,6 +482,16 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
               onChange={dirty(setEnv)}
             />
           </div>
+          <div>
+            <Label>Cascade Delete</Label>
+            <p className="text-xs text-muted-foreground mb-2">
+              Controls whether deleting this deployment also removes any shared singleton dependency Deployment it owns.
+            </p>
+            <CascadeDeleteToggle
+              value={cascadeDelete}
+              onChange={setCascadeDelete}
+            />
+          </div>
           {defaultsIsError && (
             <Alert variant="destructive" role="alert" aria-label="Template defaults error">
               <AlertDescription>
@@ -448,13 +502,17 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
               </AlertDescription>
             </Alert>
           )}
+          <PreflightConflicts
+            collisions={preflightCollisions}
+            versionConflicts={preflightVersionConflicts}
+          />
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
           <div className="flex items-center gap-3 pt-2">
-            <Button onClick={handleCreate} disabled={createMutation.isPending}>
+            <Button onClick={handleCreate} disabled={createMutation.isPending || applyBlocked}>
               {createMutation.isPending ? 'Creating...' : 'Create Deployment'}
             </Button>
             <Link
