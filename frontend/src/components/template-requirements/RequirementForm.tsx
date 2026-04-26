@@ -102,10 +102,10 @@ export function RequirementForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="my-requirement"
-          disabled={!canWrite || lockName || mode === 'edit'}
+          disabled={!canWrite || lockName}
         />
         <p className="text-xs text-muted-foreground mt-1">
-          {lockName || mode === 'edit'
+          {lockName
             ? 'Requirement names are immutable after creation.'
             : 'Lowercase alphanumeric and hyphens only.'}
         </p>

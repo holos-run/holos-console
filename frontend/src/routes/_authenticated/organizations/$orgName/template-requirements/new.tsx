@@ -78,27 +78,33 @@ export function CreateOrgTemplateRequirementPage({
           <span className="text-sm text-muted-foreground">Scope:</span>
           <ScopePicker value={scope} onChange={setScope} disabled={!canWrite} />
         </div>
-        <RequirementForm
-          mode="create"
-          namespace={namespace}
-          canWrite={canWrite}
-          submitLabel="Create"
-          pendingLabel="Creating..."
-          isPending={createMutation.isPending}
-          onSubmit={async (values) => {
-            await createMutation.mutateAsync(values)
-            await navigate({
-              to: '/organizations/$orgName/template-requirements/$requirementName',
-              params: { orgName, requirementName: values.name },
-            })
-          }}
-          onCancel={() => {
-            void navigate({
-              to: '/organizations/$orgName/template-requirements',
-              params: { orgName },
-            })
-          }}
-        />
+        {scope === 'project' ? (
+          <p className="text-sm text-muted-foreground">
+            TemplateRequirements are organization-scoped. Select Organization scope to create one.
+          </p>
+        ) : (
+          <RequirementForm
+            mode="create"
+            namespace={namespace}
+            canWrite={canWrite}
+            submitLabel="Create"
+            pendingLabel="Creating..."
+            isPending={createMutation.isPending}
+            onSubmit={async (values) => {
+              await createMutation.mutateAsync(values)
+              await navigate({
+                to: '/organizations/$orgName/template-requirements/$requirementName',
+                params: { orgName, requirementName: values.name },
+              })
+            }}
+            onCancel={() => {
+              void navigate({
+                to: '/organizations/$orgName/template-requirements',
+                params: { orgName },
+              })
+            }}
+          />
+        )}
       </CardContent>
     </Card>
   )

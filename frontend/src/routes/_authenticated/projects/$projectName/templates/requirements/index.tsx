@@ -91,9 +91,10 @@ export function TemplateRequirementsIndexPage({
         displayName: r.name,
         description: r.requires?.name ?? '',
         createdAt: timestampToISOString(r.createdAt),
-        detailHref: namespace
-          ? `/organizations/${selectedOrg}/template-requirements/${r.name}`
-          : undefined,
+        detailHref:
+          namespace && selectedOrg
+            ? `/organizations/${selectedOrg}/template-requirements/${r.name}`
+            : undefined,
       })),
     [requirements, namespace, selectedOrg],
   )
