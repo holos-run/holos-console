@@ -176,7 +176,7 @@ describe('OrgProjectsIndexPage', () => {
   })
 
   it('renders breadcrumb and Create Project button through layout slots', () => {
-    setupMocks([])
+    setupMocks([makeProject('alpha', 'Alpha Project')])
     render(<OrgProjectsIndexPage orgName="my-org" />)
     const breadcrumb = screen.getByRole('navigation', { name: /breadcrumb/i })
     expect(within(breadcrumb).getByText('Organizations')).toBeInTheDocument()
