@@ -49,7 +49,7 @@ test.describe('Secrets SPA Navigation (HOL-923 regression)', () => {
     await page.getByPlaceholder('my-secret').fill(secretName)
     await page.getByRole('button', { name: /create secret/i }).click()
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
-    await expect(page.getByRole('link', { name: secretName, exact: true })).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole('link', { name: secretName, exact: true }).first()).toBeVisible({ timeout: 10000 })
 
     // 3. Collect top-level main-frame navigation requests during the click so
     //    we can assert that none of them hit the Dex or PKCE endpoints.
@@ -75,7 +75,7 @@ test.describe('Secrets SPA Navigation (HOL-923 regression)', () => {
     page.on('request', onRequest)
 
     // 4. Click the display-name link for the secret row.
-    await page.getByRole('link', { name: secretName, exact: true }).click()
+    await page.getByRole('link', { name: secretName, exact: true }).first().click()
 
     // 5. Assert the URL became the detail page (SPA navigation succeeded).
     await page.waitForURL(
