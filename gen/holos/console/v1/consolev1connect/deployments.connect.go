@@ -72,6 +72,12 @@ const (
 	// DeploymentServicePreflightCheckProcedure is the fully-qualified name of the DeploymentService's
 	// PreflightCheck RPC.
 	DeploymentServicePreflightCheckProcedure = "/holos.console.v1.DeploymentService/PreflightCheck"
+	// DeploymentServiceGetDependencyEdgeCascadeDeleteProcedure is the fully-qualified name of the
+	// DeploymentService's GetDependencyEdgeCascadeDelete RPC.
+	DeploymentServiceGetDependencyEdgeCascadeDeleteProcedure = "/holos.console.v1.DeploymentService/GetDependencyEdgeCascadeDelete"
+	// DeploymentServiceSetDependencyEdgeCascadeDeleteProcedure is the fully-qualified name of the
+	// DeploymentService's SetDependencyEdgeCascadeDelete RPC.
+	DeploymentServiceSetDependencyEdgeCascadeDeleteProcedure = "/holos.console.v1.DeploymentService/SetDependencyEdgeCascadeDelete"
 )
 
 // DeploymentServiceClient is a client for the holos.console.v1.DeploymentService service.
@@ -120,6 +126,21 @@ type DeploymentServiceClient interface {
 	// state. Phase 9 (HOL-963) wires the deployment form to call it before
 	// the user submits.
 	PreflightCheck(context.Context, *connect.Request[v1.PreflightCheckRequest]) (*connect.Response[v1.PreflightCheckResponse], error)
+	// GetDependencyEdgeCascadeDelete returns the current Spec.CascadeDelete
+	// value on the originating CRD (TemplateDependency or TemplateRequirement)
+	// that materialised a dependency edge for one of the project's singleton
+	// Deployments. Surfaced to the deployment detail page so the per-edge
+	// cascade-delete toggle can reflect live state. RBAC: requires
+	// deployments-read on the named project.
+	GetDependencyEdgeCascadeDelete(context.Context, *connect.Request[v1.GetDependencyEdgeCascadeDeleteRequest]) (*connect.Response[v1.GetDependencyEdgeCascadeDeleteResponse], error)
+	// SetDependencyEdgeCascadeDelete writes Spec.CascadeDelete on the
+	// originating CRD identified by `originating_object` to `cascade_delete`.
+	// Treated as the per-edge form-control writer for HOL-991 — turning the
+	// toggle off detaches the singleton's owner-ref from that dependent so
+	// native Kubernetes GC will not reap the singleton when the dependent is
+	// deleted (ADR-035 Decision 12 / HOL-954). RBAC: requires
+	// deployments-write on the named project.
+	SetDependencyEdgeCascadeDelete(context.Context, *connect.Request[v1.SetDependencyEdgeCascadeDeleteRequest]) (*connect.Response[v1.SetDependencyEdgeCascadeDeleteResponse], error)
 }
 
 // NewDeploymentServiceClient constructs a client for the holos.console.v1.DeploymentService
@@ -211,24 +232,38 @@ func NewDeploymentServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(deploymentServiceMethods.ByName("PreflightCheck")),
 			connect.WithClientOptions(opts...),
 		),
+		getDependencyEdgeCascadeDelete: connect.NewClient[v1.GetDependencyEdgeCascadeDeleteRequest, v1.GetDependencyEdgeCascadeDeleteResponse](
+			httpClient,
+			baseURL+DeploymentServiceGetDependencyEdgeCascadeDeleteProcedure,
+			connect.WithSchema(deploymentServiceMethods.ByName("GetDependencyEdgeCascadeDelete")),
+			connect.WithClientOptions(opts...),
+		),
+		setDependencyEdgeCascadeDelete: connect.NewClient[v1.SetDependencyEdgeCascadeDeleteRequest, v1.SetDependencyEdgeCascadeDeleteResponse](
+			httpClient,
+			baseURL+DeploymentServiceSetDependencyEdgeCascadeDeleteProcedure,
+			connect.WithSchema(deploymentServiceMethods.ByName("SetDependencyEdgeCascadeDelete")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // deploymentServiceClient implements DeploymentServiceClient.
 type deploymentServiceClient struct {
-	listDeployments            *connect.Client[v1.ListDeploymentsRequest, v1.ListDeploymentsResponse]
-	getDeployment              *connect.Client[v1.GetDeploymentRequest, v1.GetDeploymentResponse]
-	createDeployment           *connect.Client[v1.CreateDeploymentRequest, v1.CreateDeploymentResponse]
-	updateDeployment           *connect.Client[v1.UpdateDeploymentRequest, v1.UpdateDeploymentResponse]
-	deleteDeployment           *connect.Client[v1.DeleteDeploymentRequest, v1.DeleteDeploymentResponse]
-	getDeploymentStatus        *connect.Client[v1.GetDeploymentStatusRequest, v1.GetDeploymentStatusResponse]
-	getDeploymentStatusSummary *connect.Client[v1.GetDeploymentStatusSummaryRequest, v1.GetDeploymentStatusSummaryResponse]
-	getDeploymentLogs          *connect.Client[v1.GetDeploymentLogsRequest, v1.GetDeploymentLogsResponse]
-	listNamespaceSecrets       *connect.Client[v1.ListNamespaceSecretsRequest, v1.ListNamespaceSecretsResponse]
-	listNamespaceConfigMaps    *connect.Client[v1.ListNamespaceConfigMapsRequest, v1.ListNamespaceConfigMapsResponse]
-	getDeploymentRenderPreview *connect.Client[v1.GetDeploymentRenderPreviewRequest, v1.GetDeploymentRenderPreviewResponse]
-	getDeploymentPolicyState   *connect.Client[v1.GetDeploymentPolicyStateRequest, v1.GetDeploymentPolicyStateResponse]
-	preflightCheck             *connect.Client[v1.PreflightCheckRequest, v1.PreflightCheckResponse]
+	listDeployments                *connect.Client[v1.ListDeploymentsRequest, v1.ListDeploymentsResponse]
+	getDeployment                  *connect.Client[v1.GetDeploymentRequest, v1.GetDeploymentResponse]
+	createDeployment               *connect.Client[v1.CreateDeploymentRequest, v1.CreateDeploymentResponse]
+	updateDeployment               *connect.Client[v1.UpdateDeploymentRequest, v1.UpdateDeploymentResponse]
+	deleteDeployment               *connect.Client[v1.DeleteDeploymentRequest, v1.DeleteDeploymentResponse]
+	getDeploymentStatus            *connect.Client[v1.GetDeploymentStatusRequest, v1.GetDeploymentStatusResponse]
+	getDeploymentStatusSummary     *connect.Client[v1.GetDeploymentStatusSummaryRequest, v1.GetDeploymentStatusSummaryResponse]
+	getDeploymentLogs              *connect.Client[v1.GetDeploymentLogsRequest, v1.GetDeploymentLogsResponse]
+	listNamespaceSecrets           *connect.Client[v1.ListNamespaceSecretsRequest, v1.ListNamespaceSecretsResponse]
+	listNamespaceConfigMaps        *connect.Client[v1.ListNamespaceConfigMapsRequest, v1.ListNamespaceConfigMapsResponse]
+	getDeploymentRenderPreview     *connect.Client[v1.GetDeploymentRenderPreviewRequest, v1.GetDeploymentRenderPreviewResponse]
+	getDeploymentPolicyState       *connect.Client[v1.GetDeploymentPolicyStateRequest, v1.GetDeploymentPolicyStateResponse]
+	preflightCheck                 *connect.Client[v1.PreflightCheckRequest, v1.PreflightCheckResponse]
+	getDependencyEdgeCascadeDelete *connect.Client[v1.GetDependencyEdgeCascadeDeleteRequest, v1.GetDependencyEdgeCascadeDeleteResponse]
+	setDependencyEdgeCascadeDelete *connect.Client[v1.SetDependencyEdgeCascadeDeleteRequest, v1.SetDependencyEdgeCascadeDeleteResponse]
 }
 
 // ListDeployments calls holos.console.v1.DeploymentService.ListDeployments.
@@ -296,6 +331,18 @@ func (c *deploymentServiceClient) PreflightCheck(ctx context.Context, req *conne
 	return c.preflightCheck.CallUnary(ctx, req)
 }
 
+// GetDependencyEdgeCascadeDelete calls
+// holos.console.v1.DeploymentService.GetDependencyEdgeCascadeDelete.
+func (c *deploymentServiceClient) GetDependencyEdgeCascadeDelete(ctx context.Context, req *connect.Request[v1.GetDependencyEdgeCascadeDeleteRequest]) (*connect.Response[v1.GetDependencyEdgeCascadeDeleteResponse], error) {
+	return c.getDependencyEdgeCascadeDelete.CallUnary(ctx, req)
+}
+
+// SetDependencyEdgeCascadeDelete calls
+// holos.console.v1.DeploymentService.SetDependencyEdgeCascadeDelete.
+func (c *deploymentServiceClient) SetDependencyEdgeCascadeDelete(ctx context.Context, req *connect.Request[v1.SetDependencyEdgeCascadeDeleteRequest]) (*connect.Response[v1.SetDependencyEdgeCascadeDeleteResponse], error) {
+	return c.setDependencyEdgeCascadeDelete.CallUnary(ctx, req)
+}
+
 // DeploymentServiceHandler is an implementation of the holos.console.v1.DeploymentService service.
 type DeploymentServiceHandler interface {
 	ListDeployments(context.Context, *connect.Request[v1.ListDeploymentsRequest]) (*connect.Response[v1.ListDeploymentsResponse], error)
@@ -342,6 +389,21 @@ type DeploymentServiceHandler interface {
 	// state. Phase 9 (HOL-963) wires the deployment form to call it before
 	// the user submits.
 	PreflightCheck(context.Context, *connect.Request[v1.PreflightCheckRequest]) (*connect.Response[v1.PreflightCheckResponse], error)
+	// GetDependencyEdgeCascadeDelete returns the current Spec.CascadeDelete
+	// value on the originating CRD (TemplateDependency or TemplateRequirement)
+	// that materialised a dependency edge for one of the project's singleton
+	// Deployments. Surfaced to the deployment detail page so the per-edge
+	// cascade-delete toggle can reflect live state. RBAC: requires
+	// deployments-read on the named project.
+	GetDependencyEdgeCascadeDelete(context.Context, *connect.Request[v1.GetDependencyEdgeCascadeDeleteRequest]) (*connect.Response[v1.GetDependencyEdgeCascadeDeleteResponse], error)
+	// SetDependencyEdgeCascadeDelete writes Spec.CascadeDelete on the
+	// originating CRD identified by `originating_object` to `cascade_delete`.
+	// Treated as the per-edge form-control writer for HOL-991 — turning the
+	// toggle off detaches the singleton's owner-ref from that dependent so
+	// native Kubernetes GC will not reap the singleton when the dependent is
+	// deleted (ADR-035 Decision 12 / HOL-954). RBAC: requires
+	// deployments-write on the named project.
+	SetDependencyEdgeCascadeDelete(context.Context, *connect.Request[v1.SetDependencyEdgeCascadeDeleteRequest]) (*connect.Response[v1.SetDependencyEdgeCascadeDeleteResponse], error)
 }
 
 // NewDeploymentServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -429,6 +491,18 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 		connect.WithSchema(deploymentServiceMethods.ByName("PreflightCheck")),
 		connect.WithHandlerOptions(opts...),
 	)
+	deploymentServiceGetDependencyEdgeCascadeDeleteHandler := connect.NewUnaryHandler(
+		DeploymentServiceGetDependencyEdgeCascadeDeleteProcedure,
+		svc.GetDependencyEdgeCascadeDelete,
+		connect.WithSchema(deploymentServiceMethods.ByName("GetDependencyEdgeCascadeDelete")),
+		connect.WithHandlerOptions(opts...),
+	)
+	deploymentServiceSetDependencyEdgeCascadeDeleteHandler := connect.NewUnaryHandler(
+		DeploymentServiceSetDependencyEdgeCascadeDeleteProcedure,
+		svc.SetDependencyEdgeCascadeDelete,
+		connect.WithSchema(deploymentServiceMethods.ByName("SetDependencyEdgeCascadeDelete")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.DeploymentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DeploymentServiceListDeploymentsProcedure:
@@ -457,6 +531,10 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 			deploymentServiceGetDeploymentPolicyStateHandler.ServeHTTP(w, r)
 		case DeploymentServicePreflightCheckProcedure:
 			deploymentServicePreflightCheckHandler.ServeHTTP(w, r)
+		case DeploymentServiceGetDependencyEdgeCascadeDeleteProcedure:
+			deploymentServiceGetDependencyEdgeCascadeDeleteHandler.ServeHTTP(w, r)
+		case DeploymentServiceSetDependencyEdgeCascadeDeleteProcedure:
+			deploymentServiceSetDependencyEdgeCascadeDeleteHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -516,4 +594,12 @@ func (UnimplementedDeploymentServiceHandler) GetDeploymentPolicyState(context.Co
 
 func (UnimplementedDeploymentServiceHandler) PreflightCheck(context.Context, *connect.Request[v1.PreflightCheckRequest]) (*connect.Response[v1.PreflightCheckResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.PreflightCheck is not implemented"))
+}
+
+func (UnimplementedDeploymentServiceHandler) GetDependencyEdgeCascadeDelete(context.Context, *connect.Request[v1.GetDependencyEdgeCascadeDeleteRequest]) (*connect.Response[v1.GetDependencyEdgeCascadeDeleteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.GetDependencyEdgeCascadeDelete is not implemented"))
+}
+
+func (UnimplementedDeploymentServiceHandler) SetDependencyEdgeCascadeDelete(context.Context, *connect.Request[v1.SetDependencyEdgeCascadeDeleteRequest]) (*connect.Response[v1.SetDependencyEdgeCascadeDeleteResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.SetDependencyEdgeCascadeDelete is not implemented"))
 }

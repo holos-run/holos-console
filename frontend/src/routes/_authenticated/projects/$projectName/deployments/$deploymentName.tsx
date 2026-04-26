@@ -37,8 +37,25 @@ import {
 } from '@/components/ui/table'
 import { ArrowLeft, CheckCircle2, ExternalLink, Info, TriangleAlert, XCircle } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import type { EnvVar, Event, ContainerStatus, Link as DeploymentLink } from '@/gen/holos/console/v1/deployments_pb'
-import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentPolicyState, useGetDeploymentRenderPreview, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
+import type {
+  ContainerStatus,
+  DeploymentDependency,
+  EnvVar,
+  Event,
+  Link as DeploymentLink,
+  OriginatingObject,
+} from '@/gen/holos/console/v1/deployments_pb'
+import {
+  useGetDependencyEdgeCascadeDelete,
+  useGetDeployment,
+  useGetDeploymentLogs,
+  useGetDeploymentPolicyState,
+  useGetDeploymentRenderPreview,
+  useGetDeploymentStatus,
+  useDeleteDeployment,
+  useSetDependencyEdgeCascadeDelete,
+  useUpdateDeployment,
+} from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 import { isSafeHttpUrl } from '@/lib/url'
 import { PolicySection } from '@/components/policy-drift/PolicySection'
@@ -53,6 +70,73 @@ function validateTab(value: unknown): DeploymentTab {
   if (value === 'logs') return value
   if (value === 'preview') return value
   return 'status'
+}
+
+/**
+ * formatOriginatingObject produces a "Kind: namespace/name" header for one
+ * dependency edge. Matches the SharedDependencyBadge tooltip text so the
+ * surfaces stay consistent.
+ */
+function formatOriginatingObject(o: OriginatingObject): string {
+  const ref = [o.namespace, o.name].filter(Boolean).join('/')
+  return o.kind ? `${o.kind}: ${ref}` : ref
+}
+
+/**
+ * DependencyEdgeCascadeRow renders a single per-edge cascade-delete toggle
+ * for the deployment detail page (HOL-991). It owns its own query +
+ * mutation so each edge is fetched and updated independently — the
+ * deployment detail page renders one row per `Deployment.dependencies`
+ * entry. The mutation is optimistic with rollback, so the UI flips
+ * immediately on click and reverts cleanly when the backend rejects the
+ * write.
+ */
+function DependencyEdgeCascadeRow({
+  project,
+  dependency,
+  canWrite,
+}: {
+  project: string
+  dependency: DeploymentDependency
+  canWrite: boolean
+}) {
+  const originating = dependency.originatingObject
+  const { data, isPending, isFetching, error } = useGetDependencyEdgeCascadeDelete(project, originating)
+  const mutation = useSetDependencyEdgeCascadeDelete(project)
+  const id = originating
+    ? `cascade-delete-${originating.kind}-${originating.namespace}-${originating.name}`
+    : 'cascade-delete-unknown'
+
+  if (!originating) return null
+
+  const handleChange = (next: boolean) => {
+    if (!canWrite) return
+    mutation.mutate({ originatingObject: originating, cascadeDelete: next })
+  }
+
+  return (
+    <div className="rounded border p-3 space-y-2" data-testid="dependency-edge-cascade-row">
+      <div className="text-xs font-medium text-muted-foreground">
+        {formatOriginatingObject(originating)}
+      </div>
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error.message}</AlertDescription>
+        </Alert>
+      )}
+      {mutation.error && (
+        <Alert variant="destructive">
+          <AlertDescription>{mutation.error.message}</AlertDescription>
+        </Alert>
+      )}
+      <CascadeDeleteToggle
+        id={id}
+        value={data ?? true}
+        onChange={handleChange}
+        disabled={!canWrite || isPending || isFetching || mutation.isPending}
+      />
+    </div>
+  )
 }
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/$deploymentName')({
@@ -280,10 +364,6 @@ export function DeploymentDetailPage({
   const [redeployArgs, setRedeployArgs] = useState<string[]>([])
   const [redeployEnv, setRedeployEnv] = useState<EnvVar[]>([])
   const [redeployError, setRedeployError] = useState<string | null>(null)
-  // cascadeDelete controls whether deleting this deployment cascades to the
-  // shared singleton it owns (HOL-963). Default true per the owner-ref model.
-  // NOTE: not yet wired to the backend proto (deferred AC).
-  const [cascadeDelete, setCascadeDelete] = useState(true)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -686,6 +766,32 @@ export function DeploymentDetailPage({
                 />
               </div>
 
+              {deployment && deployment.dependencies && deployment.dependencies.length > 0 && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-medium">Cascade Delete</h3>
+                  <p className="text-xs text-muted-foreground">
+                    One toggle per originating TemplateDependency / TemplateRequirement.
+                    Turning a toggle off decouples the singleton's lifecycle from this
+                    edge so it survives when the dependent is deleted.
+                  </p>
+                  <Separator />
+                  <div className="space-y-2" data-testid="dependency-edge-cascade-list">
+                    {deployment.dependencies.map((dep, idx) => (
+                      <DependencyEdgeCascadeRow
+                        key={
+                          dep.originatingObject
+                            ? `${dep.originatingObject.kind}/${dep.originatingObject.namespace}/${dep.originatingObject.name}`
+                            : `edge-${idx}`
+                        }
+                        project={projectName}
+                        dependency={dep}
+                        canWrite={canWrite}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {deployment && deployment.env && deployment.env.length > 0 && (
                 <div className="space-y-4">
                   <h3 className="text-sm font-medium">Environment Variables</h3>
@@ -902,16 +1008,6 @@ export function DeploymentDetailPage({
                 project={projectName}
                 value={redeployEnv}
                 onChange={setRedeployEnv}
-              />
-            </div>
-            <div>
-              <Label>Cascade Delete</Label>
-              <p className="text-xs text-muted-foreground mb-2">
-                Controls whether deleting this deployment also removes any shared singleton dependency Deployment it owns.
-              </p>
-              <CascadeDeleteToggle
-                value={cascadeDelete}
-                onChange={setCascadeDelete}
               />
             </div>
             {redeployError && (

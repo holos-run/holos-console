@@ -33,6 +33,13 @@ export const keys = {
       ['deployments', 'namespace-configmaps', project] as const,
     preflightCheck: (project: string, plannedDeploymentNames: string[]) =>
       ['deployments', 'preflight-check', project, ...plannedDeploymentNames] as const,
+    dependencyEdgeCascadeDelete: (
+      project: string,
+      kind: string,
+      namespace: string,
+      name: string,
+    ) =>
+      ['deployments', 'dependency-edge-cascade-delete', project, kind, namespace, name] as const,
   },
   folders: {
     list: (organization: string, parentType?: number, parentName?: string) =>

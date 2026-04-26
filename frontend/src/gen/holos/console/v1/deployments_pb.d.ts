@@ -1676,6 +1676,128 @@ export declare type PreflightCheckResponse = Message<"holos.console.v1.Preflight
 export declare const PreflightCheckResponseSchema: GenMessage<PreflightCheckResponse>;
 
 /**
+ * GetDependencyEdgeCascadeDeleteRequest reads the current Spec.CascadeDelete
+ * value on the originating CRD (TemplateDependency or TemplateRequirement)
+ * for a single dependency edge. The caller's project carries the RBAC scope.
+ *
+ * @generated from message holos.console.v1.GetDependencyEdgeCascadeDeleteRequest
+ */
+export declare type GetDependencyEdgeCascadeDeleteRequest = Message<"holos.console.v1.GetDependencyEdgeCascadeDeleteRequest"> & {
+  /**
+   * project is the project the caller is currently scoped to. RBAC: caller
+   * must hold deployments-read on this project.
+   *
+   * @generated from field: string project = 1;
+   */
+  project: string;
+
+  /**
+   * originating_object identifies the CRD whose Spec.CascadeDelete value
+   * is being read. The kind discriminates between TemplateDependency and
+   * TemplateRequirement; namespace and name address the object.
+   *
+   * @generated from field: holos.console.v1.OriginatingObject originating_object = 2;
+   */
+  originatingObject?: OriginatingObject;
+};
+
+/**
+ * Describes the message holos.console.v1.GetDependencyEdgeCascadeDeleteRequest.
+ * Use `create(GetDependencyEdgeCascadeDeleteRequestSchema)` to create a new message.
+ */
+export declare const GetDependencyEdgeCascadeDeleteRequestSchema: GenMessage<GetDependencyEdgeCascadeDeleteRequest>;
+
+/**
+ * GetDependencyEdgeCascadeDeleteResponse echoes the persisted value. Treats
+ * an unset Spec.CascadeDelete as true (the +kubebuilder:default=true on both
+ * CRD types) so callers do not have to know the API default.
+ *
+ * @generated from message holos.console.v1.GetDependencyEdgeCascadeDeleteResponse
+ */
+export declare type GetDependencyEdgeCascadeDeleteResponse = Message<"holos.console.v1.GetDependencyEdgeCascadeDeleteResponse"> & {
+  /**
+   * cascade_delete is the live value of Spec.CascadeDelete; an unset CRD
+   * field is reported as true to match the API-server default.
+   *
+   * @generated from field: bool cascade_delete = 1;
+   */
+  cascadeDelete: boolean;
+};
+
+/**
+ * Describes the message holos.console.v1.GetDependencyEdgeCascadeDeleteResponse.
+ * Use `create(GetDependencyEdgeCascadeDeleteResponseSchema)` to create a new message.
+ */
+export declare const GetDependencyEdgeCascadeDeleteResponseSchema: GenMessage<GetDependencyEdgeCascadeDeleteResponse>;
+
+/**
+ * SetDependencyEdgeCascadeDeleteRequest writes Spec.CascadeDelete on the
+ * originating CRD (TemplateDependency or TemplateRequirement) to a concrete
+ * value. The toggle is project-form scoped: the caller must hold
+ * deployments-write on `project` even when the originating CRD lives in a
+ * folder or organization namespace (per HOL-991, project owners are
+ * authoritative for cascade decoupling on edges that point into their
+ * project).
+ *
+ * @generated from message holos.console.v1.SetDependencyEdgeCascadeDeleteRequest
+ */
+export declare type SetDependencyEdgeCascadeDeleteRequest = Message<"holos.console.v1.SetDependencyEdgeCascadeDeleteRequest"> & {
+  /**
+   * project is the project the caller is currently scoped to. RBAC: caller
+   * must hold deployments-write on this project.
+   *
+   * @generated from field: string project = 1;
+   */
+  project: string;
+
+  /**
+   * originating_object identifies the CRD whose Spec.CascadeDelete value
+   * is being written. The kind discriminates between TemplateDependency and
+   * TemplateRequirement; namespace and name address the object.
+   *
+   * @generated from field: holos.console.v1.OriginatingObject originating_object = 2;
+   */
+  originatingObject?: OriginatingObject;
+
+  /**
+   * cascade_delete is the desired value to persist. Both true and false are
+   * explicit values — the field is non-optional on the wire so the toggle
+   * cannot accidentally write "leave unspecified" semantics.
+   *
+   * @generated from field: bool cascade_delete = 3;
+   */
+  cascadeDelete: boolean;
+};
+
+/**
+ * Describes the message holos.console.v1.SetDependencyEdgeCascadeDeleteRequest.
+ * Use `create(SetDependencyEdgeCascadeDeleteRequestSchema)` to create a new message.
+ */
+export declare const SetDependencyEdgeCascadeDeleteRequestSchema: GenMessage<SetDependencyEdgeCascadeDeleteRequest>;
+
+/**
+ * SetDependencyEdgeCascadeDeleteResponse echoes the value persisted to the
+ * CRD so optimistic updates on the client can reconcile against the
+ * authoritative state without a follow-up read.
+ *
+ * @generated from message holos.console.v1.SetDependencyEdgeCascadeDeleteResponse
+ */
+export declare type SetDependencyEdgeCascadeDeleteResponse = Message<"holos.console.v1.SetDependencyEdgeCascadeDeleteResponse"> & {
+  /**
+   * cascade_delete is the value persisted to Spec.CascadeDelete.
+   *
+   * @generated from field: bool cascade_delete = 1;
+   */
+  cascadeDelete: boolean;
+};
+
+/**
+ * Describes the message holos.console.v1.SetDependencyEdgeCascadeDeleteResponse.
+ * Use `create(SetDependencyEdgeCascadeDeleteResponseSchema)` to create a new message.
+ */
+export declare const SetDependencyEdgeCascadeDeleteResponseSchema: GenMessage<SetDependencyEdgeCascadeDeleteResponse>;
+
+/**
  * DeploymentPhase represents the lifecycle phase of a deployment.
  *
  * @generated from enum holos.console.v1.DeploymentPhase
@@ -1860,6 +1982,37 @@ export declare const DeploymentService: GenService<{
     methodKind: "unary";
     input: typeof PreflightCheckRequestSchema;
     output: typeof PreflightCheckResponseSchema;
+  },
+  /**
+   * GetDependencyEdgeCascadeDelete returns the current Spec.CascadeDelete
+   * value on the originating CRD (TemplateDependency or TemplateRequirement)
+   * that materialised a dependency edge for one of the project's singleton
+   * Deployments. Surfaced to the deployment detail page so the per-edge
+   * cascade-delete toggle can reflect live state. RBAC: requires
+   * deployments-read on the named project.
+   *
+   * @generated from rpc holos.console.v1.DeploymentService.GetDependencyEdgeCascadeDelete
+   */
+  getDependencyEdgeCascadeDelete: {
+    methodKind: "unary";
+    input: typeof GetDependencyEdgeCascadeDeleteRequestSchema;
+    output: typeof GetDependencyEdgeCascadeDeleteResponseSchema;
+  },
+  /**
+   * SetDependencyEdgeCascadeDelete writes Spec.CascadeDelete on the
+   * originating CRD identified by `originating_object` to `cascade_delete`.
+   * Treated as the per-edge form-control writer for HOL-991 — turning the
+   * toggle off detaches the singleton's owner-ref from that dependent so
+   * native Kubernetes GC will not reap the singleton when the dependent is
+   * deleted (ADR-035 Decision 12 / HOL-954). RBAC: requires
+   * deployments-write on the named project.
+   *
+   * @generated from rpc holos.console.v1.DeploymentService.SetDependencyEdgeCascadeDelete
+   */
+  setDependencyEdgeCascadeDelete: {
+    methodKind: "unary";
+    input: typeof SetDependencyEdgeCascadeDeleteRequestSchema;
+    output: typeof SetDependencyEdgeCascadeDeleteResponseSchema;
   },
 }>;
 

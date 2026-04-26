@@ -665,6 +665,11 @@ func (s *Server) Serve(ctx context.Context) error {
 			WithPolicyDriftChecker(deploymentDriftAdapter).
 			WithDependencyEdgeProvider(appliedRenderStateClient).
 			WithOrganizationGatewayResolver(gatewayResolver)
+		if s.controllerMgr != nil {
+			deploymentsHandler = deploymentsHandler.WithDependencyEdgeWriter(
+				deployments.NewDependencyEdgeCRDWriter(s.controllerMgr.GetClient()),
+			)
+		}
 		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
 		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
 	} else {

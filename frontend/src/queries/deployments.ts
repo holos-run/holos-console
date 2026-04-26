@@ -3,7 +3,11 @@ import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DeploymentService } from '@/gen/holos/console/v1/deployments_pb.js'
-import type { EnvVar, PlannedDeployment } from '@/gen/holos/console/v1/deployments_pb.js'
+import type {
+  EnvVar,
+  OriginatingObject,
+  PlannedDeployment,
+} from '@/gen/holos/console/v1/deployments_pb.js'
 import { useAuth } from '@/lib/auth'
 import { keys } from '@/queries/keys'
 
@@ -211,6 +215,78 @@ export function useListNamespaceConfigMaps(project: string) {
 //
 // The query is disabled when project is empty or plannedDeployments is empty,
 // since an empty planned set is not a meaningful request.
+// useGetDependencyEdgeCascadeDelete reads Spec.CascadeDelete on the originating
+// TemplateDependency / TemplateRequirement that materialised a singleton
+// Deployment (HOL-991). The hook is enabled only when the originating object
+// is fully addressable; the deployment detail page renders one toggle per
+// `Deployment.dependencies` edge so each edge fetches its own value.
+export function useGetDependencyEdgeCascadeDelete(
+  project: string,
+  originatingObject: OriginatingObject | undefined,
+) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(DeploymentService, transport), [transport])
+  const kind = originatingObject?.kind ?? ''
+  const namespace = originatingObject?.namespace ?? ''
+  const name = originatingObject?.name ?? ''
+  return useQuery({
+    queryKey: keys.deployments.dependencyEdgeCascadeDelete(project, kind, namespace, name),
+    queryFn: async () => {
+      const response = await client.getDependencyEdgeCascadeDelete({
+        project,
+        originatingObject,
+      })
+      return response.cascadeDelete
+    },
+    enabled:
+      isAuthenticated && !!project && !!kind && !!namespace && !!name,
+  })
+}
+
+// useSetDependencyEdgeCascadeDelete writes Spec.CascadeDelete back to the
+// originating CRD. The mutation cancels in-flight edge queries, optimistically
+// flips the cached value, rolls back on error, and invalidates on settle so
+// the next render reads the persisted value (HOL-991).
+export function useSetDependencyEdgeCascadeDelete(project: string) {
+  const transport = useTransport()
+  const client = useMemo(() => createClient(DeploymentService, transport), [transport])
+  const queryClient = useQueryClient()
+  return useMutation<
+    boolean,
+    Error,
+    { originatingObject: OriginatingObject; cascadeDelete: boolean },
+    { previous: boolean | undefined; queryKey: readonly unknown[] }
+  >({
+    mutationFn: async ({ originatingObject, cascadeDelete }) => {
+      const response = await client.setDependencyEdgeCascadeDelete({
+        project,
+        originatingObject,
+        cascadeDelete,
+      })
+      return response.cascadeDelete
+    },
+    onMutate: async ({ originatingObject, cascadeDelete }) => {
+      const queryKey = keys.deployments.dependencyEdgeCascadeDelete(
+        project,
+        originatingObject.kind,
+        originatingObject.namespace,
+        originatingObject.name,
+      )
+      await queryClient.cancelQueries({ queryKey })
+      const previous = queryClient.getQueryData<boolean>(queryKey)
+      queryClient.setQueryData(queryKey, cascadeDelete)
+      return { previous, queryKey }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx) queryClient.setQueryData(ctx.queryKey, ctx.previous)
+    },
+    onSettled: (_data, _err, _vars, ctx) => {
+      if (ctx) queryClient.invalidateQueries({ queryKey: ctx.queryKey })
+    },
+  })
+}
+
 export function usePreflightCheck(project: string, plannedDeployments: PlannedDeployment[]) {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()

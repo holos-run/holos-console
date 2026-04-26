@@ -157,6 +157,7 @@ type Handler struct {
 	statusCache              statuscache.Cache
 	policyDriftChecker       PolicyDriftChecker
 	dependencyEdgeProvider   DependencyEdgeProvider
+	dependencyEdgeWriter     DependencyEdgeWriter
 	gatewayResolver          OrganizationGatewayResolver
 }
 
@@ -261,6 +262,16 @@ func (h *Handler) WithStatusCache(c statuscache.Cache) *Handler {
 // shared-dependency UI affordances simply do not appear (HOL-963).
 func (h *Handler) WithDependencyEdgeProvider(p DependencyEdgeProvider) *Handler {
 	h.dependencyEdgeProvider = p
+	return h
+}
+
+// WithDependencyEdgeWriter wires the writer used by the per-edge cascade-
+// delete RPCs to read and persist Spec.CascadeDelete on the originating
+// TemplateDependency / TemplateRequirement CRD. A nil writer makes the RPCs
+// return CodeFailedPrecondition so the deployment-form toggle can render a
+// clear "feature not configured" message instead of a generic 500.
+func (h *Handler) WithDependencyEdgeWriter(w DependencyEdgeWriter) *Handler {
+	h.dependencyEdgeWriter = w
 	return h
 }
 
@@ -1697,7 +1708,6 @@ func (h *Handler) buildPlatformInput(ctx context.Context, project, namespace str
 	return pi
 }
 
-
 // stringSliceFromConfigMap decodes a JSON string slice from the given ConfigMap data key.
 func stringSliceFromConfigMap(cm *corev1.ConfigMap, key string) []string {
 	raw, ok := cm.Data[key]
@@ -1845,5 +1855,129 @@ func (h *Handler) PreflightCheck(
 	return connect.NewResponse(&consolev1.PreflightCheckResponse{
 		Collisions:       collisions,
 		VersionConflicts: versionConflicts,
+	}), nil
+}
+
+// validateOriginatingObject enforces the (kind, namespace, name) tuple on
+// inbound dependency-edge requests and constrains kind to the two CRDs that
+// declare a Spec.CascadeDelete field. Lives next to the handler so the same
+// validation applies to both Get and Set.
+func validateOriginatingObject(o *consolev1.OriginatingObject) error {
+	if o == nil {
+		return fmt.Errorf("originating_object is required")
+	}
+	switch o.GetKind() {
+	case KindTemplateDependency, KindTemplateRequirement:
+	default:
+		return fmt.Errorf("originating_object.kind must be %q or %q, got %q",
+			KindTemplateDependency, KindTemplateRequirement, o.GetKind())
+	}
+	if o.GetNamespace() == "" {
+		return fmt.Errorf("originating_object.namespace is required")
+	}
+	if o.GetName() == "" {
+		return fmt.Errorf("originating_object.name is required")
+	}
+	return nil
+}
+
+// GetDependencyEdgeCascadeDelete returns the current Spec.CascadeDelete value
+// from the originating TemplateDependency or TemplateRequirement. Used by the
+// deployment-form CascadeDeleteToggle to display the persisted value when the
+// page first loads. RBAC mirrors EditDeployment: the caller must have
+// project-scoped DeploymentsRead — the originating CRD's own namespace is not
+// re-checked, by design (the toggle lives inside the deployment workflow).
+func (h *Handler) GetDependencyEdgeCascadeDelete(
+	ctx context.Context,
+	req *connect.Request[consolev1.GetDependencyEdgeCascadeDeleteRequest],
+) (*connect.Response[consolev1.GetDependencyEdgeCascadeDeleteResponse], error) {
+	project := req.Msg.GetProject()
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+	}
+	if err := validateOriginatingObject(req.Msg.GetOriginatingObject()); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsRead); err != nil {
+		return nil, err
+	}
+
+	if h.dependencyEdgeWriter == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("dependency-edge writer not configured"))
+	}
+
+	o := req.Msg.GetOriginatingObject()
+	value, err := h.dependencyEdgeWriter.GetCascadeDelete(ctx, o.GetKind(), o.GetNamespace(), o.GetName())
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "dependency edge cascade-delete read",
+		slog.String("project", project),
+		slog.String("kind", o.GetKind()),
+		slog.String("namespace", o.GetNamespace()),
+		slog.String("name", o.GetName()),
+		slog.Bool("cascade_delete", value),
+		slog.String("sub", claims.Sub),
+	)
+
+	return connect.NewResponse(&consolev1.GetDependencyEdgeCascadeDeleteResponse{
+		CascadeDelete: value,
+	}), nil
+}
+
+// SetDependencyEdgeCascadeDelete persists Spec.CascadeDelete on the
+// originating TemplateDependency or TemplateRequirement. RBAC requires
+// project-scoped DeploymentsWrite — same scope as EditDeployment so a project
+// owner can decouple their deployment from a parent's lifecycle without also
+// being granted write on the originating CRD's namespace.
+func (h *Handler) SetDependencyEdgeCascadeDelete(
+	ctx context.Context,
+	req *connect.Request[consolev1.SetDependencyEdgeCascadeDeleteRequest],
+) (*connect.Response[consolev1.SetDependencyEdgeCascadeDeleteResponse], error) {
+	project := req.Msg.GetProject()
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+	}
+	if err := validateOriginatingObject(req.Msg.GetOriginatingObject()); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsWrite); err != nil {
+		return nil, err
+	}
+
+	if h.dependencyEdgeWriter == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition,
+			fmt.Errorf("dependency-edge writer not configured"))
+	}
+
+	o := req.Msg.GetOriginatingObject()
+	value := req.Msg.GetCascadeDelete()
+	if err := h.dependencyEdgeWriter.SetCascadeDelete(ctx, o.GetKind(), o.GetNamespace(), o.GetName(), value); err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	slog.InfoContext(ctx, "dependency edge cascade-delete written",
+		slog.String("project", project),
+		slog.String("kind", o.GetKind()),
+		slog.String("namespace", o.GetNamespace()),
+		slog.String("name", o.GetName()),
+		slog.Bool("cascade_delete", value),
+		slog.String("sub", claims.Sub),
+	)
+
+	return connect.NewResponse(&consolev1.SetDependencyEdgeCascadeDeleteResponse{
+		CascadeDelete: value,
 	}), nil
 }
