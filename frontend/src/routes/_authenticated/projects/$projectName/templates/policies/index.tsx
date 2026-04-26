@@ -21,6 +21,16 @@ import { useOrg } from '@/lib/org-context'
 import { namespaceForOrg } from '@/lib/scope-labels'
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Convert a proto Timestamp to an ISO-8601 string for ResourceGrid createdAt. */
+function timestampToISOString(ts: { seconds: bigint } | undefined): string {
+  if (!ts) return ''
+  return new Date(Number(ts.seconds) * 1000).toISOString()
+}
+
+// ---------------------------------------------------------------------------
 // Route definition
 // ---------------------------------------------------------------------------
 
@@ -76,7 +86,7 @@ export function TemplatePoliciesIndexPage({
         parentLabel: selectedOrg ?? '',
         displayName: p.displayName || p.name,
         description: p.description ?? '',
-        createdAt: p.createdAt,
+        createdAt: timestampToISOString(p.createdAt),
         detailHref: `/organizations/${selectedOrg}/template-policies/${p.name}`,
       })),
     [policies, namespace, selectedOrg],

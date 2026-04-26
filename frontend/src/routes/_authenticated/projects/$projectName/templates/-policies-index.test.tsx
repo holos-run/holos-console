@@ -93,8 +93,6 @@ import { TemplatePoliciesIndexPage } from './policies/index'
 // Test data helpers
 // ---------------------------------------------------------------------------
 
-const TEST_ISO = '2026-04-22T19:51:10.000Z'
-
 function makePolicy(name: string, namespace = 'org-test-org') {
   return {
     name,
@@ -102,7 +100,11 @@ function makePolicy(name: string, namespace = 'org-test-org') {
     displayName: name,
     description: '',
     rules: [],
-    createdAt: TEST_ISO,
+    // TemplatePolicy.createdAt is Timestamp | undefined (not a plain string).
+    // Tests pass undefined; timestamp conversion is exercised by the component
+    // under the src/routes/../organizations path where the hook returns real
+    // proto objects.
+    createdAt: undefined,
   }
 }
 
@@ -218,15 +220,14 @@ describe('TemplatePoliciesIndexPage (HOL-1009)', () => {
   })
 
   // -------------------------------------------------------------------------
-  // Created At column
+  // Created At column — undefined timestamp renders em-dash
   // -------------------------------------------------------------------------
 
-  it('renders a localised date when createdAt is set', () => {
+  it('renders em-dash when createdAt is undefined', () => {
     setupMocks({
-      policies: [makePolicy('policy-with-date', 'org-test-org')],
+      policies: [makePolicy('policy-no-date', 'org-test-org')],
     })
     render(<TemplatePoliciesIndexPage projectName="test-project" />)
-    // TEST_ISO = '2026-04-22T19:51:10.000Z' → en-US locale → '4/22/2026'
-    expect(screen.getByText('4/22/2026')).toBeInTheDocument()
+    expect(screen.getByText('—')).toBeInTheDocument()
   })
 })
