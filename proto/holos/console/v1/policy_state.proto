@@ -23,13 +23,13 @@ option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;con
 // proto no longer needs a TEMPLATE_SCOPE_PROJECT carve-out.
 
 // LinkedTemplateRef is a (namespace, name) reference to a template used in
-// the explicit linking list (ADR 021 Decision 5). The resolver classifies
-// the namespace into its hierarchy kind (organization, folder, project) at
-// render time; callers supply the namespace only.
+// the explicit linking list (ADR 021 Decision 5). The resolver classifies the
+// namespace as organization, folder, or project at render time; callers supply
+// the namespace only.
 message LinkedTemplateRef {
   // namespace is the Kubernetes namespace that owns the linked template. The
-  // resolver classifies the namespace into its hierarchy kind (organization,
-  // folder, project) at render time — callers supply the namespace only.
+  // resolver classifies the namespace as organization, folder, or project at
+  // render time — callers supply the namespace only.
   string namespace = 1;
   // name is the template name.
   string name = 2;

@@ -140,12 +140,12 @@ export const TemplatePolicyKind = /*@__PURE__*/
   tsEnum(TemplatePolicyKindSchema);
 
 /**
- * TemplatePolicyService manages TemplatePolicy resources, which declaratively
- * attach templates to projects through REQUIRE/EXCLUDE rules. Policies replace
- * the legacy `bool mandatory` flag previously carried on Template and
- * LinkableTemplate (removed in HOL-555). The only way to force a template onto
- * every project — or to block one from matching projects — is to author a
- * TemplatePolicy.
+ * TemplatePolicyService manages TemplatePolicy resources, which declare
+ * REQUIRE/EXCLUDE rules that TemplatePolicyBinding objects attach to explicit
+ * render targets. Policies replace the legacy `bool mandatory` flag previously
+ * carried on Template and LinkableTemplate (removed in HOL-555). A policy by
+ * itself does not affect any render target; a TemplatePolicyBinding must name
+ * the policy and the project templates or deployments it applies to.
  *
  * Storage MUST live in a folder or organization namespace (`namespace`).
  * Project-namespace storage is forbidden and is enforced by the HOL-618
@@ -154,9 +154,10 @@ export const TemplatePolicyKind = /*@__PURE__*/
  * discriminator for that rejection (HOL-619).
  *
  * Backend handler wiring (HOL-556), storage enforcement, and render-time
- * resolver integration (HOL-567) are complete; the resolver consults
- * TemplatePolicy ConfigMaps to pin REQUIRE templates and suppress EXCLUDE
- * templates for every matching project render.
+ * resolver integration (HOL-567) are complete; the resolver consults matching
+ * TemplatePolicyBinding objects, then reads their TemplatePolicy ConfigMaps to
+ * pin REQUIRE templates or suppress EXCLUDE templates for the named render
+ * targets.
  *
  * @generated from service holos.console.v1.TemplatePolicyService
  */

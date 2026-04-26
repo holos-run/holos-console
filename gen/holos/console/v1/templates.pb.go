@@ -1270,8 +1270,8 @@ func (x *CloneTemplateResponse) GetName() string {
 type ListLinkableTemplatesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// namespace is the starting namespace (e.g. a project namespace for a
-	// project template). The handler walks up the hierarchy and returns enabled
-	// ancestor templates.
+	// project template). The handler walks ancestor scopes and returns enabled
+	// templates from those scopes.
 	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// include_self_scope, when true, also returns enabled templates at the
 	// request's own namespace in addition to ancestor-namespace templates.
@@ -2018,7 +2018,7 @@ type SearchTemplatesRequest struct {
 	// organization, when non-empty, restricts results to templates owned by a
 	// namespace reachable from the given root organization. Intended for
 	// multi-org deployments where the caller wants to scope a search to one
-	// organization without enumerating every descendant namespace.
+	// organization without enumerating every namespace under that root.
 	Organization  string `protobuf:"bytes,4,opt,name=organization,proto3" json:"organization,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

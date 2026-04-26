@@ -22,14 +22,14 @@ const (
 )
 
 // LinkedTemplateRef is a (namespace, name) reference to a template used in
-// the explicit linking list (ADR 021 Decision 5). The resolver classifies
-// the namespace into its hierarchy kind (organization, folder, project) at
-// render time; callers supply the namespace only.
+// the explicit linking list (ADR 021 Decision 5). The resolver classifies the
+// namespace as organization, folder, or project at render time; callers supply
+// the namespace only.
 type LinkedTemplateRef struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// namespace is the Kubernetes namespace that owns the linked template. The
-	// resolver classifies the namespace into its hierarchy kind (organization,
-	// folder, project) at render time — callers supply the namespace only.
+	// resolver classifies the namespace as organization, folder, or project at
+	// render time — callers supply the namespace only.
 	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// name is the template name.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
