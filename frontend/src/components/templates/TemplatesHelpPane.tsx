@@ -1,9 +1,15 @@
 /**
  * TemplatesHelpPane — static help content for the Templates index page.
  *
- * Explains the three template-family resource kinds and how they relate.
+ * Explains all template-family resource kinds and how they relate.
  * Rendered inside a shadcn Sheet (side="right") toggled by the ? icon
  * in the Templates Card header.
+ *
+ * The Templates section of the sidebar is a collapsible group with three
+ * sub-groups (HOL-1014):
+ *   - Policy: Template Policies and Policy Bindings (HOL-1009)
+ *   - Dependencies: Template Dependencies and Requirements (HOL-1013)
+ *   - Grants: Template Grants (HOL-1013)
  *
  * Keep copy in TSX (not MDX) to avoid any build-system changes (HOL-860).
  */
@@ -28,7 +34,7 @@ export function TemplatesHelpPane({ open, onOpenChange }: TemplatesHelpPaneProps
         <SheetHeader>
           <SheetTitle>Templates — how it works</SheetTitle>
           <SheetDescription>
-            Three resource kinds work together to let platform teams govern
+            Seven resource kinds work together to let platform teams govern
             configuration templates across projects.
           </SheetDescription>
         </SheetHeader>
@@ -71,11 +77,44 @@ export function TemplatesHelpPane({ open, onOpenChange }: TemplatesHelpPaneProps
             </p>
           </section>
 
+          {/* TemplateDependency */}
+          <section data-testid="help-section-template-dependency">
+            <h3 className="font-semibold text-base mb-1">Template Dependency</h3>
+            <p className="text-muted-foreground leading-relaxed">
+              A <strong>Template Dependency</strong> declares that one template requires
+              another template to be deployed first. Dependencies are project-scoped and
+              express ordering constraints so the platform can resolve a correct deployment
+              sequence.
+            </p>
+          </section>
+
+          {/* TemplateRequirement */}
+          <section data-testid="help-section-template-requirement">
+            <h3 className="font-semibold text-base mb-1">Template Requirement</h3>
+            <p className="text-muted-foreground leading-relaxed">
+              A <strong>Template Requirement</strong> records that a template requires a
+              specific capability or resource to be present before it can render correctly.
+              Requirements are checked at preview and deployment time to surface missing
+              prerequisites early.
+            </p>
+          </section>
+
+          {/* TemplateGrant */}
+          <section data-testid="help-section-template-grant">
+            <h3 className="font-semibold text-base mb-1">Template Grant</h3>
+            <p className="text-muted-foreground leading-relaxed">
+              A <strong>Template Grant</strong> gives a project permission to consume a
+              template that is owned by a different organization or folder. Without a grant,
+              cross-scope template references are denied by the policy resolver.
+            </p>
+          </section>
+
           {/* Summary */}
           <section data-testid="help-section-summary">
             <p className="text-muted-foreground leading-relaxed border-t pt-4">
-              Authors write templates; platform, SM, and ISRM teams attach policy via
-              bindings; product teams deploy.
+              Authors write templates; platform, SM, and ISRM teams attach policies via
+              bindings; dependency and requirement records express ordering and capability
+              constraints; grants enable cross-scope sharing; product teams deploy.
             </p>
           </section>
         </div>

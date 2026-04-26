@@ -93,6 +93,27 @@ entry and WorkspaceMenu improvements. Key files:
 | `docs/agents/frontend-audit-2026-04.md` | HOL-943 | Phase 2 audit baseline — current frontend architecture, gaps, and target conventions |
 | `frontend/src/queries/templateDependencies.ts` | HOL-986 | `useListTemplateDependents` / `useListDeploymentDependents` reverse-dep query hooks |
 | `frontend/src/components/templates/ReverseDependents.tsx` | HOL-987 | "Who depends on me" section with ADR-032 scope badges (instance / project / remote-project) |
+| `console/templatepolicies/` | HOL-1009 | ConnectRPC handler + K8s adapter for TemplatePolicy CRUD |
+| `console/templatepolicybindings/` | HOL-1009 | ConnectRPC handler + K8s adapter for TemplatePolicyBinding CRUD |
+| `proto/holos/console/v1/template_policies.proto` | HOL-1009 | TemplatePolicy service proto (List, Get, Create, Update, Delete) |
+| `proto/holos/console/v1/template_policy_bindings.proto` | HOL-1009 | TemplatePolicyBinding service proto |
+| `frontend/src/routes/_authenticated/projects/$projectName/templates/policies/index.tsx` | HOL-1009 | Template Policies ResourceGrid page |
+| `frontend/src/routes/_authenticated/projects/$projectName/templates/policy-bindings/index.tsx` | HOL-1009 | Template Policy Bindings ResourceGrid page |
+| `console/templatedependencies/` | HOL-1010 | ConnectRPC handler for TemplateDependency CRUD |
+| `proto/holos/console/v1/template_dependencies.proto` | HOL-1010 | TemplateDependency service proto |
+| `console/templaterequirements/` | HOL-1011 | ConnectRPC handler for TemplateRequirement CRUD |
+| `proto/holos/console/v1/template_requirements.proto` | HOL-1011 | TemplateRequirement service proto |
+| `console/templategrants/` | HOL-1012 | ConnectRPC handler for TemplateGrant CRUD |
+| `proto/holos/console/v1/template_grants.proto` | HOL-1012 | TemplateGrant service proto |
+| `frontend/src/queries/templatePolicies.ts` | HOL-1013 | TanStack Query hooks for TemplatePolicy (list/get/create/update/delete) |
+| `frontend/src/queries/templatePolicyBindings.ts` | HOL-1013 | TanStack Query hooks for TemplatePolicyBinding |
+| `frontend/src/queries/templateDependencies.ts` (CRUD hooks) | HOL-1013 | TanStack Query CRUD hooks for TemplateDependency |
+| `frontend/src/queries/templateRequirements.ts` | HOL-1013 | TanStack Query hooks for TemplateRequirement |
+| `frontend/src/queries/templateGrants.ts` | HOL-1013 | TanStack Query hooks for TemplateGrant |
+| `frontend/src/routes/_authenticated/projects/$projectName/templates/dependencies/index.tsx` | HOL-1013 | Template Dependencies ResourceGrid page |
+| `frontend/src/routes/_authenticated/projects/$projectName/templates/requirements/index.tsx` | HOL-1013 | Template Requirements ResourceGrid page |
+| `frontend/src/routes/_authenticated/projects/$projectName/templates/grants/index.tsx` | HOL-1013 | Template Grants ResourceGrid page |
+| `frontend/src/components/app-sidebar.tsx` (nested Templates nav) | HOL-1014 | Collapsible Templates sidebar with Policy / Dependencies / Grants sub-groups |
 
 **Deleted (HOL-914)**: `frontend/src/components/resource-manager/` and
 `frontend/src/routes/_authenticated/resource-manager/` were removed when the
