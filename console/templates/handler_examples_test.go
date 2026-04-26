@@ -1,7 +1,7 @@
 // handler_examples_test.go exercises the ListTemplateExamples RPC introduced
 // in HOL-797. The acceptance criteria are:
 //
-//   - The happy path returns exactly six examples (one per embedded *.cue file).
+//   - The happy path returns exactly ten examples (one per embedded *.cue file).
 //   - Results are sorted by name ascending so the UI can rely on a stable order.
 //   - Each entry has non-empty DisplayName, Description, and CueTemplate.
 package templates
@@ -91,7 +91,7 @@ func TestListTemplateExamples_SortedByName(t *testing.T) {
 	}
 }
 
-// TestListTemplateExamples_KnownNames verifies the six expected built-in
+// TestListTemplateExamples_KnownNames verifies the ten expected built-in
 // example slugs are present, anchoring the test to the actual embedded files.
 func TestListTemplateExamples_KnownNames(t *testing.T) {
 	handler := newExamplesTestHandler(t)
