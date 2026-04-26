@@ -593,3 +593,58 @@ func TestFolderResolver_WildcardBindingFolderFanout(t *testing.T) {
 		t.Errorf("roses/project-template: DEPLOYMENT {*,*} must not match PROJECT_TEMPLATE; got %v", names)
 	}
 }
+
+// TestFolderResolver_PolicyWithoutBindingDoesNotApply is a permanent
+// guardrail (HOL-999) asserting that a TemplatePolicy stored in an org
+// namespace contributes zero rules to Resolve() for any descendant project
+// when no matching TemplatePolicyBinding exists.
+//
+// Rationale: TemplatePolicy enforcement is binding-only. A policy sitting in
+// the ancestor chain is inert until a TemplatePolicyBinding explicitly
+// selects a render target. This test exists so that any future change that
+// reintroduces ancestor-walk-as-cascade behavior fails loudly.
+func TestFolderResolver_PolicyWithoutBindingDoesNotApply(t *testing.T) {
+	client, r, ns := buildFixture()
+	walker := &resolver.Walker{Client: client, Resolver: r}
+
+	// Seed a policy with a REQUIRE rule in the org namespace.
+	// No TemplatePolicyBinding is created — the policy is intentionally
+	// unbound.
+	policies := map[string][]templatesv1alpha1.TemplatePolicy{
+		ns["org"]: {
+			policyCRD(ns["org"], "unbound-audit", []templatesv1alpha1.TemplatePolicyRule{
+				requireRuleCRD(v1alpha2.TemplateScopeOrganization, "acme", "audit-policy"),
+			}),
+		},
+	}
+
+	// Empty binding lister — no bindings exist anywhere.
+	bl := &bindingListerFromMap{items: nil}
+	pl := &policyListerFromClient{items: policies}
+	fr := newFolderResolverWithBindingsForTest(pl, bl, walker, r)
+
+	ctx := context.Background()
+
+	// Verify all three descendant project namespaces contribute zero rules.
+	descendants := []struct {
+		label string
+		ns    string
+	}{
+		{"projectOrchids (direct child of org)", ns["projectOrchids"]},
+		{"projectLilies (grandchild of org via eng)", ns["projectLilies"]},
+		{"projectRoses (great-grandchild of org via eng/team-a)", ns["projectRoses"]},
+	}
+	for _, d := range descendants {
+		d := d
+		t.Run(d.label, func(t *testing.T) {
+			got, err := fr.Resolve(ctx, d.ns, TargetKindDeployment, "api")
+			if err != nil {
+				t.Fatalf("Resolve returned unexpected error: %v", err)
+			}
+			if len(got) != 0 {
+				t.Errorf("unbound policy contributed rules to %s: got %v, want empty",
+					d.label, refNames(got))
+			}
+		})
+	}
+}

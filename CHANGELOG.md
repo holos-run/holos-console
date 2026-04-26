@@ -4,6 +4,21 @@ All notable changes to holos-console are documented here.
 
 ## [Unreleased]
 
+### Chore — Purge cascade/hierarchical-apply TemplatePolicy terminology (HOL-992 / HOL-993)
+
+TemplatePolicy enforcement is now binding-only: a policy in an ancestor namespace
+has no effect unless a `TemplatePolicyBinding` explicitly selects the render target.
+The cascade/hierarchical-apply model and all associated terminology have been removed.
+
+- Renamed wildcard cascade tests to clarify binding-based scope semantics (HOL-995).
+- Purged cascade and hierarchical-policy prose from proto comments (HOL-996).
+- Rewrote `TemplatesHelpPane` to explain binding-only enforcement (HOL-997).
+- Updated ADR 034 and ADR 035 to reflect binding-only enforcement (HOL-998).
+- Added `TestFolderResolver_PolicyWithoutBindingDoesNotApply` regression test as a
+  permanent guardrail: asserts that a `TemplatePolicy` in an org namespace with no
+  matching `TemplatePolicyBinding` contributes zero rules to `Resolve()` for any
+  descendant project (HOL-999).
+
 ### Added — Deployment Dependencies: TemplateGrant, TemplateDependency, TemplateRequirement, Deployment CRD (HOL-954)
 
 Implements [ADR 035](docs/adrs/035-deployment-dependencies.md): three new tightly-scoped
