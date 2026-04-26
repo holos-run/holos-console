@@ -3,6 +3,7 @@ package deployments
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -11,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/fake"
+	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
@@ -225,6 +227,76 @@ func TestHandler_SetDependencyEdgeCascadeDelete(t *testing.T) {
 		}
 	})
 
+	t.Run("editor can write", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
+		stub := &stubDependencyEdgeWriter{}
+		h := defaultHandler(fakeClient, pr).WithDependencyEdgeWriter(stub)
+		ctx := authedCtx("alice@example.com", nil)
+
+		_, err := h.SetDependencyEdgeCascadeDelete(ctx, connect.NewRequest(&consolev1.SetDependencyEdgeCascadeDeleteRequest{
+			Project:           "my-project",
+			OriginatingObject: newOriginating(KindTemplateDependency, "prj-other", "edge-1"),
+			CascadeDelete:     false,
+		}))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if stub.setCalls != 1 {
+			t.Errorf("setCalls = %d, want 1", stub.setCalls)
+		}
+	})
+
+	t.Run("missing namespace rejected", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "owner"}}
+		h := defaultHandler(fakeClient, pr).WithDependencyEdgeWriter(&stubDependencyEdgeWriter{})
+		ctx := authedCtx("alice@example.com", nil)
+
+		_, err := h.SetDependencyEdgeCascadeDelete(ctx, connect.NewRequest(&consolev1.SetDependencyEdgeCascadeDeleteRequest{
+			Project:           "my-project",
+			OriginatingObject: newOriginating(KindTemplateDependency, "", "edge-1"),
+			CascadeDelete:     true,
+		}))
+		if got := connect.CodeOf(err); got != connect.CodeInvalidArgument {
+			t.Errorf("code = %v, want InvalidArgument", got)
+		}
+	})
+
+	t.Run("missing name rejected", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "owner"}}
+		h := defaultHandler(fakeClient, pr).WithDependencyEdgeWriter(&stubDependencyEdgeWriter{})
+		ctx := authedCtx("alice@example.com", nil)
+
+		_, err := h.SetDependencyEdgeCascadeDelete(ctx, connect.NewRequest(&consolev1.SetDependencyEdgeCascadeDeleteRequest{
+			Project:           "my-project",
+			OriginatingObject: newOriginating(KindTemplateDependency, "prj-other", ""),
+			CascadeDelete:     true,
+		}))
+		if got := connect.CodeOf(err); got != connect.CodeInvalidArgument {
+			t.Errorf("code = %v, want InvalidArgument", got)
+		}
+	})
+
+	t.Run("forbidden mapped to PermissionDenied", func(t *testing.T) {
+		fakeClient := fake.NewClientset(projectNS("my-project"))
+		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "owner"}}
+		forbiddenErr := k8serrors.NewForbidden(schema.GroupResource{Group: "templates.holos.run", Resource: "templatedependencies"}, "edge-1", errors.New("rbac"))
+		stub := &stubDependencyEdgeWriter{setErr: forbiddenErr}
+		h := defaultHandler(fakeClient, pr).WithDependencyEdgeWriter(stub)
+		ctx := authedCtx("alice@example.com", nil)
+
+		_, err := h.SetDependencyEdgeCascadeDelete(ctx, connect.NewRequest(&consolev1.SetDependencyEdgeCascadeDeleteRequest{
+			Project:           "my-project",
+			OriginatingObject: newOriginating(KindTemplateDependency, "prj-other", "edge-1"),
+			CascadeDelete:     true,
+		}))
+		if got := connect.CodeOf(err); got != connect.CodePermissionDenied {
+			t.Errorf("code = %v, want PermissionDenied", got)
+		}
+	})
+
 	t.Run("viewer cannot write", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
 		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
@@ -372,6 +444,59 @@ func TestDependencyEdgeCRDWriter_RoundTrip(t *testing.T) {
 	if !IsNotFound(err) {
 		t.Errorf("missing object: IsNotFound(err)=false, err=%v", err)
 	}
+}
+
+// flakyTemplateDependencyClient wraps a controller-runtime client and returns
+// Conflict on the first updateConflicts Update calls against
+// TemplateDependency. Used to verify that SetCascadeDelete recovers when a
+// reconciler write races us between Get and Update.
+type flakyTemplateDependencyClient struct {
+	ctrlclient.Client
+	updateConflicts int
+}
+
+func (f *flakyTemplateDependencyClient) Update(ctx context.Context, obj ctrlclient.Object, opts ...ctrlclient.UpdateOption) error {
+	if _, ok := obj.(*templatesv1alpha1.TemplateDependency); ok && f.updateConflicts > 0 {
+		f.updateConflicts--
+		return k8serrors.NewConflict(
+			schema.GroupResource{Group: "templates.holos.run", Resource: "templatedependencies"},
+			obj.GetName(),
+			fmt.Errorf("simulated conflict"),
+		)
+	}
+	return f.Client.Update(ctx, obj, opts...)
+}
+
+func TestDependencyEdgeCRDWriter_SetRetriesOnConflict(t *testing.T) {
+	s := runtime.NewScheme()
+	if err := templatesv1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("AddToScheme: %v", err)
+	}
+
+	td := &templatesv1alpha1.TemplateDependency{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "prj-alpha", Name: "td-1"},
+	}
+	base := ctrlfake.NewClientBuilder().WithScheme(s).WithObjects(td).Build()
+
+	t.Run("recovers within budget", func(t *testing.T) {
+		flaky := &flakyTemplateDependencyClient{Client: base, updateConflicts: setCascadeDeleteMaxAttempts - 1}
+		w := NewDependencyEdgeCRDWriter(flaky)
+		if err := w.SetCascadeDelete(context.Background(), KindTemplateDependency, "prj-alpha", "td-1", false); err != nil {
+			t.Fatalf("SetCascadeDelete: %v", err)
+		}
+		if flaky.updateConflicts != 0 {
+			t.Errorf("updateConflicts remaining = %d, want 0 (writer should have retried until success)", flaky.updateConflicts)
+		}
+	})
+
+	t.Run("returns conflict when budget exhausted", func(t *testing.T) {
+		flaky := &flakyTemplateDependencyClient{Client: base, updateConflicts: setCascadeDeleteMaxAttempts + 1}
+		w := NewDependencyEdgeCRDWriter(flaky)
+		err := w.SetCascadeDelete(context.Background(), KindTemplateDependency, "prj-alpha", "td-1", true)
+		if !k8serrors.IsConflict(err) {
+			t.Fatalf("err = %v, want IsConflict=true", err)
+		}
+	})
 }
 
 func TestIsNotFound(t *testing.T) {

@@ -1484,7 +1484,7 @@ describe('DeploymentDetailPage', () => {
         error: null,
       })
       render(<DeploymentDetailPage />)
-      const sw = screen.getByTestId('cascade-delete-toggle') as HTMLButtonElement
+      const sw = screen.getByTestId('cascade-delete-TemplateDependency-prj-test-edge-1') as HTMLButtonElement
       expect(sw.getAttribute('data-state')).toBe('unchecked')
     })
 
@@ -1503,7 +1503,7 @@ describe('DeploymentDetailPage', () => {
         error: null,
       })
       render(<DeploymentDetailPage />)
-      await user.click(screen.getByTestId('cascade-delete-toggle'))
+      await user.click(screen.getByTestId('cascade-delete-TemplateDependency-prj-test-edge-1'))
       expect(mutate).toHaveBeenCalledWith({
         originatingObject: edgeOne.originatingObject,
         cascadeDelete: false,
@@ -1518,7 +1518,7 @@ describe('DeploymentDetailPage', () => {
         error: null,
       })
       render(<DeploymentDetailPage />)
-      const sw = screen.getByTestId('cascade-delete-toggle') as HTMLButtonElement
+      const sw = screen.getByTestId('cascade-delete-TemplateDependency-prj-test-edge-1') as HTMLButtonElement
       expect(sw.disabled).toBe(true)
     })
 
@@ -1537,7 +1537,7 @@ describe('DeploymentDetailPage', () => {
         error: null,
       })
       render(<DeploymentDetailPage />)
-      await user.click(screen.getByTestId('cascade-delete-toggle'))
+      await user.click(screen.getByTestId('cascade-delete-TemplateDependency-prj-test-edge-1'))
       expect(mutate).not.toHaveBeenCalled()
     })
 

@@ -47,7 +47,7 @@ export function CascadeDeleteToggle({
         checked={value}
         onCheckedChange={onChange}
         disabled={disabled}
-        data-testid="cascade-delete-toggle"
+        data-testid={id}
       />
       <div>
         <Label htmlFor={id} className="cursor-pointer font-normal">

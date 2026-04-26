@@ -78,27 +78,48 @@ func (w *DependencyEdgeCRDWriter) GetCascadeDelete(ctx context.Context, kind, na
 	}
 }
 
-// SetCascadeDelete implements DependencyEdgeWriter.
+// setCascadeDeleteMaxAttempts caps the conflict-retry loop in
+// SetCascadeDelete. Mirrors the same bound used in
+// console/policyresolver/applied_state.go so the two paths are consistent
+// when fighting reconciler write traffic.
+const setCascadeDeleteMaxAttempts = 3
+
+// SetCascadeDelete implements DependencyEdgeWriter. Get/Update is retried on
+// resource-version conflicts (HTTP 409) up to setCascadeDeleteMaxAttempts
+// times so a concurrent reconciler write (which only touches ownerReferences
+// and status) does not surface as CodeInternal to the user. Other errors are
+// returned to the caller unchanged so the handler can map them through the
+// shared mapK8sError helper.
 func (w *DependencyEdgeCRDWriter) SetCascadeDelete(ctx context.Context, kind, namespace, name string, value bool) error {
 	key := types.NamespacedName{Namespace: namespace, Name: name}
-	switch kind {
-	case KindTemplateDependency:
-		var d templatesv1alpha1.TemplateDependency
-		if err := w.client.Get(ctx, key, &d); err != nil {
-			return err
+	var lastErr error
+	for attempt := 0; attempt < setCascadeDeleteMaxAttempts; attempt++ {
+		switch kind {
+		case KindTemplateDependency:
+			var d templatesv1alpha1.TemplateDependency
+			if err := w.client.Get(ctx, key, &d); err != nil {
+				return err
+			}
+			d.Spec.CascadeDelete = &value
+			lastErr = w.client.Update(ctx, &d)
+		case KindTemplateRequirement:
+			var r templatesv1alpha1.TemplateRequirement
+			if err := w.client.Get(ctx, key, &r); err != nil {
+				return err
+			}
+			r.Spec.CascadeDelete = &value
+			lastErr = w.client.Update(ctx, &r)
+		default:
+			return fmt.Errorf("unsupported originating-object kind %q", kind)
 		}
-		d.Spec.CascadeDelete = &value
-		return w.client.Update(ctx, &d)
-	case KindTemplateRequirement:
-		var r templatesv1alpha1.TemplateRequirement
-		if err := w.client.Get(ctx, key, &r); err != nil {
-			return err
+		if lastErr == nil {
+			return nil
 		}
-		r.Spec.CascadeDelete = &value
-		return w.client.Update(ctx, &r)
-	default:
-		return fmt.Errorf("unsupported originating-object kind %q", kind)
+		if !k8serrors.IsConflict(lastErr) {
+			return lastErr
+		}
 	}
+	return lastErr
 }
 
 // cascadeDeleteWithDefault treats a nil pointer as true to match the CRD's

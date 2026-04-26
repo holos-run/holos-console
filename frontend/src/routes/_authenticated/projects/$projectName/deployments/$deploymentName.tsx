@@ -101,7 +101,7 @@ function DependencyEdgeCascadeRow({
   canWrite: boolean
 }) {
   const originating = dependency.originatingObject
-  const { data, isPending, error } = useGetDependencyEdgeCascadeDelete(project, originating)
+  const { data, isPending, isFetching, error } = useGetDependencyEdgeCascadeDelete(project, originating)
   const mutation = useSetDependencyEdgeCascadeDelete(project)
   const id = originating
     ? `cascade-delete-${originating.kind}-${originating.namespace}-${originating.name}`
@@ -133,7 +133,7 @@ function DependencyEdgeCascadeRow({
         id={id}
         value={data ?? true}
         onChange={handleChange}
-        disabled={!canWrite || isPending || mutation.isPending}
+        disabled={!canWrite || isPending || isFetching || mutation.isPending}
       />
     </div>
   )

@@ -1915,10 +1915,7 @@ func (h *Handler) GetDependencyEdgeCascadeDelete(
 	o := req.Msg.GetOriginatingObject()
 	value, err := h.dependencyEdgeWriter.GetCascadeDelete(ctx, o.GetKind(), o.GetNamespace(), o.GetName())
 	if err != nil {
-		if IsNotFound(err) {
-			return nil, connect.NewError(connect.CodeNotFound, err)
-		}
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, mapK8sError(err)
 	}
 
 	slog.InfoContext(ctx, "dependency edge cascade-delete read",
@@ -1968,10 +1965,7 @@ func (h *Handler) SetDependencyEdgeCascadeDelete(
 	o := req.Msg.GetOriginatingObject()
 	value := req.Msg.GetCascadeDelete()
 	if err := h.dependencyEdgeWriter.SetCascadeDelete(ctx, o.GetKind(), o.GetNamespace(), o.GetName(), value); err != nil {
-		if IsNotFound(err) {
-			return nil, connect.NewError(connect.CodeNotFound, err)
-		}
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, mapK8sError(err)
 	}
 
 	slog.InfoContext(ctx, "dependency edge cascade-delete written",
