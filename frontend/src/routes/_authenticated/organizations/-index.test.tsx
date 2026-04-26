@@ -42,13 +42,13 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 })
 
 vi.mock('@/queries/organizations', () => ({
-  useListOrganizationsKPD: vi.fn(),
+  useListOrganizations: vi.fn(),
 }))
 
 // Pin "now" to 2026-04-23T12:00:00Z so Created At column assertions are stable.
 const FIXED_NOW = new Date('2026-04-23T12:00:00Z').getTime()
 
-import { useListOrganizationsKPD } from '@/queries/organizations'
+import { useListOrganizations } from '@/queries/organizations'
 import { OrganizationsIndexPage } from './index'
 
 function makeOrg(
@@ -61,9 +61,9 @@ function makeOrg(
 }
 
 function setupMocks(organizations = [makeOrg('test-org', 'Test Org')]) {
-  ;(useListOrganizationsKPD as Mock).mockReturnValue({
-    data: organizations,
-    isPending: false,
+  ;(useListOrganizations as Mock).mockReturnValue({
+    data: { organizations },
+    isLoading: false,
     error: null,
   })
 }
@@ -80,9 +80,9 @@ describe('OrganizationsIndexPage (ResourceGrid v1)', () => {
   })
 
   it('renders loading skeletons while query is pending', () => {
-    ;(useListOrganizationsKPD as Mock).mockReturnValue({
-      data: [],
-      isPending: true,
+    ;(useListOrganizations as Mock).mockReturnValue({
+      data: undefined,
+      isLoading: true,
       error: null,
     })
     render(<OrganizationsIndexPage />)
@@ -173,9 +173,9 @@ describe('OrganizationsIndexPage (ResourceGrid v1)', () => {
   })
 
   it('renders error alert when query fails', () => {
-    ;(useListOrganizationsKPD as Mock).mockReturnValue({
-      data: [],
-      isPending: false,
+    ;(useListOrganizations as Mock).mockReturnValue({
+      data: undefined,
+      isLoading: false,
       error: new Error('failed to load organizations'),
     })
     render(<OrganizationsIndexPage />)

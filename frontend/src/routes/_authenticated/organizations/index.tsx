@@ -2,8 +2,10 @@
  * Organizations index — migrated to ResourceGrid v1 (HOL-976).
  *
  * Replaces the manual TanStack Table + local state implementation with
- * ResourceGrid v1 backed by URL state. Uses useListOrganizationsKPD so
- * stale rows are preserved while search-param changes are in flight.
+ * ResourceGrid v1 backed by URL state. Uses useListOrganizations (ConnectRPC)
+ * so the query shares the OrgProvider cache entry, which avoids a duplicate
+ * in-flight request and lets the transport-level retry mechanism (clock-skew
+ * resilience) benefit both the sidebar and the grid simultaneously.
  *
  * Row click navigates to /organizations/$orgName/projects. The
  * organizations/$orgName layout (OrgLayout) syncs setSelectedOrg automatically
@@ -19,7 +21,7 @@ import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
-import { useListOrganizationsKPD } from '@/queries/organizations'
+import { useListOrganizations } from '@/queries/organizations'
 
 export const Route = createFileRoute('/_authenticated/organizations/')({
   validateSearch: parseGridSearch,
@@ -41,7 +43,8 @@ export function OrganizationsIndexPage() {
   const search: ResourceGridSearch = routeSearch ?? {}
 
   const navigate = useNavigate()
-  const { data: organizations = [], isPending, error } = useListOrganizationsKPD()
+  const { data, isLoading, error } = useListOrganizations()
+  const organizations = data?.organizations ?? []
 
   const rows: Row[] = organizations.map((org) => ({
     kind: 'Organization',
@@ -98,7 +101,7 @@ export function OrganizationsIndexPage() {
       kinds={kinds}
       rows={rows}
       onDelete={handleDelete}
-      isLoading={isPending}
+      isLoading={isLoading}
       error={error}
       search={search}
       onSearchChange={handleSearchChange}
