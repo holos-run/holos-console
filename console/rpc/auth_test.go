@@ -15,6 +15,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // fakeOIDCServer creates an httptest server that serves OIDC discovery and JWKS
@@ -80,6 +81,10 @@ func newFakeOIDCServer(t *testing.T) *fakeOIDCServer {
 
 // signToken creates a signed JWT with the given subject and audience.
 func (f *fakeOIDCServer) signToken(t *testing.T, subject, audience string) string {
+	return f.signTokenWithClaims(t, subject, audience, nil)
+}
+
+func (f *fakeOIDCServer) signTokenWithClaims(t *testing.T, subject, audience string, extra map[string]interface{}) string {
 	t.Helper()
 
 	signerOpts := jose.SignerOptions{}
@@ -103,7 +108,11 @@ func (f *fakeOIDCServer) signToken(t *testing.T, subject, audience string) strin
 		NotBefore: jwt.NewNumericDate(now),
 	}
 
-	token, err := jwt.Signed(signer).Claims(claims).Serialize()
+	builder := jwt.Signed(signer).Claims(claims)
+	if extra != nil {
+		builder = builder.Claims(extra)
+	}
+	token, err := builder.Serialize()
 	if err != nil {
 		t.Fatalf("signing token: %v", err)
 	}
@@ -196,5 +205,58 @@ func TestLazyAuthInterceptor_CachesAfterSuccess(t *testing.T) {
 	_, err = handler(context.Background(), newTestRequest(token))
 	if err != nil {
 		t.Fatalf("third request failed: %v", err)
+	}
+}
+
+func TestLazyAuthInterceptorAttachesImpersonatedClients(t *testing.T) {
+	fake := newFakeOIDCServer(t)
+	defer fake.Server.Close()
+
+	k8sHeaders := make(chan http.Header, 1)
+	k8sServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		k8sHeaders <- r.Header.Clone()
+		writeNamespaceList(t, w)
+	}))
+	defer k8sServer.Close()
+
+	clientID := "test-client"
+	interceptor := LazyAuthInterceptor(
+		fake.Server.URL,
+		clientID,
+		"groups",
+		fake.Server.Client(),
+		WithImpersonationConfig(testRESTConfig(k8sServer.URL), nil),
+	)
+
+	handler := interceptor(func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		if ClaimsFromContext(ctx) == nil {
+			t.Fatal("claims missing from request context")
+		}
+		if ImpersonatedClientsetFromContext(ctx) == nil {
+			t.Fatal("impersonated clientset missing from request context")
+		}
+		if _, err := ImpersonatedClientsetFromContext(ctx).CoreV1().Namespaces().List(ctx, metav1.ListOptions{}); err != nil {
+			t.Fatalf("list namespaces through impersonated clientset: %v", err)
+		}
+		return nil, nil
+	})
+
+	token := fake.signTokenWithClaims(t, "user-1", clientID, map[string]interface{}{
+		"groups": []string{"platform-admins"},
+		"email":  "user-1@example.com",
+	})
+	if _, err := handler(context.Background(), newTestRequest(token)); err != nil {
+		t.Fatalf("handler failed: %v", err)
+	}
+
+	got := <-k8sHeaders
+	if got.Get("Impersonate-User") != "oidc:user-1" {
+		t.Fatalf("Impersonate-User = %q, want oidc:user-1", got.Get("Impersonate-User"))
+	}
+	if got.Get("Impersonate-Group") != "oidc:platform-admins" {
+		t.Fatalf("Impersonate-Group = %q, want oidc:platform-admins", got.Get("Impersonate-Group"))
+	}
+	if got.Get("Impersonate-Extra-Email") != "" {
+		t.Fatalf("Impersonate-Extra-Email = %q, want empty", got.Get("Impersonate-Extra-Email"))
 	}
 }

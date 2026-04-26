@@ -17,6 +17,13 @@ func NewClientset() (kubernetes.Interface, error) {
 	if err != nil {
 		return nil, err
 	}
+	return NewClientsetForConfig(config)
+}
+
+// NewClientsetForConfig creates a Kubernetes clientset from an already-resolved
+// REST config. A nil config returns a nil clientset so callers can share the
+// same "cluster unavailable" behavior as NewClientset.
+func NewClientsetForConfig(config *rest.Config) (kubernetes.Interface, error) {
 	if config == nil {
 		return nil, nil
 	}
