@@ -9,6 +9,7 @@
 //      project-scoped Dependencies ResourceGrid page.
 
 import { useMemo } from 'react'
+import { create } from '@bufbuild/protobuf'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
 import {
@@ -24,8 +25,13 @@ import type {
 } from '@/gen/holos/console/v1/templates_pb.js'
 import {
   TemplateDependencyService,
+  TemplateDependencySchema,
 } from '@/gen/holos/console/v1/template_dependencies_pb.js'
-import type { TemplateDependency } from '@/gen/holos/console/v1/template_dependencies_pb.js'
+import type {
+  TemplateDependency,
+  TemplateDependencyStatus,
+} from '@/gen/holos/console/v1/template_dependencies_pb.js'
+import type { LinkedTemplateRef } from '@/gen/holos/console/v1/policy_state_pb.js'
 import { useAuth } from '@/lib/auth'
 import { keys } from '@/queries/keys'
 
@@ -33,8 +39,8 @@ import { keys } from '@/queries/keys'
 export type { TemplateDependentRecord, DeploymentDependentRecord }
 export { DependencyScope }
 
-// Re-export TemplateDependency so consumers import from one place.
-export type { TemplateDependency }
+// Re-export TemplateDependency and related types so consumers import from one place.
+export type { TemplateDependency, TemplateDependencyStatus, LinkedTemplateRef }
 
 // ---------------------------------------------------------------------------
 // Reverse-dependency read hooks (HOL-986)
@@ -122,6 +128,94 @@ export function useDeleteTemplateDependency(namespace: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: keys.templateDependencies.list(namespace),
+      })
+    },
+  })
+}
+
+// useGetTemplateDependency fetches a single TemplateDependency by (namespace, name).
+export function useGetTemplateDependency(namespace: string, name: string) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(
+    () => createClient(TemplateDependencyService, transport),
+    [transport],
+  )
+  return useQuery({
+    queryKey: keys.templateDependencies.get(namespace, name),
+    queryFn: async () => {
+      const response = await client.getTemplateDependency({ namespace, name })
+      return response.dependency
+    },
+    enabled: isAuthenticated && !!namespace && !!name,
+  })
+}
+
+// useCreateTemplateDependency creates a new TemplateDependency in a project namespace.
+export function useCreateTemplateDependency(namespace: string) {
+  const transport = useTransport()
+  const client = useMemo(
+    () => createClient(TemplateDependencyService, transport),
+    [transport],
+  )
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: {
+      name: string
+      dependent?: LinkedTemplateRef
+      requires?: LinkedTemplateRef
+      cascadeDelete?: boolean
+    }) => {
+      return client.createTemplateDependency({
+        namespace,
+        dependency: create(TemplateDependencySchema, {
+          name: params.name,
+          namespace,
+          dependent: params.dependent,
+          requires: params.requires,
+          cascadeDelete: params.cascadeDelete,
+        }),
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: keys.templateDependencies.list(namespace),
+      })
+    },
+  })
+}
+
+// useUpdateTemplateDependency updates an existing TemplateDependency.
+export function useUpdateTemplateDependency(namespace: string, name: string) {
+  const transport = useTransport()
+  const client = useMemo(
+    () => createClient(TemplateDependencyService, transport),
+    [transport],
+  )
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (params: {
+      dependent?: LinkedTemplateRef
+      requires?: LinkedTemplateRef
+      cascadeDelete?: boolean
+    }) => {
+      return client.updateTemplateDependency({
+        namespace,
+        dependency: create(TemplateDependencySchema, {
+          name,
+          namespace,
+          dependent: params.dependent,
+          requires: params.requires,
+          cascadeDelete: params.cascadeDelete,
+        }),
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: keys.templateDependencies.list(namespace),
+      })
+      queryClient.invalidateQueries({
+        queryKey: keys.templateDependencies.get(namespace, name),
       })
     },
   })
