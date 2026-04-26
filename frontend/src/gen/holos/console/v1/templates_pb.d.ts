@@ -2,7 +2,7 @@
 // @generated from file holos/console/v1/templates.proto (package holos.console.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { EnvVar } from "./deployments_pb";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
@@ -1183,6 +1183,247 @@ export declare type ListTemplateExamplesResponse = Message<"holos.console.v1.Lis
 export declare const ListTemplateExamplesResponseSchema: GenMessage<ListTemplateExamplesResponse>;
 
 /**
+ * TemplateDependentRecord describes a single dependent that requires the
+ * queried template. It is returned by ListTemplateDependents and carries
+ * enough metadata for the UI to render the scope badge without re-deriving scope.
+ *
+ * @generated from message holos.console.v1.TemplateDependentRecord
+ */
+export declare type TemplateDependentRecord = Message<"holos.console.v1.TemplateDependentRecord"> & {
+  /**
+   * scope is the derived dependency scope per ADR 032 Decision 2.
+   *
+   * @generated from field: holos.console.v1.DependencyScope scope = 1;
+   */
+  scope: DependencyScope;
+
+  /**
+   * dependent_namespace is the Kubernetes namespace of the declaring object
+   * (TemplateDependency or TemplateRequirement). For TemplateDependency this
+   * is the project namespace; for TemplateRequirement this is the org/folder
+   * namespace.
+   *
+   * @generated from field: string dependent_namespace = 2;
+   */
+  dependentNamespace: string;
+
+  /**
+   * dependent_name is the DNS label slug of the declaring object.
+   *
+   * @generated from field: string dependent_name = 3;
+   */
+  dependentName: string;
+
+  /**
+   * requiring_template_namespace is the namespace of the template that holds
+   * the dependency relationship (TemplateDependency.spec.dependent.namespace
+   * or TemplateRequirement.spec.targetRefs[*] project namespace). Empty for
+   * Scope B wildcard records where the concrete set is not yet enumerated.
+   *
+   * @generated from field: string requiring_template_namespace = 4;
+   */
+  requiringTemplateNamespace: string;
+
+  /**
+   * requiring_template_name is the name of the template that holds the
+   * dependency (TemplateDependency.spec.dependent.name). Empty for Scope B
+   * records which target via wildcards rather than a specific template name.
+   *
+   * @generated from field: string requiring_template_name = 5;
+   */
+  requiringTemplateName: string;
+
+  /**
+   * kind discriminates between TemplateDependency and TemplateRequirement
+   * declaring objects so the UI can render appropriate detail links.
+   *
+   * @generated from field: string kind = 6;
+   */
+  kind: string;
+};
+
+/**
+ * Describes the message holos.console.v1.TemplateDependentRecord.
+ * Use `create(TemplateDependentRecordSchema)` to create a new message.
+ */
+export declare const TemplateDependentRecordSchema: GenMessage<TemplateDependentRecord>;
+
+/**
+ * ListTemplateDependentsRequest requests all dependents of the given template.
+ *
+ * @generated from message holos.console.v1.ListTemplateDependentsRequest
+ */
+export declare type ListTemplateDependentsRequest = Message<"holos.console.v1.ListTemplateDependentsRequest"> & {
+  /**
+   * namespace is the Kubernetes namespace that owns the required template.
+   *
+   * @generated from field: string namespace = 1;
+   */
+  namespace: string;
+
+  /**
+   * name is the required template's DNS label slug.
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.ListTemplateDependentsRequest.
+ * Use `create(ListTemplateDependentsRequestSchema)` to create a new message.
+ */
+export declare const ListTemplateDependentsRequestSchema: GenMessage<ListTemplateDependentsRequest>;
+
+/**
+ * ListTemplateDependentsResponse lists all dependents of the requested template.
+ *
+ * @generated from message holos.console.v1.ListTemplateDependentsResponse
+ */
+export declare type ListTemplateDependentsResponse = Message<"holos.console.v1.ListTemplateDependentsResponse"> & {
+  /**
+   * dependents lists every dependent record found across all scopes that the
+   * caller can see. Ordered by (scope, dependent_namespace, dependent_name).
+   *
+   * @generated from field: repeated holos.console.v1.TemplateDependentRecord dependents = 1;
+   */
+  dependents: TemplateDependentRecord[];
+};
+
+/**
+ * Describes the message holos.console.v1.ListTemplateDependentsResponse.
+ * Use `create(ListTemplateDependentsResponseSchema)` to create a new message.
+ */
+export declare const ListTemplateDependentsResponseSchema: GenMessage<ListTemplateDependentsResponse>;
+
+/**
+ * DeploymentDependentRecord describes a deployment instance in another
+ * namespace that requires the queried singleton deployment.
+ *
+ * @generated from message holos.console.v1.DeploymentDependentRecord
+ */
+export declare type DeploymentDependentRecord = Message<"holos.console.v1.DeploymentDependentRecord"> & {
+  /**
+   * dependent_namespace is the project namespace of the dependent Deployment.
+   *
+   * @generated from field: string dependent_namespace = 1;
+   */
+  dependentNamespace: string;
+
+  /**
+   * dependent_name is the DNS label slug of the dependent Deployment.
+   *
+   * @generated from field: string dependent_name = 2;
+   */
+  dependentName: string;
+};
+
+/**
+ * Describes the message holos.console.v1.DeploymentDependentRecord.
+ * Use `create(DeploymentDependentRecordSchema)` to create a new message.
+ */
+export declare const DeploymentDependentRecordSchema: GenMessage<DeploymentDependentRecord>;
+
+/**
+ * ListDeploymentDependentsRequest requests all dependent deployments of the
+ * given singleton deployment.
+ *
+ * @generated from message holos.console.v1.ListDeploymentDependentsRequest
+ */
+export declare type ListDeploymentDependentsRequest = Message<"holos.console.v1.ListDeploymentDependentsRequest"> & {
+  /**
+   * namespace is the Kubernetes namespace that owns the singleton Deployment.
+   *
+   * @generated from field: string namespace = 1;
+   */
+  namespace: string;
+
+  /**
+   * name is the singleton Deployment's DNS label slug.
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+};
+
+/**
+ * Describes the message holos.console.v1.ListDeploymentDependentsRequest.
+ * Use `create(ListDeploymentDependentsRequestSchema)` to create a new message.
+ */
+export declare const ListDeploymentDependentsRequestSchema: GenMessage<ListDeploymentDependentsRequest>;
+
+/**
+ * ListDeploymentDependentsResponse lists all deployments that own (depend on)
+ * the queried singleton.
+ *
+ * @generated from message holos.console.v1.ListDeploymentDependentsResponse
+ */
+export declare type ListDeploymentDependentsResponse = Message<"holos.console.v1.ListDeploymentDependentsResponse"> & {
+  /**
+   * dependents lists all dependent Deployment instances encoded as
+   * owner-references on the singleton (controller=false,
+   * blockOwnerDeletion=true per ADR 032 Decision 3 point 4).
+   *
+   * @generated from field: repeated holos.console.v1.DeploymentDependentRecord dependents = 1;
+   */
+  dependents: DeploymentDependentRecord[];
+};
+
+/**
+ * Describes the message holos.console.v1.ListDeploymentDependentsResponse.
+ * Use `create(ListDeploymentDependentsResponseSchema)` to create a new message.
+ */
+export declare const ListDeploymentDependentsResponseSchema: GenMessage<ListDeploymentDependentsResponse>;
+
+/**
+ * DependencyScope identifies which of the three ADR 032 dependency scopes a
+ * dependent record belongs to. The UI renders a scope badge from this field —
+ * the server derives scope server-side so the client never has to re-derive it.
+ *
+ * @generated from enum holos.console.v1.DependencyScope
+ */
+export enum DependencyScope {
+  /**
+   * DEPENDENCY_SCOPE_UNSPECIFIED is the zero value; should not appear in
+   * responses.
+   *
+   * @generated from enum value: DEPENDENCY_SCOPE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * DEPENDENCY_SCOPE_INSTANCE is Scope A from ADR 032: a TemplateDependency
+   * where spec.requires.namespace == spec.dependent.namespace (same project).
+   *
+   * @generated from enum value: DEPENDENCY_SCOPE_INSTANCE = 1;
+   */
+  INSTANCE = 1,
+
+  /**
+   * DEPENDENCY_SCOPE_PROJECT is Scope B from ADR 032: a TemplateRequirement
+   * stored in an org or folder namespace that mandates a singleton for every
+   * matching project reachable via the ancestor walk.
+   *
+   * @generated from enum value: DEPENDENCY_SCOPE_PROJECT = 2;
+   */
+  PROJECT = 2,
+
+  /**
+   * DEPENDENCY_SCOPE_REMOTE_PROJECT is Scope C from ADR 032: a
+   * TemplateDependency where spec.requires.namespace != spec.dependent.namespace
+   * (cross-namespace reference to another project or platform namespace).
+   *
+   * @generated from enum value: DEPENDENCY_SCOPE_REMOTE_PROJECT = 3;
+   */
+  REMOTE_PROJECT = 3,
+}
+
+/**
+ * Describes the enum holos.console.v1.DependencyScope.
+ */
+export declare const DependencyScopeSchema: GenEnum<DependencyScope>;
+
+/**
  * TemplateService is the single unified service for managing CUE-based templates
  * at every hierarchy level (organization, folder, project). It replaces the
  * separate DeploymentTemplateService and OrgTemplateService from v1alpha1
@@ -1406,6 +1647,50 @@ export declare const TemplateService: GenService<{
     methodKind: "unary";
     input: typeof ListTemplateExamplesRequestSchema;
     output: typeof ListTemplateExamplesResponseSchema;
+  },
+  /**
+   * ListTemplateDependents returns all deployment instances that depend on the
+   * given template (reverse-dependency lookup). This answers "who depends on
+   * me?" for a template identified by (namespace, name). Introduced in HOL-986
+   * to implement the reverse-dependency contract from ADR 032 Decision 3.
+   *
+   * The response covers all three dependency scopes:
+   *   - Scope A (instance): TemplateDependency objects in any project namespace
+   *     where spec.requires matches the requested template.
+   *   - Scope B (project): TemplateRequirement objects in org/folder namespaces
+   *     where spec.requires matches the requested template.
+   *   - Scope C (remote-project): TemplateDependency objects where
+   *     spec.requires.namespace differs from the requesting namespace.
+   *
+   * Authorization: the caller must have PERMISSION_TEMPLATES_READ on the
+   * namespace that owns the requested template. Dependent entries are filtered
+   * by the caller's visibility — a project-level user only sees dependents
+   * within their visible projects; a platform-level user sees the full graph.
+   *
+   * @generated from rpc holos.console.v1.TemplateService.ListTemplateDependents
+   */
+  listTemplateDependents: {
+    methodKind: "unary";
+    input: typeof ListTemplateDependentsRequestSchema;
+    output: typeof ListTemplateDependentsResponseSchema;
+  },
+  /**
+   * ListDeploymentDependents returns all deployment instances in other project
+   * namespaces that require the given deployment (the cross-project view).
+   * This answers "which other projects depend on this singleton deployment?"
+   * Introduced in HOL-986 alongside ListTemplateDependents.
+   *
+   * The response lists the owner-references encoded on the singleton
+   * Deployment's metadata — each entry where controller=false and
+   * blockOwnerDeletion=true is a dependent. The caller must have
+   * PERMISSION_DEPLOYMENTS_READ on the namespace that owns the singleton.
+   *
+   * @generated from rpc holos.console.v1.TemplateService.ListDeploymentDependents
+   */
+  listDeploymentDependents: {
+    methodKind: "unary";
+    input: typeof ListDeploymentDependentsRequestSchema;
+    output: typeof ListDeploymentDependentsResponseSchema;
   },
 }>;
 
