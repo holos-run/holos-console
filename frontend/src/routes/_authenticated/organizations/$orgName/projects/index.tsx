@@ -15,8 +15,8 @@
 import { useCallback } from 'react'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 
+import { StandardPageLayout } from '@/components/page-layout'
 import { Button } from '@/components/ui/button'
-import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
@@ -108,17 +108,6 @@ export function OrgProjectsIndexPage({
   // trash column entirely.
   const handleDelete = async () => undefined
 
-  const breadcrumb = (
-    <p className="text-sm text-muted-foreground mb-2">
-      <Link to="/organizations" className="hover:underline">
-        Organizations
-      </Link>
-      {' / '}
-      {orgName}
-      {' / Projects'}
-    </p>
-  )
-
   const emptyState = (
     <div className="flex flex-col items-center gap-3 py-8 text-center">
       <p className="text-muted-foreground">
@@ -134,22 +123,26 @@ export function OrgProjectsIndexPage({
   )
 
   return (
-    <>
-      {breadcrumb}
-      <ResourceGrid
-        title="Projects"
-        kinds={kinds}
-        rows={rows}
-        onDelete={handleDelete}
-        isLoading={isLoading}
-        error={error}
-        search={search}
-        onSearchChange={handleSearchChange}
-        extraSearchFields={[{ id: 'creator', label: 'Creator' }]}
-        emptyStateContent={emptyState}
-        headerActions={createProjectButton}
-        showDeleteAction={false}
-      />
-    </>
+    <StandardPageLayout
+      title="Projects"
+      breadcrumbs={[
+        { label: 'Organizations', href: '/organizations' },
+        { label: orgName },
+        { label: 'Projects' },
+      ]}
+      headerActions={createProjectButton}
+      grid={{
+        kinds,
+        rows,
+        onDelete: handleDelete,
+        isLoading,
+        error,
+        search,
+        onSearchChange: handleSearchChange,
+        extraSearchFields: [{ id: 'creator', label: 'Creator' }],
+        emptyStateContent: emptyState,
+        showDeleteAction: false,
+      }}
+    />
   )
 }

@@ -20,6 +20,7 @@
  */
 
 import type { ReactNode } from 'react'
+import { Link } from '@tanstack/react-router'
 import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
 import type { ResourceGridProps } from '@/components/resource-grid/ResourceGrid'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
@@ -146,9 +147,9 @@ export function StandardPageLayout<S extends ResourceGridSearch = ResourceGridSe
             <span key={idx} className="flex items-center gap-1">
               {idx > 0 && <span aria-hidden="true">/</span>}
               {crumb.href ? (
-                <a href={crumb.href} className="hover:underline hover:text-foreground transition-colors">
+                <Link to={crumb.href} className="hover:underline hover:text-foreground transition-colors">
                   {crumb.label}
-                </a>
+                </Link>
               ) : (
                 <span className="text-foreground">{crumb.label}</span>
               )}
