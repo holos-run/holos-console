@@ -43,9 +43,10 @@ export function CreateFolderTemplatePolicyPage({
   const orgName = folder?.organization ?? ''
   const userRole = folder?.userRole ?? Role.VIEWER
   // Template policies grant PERMISSION_TEMPLATE_POLICIES_WRITE to both OWNER
-  // and EDITOR roles (see console/rbac/template_policy_cascade.go). The UI
-  // gate must mirror that cascade so editors are not misled into a read-only
-  // view for operations the backend will allow (HOL-558 review round 1).
+  // and EDITOR roles (see console/rbac/template_policy_perms.go). The UI
+  // gate must mirror backend permissions so editors are not misled into a
+  // read-only view for operations the backend will allow (HOL-558 review
+  // round 1).
   const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
   // Scope resolution: this route is mounted under /folders/$folderName so the

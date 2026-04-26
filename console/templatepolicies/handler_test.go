@@ -830,7 +830,7 @@ func stringContains(haystack, needle string) bool {
 // This closes the loop on the HOL-554 storage-isolation guardrail: storage is
 // restricted to folder / org namespaces by construction (project scope is
 // rejected up front), and write access to those namespaces is gated by the
-// TemplatePolicyCascadePerms table which never awards WRITE / DELETE to a
+// TemplatePolicyPerms table which never awards WRITE / DELETE to a
 // project-scoped grant. The test asserts both halves.
 func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 	const projectOwnerEmail = "project-owner@example.com"
@@ -842,7 +842,7 @@ func TestProjectOwnerCannotMutatePolicy(t *testing.T) {
 	// Simulate a genuine project-owner grant. The org and folder resolvers
 	// are per-scope-keyed: for the folder and org scope names queried by
 	// the handler below (payments / acme) they return empty grants, so the
-	// TemplatePolicyCascadePerms lookup yields RoleUnspecified and denies.
+	// TemplatePolicyPerms lookup yields RoleUnspecified and denies.
 	// For the project scope name (billing-web) the resolvers *do* carry a
 	// real owner grant — the handler must never reach this entry because
 	// TemplatePolicyService does not authorize writes against the project
