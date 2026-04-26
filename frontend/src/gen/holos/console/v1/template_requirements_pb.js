@@ -120,3 +120,4 @@ export const DeleteTemplateRequirementResponseSchema = /*@__PURE__*/
  */
 export const TemplateRequirementService = /*@__PURE__*/
   serviceDesc(file_holos_console_v1_template_requirements, 0);
+
