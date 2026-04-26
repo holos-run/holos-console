@@ -33,7 +33,7 @@ func newExamplesTestHandler(t *testing.T) *Handler {
 }
 
 // TestListTemplateExamples_HappyPath verifies that ListTemplateExamples returns
-// exactly six examples (matching the six *.cue files embedded in the examples
+// exactly ten examples (matching the ten *.cue files embedded in the examples
 // package), each with non-empty fields, and sorted by name ascending.
 func TestListTemplateExamples_HappyPath(t *testing.T) {
 	handler := newExamplesTestHandler(t)
@@ -46,7 +46,7 @@ func TestListTemplateExamples_HappyPath(t *testing.T) {
 	}
 
 	got := resp.Msg.GetExamples()
-	const wantCount = 6
+	const wantCount = 10
 	if len(got) != wantCount {
 		t.Fatalf("ListTemplateExamples() returned %d examples, want %d", len(got), wantCount)
 	}
@@ -109,12 +109,16 @@ func TestListTemplateExamples_KnownNames(t *testing.T) {
 	}
 
 	wantNames := []string{
+		"all-scopes-v1",
 		"allowed-project-resource-kinds-v1",
 		"httpbin-v1",
 		"httproute-v1",
+		"httproute-with-grant-v1",
 		"podinfo-v1",
 		"project-namespace-description-annotation-v1",
 		"project-namespace-reference-grant-v1",
+		"shared-configmap-v1",
+		"valkey-v1",
 	}
 	for _, name := range wantNames {
 		if _, ok := byName[name]; !ok {
