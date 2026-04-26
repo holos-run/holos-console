@@ -90,4 +90,23 @@ describe('AuthenticatedLayout', () => {
     expect(mockRefreshTokens).not.toHaveBeenCalled()
     expect(mockLogin).not.toHaveBeenCalled()
   })
+
+  it('does not re-trigger login when re-rendered while authenticated (regression: no spurious auth refresh on row clicks)', async () => {
+    // Simulates the scenario where a row click causes the layout to re-render
+    // (e.g. via router state change). If the useEffect deps are correct, login()
+    // must not be called again after the initial authenticated render.
+    setAuthState({ isAuthenticated: true, isLoading: false })
+
+    const { rerender } = render(<AuthenticatedLayout />)
+
+    await new Promise((r) => setTimeout(r, 10))
+    expect(mockLogin).not.toHaveBeenCalled()
+
+    // Simulate a re-render (e.g. parent state change due to row click)
+    rerender(<AuthenticatedLayout />)
+
+    await new Promise((r) => setTimeout(r, 10))
+    expect(mockLogin).not.toHaveBeenCalled()
+    expect(mockRefreshTokens).not.toHaveBeenCalled()
+  })
 })

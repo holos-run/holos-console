@@ -1,8 +1,9 @@
 /**
  * /organization/new — dedicated page for creating a new organization.
  *
- * On success navigates to `resolveReturnTo(search.returnTo, '/organizations')`.
- * The Cancel button honours the same returnTo fallback.
+ * On success navigates to `resolveReturnTo(search.returnTo, '/organizations/$name/projects')`.
+ * This routes the user to the newly created org's projects page (HOL-977).
+ * The Cancel button falls back to '/organizations'.
  *
  * Replaces the CreateOrgDialog modal (HOL-869).
  */
@@ -78,7 +79,9 @@ export function OrganizationNewPage({ returnTo }: { returnTo?: string }) {
         description,
         ...(populateDefaults ? { populateDefaults: true } : {}),
       })
-      const target = resolveReturnTo(returnTo, '/organizations')
+      // Default fallback: navigate to the newly created org's home page.
+      const fallback = `/organizations/${name}/projects`
+      const target = resolveReturnTo(returnTo, fallback)
       navigate({ to: target })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create organization')

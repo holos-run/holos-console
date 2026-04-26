@@ -144,7 +144,7 @@ describe('OrganizationNewPage', () => {
     })
   })
 
-  it('navigates to /organizations after successful submission (no returnTo)', async () => {
+  it('navigates to /organizations/$name/projects after successful submission (no returnTo)', async () => {
     const mutateAsync = vi.fn().mockResolvedValue({})
     setupMocks(mutateAsync)
     render(<OrganizationNewPage />)
@@ -153,7 +153,7 @@ describe('OrganizationNewPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /create organization/i }))
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith({ to: '/organizations' })
+      expect(mockNavigate).toHaveBeenCalledWith({ to: '/organizations/my-org/projects' })
     })
   })
 
@@ -170,7 +170,7 @@ describe('OrganizationNewPage', () => {
     })
   })
 
-  it('falls back to /organizations for invalid returnTo after success', async () => {
+  it('falls back to /organizations/$name/projects for invalid returnTo after success', async () => {
     const mutateAsync = vi.fn().mockResolvedValue({})
     setupMocks(mutateAsync)
     render(<OrganizationNewPage returnTo="javascript:alert(1)" />)
@@ -179,7 +179,7 @@ describe('OrganizationNewPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /create organization/i }))
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith({ to: '/organizations' })
+      expect(mockNavigate).toHaveBeenCalledWith({ to: '/organizations/my-org/projects' })
     })
   })
 
