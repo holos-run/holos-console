@@ -37,6 +37,11 @@ const (
 	// folder namespaces and gate matching project templates or deployments on
 	// a prerequisite template.
 	ResourceTypeTemplateRequirement = "template-requirement"
+	// ResourceTypeTemplateGrant is the resource type label value for
+	// TemplateGrant CRDs. Grants live only in organization or folder
+	// namespaces and authorize cross-namespace template references, mirroring
+	// the Gateway API ReferenceGrant pattern.
+	ResourceTypeTemplateGrant = "template-grant"
 
 	// Annotations.
 	AnnotationDisplayName  = "console.holos.run/display-name"

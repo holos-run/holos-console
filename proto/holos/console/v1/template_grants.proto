@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+package holos.console.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// TemplateGrantService manages TemplateGrant resources. A TemplateGrant lives
+// in the namespace that owns the templates being shared and authorizes
+// cross-namespace template references, mirroring the Gateway API
+// ReferenceGrant pattern.
+service TemplateGrantService {
+  // ListTemplateGrants returns all TemplateGrant resources in an organization
+  // or folder namespace. Requires PERMISSION_TEMPLATE_POLICIES_LIST on the
+  // owning resource.
+  rpc ListTemplateGrants(ListTemplateGrantsRequest) returns (ListTemplateGrantsResponse);
+
+  // GetTemplateGrant retrieves a single grant by (namespace, name).
+  // Requires PERMISSION_TEMPLATE_POLICIES_READ on the owning resource.
+  rpc GetTemplateGrant(GetTemplateGrantRequest) returns (GetTemplateGrantResponse);
+
+  // CreateTemplateGrant creates a grant in an organization or folder namespace.
+  // Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
+  rpc CreateTemplateGrant(CreateTemplateGrantRequest) returns (CreateTemplateGrantResponse);
+
+  // UpdateTemplateGrant updates an existing grant.
+  // Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
+  rpc UpdateTemplateGrant(UpdateTemplateGrantRequest) returns (UpdateTemplateGrantResponse);
+
+  // DeleteTemplateGrant deletes a grant.
+  // Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the owning resource.
+  rpc DeleteTemplateGrant(DeleteTemplateGrantRequest) returns (DeleteTemplateGrantResponse);
+}
+
+// TemplateGrantFromRef identifies a namespace permitted to reference templates
+// owned by the TemplateGrant's namespace. Mirrors the Gateway API
+// ReferenceGrant From structure.
+message TemplateGrantFromRef {
+  // namespace is the Kubernetes namespace from which cross-namespace template
+  // references are allowed. Use the literal wildcard "*" to permit all
+  // namespaces. Must be non-empty.
+  string namespace = 1;
+  // namespace_selector is a label selector applied to namespaces when
+  // namespace is not the literal wildcard "*". Optional.
+  TemplateGrantNamespaceSelector namespace_selector = 2;
+}
+
+// TemplateGrantNamespaceSelector is a simplified label selector.
+message TemplateGrantNamespaceSelector {
+  // match_labels is a map of key/value pairs that must all match.
+  map<string, string> match_labels = 1;
+}
+
+// TemplateGrant authorizes cross-namespace template references.
+message TemplateGrant {
+  // name is the unique DNS label slug within the namespace.
+  string name = 1;
+  // namespace is the organization or folder namespace that owns this object.
+  string namespace = 2;
+  // from lists the namespaces whose template references are authorized.
+  repeated TemplateGrantFromRef from = 3;
+  // to optionally narrows which templates in this namespace may be referenced.
+  // When empty, all templates are reachable by the permitted from namespaces.
+  repeated TemplateGrantToRef to = 4;
+  // creator_email is the email address of the user who created this object.
+  string creator_email = 5;
+  // created_at is the timestamp when this grant was created.
+  google.protobuf.Timestamp created_at = 6;
+  // status contains reconciler observations.
+  TemplateGrantStatus status = 7;
+}
+
+// TemplateGrantToRef identifies a template that may be referenced.
+message TemplateGrantToRef {
+  // namespace is the namespace of the template.
+  string namespace = 1;
+  // name is the name of the template.
+  string name = 2;
+}
+
+// TemplateGrantStatus mirrors the CRD status subresource.
+message TemplateGrantStatus {
+  // observed_generation is the latest generation observed by the reconciler.
+  int64 observed_generation = 1;
+  // conditions are Gateway-style status conditions.
+  repeated TemplateGrantCondition conditions = 2;
+}
+
+// TemplateGrantCondition is a compact protobuf representation of
+// metav1.Condition.
+message TemplateGrantCondition {
+  string type = 1;
+  string status = 2;
+  string reason = 3;
+  string message = 4;
+  int64 observed_generation = 5;
+  google.protobuf.Timestamp last_transition_time = 6;
+}
+
+message ListTemplateGrantsRequest {
+  // namespace is the organization or folder namespace to list.
+  string namespace = 1;
+}
+
+message ListTemplateGrantsResponse {
+  repeated TemplateGrant grants = 1;
+}
+
+message GetTemplateGrantRequest {
+  string namespace = 1;
+  string name = 2;
+}
+
+message GetTemplateGrantResponse {
+  TemplateGrant grant = 1;
+}
+
+message CreateTemplateGrantRequest {
+  string namespace = 1;
+  TemplateGrant grant = 2;
+}
+
+message CreateTemplateGrantResponse {
+  string name = 1;
+}
+
+message UpdateTemplateGrantRequest {
+  string namespace = 1;
+  TemplateGrant grant = 2;
+}
+
+message UpdateTemplateGrantResponse {}
+
+message DeleteTemplateGrantRequest {
+  string namespace = 1;
+  string name = 2;
+}
+
+message DeleteTemplateGrantResponse {}
