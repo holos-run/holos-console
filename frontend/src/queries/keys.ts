@@ -81,6 +81,22 @@ export const keys = {
       ['templateDependencies', 'templateDependents', namespace, name] as const,
     deploymentDependents: (namespace: string, name: string) =>
       ['templateDependencies', 'deploymentDependents', namespace, name] as const,
+    list: (namespace: string) =>
+      ['templateDependencies', 'list', namespace] as const,
+    get: (namespace: string, name: string) =>
+      ['templateDependencies', 'get', namespace, name] as const,
+  },
+  templateRequirements: {
+    list: (namespace: string) =>
+      ['templateRequirements', 'list', namespace] as const,
+    get: (namespace: string, name: string) =>
+      ['templateRequirements', 'get', namespace, name] as const,
+  },
+  templateGrants: {
+    list: (namespace: string) =>
+      ['templateGrants', 'list', namespace] as const,
+    get: (namespace: string, name: string) =>
+      ['templateGrants', 'get', namespace, name] as const,
   },
   templates: {
     list: (namespace: string) => ['templates', 'list', namespace] as const,
