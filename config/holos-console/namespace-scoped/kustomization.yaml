@@ -1,0 +1,9 @@
+# Namespace-scoped overlay for holos-console. Installs resources that live
+# in the `holos-system` namespace and must exist before cluster-scoped
+# bindings reference them.
+#
+#   kubectl apply -k config/holos-console/namespace-scoped/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../rbac/namespace

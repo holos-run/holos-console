@@ -1,12 +1,9 @@
-# Consolidated namespace-scoped overlay. At M1 only holos-secret-injector
-# ships namespace-local resources (ServiceAccount + narrow Role/RoleBinding
-# in holos-system). Apply BEFORE ../cluster-scoped/ so the SA exists
-# before its ClusterRoleBindings.
+# Consolidated namespace-scoped overlay. Apply BEFORE ../cluster-scoped/ so
+# ServiceAccounts exist before their ClusterRoleBindings.
 #
 #   kubectl apply -k config/namespace-scoped/
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+- ../holos-console/namespace-scoped
 - ../secret-injector/namespace-scoped
-# Reserved: ../holos-console/namespace-scoped when HOL-670 successors
-# add the console Deployment/Service surface.

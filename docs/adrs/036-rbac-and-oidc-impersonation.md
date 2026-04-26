@@ -221,13 +221,16 @@ must be the union of both:
 | Capability set | Verbs | Reason |
 |---|---|---|
 | Impersonate humans | `impersonate` on `users`, `groups`, `serviceaccounts` | Required for every per-request impersonating client. |
-| Reconcile RBAC | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete` on `roles`, `rolebindings` (rbac.authorization.k8s.io); plus `escalate` on `roles` | The handler that creates the per-project Secret `Role` runs as the console's SA, not as the calling human, because the human typically does not have permission to create RBAC in the new namespace. |
+| Reconcile RBAC | `get`, `list`, `watch`, `create`, `update`, `patch`, `delete` on `roles`, `rolebindings` (rbac.authorization.k8s.io); plus `escalate` and `bind` on `roles` | The handler that creates the per-project Secret `Role` and binds principals to it runs as the console's SA, not as the calling human, because the human typically does not have permission to create RBAC in the new namespace. |
 
 `escalate` on `roles` is required because the Phase 4 handler creates a `Role`
 that grants verbs on `secrets`, and Kubernetes' RBAC bootstrap protection requires
 either `escalate` or that the creator already hold every verb the new `Role`
-grants. The console does not hold every Secret verb on every namespace, so
-`escalate` is the correct grant. This is documented in Phase 2 and in the RBAC
+grants. `bind` on `roles` is the matching grant for creating `RoleBinding`
+objects that reference those Roles; without it, Kubernetes rejects the binding
+unless the console ServiceAccount already holds every permission the Role grants.
+The console does not hold every Secret verb on every namespace, so `escalate` and
+`bind` are the correct grants. This is documented in Phase 2 and in the RBAC
 package itself.
 
 The "elevation moment" is bounded: ConnectRPC handlers that need to create RBAC
@@ -476,7 +479,7 @@ the binding user to either hold every verb the bound `Role` grants
 (`escalate` semantics) or to have explicit `bind` on the `Role`. The console
 mediates this: the share UI is gated by an SSAR for `bind` on the target `Role`,
 and the actual `RoleBinding` create is performed by the console's
-ServiceAccount, which holds `escalate` on `roles` (Decision 5).
+ServiceAccount, which holds `bind` on `roles` (Decision 5).
 
 ## Open Questions Carried into Implementation
 

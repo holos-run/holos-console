@@ -1,0 +1,6 @@
+# Namespace-scoped RBAC base for holos-console. Consumed by
+# ../../namespace-scoped/.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- service_account.yaml
