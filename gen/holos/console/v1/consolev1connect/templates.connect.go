@@ -81,6 +81,12 @@ const (
 	// TemplateServiceListTemplateExamplesProcedure is the fully-qualified name of the TemplateService's
 	// ListTemplateExamples RPC.
 	TemplateServiceListTemplateExamplesProcedure = "/holos.console.v1.TemplateService/ListTemplateExamples"
+	// TemplateServiceListTemplateDependentsProcedure is the fully-qualified name of the
+	// TemplateService's ListTemplateDependents RPC.
+	TemplateServiceListTemplateDependentsProcedure = "/holos.console.v1.TemplateService/ListTemplateDependents"
+	// TemplateServiceListDeploymentDependentsProcedure is the fully-qualified name of the
+	// TemplateService's ListDeploymentDependents RPC.
+	TemplateServiceListDeploymentDependentsProcedure = "/holos.console.v1.TemplateService/ListDeploymentDependents"
 )
 
 // TemplateServiceClient is a client for the holos.console.v1.TemplateService service.
@@ -167,6 +173,34 @@ type TemplateServiceClient interface {
 	// future revision. The response list is sorted by name ascending so the UI
 	// can rely on a stable order without re-sorting.
 	ListTemplateExamples(context.Context, *connect.Request[v1.ListTemplateExamplesRequest]) (*connect.Response[v1.ListTemplateExamplesResponse], error)
+	// ListTemplateDependents returns all deployment instances that depend on the
+	// given template (reverse-dependency lookup). This answers "who depends on
+	// me?" for a template identified by (namespace, name). Introduced in HOL-986
+	// to implement the reverse-dependency contract from ADR 032 Decision 3.
+	//
+	// The response covers all three dependency scopes:
+	//   - Scope A (instance): TemplateDependency objects in any project namespace
+	//     where spec.requires matches the requested template.
+	//   - Scope B (project): TemplateRequirement objects in org/folder namespaces
+	//     where spec.requires matches the requested template.
+	//   - Scope C (remote-project): TemplateDependency objects where
+	//     spec.requires.namespace differs from the requesting namespace.
+	//
+	// Authorization: the caller must have PERMISSION_TEMPLATES_READ on the
+	// namespace that owns the requested template. Dependent entries are filtered
+	// by the caller's visibility — a project-level user only sees dependents
+	// within their visible projects; a platform-level user sees the full graph.
+	ListTemplateDependents(context.Context, *connect.Request[v1.ListTemplateDependentsRequest]) (*connect.Response[v1.ListTemplateDependentsResponse], error)
+	// ListDeploymentDependents returns all deployment instances in other project
+	// namespaces that require the given deployment (the cross-project view).
+	// This answers "which other projects depend on this singleton deployment?"
+	// Introduced in HOL-986 alongside ListTemplateDependents.
+	//
+	// The response lists the owner-references encoded on the singleton
+	// Deployment's metadata — each entry where controller=false and
+	// blockOwnerDeletion=true is a dependent. The caller must have
+	// PERMISSION_DEPLOYMENTS_READ on the namespace that owns the singleton.
+	ListDeploymentDependents(context.Context, *connect.Request[v1.ListDeploymentDependentsRequest]) (*connect.Response[v1.ListDeploymentDependentsResponse], error)
 }
 
 // NewTemplateServiceClient constructs a client for the holos.console.v1.TemplateService service. By
@@ -276,6 +310,18 @@ func NewTemplateServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(templateServiceMethods.ByName("ListTemplateExamples")),
 			connect.WithClientOptions(opts...),
 		),
+		listTemplateDependents: connect.NewClient[v1.ListTemplateDependentsRequest, v1.ListTemplateDependentsResponse](
+			httpClient,
+			baseURL+TemplateServiceListTemplateDependentsProcedure,
+			connect.WithSchema(templateServiceMethods.ByName("ListTemplateDependents")),
+			connect.WithClientOptions(opts...),
+		),
+		listDeploymentDependents: connect.NewClient[v1.ListDeploymentDependentsRequest, v1.ListDeploymentDependentsResponse](
+			httpClient,
+			baseURL+TemplateServiceListDeploymentDependentsProcedure,
+			connect.WithSchema(templateServiceMethods.ByName("ListDeploymentDependents")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -297,6 +343,8 @@ type templateServiceClient struct {
 	getProjectTemplatePolicyState *connect.Client[v1.GetProjectTemplatePolicyStateRequest, v1.GetProjectTemplatePolicyStateResponse]
 	searchTemplates               *connect.Client[v1.SearchTemplatesRequest, v1.SearchTemplatesResponse]
 	listTemplateExamples          *connect.Client[v1.ListTemplateExamplesRequest, v1.ListTemplateExamplesResponse]
+	listTemplateDependents        *connect.Client[v1.ListTemplateDependentsRequest, v1.ListTemplateDependentsResponse]
+	listDeploymentDependents      *connect.Client[v1.ListDeploymentDependentsRequest, v1.ListDeploymentDependentsResponse]
 }
 
 // ListTemplates calls holos.console.v1.TemplateService.ListTemplates.
@@ -378,6 +426,16 @@ func (c *templateServiceClient) SearchTemplates(ctx context.Context, req *connec
 // ListTemplateExamples calls holos.console.v1.TemplateService.ListTemplateExamples.
 func (c *templateServiceClient) ListTemplateExamples(ctx context.Context, req *connect.Request[v1.ListTemplateExamplesRequest]) (*connect.Response[v1.ListTemplateExamplesResponse], error) {
 	return c.listTemplateExamples.CallUnary(ctx, req)
+}
+
+// ListTemplateDependents calls holos.console.v1.TemplateService.ListTemplateDependents.
+func (c *templateServiceClient) ListTemplateDependents(ctx context.Context, req *connect.Request[v1.ListTemplateDependentsRequest]) (*connect.Response[v1.ListTemplateDependentsResponse], error) {
+	return c.listTemplateDependents.CallUnary(ctx, req)
+}
+
+// ListDeploymentDependents calls holos.console.v1.TemplateService.ListDeploymentDependents.
+func (c *templateServiceClient) ListDeploymentDependents(ctx context.Context, req *connect.Request[v1.ListDeploymentDependentsRequest]) (*connect.Response[v1.ListDeploymentDependentsResponse], error) {
+	return c.listDeploymentDependents.CallUnary(ctx, req)
 }
 
 // TemplateServiceHandler is an implementation of the holos.console.v1.TemplateService service.
@@ -464,6 +522,34 @@ type TemplateServiceHandler interface {
 	// future revision. The response list is sorted by name ascending so the UI
 	// can rely on a stable order without re-sorting.
 	ListTemplateExamples(context.Context, *connect.Request[v1.ListTemplateExamplesRequest]) (*connect.Response[v1.ListTemplateExamplesResponse], error)
+	// ListTemplateDependents returns all deployment instances that depend on the
+	// given template (reverse-dependency lookup). This answers "who depends on
+	// me?" for a template identified by (namespace, name). Introduced in HOL-986
+	// to implement the reverse-dependency contract from ADR 032 Decision 3.
+	//
+	// The response covers all three dependency scopes:
+	//   - Scope A (instance): TemplateDependency objects in any project namespace
+	//     where spec.requires matches the requested template.
+	//   - Scope B (project): TemplateRequirement objects in org/folder namespaces
+	//     where spec.requires matches the requested template.
+	//   - Scope C (remote-project): TemplateDependency objects where
+	//     spec.requires.namespace differs from the requesting namespace.
+	//
+	// Authorization: the caller must have PERMISSION_TEMPLATES_READ on the
+	// namespace that owns the requested template. Dependent entries are filtered
+	// by the caller's visibility — a project-level user only sees dependents
+	// within their visible projects; a platform-level user sees the full graph.
+	ListTemplateDependents(context.Context, *connect.Request[v1.ListTemplateDependentsRequest]) (*connect.Response[v1.ListTemplateDependentsResponse], error)
+	// ListDeploymentDependents returns all deployment instances in other project
+	// namespaces that require the given deployment (the cross-project view).
+	// This answers "which other projects depend on this singleton deployment?"
+	// Introduced in HOL-986 alongside ListTemplateDependents.
+	//
+	// The response lists the owner-references encoded on the singleton
+	// Deployment's metadata — each entry where controller=false and
+	// blockOwnerDeletion=true is a dependent. The caller must have
+	// PERMISSION_DEPLOYMENTS_READ on the namespace that owns the singleton.
+	ListDeploymentDependents(context.Context, *connect.Request[v1.ListDeploymentDependentsRequest]) (*connect.Response[v1.ListDeploymentDependentsResponse], error)
 }
 
 // NewTemplateServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -569,6 +655,18 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 		connect.WithSchema(templateServiceMethods.ByName("ListTemplateExamples")),
 		connect.WithHandlerOptions(opts...),
 	)
+	templateServiceListTemplateDependentsHandler := connect.NewUnaryHandler(
+		TemplateServiceListTemplateDependentsProcedure,
+		svc.ListTemplateDependents,
+		connect.WithSchema(templateServiceMethods.ByName("ListTemplateDependents")),
+		connect.WithHandlerOptions(opts...),
+	)
+	templateServiceListDeploymentDependentsHandler := connect.NewUnaryHandler(
+		TemplateServiceListDeploymentDependentsProcedure,
+		svc.ListDeploymentDependents,
+		connect.WithSchema(templateServiceMethods.ByName("ListDeploymentDependents")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.TemplateService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TemplateServiceListTemplatesProcedure:
@@ -603,6 +701,10 @@ func NewTemplateServiceHandler(svc TemplateServiceHandler, opts ...connect.Handl
 			templateServiceSearchTemplatesHandler.ServeHTTP(w, r)
 		case TemplateServiceListTemplateExamplesProcedure:
 			templateServiceListTemplateExamplesHandler.ServeHTTP(w, r)
+		case TemplateServiceListTemplateDependentsProcedure:
+			templateServiceListTemplateDependentsHandler.ServeHTTP(w, r)
+		case TemplateServiceListDeploymentDependentsProcedure:
+			templateServiceListDeploymentDependentsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -674,4 +776,12 @@ func (UnimplementedTemplateServiceHandler) SearchTemplates(context.Context, *con
 
 func (UnimplementedTemplateServiceHandler) ListTemplateExamples(context.Context, *connect.Request[v1.ListTemplateExamplesRequest]) (*connect.Response[v1.ListTemplateExamplesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.ListTemplateExamples is not implemented"))
+}
+
+func (UnimplementedTemplateServiceHandler) ListTemplateDependents(context.Context, *connect.Request[v1.ListTemplateDependentsRequest]) (*connect.Response[v1.ListTemplateDependentsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.ListTemplateDependents is not implemented"))
+}
+
+func (UnimplementedTemplateServiceHandler) ListDeploymentDependents(context.Context, *connect.Request[v1.ListDeploymentDependentsRequest]) (*connect.Response[v1.ListDeploymentDependentsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.TemplateService.ListDeploymentDependents is not implemented"))
 }
