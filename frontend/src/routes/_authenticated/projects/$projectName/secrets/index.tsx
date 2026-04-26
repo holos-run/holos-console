@@ -1,6 +1,5 @@
 /**
  * Secrets index page — reimplemented on ResourceGrid v1 (HOL-857).
- * Adopted StandardPageLayout (HOL-1002).
  *
  * Default view: current project as the single parent with Parent column hidden.
  *

@@ -53,8 +53,23 @@ Agent-facing frontend docs:
   source of record for `ResourceGrid` architecture conventions.
 - [Data Grid Conventions](docs/agents/data-grid-conventions.md) — quick
   pointer for the clickable resource ID and fully-clickable row rule.
+- [Standard Page Layout](docs/agents/standard-page-layout.md) — when to use
+  `StandardPageLayout`, its slots, prop contract, and canonical examples.
 - [Frontend Audit Baseline](docs/agents/frontend-audit-2026-04.md) — Phase 1
   inventory and target conventions.
+
+### StandardPageLayout
+
+Use `StandardPageLayout` from `@/components/page-layout` for top-level
+resource list pages that render a `ResourceGrid` and need the standard title,
+breadcrumb, header action, URL-search, and contextual-content slots. It exposes
+`title` or `titleParts`, `breadcrumbs`, `headerActions`, `children`, and a
+typed `grid` prop bag. Canonical examples are the project-scoped
+[Secrets](frontend/src/routes/_authenticated/projects/$projectName/secrets/index.tsx),
+[Deployments](frontend/src/routes/_authenticated/projects/$projectName/deployments/index.tsx),
+and [Templates](frontend/src/routes/_authenticated/projects/$projectName/templates/index.tsx)
+routes; see [Standard Page Layout](docs/agents/standard-page-layout.md) for
+the prop table and minimal usage example.
 
 ### Security: secrets in the UI
 

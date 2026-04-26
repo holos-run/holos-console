@@ -1,6 +1,5 @@
 /**
  * Deployments index page — reimplemented on ResourceGrid v1 (HOL-858).
- * Adopted StandardPageLayout (HOL-1002).
  *
  * Default view: current project as the single parent with Parent column hidden.
  * Phase and PolicyDrift badges are preserved via the `extraColumns` extension
