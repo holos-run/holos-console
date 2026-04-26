@@ -3165,6 +3165,238 @@ func (x *PreflightCheckResponse) GetVersionConflicts() []*VersionConflictDetail 
 	return nil
 }
 
+// GetDependencyEdgeCascadeDeleteRequest reads the current Spec.CascadeDelete
+// value on the originating CRD (TemplateDependency or TemplateRequirement)
+// for a single dependency edge. The caller's project carries the RBAC scope.
+type GetDependencyEdgeCascadeDeleteRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// project is the project the caller is currently scoped to. RBAC: caller
+	// must hold deployments-read on this project.
+	Project string `protobuf:"bytes,1,opt,name=project,proto3" json:"project,omitempty"`
+	// originating_object identifies the CRD whose Spec.CascadeDelete value
+	// is being read. The kind discriminates between TemplateDependency and
+	// TemplateRequirement; namespace and name address the object.
+	OriginatingObject *OriginatingObject `protobuf:"bytes,2,opt,name=originating_object,json=originatingObject,proto3" json:"originating_object,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *GetDependencyEdgeCascadeDeleteRequest) Reset() {
+	*x = GetDependencyEdgeCascadeDeleteRequest{}
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDependencyEdgeCascadeDeleteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDependencyEdgeCascadeDeleteRequest) ProtoMessage() {}
+
+func (x *GetDependencyEdgeCascadeDeleteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDependencyEdgeCascadeDeleteRequest.ProtoReflect.Descriptor instead.
+func (*GetDependencyEdgeCascadeDeleteRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *GetDependencyEdgeCascadeDeleteRequest) GetProject() string {
+	if x != nil {
+		return x.Project
+	}
+	return ""
+}
+
+func (x *GetDependencyEdgeCascadeDeleteRequest) GetOriginatingObject() *OriginatingObject {
+	if x != nil {
+		return x.OriginatingObject
+	}
+	return nil
+}
+
+// GetDependencyEdgeCascadeDeleteResponse echoes the persisted value. Treats
+// an unset Spec.CascadeDelete as true (the +kubebuilder:default=true on both
+// CRD types) so callers do not have to know the API default.
+type GetDependencyEdgeCascadeDeleteResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// cascade_delete is the live value of Spec.CascadeDelete; an unset CRD
+	// field is reported as true to match the API-server default.
+	CascadeDelete bool `protobuf:"varint,1,opt,name=cascade_delete,json=cascadeDelete,proto3" json:"cascade_delete,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDependencyEdgeCascadeDeleteResponse) Reset() {
+	*x = GetDependencyEdgeCascadeDeleteResponse{}
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDependencyEdgeCascadeDeleteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDependencyEdgeCascadeDeleteResponse) ProtoMessage() {}
+
+func (x *GetDependencyEdgeCascadeDeleteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDependencyEdgeCascadeDeleteResponse.ProtoReflect.Descriptor instead.
+func (*GetDependencyEdgeCascadeDeleteResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *GetDependencyEdgeCascadeDeleteResponse) GetCascadeDelete() bool {
+	if x != nil {
+		return x.CascadeDelete
+	}
+	return false
+}
+
+// SetDependencyEdgeCascadeDeleteRequest writes Spec.CascadeDelete on the
+// originating CRD (TemplateDependency or TemplateRequirement) to a concrete
+// value. The toggle is project-form scoped: the caller must hold
+// deployments-write on `project` even when the originating CRD lives in a
+// folder or organization namespace (per HOL-991, project owners are
+// authoritative for cascade decoupling on edges that point into their
+// project).
+type SetDependencyEdgeCascadeDeleteRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// project is the project the caller is currently scoped to. RBAC: caller
+	// must hold deployments-write on this project.
+	Project string `protobuf:"bytes,1,opt,name=project,proto3" json:"project,omitempty"`
+	// originating_object identifies the CRD whose Spec.CascadeDelete value
+	// is being written. The kind discriminates between TemplateDependency and
+	// TemplateRequirement; namespace and name address the object.
+	OriginatingObject *OriginatingObject `protobuf:"bytes,2,opt,name=originating_object,json=originatingObject,proto3" json:"originating_object,omitempty"`
+	// cascade_delete is the desired value to persist. Both true and false are
+	// explicit values — the field is non-optional on the wire so the toggle
+	// cannot accidentally write "leave unspecified" semantics.
+	CascadeDelete bool `protobuf:"varint,3,opt,name=cascade_delete,json=cascadeDelete,proto3" json:"cascade_delete,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetDependencyEdgeCascadeDeleteRequest) Reset() {
+	*x = SetDependencyEdgeCascadeDeleteRequest{}
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetDependencyEdgeCascadeDeleteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetDependencyEdgeCascadeDeleteRequest) ProtoMessage() {}
+
+func (x *SetDependencyEdgeCascadeDeleteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetDependencyEdgeCascadeDeleteRequest.ProtoReflect.Descriptor instead.
+func (*SetDependencyEdgeCascadeDeleteRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *SetDependencyEdgeCascadeDeleteRequest) GetProject() string {
+	if x != nil {
+		return x.Project
+	}
+	return ""
+}
+
+func (x *SetDependencyEdgeCascadeDeleteRequest) GetOriginatingObject() *OriginatingObject {
+	if x != nil {
+		return x.OriginatingObject
+	}
+	return nil
+}
+
+func (x *SetDependencyEdgeCascadeDeleteRequest) GetCascadeDelete() bool {
+	if x != nil {
+		return x.CascadeDelete
+	}
+	return false
+}
+
+// SetDependencyEdgeCascadeDeleteResponse echoes the value persisted to the
+// CRD so optimistic updates on the client can reconcile against the
+// authoritative state without a follow-up read.
+type SetDependencyEdgeCascadeDeleteResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// cascade_delete is the value persisted to Spec.CascadeDelete.
+	CascadeDelete bool `protobuf:"varint,1,opt,name=cascade_delete,json=cascadeDelete,proto3" json:"cascade_delete,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetDependencyEdgeCascadeDeleteResponse) Reset() {
+	*x = SetDependencyEdgeCascadeDeleteResponse{}
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetDependencyEdgeCascadeDeleteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetDependencyEdgeCascadeDeleteResponse) ProtoMessage() {}
+
+func (x *SetDependencyEdgeCascadeDeleteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_deployments_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetDependencyEdgeCascadeDeleteResponse.ProtoReflect.Descriptor instead.
+func (*SetDependencyEdgeCascadeDeleteResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_deployments_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *SetDependencyEdgeCascadeDeleteResponse) GetCascadeDelete() bool {
+	if x != nil {
+		return x.CascadeDelete
+	}
+	return false
+}
+
 var File_holos_console_v1_deployments_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_deployments_proto_rawDesc = "" +
@@ -3400,13 +3632,24 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\n" +
 	"collisions\x18\x01 \x03(\v2!.holos.console.v1.CollisionDetailR\n" +
 	"collisions\x12T\n" +
-	"\x11version_conflicts\x18\x02 \x03(\v2'.holos.console.v1.VersionConflictDetailR\x10versionConflicts*\xac\x01\n" +
+	"\x11version_conflicts\x18\x02 \x03(\v2'.holos.console.v1.VersionConflictDetailR\x10versionConflicts\"\x95\x01\n" +
+	"%GetDependencyEdgeCascadeDeleteRequest\x12\x18\n" +
+	"\aproject\x18\x01 \x01(\tR\aproject\x12R\n" +
+	"\x12originating_object\x18\x02 \x01(\v2#.holos.console.v1.OriginatingObjectR\x11originatingObject\"O\n" +
+	"&GetDependencyEdgeCascadeDeleteResponse\x12%\n" +
+	"\x0ecascade_delete\x18\x01 \x01(\bR\rcascadeDelete\"\xbc\x01\n" +
+	"%SetDependencyEdgeCascadeDeleteRequest\x12\x18\n" +
+	"\aproject\x18\x01 \x01(\tR\aproject\x12R\n" +
+	"\x12originating_object\x18\x02 \x01(\v2#.holos.console.v1.OriginatingObjectR\x11originatingObject\x12%\n" +
+	"\x0ecascade_delete\x18\x03 \x01(\bR\rcascadeDelete\"O\n" +
+	"&SetDependencyEdgeCascadeDeleteResponse\x12%\n" +
+	"\x0ecascade_delete\x18\x01 \x01(\bR\rcascadeDelete*\xac\x01\n" +
 	"\x0fDeploymentPhase\x12 \n" +
 	"\x1cDEPLOYMENT_PHASE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18DEPLOYMENT_PHASE_PENDING\x10\x01\x12\x1c\n" +
 	"\x18DEPLOYMENT_PHASE_RUNNING\x10\x02\x12\x1b\n" +
 	"\x17DEPLOYMENT_PHASE_FAILED\x10\x03\x12\x1e\n" +
-	"\x1aDEPLOYMENT_PHASE_SUCCEEDED\x10\x042\xf4\v\n" +
+	"\x1aDEPLOYMENT_PHASE_SUCCEEDED\x10\x042\xa0\x0e\n" +
 	"\x11DeploymentService\x12f\n" +
 	"\x0fListDeployments\x12(.holos.console.v1.ListDeploymentsRequest\x1a).holos.console.v1.ListDeploymentsResponse\x12`\n" +
 	"\rGetDeployment\x12&.holos.console.v1.GetDeploymentRequest\x1a'.holos.console.v1.GetDeploymentResponse\x12i\n" +
@@ -3420,7 +3663,9 @@ const file_holos_console_v1_deployments_proto_rawDesc = "" +
 	"\x17ListNamespaceConfigMaps\x120.holos.console.v1.ListNamespaceConfigMapsRequest\x1a1.holos.console.v1.ListNamespaceConfigMapsResponse\x12\x87\x01\n" +
 	"\x1aGetDeploymentRenderPreview\x123.holos.console.v1.GetDeploymentRenderPreviewRequest\x1a4.holos.console.v1.GetDeploymentRenderPreviewResponse\x12\x81\x01\n" +
 	"\x18GetDeploymentPolicyState\x121.holos.console.v1.GetDeploymentPolicyStateRequest\x1a2.holos.console.v1.GetDeploymentPolicyStateResponse\x12c\n" +
-	"\x0ePreflightCheck\x12'.holos.console.v1.PreflightCheckRequest\x1a(.holos.console.v1.PreflightCheckResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x0ePreflightCheck\x12'.holos.console.v1.PreflightCheckRequest\x1a(.holos.console.v1.PreflightCheckResponse\x12\x93\x01\n" +
+	"\x1eGetDependencyEdgeCascadeDelete\x127.holos.console.v1.GetDependencyEdgeCascadeDeleteRequest\x1a8.holos.console.v1.GetDependencyEdgeCascadeDeleteResponse\x12\x93\x01\n" +
+	"\x1eSetDependencyEdgeCascadeDelete\x127.holos.console.v1.SetDependencyEdgeCascadeDeleteRequest\x1a8.holos.console.v1.SetDependencyEdgeCascadeDeleteResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_deployments_proto_rawDescOnce sync.Once
@@ -3435,62 +3680,66 @@ func file_holos_console_v1_deployments_proto_rawDescGZIP() []byte {
 }
 
 var file_holos_console_v1_deployments_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_holos_console_v1_deployments_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
+var file_holos_console_v1_deployments_proto_msgTypes = make([]protoimpl.MessageInfo, 46)
 var file_holos_console_v1_deployments_proto_goTypes = []any{
-	(DeploymentPhase)(0),                       // 0: holos.console.v1.DeploymentPhase
-	(*Deployment)(nil),                         // 1: holos.console.v1.Deployment
-	(*DeploymentDependency)(nil),               // 2: holos.console.v1.DeploymentDependency
-	(*OriginatingObject)(nil),                  // 3: holos.console.v1.OriginatingObject
-	(*EnvVar)(nil),                             // 4: holos.console.v1.EnvVar
-	(*SecretKeyRef)(nil),                       // 5: holos.console.v1.SecretKeyRef
-	(*ConfigMapKeyRef)(nil),                    // 6: holos.console.v1.ConfigMapKeyRef
-	(*ListDeploymentsRequest)(nil),             // 7: holos.console.v1.ListDeploymentsRequest
-	(*ListDeploymentsResponse)(nil),            // 8: holos.console.v1.ListDeploymentsResponse
-	(*GetDeploymentRequest)(nil),               // 9: holos.console.v1.GetDeploymentRequest
-	(*GetDeploymentResponse)(nil),              // 10: holos.console.v1.GetDeploymentResponse
-	(*CreateDeploymentRequest)(nil),            // 11: holos.console.v1.CreateDeploymentRequest
-	(*CreateDeploymentResponse)(nil),           // 12: holos.console.v1.CreateDeploymentResponse
-	(*UpdateDeploymentRequest)(nil),            // 13: holos.console.v1.UpdateDeploymentRequest
-	(*UpdateDeploymentResponse)(nil),           // 14: holos.console.v1.UpdateDeploymentResponse
-	(*DeleteDeploymentRequest)(nil),            // 15: holos.console.v1.DeleteDeploymentRequest
-	(*DeleteDeploymentResponse)(nil),           // 16: holos.console.v1.DeleteDeploymentResponse
-	(*GetDeploymentStatusRequest)(nil),         // 17: holos.console.v1.GetDeploymentStatusRequest
-	(*DeploymentStatus)(nil),                   // 18: holos.console.v1.DeploymentStatus
-	(*DeploymentCondition)(nil),                // 19: holos.console.v1.DeploymentCondition
-	(*PodStatus)(nil),                          // 20: holos.console.v1.PodStatus
-	(*Event)(nil),                              // 21: holos.console.v1.Event
-	(*ContainerStatus)(nil),                    // 22: holos.console.v1.ContainerStatus
-	(*GetDeploymentStatusResponse)(nil),        // 23: holos.console.v1.GetDeploymentStatusResponse
-	(*DeploymentStatusSummary)(nil),            // 24: holos.console.v1.DeploymentStatusSummary
-	(*GetDeploymentStatusSummaryRequest)(nil),  // 25: holos.console.v1.GetDeploymentStatusSummaryRequest
-	(*GetDeploymentStatusSummaryResponse)(nil), // 26: holos.console.v1.GetDeploymentStatusSummaryResponse
-	(*GetDeploymentLogsRequest)(nil),           // 27: holos.console.v1.GetDeploymentLogsRequest
-	(*GetDeploymentLogsResponse)(nil),          // 28: holos.console.v1.GetDeploymentLogsResponse
-	(*NamespaceResource)(nil),                  // 29: holos.console.v1.NamespaceResource
-	(*ListNamespaceSecretsRequest)(nil),        // 30: holos.console.v1.ListNamespaceSecretsRequest
-	(*ListNamespaceSecretsResponse)(nil),       // 31: holos.console.v1.ListNamespaceSecretsResponse
-	(*ListNamespaceConfigMapsRequest)(nil),     // 32: holos.console.v1.ListNamespaceConfigMapsRequest
-	(*ListNamespaceConfigMapsResponse)(nil),    // 33: holos.console.v1.ListNamespaceConfigMapsResponse
-	(*GetDeploymentRenderPreviewRequest)(nil),  // 34: holos.console.v1.GetDeploymentRenderPreviewRequest
-	(*GetDeploymentRenderPreviewResponse)(nil), // 35: holos.console.v1.GetDeploymentRenderPreviewResponse
-	(*DeploymentOutput)(nil),                   // 36: holos.console.v1.DeploymentOutput
-	(*Link)(nil),                               // 37: holos.console.v1.Link
-	(*PlannedDeployment)(nil),                  // 38: holos.console.v1.PlannedDeployment
-	(*CollisionDetail)(nil),                    // 39: holos.console.v1.CollisionDetail
-	(*VersionConflictDetail)(nil),              // 40: holos.console.v1.VersionConflictDetail
-	(*PreflightCheckRequest)(nil),              // 41: holos.console.v1.PreflightCheckRequest
-	(*PreflightCheckResponse)(nil),             // 42: holos.console.v1.PreflightCheckResponse
-	(*LinkedTemplateRef)(nil),                  // 43: holos.console.v1.LinkedTemplateRef
-	(*timestamppb.Timestamp)(nil),              // 44: google.protobuf.Timestamp
-	(*GetDeploymentPolicyStateRequest)(nil),    // 45: holos.console.v1.GetDeploymentPolicyStateRequest
-	(*GetDeploymentPolicyStateResponse)(nil),   // 46: holos.console.v1.GetDeploymentPolicyStateResponse
+	(DeploymentPhase)(0),                           // 0: holos.console.v1.DeploymentPhase
+	(*Deployment)(nil),                             // 1: holos.console.v1.Deployment
+	(*DeploymentDependency)(nil),                   // 2: holos.console.v1.DeploymentDependency
+	(*OriginatingObject)(nil),                      // 3: holos.console.v1.OriginatingObject
+	(*EnvVar)(nil),                                 // 4: holos.console.v1.EnvVar
+	(*SecretKeyRef)(nil),                           // 5: holos.console.v1.SecretKeyRef
+	(*ConfigMapKeyRef)(nil),                        // 6: holos.console.v1.ConfigMapKeyRef
+	(*ListDeploymentsRequest)(nil),                 // 7: holos.console.v1.ListDeploymentsRequest
+	(*ListDeploymentsResponse)(nil),                // 8: holos.console.v1.ListDeploymentsResponse
+	(*GetDeploymentRequest)(nil),                   // 9: holos.console.v1.GetDeploymentRequest
+	(*GetDeploymentResponse)(nil),                  // 10: holos.console.v1.GetDeploymentResponse
+	(*CreateDeploymentRequest)(nil),                // 11: holos.console.v1.CreateDeploymentRequest
+	(*CreateDeploymentResponse)(nil),               // 12: holos.console.v1.CreateDeploymentResponse
+	(*UpdateDeploymentRequest)(nil),                // 13: holos.console.v1.UpdateDeploymentRequest
+	(*UpdateDeploymentResponse)(nil),               // 14: holos.console.v1.UpdateDeploymentResponse
+	(*DeleteDeploymentRequest)(nil),                // 15: holos.console.v1.DeleteDeploymentRequest
+	(*DeleteDeploymentResponse)(nil),               // 16: holos.console.v1.DeleteDeploymentResponse
+	(*GetDeploymentStatusRequest)(nil),             // 17: holos.console.v1.GetDeploymentStatusRequest
+	(*DeploymentStatus)(nil),                       // 18: holos.console.v1.DeploymentStatus
+	(*DeploymentCondition)(nil),                    // 19: holos.console.v1.DeploymentCondition
+	(*PodStatus)(nil),                              // 20: holos.console.v1.PodStatus
+	(*Event)(nil),                                  // 21: holos.console.v1.Event
+	(*ContainerStatus)(nil),                        // 22: holos.console.v1.ContainerStatus
+	(*GetDeploymentStatusResponse)(nil),            // 23: holos.console.v1.GetDeploymentStatusResponse
+	(*DeploymentStatusSummary)(nil),                // 24: holos.console.v1.DeploymentStatusSummary
+	(*GetDeploymentStatusSummaryRequest)(nil),      // 25: holos.console.v1.GetDeploymentStatusSummaryRequest
+	(*GetDeploymentStatusSummaryResponse)(nil),     // 26: holos.console.v1.GetDeploymentStatusSummaryResponse
+	(*GetDeploymentLogsRequest)(nil),               // 27: holos.console.v1.GetDeploymentLogsRequest
+	(*GetDeploymentLogsResponse)(nil),              // 28: holos.console.v1.GetDeploymentLogsResponse
+	(*NamespaceResource)(nil),                      // 29: holos.console.v1.NamespaceResource
+	(*ListNamespaceSecretsRequest)(nil),            // 30: holos.console.v1.ListNamespaceSecretsRequest
+	(*ListNamespaceSecretsResponse)(nil),           // 31: holos.console.v1.ListNamespaceSecretsResponse
+	(*ListNamespaceConfigMapsRequest)(nil),         // 32: holos.console.v1.ListNamespaceConfigMapsRequest
+	(*ListNamespaceConfigMapsResponse)(nil),        // 33: holos.console.v1.ListNamespaceConfigMapsResponse
+	(*GetDeploymentRenderPreviewRequest)(nil),      // 34: holos.console.v1.GetDeploymentRenderPreviewRequest
+	(*GetDeploymentRenderPreviewResponse)(nil),     // 35: holos.console.v1.GetDeploymentRenderPreviewResponse
+	(*DeploymentOutput)(nil),                       // 36: holos.console.v1.DeploymentOutput
+	(*Link)(nil),                                   // 37: holos.console.v1.Link
+	(*PlannedDeployment)(nil),                      // 38: holos.console.v1.PlannedDeployment
+	(*CollisionDetail)(nil),                        // 39: holos.console.v1.CollisionDetail
+	(*VersionConflictDetail)(nil),                  // 40: holos.console.v1.VersionConflictDetail
+	(*PreflightCheckRequest)(nil),                  // 41: holos.console.v1.PreflightCheckRequest
+	(*PreflightCheckResponse)(nil),                 // 42: holos.console.v1.PreflightCheckResponse
+	(*GetDependencyEdgeCascadeDeleteRequest)(nil),  // 43: holos.console.v1.GetDependencyEdgeCascadeDeleteRequest
+	(*GetDependencyEdgeCascadeDeleteResponse)(nil), // 44: holos.console.v1.GetDependencyEdgeCascadeDeleteResponse
+	(*SetDependencyEdgeCascadeDeleteRequest)(nil),  // 45: holos.console.v1.SetDependencyEdgeCascadeDeleteRequest
+	(*SetDependencyEdgeCascadeDeleteResponse)(nil), // 46: holos.console.v1.SetDependencyEdgeCascadeDeleteResponse
+	(*LinkedTemplateRef)(nil),                      // 47: holos.console.v1.LinkedTemplateRef
+	(*timestamppb.Timestamp)(nil),                  // 48: google.protobuf.Timestamp
+	(*GetDeploymentPolicyStateRequest)(nil),        // 49: holos.console.v1.GetDeploymentPolicyStateRequest
+	(*GetDeploymentPolicyStateResponse)(nil),       // 50: holos.console.v1.GetDeploymentPolicyStateResponse
 }
 var file_holos_console_v1_deployments_proto_depIdxs = []int32{
 	0,  // 0: holos.console.v1.Deployment.phase:type_name -> holos.console.v1.DeploymentPhase
 	4,  // 1: holos.console.v1.Deployment.env:type_name -> holos.console.v1.EnvVar
 	24, // 2: holos.console.v1.Deployment.status_summary:type_name -> holos.console.v1.DeploymentStatusSummary
 	2,  // 3: holos.console.v1.Deployment.dependencies:type_name -> holos.console.v1.DeploymentDependency
-	43, // 4: holos.console.v1.DeploymentDependency.template:type_name -> holos.console.v1.LinkedTemplateRef
+	47, // 4: holos.console.v1.DeploymentDependency.template:type_name -> holos.console.v1.LinkedTemplateRef
 	3,  // 5: holos.console.v1.DeploymentDependency.originating_object:type_name -> holos.console.v1.OriginatingObject
 	5,  // 6: holos.console.v1.EnvVar.secret_key_ref:type_name -> holos.console.v1.SecretKeyRef
 	6,  // 7: holos.console.v1.EnvVar.config_map_key_ref:type_name -> holos.console.v1.ConfigMapKeyRef
@@ -3504,9 +3753,9 @@ var file_holos_console_v1_deployments_proto_depIdxs = []int32{
 	24, // 15: holos.console.v1.DeploymentStatus.summary:type_name -> holos.console.v1.DeploymentStatusSummary
 	22, // 16: holos.console.v1.PodStatus.container_statuses:type_name -> holos.console.v1.ContainerStatus
 	21, // 17: holos.console.v1.PodStatus.events:type_name -> holos.console.v1.Event
-	44, // 18: holos.console.v1.Event.first_seen:type_name -> google.protobuf.Timestamp
-	44, // 19: holos.console.v1.Event.last_seen:type_name -> google.protobuf.Timestamp
-	44, // 20: holos.console.v1.ContainerStatus.started_at:type_name -> google.protobuf.Timestamp
+	48, // 18: holos.console.v1.Event.first_seen:type_name -> google.protobuf.Timestamp
+	48, // 19: holos.console.v1.Event.last_seen:type_name -> google.protobuf.Timestamp
+	48, // 20: holos.console.v1.ContainerStatus.started_at:type_name -> google.protobuf.Timestamp
 	18, // 21: holos.console.v1.GetDeploymentStatusResponse.status:type_name -> holos.console.v1.DeploymentStatus
 	0,  // 22: holos.console.v1.DeploymentStatusSummary.phase:type_name -> holos.console.v1.DeploymentPhase
 	36, // 23: holos.console.v1.DeploymentStatusSummary.output:type_name -> holos.console.v1.DeploymentOutput
@@ -3515,41 +3764,47 @@ var file_holos_console_v1_deployments_proto_depIdxs = []int32{
 	29, // 26: holos.console.v1.ListNamespaceConfigMapsResponse.config_maps:type_name -> holos.console.v1.NamespaceResource
 	36, // 27: holos.console.v1.GetDeploymentRenderPreviewResponse.output:type_name -> holos.console.v1.DeploymentOutput
 	37, // 28: holos.console.v1.DeploymentOutput.links:type_name -> holos.console.v1.Link
-	43, // 29: holos.console.v1.PlannedDeployment.linked_template_ref:type_name -> holos.console.v1.LinkedTemplateRef
+	47, // 29: holos.console.v1.PlannedDeployment.linked_template_ref:type_name -> holos.console.v1.LinkedTemplateRef
 	38, // 30: holos.console.v1.PreflightCheckRequest.planned_deployments:type_name -> holos.console.v1.PlannedDeployment
 	39, // 31: holos.console.v1.PreflightCheckResponse.collisions:type_name -> holos.console.v1.CollisionDetail
 	40, // 32: holos.console.v1.PreflightCheckResponse.version_conflicts:type_name -> holos.console.v1.VersionConflictDetail
-	7,  // 33: holos.console.v1.DeploymentService.ListDeployments:input_type -> holos.console.v1.ListDeploymentsRequest
-	9,  // 34: holos.console.v1.DeploymentService.GetDeployment:input_type -> holos.console.v1.GetDeploymentRequest
-	11, // 35: holos.console.v1.DeploymentService.CreateDeployment:input_type -> holos.console.v1.CreateDeploymentRequest
-	13, // 36: holos.console.v1.DeploymentService.UpdateDeployment:input_type -> holos.console.v1.UpdateDeploymentRequest
-	15, // 37: holos.console.v1.DeploymentService.DeleteDeployment:input_type -> holos.console.v1.DeleteDeploymentRequest
-	17, // 38: holos.console.v1.DeploymentService.GetDeploymentStatus:input_type -> holos.console.v1.GetDeploymentStatusRequest
-	25, // 39: holos.console.v1.DeploymentService.GetDeploymentStatusSummary:input_type -> holos.console.v1.GetDeploymentStatusSummaryRequest
-	27, // 40: holos.console.v1.DeploymentService.GetDeploymentLogs:input_type -> holos.console.v1.GetDeploymentLogsRequest
-	30, // 41: holos.console.v1.DeploymentService.ListNamespaceSecrets:input_type -> holos.console.v1.ListNamespaceSecretsRequest
-	32, // 42: holos.console.v1.DeploymentService.ListNamespaceConfigMaps:input_type -> holos.console.v1.ListNamespaceConfigMapsRequest
-	34, // 43: holos.console.v1.DeploymentService.GetDeploymentRenderPreview:input_type -> holos.console.v1.GetDeploymentRenderPreviewRequest
-	45, // 44: holos.console.v1.DeploymentService.GetDeploymentPolicyState:input_type -> holos.console.v1.GetDeploymentPolicyStateRequest
-	41, // 45: holos.console.v1.DeploymentService.PreflightCheck:input_type -> holos.console.v1.PreflightCheckRequest
-	8,  // 46: holos.console.v1.DeploymentService.ListDeployments:output_type -> holos.console.v1.ListDeploymentsResponse
-	10, // 47: holos.console.v1.DeploymentService.GetDeployment:output_type -> holos.console.v1.GetDeploymentResponse
-	12, // 48: holos.console.v1.DeploymentService.CreateDeployment:output_type -> holos.console.v1.CreateDeploymentResponse
-	14, // 49: holos.console.v1.DeploymentService.UpdateDeployment:output_type -> holos.console.v1.UpdateDeploymentResponse
-	16, // 50: holos.console.v1.DeploymentService.DeleteDeployment:output_type -> holos.console.v1.DeleteDeploymentResponse
-	23, // 51: holos.console.v1.DeploymentService.GetDeploymentStatus:output_type -> holos.console.v1.GetDeploymentStatusResponse
-	26, // 52: holos.console.v1.DeploymentService.GetDeploymentStatusSummary:output_type -> holos.console.v1.GetDeploymentStatusSummaryResponse
-	28, // 53: holos.console.v1.DeploymentService.GetDeploymentLogs:output_type -> holos.console.v1.GetDeploymentLogsResponse
-	31, // 54: holos.console.v1.DeploymentService.ListNamespaceSecrets:output_type -> holos.console.v1.ListNamespaceSecretsResponse
-	33, // 55: holos.console.v1.DeploymentService.ListNamespaceConfigMaps:output_type -> holos.console.v1.ListNamespaceConfigMapsResponse
-	35, // 56: holos.console.v1.DeploymentService.GetDeploymentRenderPreview:output_type -> holos.console.v1.GetDeploymentRenderPreviewResponse
-	46, // 57: holos.console.v1.DeploymentService.GetDeploymentPolicyState:output_type -> holos.console.v1.GetDeploymentPolicyStateResponse
-	42, // 58: holos.console.v1.DeploymentService.PreflightCheck:output_type -> holos.console.v1.PreflightCheckResponse
-	46, // [46:59] is the sub-list for method output_type
-	33, // [33:46] is the sub-list for method input_type
-	33, // [33:33] is the sub-list for extension type_name
-	33, // [33:33] is the sub-list for extension extendee
-	0,  // [0:33] is the sub-list for field type_name
+	3,  // 33: holos.console.v1.GetDependencyEdgeCascadeDeleteRequest.originating_object:type_name -> holos.console.v1.OriginatingObject
+	3,  // 34: holos.console.v1.SetDependencyEdgeCascadeDeleteRequest.originating_object:type_name -> holos.console.v1.OriginatingObject
+	7,  // 35: holos.console.v1.DeploymentService.ListDeployments:input_type -> holos.console.v1.ListDeploymentsRequest
+	9,  // 36: holos.console.v1.DeploymentService.GetDeployment:input_type -> holos.console.v1.GetDeploymentRequest
+	11, // 37: holos.console.v1.DeploymentService.CreateDeployment:input_type -> holos.console.v1.CreateDeploymentRequest
+	13, // 38: holos.console.v1.DeploymentService.UpdateDeployment:input_type -> holos.console.v1.UpdateDeploymentRequest
+	15, // 39: holos.console.v1.DeploymentService.DeleteDeployment:input_type -> holos.console.v1.DeleteDeploymentRequest
+	17, // 40: holos.console.v1.DeploymentService.GetDeploymentStatus:input_type -> holos.console.v1.GetDeploymentStatusRequest
+	25, // 41: holos.console.v1.DeploymentService.GetDeploymentStatusSummary:input_type -> holos.console.v1.GetDeploymentStatusSummaryRequest
+	27, // 42: holos.console.v1.DeploymentService.GetDeploymentLogs:input_type -> holos.console.v1.GetDeploymentLogsRequest
+	30, // 43: holos.console.v1.DeploymentService.ListNamespaceSecrets:input_type -> holos.console.v1.ListNamespaceSecretsRequest
+	32, // 44: holos.console.v1.DeploymentService.ListNamespaceConfigMaps:input_type -> holos.console.v1.ListNamespaceConfigMapsRequest
+	34, // 45: holos.console.v1.DeploymentService.GetDeploymentRenderPreview:input_type -> holos.console.v1.GetDeploymentRenderPreviewRequest
+	49, // 46: holos.console.v1.DeploymentService.GetDeploymentPolicyState:input_type -> holos.console.v1.GetDeploymentPolicyStateRequest
+	41, // 47: holos.console.v1.DeploymentService.PreflightCheck:input_type -> holos.console.v1.PreflightCheckRequest
+	43, // 48: holos.console.v1.DeploymentService.GetDependencyEdgeCascadeDelete:input_type -> holos.console.v1.GetDependencyEdgeCascadeDeleteRequest
+	45, // 49: holos.console.v1.DeploymentService.SetDependencyEdgeCascadeDelete:input_type -> holos.console.v1.SetDependencyEdgeCascadeDeleteRequest
+	8,  // 50: holos.console.v1.DeploymentService.ListDeployments:output_type -> holos.console.v1.ListDeploymentsResponse
+	10, // 51: holos.console.v1.DeploymentService.GetDeployment:output_type -> holos.console.v1.GetDeploymentResponse
+	12, // 52: holos.console.v1.DeploymentService.CreateDeployment:output_type -> holos.console.v1.CreateDeploymentResponse
+	14, // 53: holos.console.v1.DeploymentService.UpdateDeployment:output_type -> holos.console.v1.UpdateDeploymentResponse
+	16, // 54: holos.console.v1.DeploymentService.DeleteDeployment:output_type -> holos.console.v1.DeleteDeploymentResponse
+	23, // 55: holos.console.v1.DeploymentService.GetDeploymentStatus:output_type -> holos.console.v1.GetDeploymentStatusResponse
+	26, // 56: holos.console.v1.DeploymentService.GetDeploymentStatusSummary:output_type -> holos.console.v1.GetDeploymentStatusSummaryResponse
+	28, // 57: holos.console.v1.DeploymentService.GetDeploymentLogs:output_type -> holos.console.v1.GetDeploymentLogsResponse
+	31, // 58: holos.console.v1.DeploymentService.ListNamespaceSecrets:output_type -> holos.console.v1.ListNamespaceSecretsResponse
+	33, // 59: holos.console.v1.DeploymentService.ListNamespaceConfigMaps:output_type -> holos.console.v1.ListNamespaceConfigMapsResponse
+	35, // 60: holos.console.v1.DeploymentService.GetDeploymentRenderPreview:output_type -> holos.console.v1.GetDeploymentRenderPreviewResponse
+	50, // 61: holos.console.v1.DeploymentService.GetDeploymentPolicyState:output_type -> holos.console.v1.GetDeploymentPolicyStateResponse
+	42, // 62: holos.console.v1.DeploymentService.PreflightCheck:output_type -> holos.console.v1.PreflightCheckResponse
+	44, // 63: holos.console.v1.DeploymentService.GetDependencyEdgeCascadeDelete:output_type -> holos.console.v1.GetDependencyEdgeCascadeDeleteResponse
+	46, // 64: holos.console.v1.DeploymentService.SetDependencyEdgeCascadeDelete:output_type -> holos.console.v1.SetDependencyEdgeCascadeDeleteResponse
+	50, // [50:65] is the sub-list for method output_type
+	35, // [35:50] is the sub-list for method input_type
+	35, // [35:35] is the sub-list for extension type_name
+	35, // [35:35] is the sub-list for extension extendee
+	0,  // [0:35] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_deployments_proto_init() }
@@ -3574,7 +3829,7 @@ func file_holos_console_v1_deployments_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_deployments_proto_rawDesc), len(file_holos_console_v1_deployments_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   42,
+			NumMessages:   46,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

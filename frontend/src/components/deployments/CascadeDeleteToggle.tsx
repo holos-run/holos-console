@@ -1,20 +1,16 @@
 /**
  * CascadeDeleteToggle renders a toggle that controls whether deleting the
- * parent (requiring) Deployment also cascades to the shared singleton
- * Deployment produced by a TemplateDependency or TemplateRequirement (Phase 5
- * / Phase 6, HOL-959 / HOL-960).
+ * dependent Deployment also cascades to the shared singleton produced by a
+ * TemplateDependency or TemplateRequirement.
  *
  * The default value is `true` (cascade on), matching the Kubernetes
  * ownerReference model: when a dependent is deleted, the singleton is GC'd
  * automatically when it has no remaining co-owners.
  *
- * NOTE: The `cascadeDelete` field is not yet carried in the
- * CreateDeployment or UpdateDeployment proto messages (deferred AC). The
- * toggle captures the user's intent in local form state so the wiring can be
- * completed when the proto is extended. Until then, the value is not sent to
- * the backend.
- *
- * HOL-963 (Phase 9).
+ * The component is purely controlled. The deployment detail page (HOL-991)
+ * wires this to useGetDependencyEdgeCascadeDelete /
+ * useSetDependencyEdgeCascadeDelete so the value reflects and updates
+ * Spec.CascadeDelete on the originating CRD.
  */
 
 import { Switch } from '@/components/ui/switch'

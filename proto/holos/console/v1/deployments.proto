@@ -51,6 +51,21 @@ service DeploymentService {
   // state. Phase 9 (HOL-963) wires the deployment form to call it before
   // the user submits.
   rpc PreflightCheck(PreflightCheckRequest) returns (PreflightCheckResponse);
+  // GetDependencyEdgeCascadeDelete returns the current Spec.CascadeDelete
+  // value on the originating CRD (TemplateDependency or TemplateRequirement)
+  // that materialised a dependency edge for one of the project's singleton
+  // Deployments. Surfaced to the deployment detail page so the per-edge
+  // cascade-delete toggle can reflect live state. RBAC: requires
+  // deployments-read on the named project.
+  rpc GetDependencyEdgeCascadeDelete(GetDependencyEdgeCascadeDeleteRequest) returns (GetDependencyEdgeCascadeDeleteResponse);
+  // SetDependencyEdgeCascadeDelete writes Spec.CascadeDelete on the
+  // originating CRD identified by `originating_object` to `cascade_delete`.
+  // Treated as the per-edge form-control writer for HOL-991 — turning the
+  // toggle off detaches the singleton's owner-ref from that dependent so
+  // native Kubernetes GC will not reap the singleton when the dependent is
+  // deleted (ADR-035 Decision 12 / HOL-954). RBAC: requires
+  // deployments-write on the named project.
+  rpc SetDependencyEdgeCascadeDelete(SetDependencyEdgeCascadeDeleteRequest) returns (SetDependencyEdgeCascadeDeleteResponse);
 }
 
 // Deployment represents a deployed application instance.
@@ -617,4 +632,55 @@ message PreflightCheckResponse {
   // version_conflicts lists incompatible versionConstraint conflicts between
   // dependents that pin different constraints on the same shared dependency.
   repeated VersionConflictDetail version_conflicts = 2;
+}
+
+// GetDependencyEdgeCascadeDeleteRequest reads the current Spec.CascadeDelete
+// value on the originating CRD (TemplateDependency or TemplateRequirement)
+// for a single dependency edge. The caller's project carries the RBAC scope.
+message GetDependencyEdgeCascadeDeleteRequest {
+  // project is the project the caller is currently scoped to. RBAC: caller
+  // must hold deployments-read on this project.
+  string project = 1;
+  // originating_object identifies the CRD whose Spec.CascadeDelete value
+  // is being read. The kind discriminates between TemplateDependency and
+  // TemplateRequirement; namespace and name address the object.
+  OriginatingObject originating_object = 2;
+}
+
+// GetDependencyEdgeCascadeDeleteResponse echoes the persisted value. Treats
+// an unset Spec.CascadeDelete as true (the +kubebuilder:default=true on both
+// CRD types) so callers do not have to know the API default.
+message GetDependencyEdgeCascadeDeleteResponse {
+  // cascade_delete is the live value of Spec.CascadeDelete; an unset CRD
+  // field is reported as true to match the API-server default.
+  bool cascade_delete = 1;
+}
+
+// SetDependencyEdgeCascadeDeleteRequest writes Spec.CascadeDelete on the
+// originating CRD (TemplateDependency or TemplateRequirement) to a concrete
+// value. The toggle is project-form scoped: the caller must hold
+// deployments-write on `project` even when the originating CRD lives in a
+// folder or organization namespace (per HOL-991, project owners are
+// authoritative for cascade decoupling on edges that point into their
+// project).
+message SetDependencyEdgeCascadeDeleteRequest {
+  // project is the project the caller is currently scoped to. RBAC: caller
+  // must hold deployments-write on this project.
+  string project = 1;
+  // originating_object identifies the CRD whose Spec.CascadeDelete value
+  // is being written. The kind discriminates between TemplateDependency and
+  // TemplateRequirement; namespace and name address the object.
+  OriginatingObject originating_object = 2;
+  // cascade_delete is the desired value to persist. Both true and false are
+  // explicit values — the field is non-optional on the wire so the toggle
+  // cannot accidentally write "leave unspecified" semantics.
+  bool cascade_delete = 3;
+}
+
+// SetDependencyEdgeCascadeDeleteResponse echoes the value persisted to the
+// CRD so optimistic updates on the client can reconcile against the
+// authoritative state without a follow-up read.
+message SetDependencyEdgeCascadeDeleteResponse {
+  // cascade_delete is the value persisted to Spec.CascadeDelete.
+  bool cascade_delete = 1;
 }

@@ -10,8 +10,13 @@ import {
   useDeleteDeployment,
   useUpdateDeployment,
   usePreflightCheck,
+  useGetDependencyEdgeCascadeDelete,
+  useSetDependencyEdgeCascadeDelete,
 } from '@/queries/deployments'
-import type { PlannedDeployment } from '@/gen/holos/console/v1/deployments_pb.js'
+import type {
+  OriginatingObject,
+  PlannedDeployment,
+} from '@/gen/holos/console/v1/deployments_pb.js'
 
 vi.mock('@connectrpc/connect', () => ({
   createClient: vi.fn(),
@@ -319,5 +324,126 @@ describe('usePreflightCheck', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data?.collisions).toHaveLength(1)
     expect(result.current.data?.collisions[0]?.plannedName).toBe('api')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// useSetDependencyEdgeCascadeDelete: optimistic update + rollback (HOL-991)
+// ---------------------------------------------------------------------------
+
+describe('useSetDependencyEdgeCascadeDelete', () => {
+  let queryClient: QueryClient
+  let mockClient: Record<string, Mock>
+
+  const originating: OriginatingObject = {
+    kind: 'TemplateDependency',
+    namespace: 'prj-test',
+    name: 'edge-1',
+    $typeName: 'holos.console.v1.OriginatingObject',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    mockClient = {
+      setDependencyEdgeCascadeDelete: vi.fn(),
+      getDependencyEdgeCascadeDelete: vi.fn(),
+    }
+    ;(createClient as Mock).mockReturnValue(mockClient)
+    ;(useTransport as Mock).mockReturnValue({})
+    ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true })
+  })
+
+  it('uses the canonical edge cascade-delete key', async () => {
+    mockClient.getDependencyEdgeCascadeDelete.mockResolvedValue({ cascadeDelete: true })
+    const { result } = renderHook(
+      () => useGetDependencyEdgeCascadeDelete('demo-project', originating),
+      { wrapper: makeWrapper(queryClient) },
+    )
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    const matches = queryClient.getQueryCache().findAll({
+      queryKey: keys.deployments.dependencyEdgeCascadeDelete(
+        'demo-project',
+        'TemplateDependency',
+        'prj-test',
+        'edge-1',
+      ),
+    })
+    expect(matches).toHaveLength(1)
+  })
+
+  it('is disabled when originatingObject is undefined', () => {
+    const { result } = renderHook(
+      () => useGetDependencyEdgeCascadeDelete('demo-project', undefined),
+      { wrapper: makeWrapper(queryClient) },
+    )
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(mockClient.getDependencyEdgeCascadeDelete).not.toHaveBeenCalled()
+  })
+
+  it('optimistically flips the cached value before the RPC resolves', async () => {
+    const queryKey = keys.deployments.dependencyEdgeCascadeDelete(
+      'demo-project',
+      'TemplateDependency',
+      'prj-test',
+      'edge-1',
+    )
+    queryClient.setQueryData(queryKey, true)
+
+    const pending = deferred<{ cascadeDelete: boolean }>()
+    mockClient.setDependencyEdgeCascadeDelete.mockReturnValue(pending.promise)
+
+    const { result } = renderHook(
+      () => useSetDependencyEdgeCascadeDelete('demo-project'),
+      { wrapper: makeWrapper(queryClient) },
+    )
+
+    act(() => {
+      result.current.mutate({ originatingObject: originating, cascadeDelete: false })
+    })
+
+    await waitFor(() =>
+      expect(queryClient.getQueryData<boolean>(queryKey)).toBe(false),
+    )
+
+    await act(async () => {
+      pending.resolve({ cascadeDelete: false })
+      await pending.promise
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+  })
+
+  it('rolls back the cached value when the RPC rejects', async () => {
+    const queryKey = keys.deployments.dependencyEdgeCascadeDelete(
+      'demo-project',
+      'TemplateDependency',
+      'prj-test',
+      'edge-1',
+    )
+    queryClient.setQueryData(queryKey, true)
+
+    mockClient.setDependencyEdgeCascadeDelete.mockRejectedValue(new Error('write blocked'))
+
+    const { result } = renderHook(
+      () => useSetDependencyEdgeCascadeDelete('demo-project'),
+      { wrapper: makeWrapper(queryClient) },
+    )
+
+    await act(async () => {
+      try {
+        await result.current.mutateAsync({
+          originatingObject: originating,
+          cascadeDelete: false,
+        })
+      } catch {
+        // expected
+      }
+    })
+
+    await waitFor(() =>
+      expect(queryClient.getQueryData<boolean>(queryKey)).toBe(true),
+    )
+    expect(result.current.isError).toBe(true)
   })
 })

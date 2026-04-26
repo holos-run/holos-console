@@ -36,6 +36,8 @@ vi.mock('@/queries/deployments', () => ({
   useListNamespaceConfigMaps: vi.fn(),
   useGetDeploymentPolicyState: vi.fn(),
   useGetDeploymentRenderPreview: vi.fn(),
+  useGetDependencyEdgeCascadeDelete: vi.fn(),
+  useSetDependencyEdgeCascadeDelete: vi.fn(),
 }))
 
 vi.mock('@/queries/projects', () => ({
@@ -71,7 +73,7 @@ vi.mock('@/lib/scope-labels', async (importOriginal) => {
   }
 })
 
-import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps, useGetDeploymentPolicyState, useGetDeploymentRenderPreview } from '@/queries/deployments'
+import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps, useGetDeploymentPolicyState, useGetDeploymentRenderPreview, useGetDependencyEdgeCascadeDelete, useSetDependencyEdgeCascadeDelete } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentPhase } from '@/gen/holos/console/v1/deployments_pb'
@@ -198,6 +200,8 @@ function setupMocks(userRole = Role.OWNER) {
   ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
   ;(useGetDeploymentPolicyState as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
   ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
+  ;(useGetDependencyEdgeCascadeDelete as Mock).mockReturnValue({ data: true, isPending: false, error: null })
+  ;(useSetDependencyEdgeCascadeDelete as Mock).mockReturnValue({ mutate: vi.fn(), isPending: false, error: null })
 }
 
 describe('DeploymentDetailPage', () => {
@@ -1429,6 +1433,128 @@ describe('DeploymentDetailPage', () => {
       setupMocks()
       render(<DeploymentDetailPage />)
       expect(useGetDeploymentRenderPreview).toHaveBeenCalledWith('test-project', 'api')
+    })
+  })
+
+  // HOL-991: per-edge cascade-delete toggle on the deployment detail page.
+  // Each Deployment.dependencies entry renders one DependencyEdgeCascadeRow
+  // wired to useGetDependencyEdgeCascadeDelete + useSetDependencyEdgeCascadeDelete.
+  describe('cascade-delete toggle', () => {
+    const edgeOne = {
+      template: { namespace: 'org-shared', name: 'waypoint' },
+      version: '',
+      originatingObject: { kind: 'TemplateDependency', namespace: 'prj-test', name: 'edge-1' },
+    }
+    const edgeTwo = {
+      template: { namespace: 'org-shared', name: 'mcp-server' },
+      version: '',
+      originatingObject: { kind: 'TemplateRequirement', namespace: 'org-shared', name: 'edge-2' },
+    }
+
+    it('hides the section when the deployment has no dependencies', () => {
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      expect(screen.queryByTestId('dependency-edge-cascade-list')).not.toBeInTheDocument()
+    })
+
+    it('renders one row per dependency edge', () => {
+      setupMocks()
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: { ...mockDeployment, dependencies: [edgeOne, edgeTwo] },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      expect(screen.getByTestId('dependency-edge-cascade-list')).toBeInTheDocument()
+      expect(screen.getAllByTestId('dependency-edge-cascade-row')).toHaveLength(2)
+      expect(screen.getByText('TemplateDependency: prj-test/edge-1')).toBeInTheDocument()
+      expect(screen.getByText('TemplateRequirement: org-shared/edge-2')).toBeInTheDocument()
+    })
+
+    it('reflects the persisted value (false) on the switch', () => {
+      setupMocks()
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: { ...mockDeployment, dependencies: [edgeOne] },
+        isPending: false,
+        error: null,
+      })
+      ;(useGetDependencyEdgeCascadeDelete as Mock).mockReturnValue({
+        data: false,
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      const sw = screen.getByTestId('cascade-delete-toggle') as HTMLButtonElement
+      expect(sw.getAttribute('data-state')).toBe('unchecked')
+    })
+
+    it('calls the mutation with the originating object on click', async () => {
+      const user = userEvent.setup()
+      const mutate = vi.fn()
+      setupMocks()
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: { ...mockDeployment, dependencies: [edgeOne] },
+        isPending: false,
+        error: null,
+      })
+      ;(useSetDependencyEdgeCascadeDelete as Mock).mockReturnValue({
+        mutate,
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByTestId('cascade-delete-toggle'))
+      expect(mutate).toHaveBeenCalledWith({
+        originatingObject: edgeOne.originatingObject,
+        cascadeDelete: false,
+      })
+    })
+
+    it('disables the switch for viewers (no write permission)', () => {
+      setupMocks(Role.VIEWER)
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: { ...mockDeployment, dependencies: [edgeOne] },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      const sw = screen.getByTestId('cascade-delete-toggle') as HTMLButtonElement
+      expect(sw.disabled).toBe(true)
+    })
+
+    it('does not call the mutation when a viewer clicks the disabled switch', async () => {
+      const user = userEvent.setup()
+      const mutate = vi.fn()
+      setupMocks(Role.VIEWER)
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: { ...mockDeployment, dependencies: [edgeOne] },
+        isPending: false,
+        error: null,
+      })
+      ;(useSetDependencyEdgeCascadeDelete as Mock).mockReturnValue({
+        mutate,
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByTestId('cascade-delete-toggle'))
+      expect(mutate).not.toHaveBeenCalled()
+    })
+
+    it('surfaces the mutation error', () => {
+      setupMocks()
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: { ...mockDeployment, dependencies: [edgeOne] },
+        isPending: false,
+        error: null,
+      })
+      ;(useSetDependencyEdgeCascadeDelete as Mock).mockReturnValue({
+        mutate: vi.fn(),
+        isPending: false,
+        error: new Error('cascade write failed'),
+      })
+      render(<DeploymentDetailPage />)
+      expect(screen.getByText(/cascade write failed/i)).toBeInTheDocument()
     })
   })
 })
