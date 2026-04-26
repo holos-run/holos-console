@@ -102,7 +102,6 @@ export function AppSidebar() {
     },
   ]
 
-  // Templates root link resolves the same way as the old flat entry.
   const templatesRootHref = hasOrg
     ? `/organizations/${selectedOrg}/templates`
     : hasProject
@@ -190,7 +189,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {/* Flat nav items: Projects, Secrets, Deployments */}
+              {/* Flat nav items: Project, Secrets, Deployments */}
               {navItems.map((item) => {
                 const resolvedPath = item.href
                 const isActive =

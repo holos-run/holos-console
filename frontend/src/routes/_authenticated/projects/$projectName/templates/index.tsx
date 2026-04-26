@@ -1,7 +1,6 @@
 /**
  * Project-scoped Templates index — refactored to the authoring (clone/edit)
  * cluster (HOL-974).
- * Adopted StandardPageLayout (HOL-1002).
  *
  * Shows only Template rows scoped to the current project namespace. The
  * query key factory (keys.templates.list(namespace)) is shared with the
