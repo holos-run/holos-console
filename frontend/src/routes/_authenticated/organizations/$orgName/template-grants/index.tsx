@@ -1,17 +1,13 @@
 /**
- * Project-scoped Templates / Grants index (HOL-1013).
+ * Organization-scoped TemplateGrant index (HOL-1022).
  *
- * TemplateGrants are org/folder-scoped, not project-scoped. The namespace is
- * derived from the selected organization via useOrg().selectedOrg. The project
- * name still appears in the URL so the Templates collapsible group can stay
- * open in a later sidebar phase (HOL-1014).
- *
- * Sidebar nesting is handled in HOL-1014; for now the route exists and is
- * reachable by URL.
+ * TemplateGrant objects live in organization or folder namespaces. This
+ * org-scoped index shows grants in the current org namespace.
  */
 
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
@@ -20,52 +16,60 @@ import {
   useListTemplateGrants,
   useDeleteTemplateGrant,
 } from '@/queries/templateGrants'
-import { useOrg } from '@/lib/org-context'
+import { useGetOrganization } from '@/queries/organizations'
 import { namespaceForOrg } from '@/lib/scope-labels'
+
+// ---------------------------------------------------------------------------
+// Route
+// ---------------------------------------------------------------------------
+
+export const Route = createFileRoute(
+  '/_authenticated/organizations/$orgName/template-grants/',
+)({
+  validateSearch: parseGridSearch,
+  component: OrgTemplateGrantsIndexRoute,
+})
+
+function OrgTemplateGrantsIndexRoute() {
+  const { orgName } = Route.useParams()
+  return <OrgTemplateGrantsIndexPage orgName={orgName} />
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Convert a proto Timestamp to an ISO-8601 string for ResourceGrid createdAt. */
 function timestampToISOString(ts: { seconds: bigint } | undefined): string {
   if (!ts) return ''
   return new Date(Number(ts.seconds) * 1000).toISOString()
 }
 
 // ---------------------------------------------------------------------------
-// Route definition
-// ---------------------------------------------------------------------------
-
-export const Route = createFileRoute(
-  '/_authenticated/projects/$projectName/templates/grants/',
-)({
-  validateSearch: parseGridSearch,
-  component: TemplateGrantsIndexRoute,
-})
-
-function TemplateGrantsIndexRoute() {
-  const { projectName } = Route.useParams()
-  return <TemplateGrantsIndexPage projectName={projectName} />
-}
-
-// ---------------------------------------------------------------------------
 // Page component (exported for tests)
 // ---------------------------------------------------------------------------
 
-export function TemplateGrantsIndexPage({
-  projectName,
-}: {
-  projectName: string
-}) {
-  const search = Route.useSearch() as ResourceGridSearch
+export function OrgTemplateGrantsIndexPage({
+  orgName: propOrgName,
+}: { orgName?: string } = {}) {
+  let routeOrgName: string | undefined
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    routeOrgName = Route.useParams().orgName
+  } catch {
+    routeOrgName = undefined
+  }
+  const orgName = propOrgName ?? routeOrgName ?? ''
+
+  const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
 
-  // TemplateGrants are org/folder-scoped — namespace comes from the selected
-  // org, not the project. The project param keeps Templates sidebar active
-  // in a later phase.
-  const { selectedOrg } = useOrg()
-  const namespace = namespaceForOrg(selectedOrg ?? '')
+  const { data: org } = useGetOrganization(orgName)
+
+  const userRole = org?.userRole ?? Role.VIEWER
+  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
+
+  // TemplateGrants are org-scoped.
+  const namespace = namespaceForOrg(orgName)
 
   const {
     data: grants = [],
@@ -84,19 +88,16 @@ export function TemplateGrantsIndexPage({
       grants.map((g) => ({
         kind: 'TemplateGrant',
         name: g.name,
-        namespace,
+        namespace: namespace,
         id: g.name,
-        parentId: selectedOrg ?? '',
-        parentLabel: selectedOrg ?? '',
+        parentId: orgName,
+        parentLabel: orgName,
         displayName: g.name,
-        description:
-          g.from.map((f) => f.namespace).join(', ') || '',
+        description: g.from.map((f) => f.namespace).join(', ') || '',
         createdAt: timestampToISOString(g.createdAt),
-        detailHref: selectedOrg
-          ? `/organizations/${selectedOrg}/template-grants/${g.name}`
-          : undefined,
+        detailHref: `/organizations/${orgName}/template-grants/${g.name}`,
       })),
-    [grants, namespace, selectedOrg],
+    [grants, namespace, orgName],
   )
 
   // ---------------------------------------------------------------------------
@@ -107,12 +108,12 @@ export function TemplateGrantsIndexPage({
     () => [
       {
         id: 'TemplateGrant',
-        label: 'TemplateGrant',
-        // No create in this view — grants are created from org-level pages.
-        canCreate: false,
+        label: 'Template Grant',
+        newHref: `/organizations/${orgName}/template-grants/new`,
+        canCreate: canWrite,
       },
     ],
-    [],
+    [orgName, canWrite],
   )
 
   // ---------------------------------------------------------------------------
@@ -130,6 +131,7 @@ export function TemplateGrantsIndexPage({
     (updater: (prev: ResourceGridSearch) => ResourceGridSearch) => {
       navigate({
         search: (prev) => updater(prev as ResourceGridSearch),
+        replace: true,
       })
     },
     [navigate],
@@ -137,7 +139,7 @@ export function TemplateGrantsIndexPage({
 
   return (
     <ResourceGrid
-      title={`${projectName} / Templates / Grants`}
+      title={`${orgName} / Template Grants`}
       kinds={kinds}
       rows={rows}
       onDelete={handleDelete}
