@@ -34,6 +34,18 @@ Use the resource URL convention from
 Use full plural nouns for scoped route prefixes: `organizations`, `projects`,
 and `folders`. Do not reintroduce `/orgs/...`.
 
+## Routing Hook Conventions
+
+Use `useLocation()` or `useRouterState({ select })` for any route reads that
+happen during render — they are reactive subscriptions and will re-render the
+component when the location changes.
+
+`router.state` is a non-reactive snapshot. Reserve it exclusively for one-shot
+reads inside event handlers (e.g. capturing the current path at click time for
+a `returnTo` param). Never read `router.state.location.*` from a component's
+render body; doing so produces stale UI that does not update on client-side
+navigation (the bug fixed in HOL-968).
+
 ## `returnTo` Pattern
 
 Creation flows pass the caller's current location in a `returnTo` search param

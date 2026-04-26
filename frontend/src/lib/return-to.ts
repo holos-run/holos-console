@@ -22,6 +22,9 @@
  * In a link/button that opens a creation page:
  *
  *   import { buildReturnTo } from '@/lib/return-to'
+ *   // router.state.location is a one-shot snapshot captured at click time inside
+ *   // an event handler — intentionally not reactive.  Use useLocation() for any
+ *   // route reads that need to re-render on navigation.
  *   const search = { returnTo: buildReturnTo(router.state.location) }
  *   <Link to="/organization/new" search={search}>New Org</Link>
  *
