@@ -20,6 +20,7 @@ import { useListDeployments, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 import { PhaseBadge } from '@/components/phase-badge'
 import { PolicyDriftBadge } from '@/components/policy-drift/PolicySection'
+import { SharedDependencyBadge } from '@/components/deployments/SharedDependencyBadge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Deployment } from '@/gen/holos/console/v1/deployments_pb'
@@ -44,6 +45,7 @@ export const Route = createFileRoute('/_authenticated/projects/$projectName/depl
  */
 function useDeploymentExtraColumns(
   deploymentsByName: Map<string, Deployment>,
+  projectName: string,
 ): ColumnDef<Row>[] {
   return useMemo(
     () => [
@@ -73,8 +75,25 @@ function useDeploymentExtraColumns(
           )
         },
       },
+      {
+        id: 'sharedDependency',
+        header: 'Dependency',
+        cell: ({ row }: { row: { original: Row } }) => {
+          // Link to the detail page for shared singletons. Phase 9 defers
+          // linking back to the originating TemplateDependency / TemplateRequirement
+          // because the backend does not yet expose RenderState.spec.dependencies[]
+          // over gRPC. The detail href points to the singleton deployment itself.
+          const detailHref = row.original.detailHref ?? `/projects/${projectName}/deployments/${row.original.name}`
+          return (
+            <SharedDependencyBadge
+              name={row.original.name}
+              linkHref={detailHref}
+            />
+          )
+        },
+      },
     ],
-    [deploymentsByName],
+    [deploymentsByName, projectName],
   )
 }
 
@@ -130,7 +149,7 @@ export function DeploymentsListPage() {
     },
   ]
 
-  const extraColumns = useDeploymentExtraColumns(deploymentsByName)
+  const extraColumns = useDeploymentExtraColumns(deploymentsByName, projectName)
 
   const handleDelete = useCallback(
     async (row: Row) => {

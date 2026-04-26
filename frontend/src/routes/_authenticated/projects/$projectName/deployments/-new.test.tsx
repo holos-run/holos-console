@@ -23,6 +23,7 @@ vi.mock('@/queries/deployments', () => ({
   useCreateDeployment: vi.fn(),
   useListNamespaceSecrets: vi.fn().mockReturnValue({ data: [], isLoading: false }),
   useListNamespaceConfigMaps: vi.fn().mockReturnValue({ data: [], isLoading: false }),
+  usePreflightCheck: vi.fn().mockReturnValue({ data: { collisions: [], versionConflicts: [] } }),
 }))
 
 vi.mock('@/queries/templates', () => ({

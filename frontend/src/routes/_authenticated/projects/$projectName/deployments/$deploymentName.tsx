@@ -42,6 +42,8 @@ import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetD
 import { useGetProject } from '@/queries/projects'
 import { isSafeHttpUrl } from '@/lib/url'
 import { PolicySection } from '@/components/policy-drift/PolicySection'
+import { SharedDependencyBadge } from '@/components/deployments/SharedDependencyBadge'
+import { CascadeDeleteToggle } from '@/components/deployments/CascadeDeleteToggle'
 
 type DeploymentTab = 'status' | 'logs' | 'preview'
 
@@ -276,6 +278,10 @@ export function DeploymentDetailPage({
   const [redeployArgs, setRedeployArgs] = useState<string[]>([])
   const [redeployEnv, setRedeployEnv] = useState<EnvVar[]>([])
   const [redeployError, setRedeployError] = useState<string | null>(null)
+  // cascadeDelete controls whether deleting this deployment cascades to the
+  // shared singleton it owns (HOL-963). Default true per the owner-ref model.
+  // NOTE: not yet wired to the backend proto (deferred AC).
+  const [cascadeDelete, setCascadeDelete] = useState(true)
 
   const [deleteOpen, setDeleteOpen] = useState(false)
 
@@ -414,7 +420,10 @@ export function DeploymentDetailPage({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <p className="text-sm text-muted-foreground">{projectName} / Deployments / {deploymentName}</p>
-                <h2 className="text-xl font-semibold mt-1">{deployment?.displayName || deploymentName}</h2>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <h2 className="text-xl font-semibold">{deployment?.displayName || deploymentName}</h2>
+                  <SharedDependencyBadge name={deploymentName} />
+                </div>
                 <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
                   <span>Image: <span className="font-mono">{deployment?.image}</span></span>
                   <span>Tag: <span className="font-mono">{deployment?.tag}</span></span>
@@ -880,6 +889,16 @@ export function DeploymentDetailPage({
                 project={projectName}
                 value={redeployEnv}
                 onChange={setRedeployEnv}
+              />
+            </div>
+            <div>
+              <Label>Cascade Delete</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Controls whether deleting this deployment also removes any shared singleton dependency Deployment it owns.
+              </p>
+              <CascadeDeleteToggle
+                value={cascadeDelete}
+                onChange={setCascadeDelete}
               />
             </div>
             {redeployError && (
