@@ -1,17 +1,13 @@
 /**
- * Project-scoped Templates / Requirements index (HOL-1013).
+ * Organization-scoped TemplateRequirement index (HOL-1021).
  *
- * TemplateRequirements are org/folder-scoped, not project-scoped. The namespace
- * is derived from the selected organization via useOrg().selectedOrg. The
- * project name still appears in the URL so the Templates collapsible group
- * can stay open in a later sidebar phase (HOL-1014).
- *
- * Sidebar nesting is handled in HOL-1014; for now the route exists and is
- * reachable by URL.
+ * TemplateRequirement objects live in organization or folder namespaces. This
+ * org-scoped index shows requirements in the current org namespace.
  */
 
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
@@ -20,52 +16,60 @@ import {
   useListTemplateRequirements,
   useDeleteTemplateRequirement,
 } from '@/queries/templateRequirements'
-import { useOrg } from '@/lib/org-context'
+import { useGetOrganization } from '@/queries/organizations'
 import { namespaceForOrg } from '@/lib/scope-labels'
+
+// ---------------------------------------------------------------------------
+// Route
+// ---------------------------------------------------------------------------
+
+export const Route = createFileRoute(
+  '/_authenticated/organizations/$orgName/template-requirements/',
+)({
+  validateSearch: parseGridSearch,
+  component: OrgTemplateRequirementsIndexRoute,
+})
+
+function OrgTemplateRequirementsIndexRoute() {
+  const { orgName } = Route.useParams()
+  return <OrgTemplateRequirementsIndexPage orgName={orgName} />
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Convert a proto Timestamp to an ISO-8601 string for ResourceGrid createdAt. */
 function timestampToISOString(ts: { seconds: bigint } | undefined): string {
   if (!ts) return ''
   return new Date(Number(ts.seconds) * 1000).toISOString()
 }
 
 // ---------------------------------------------------------------------------
-// Route definition
-// ---------------------------------------------------------------------------
-
-export const Route = createFileRoute(
-  '/_authenticated/projects/$projectName/templates/requirements/',
-)({
-  validateSearch: parseGridSearch,
-  component: TemplateRequirementsIndexRoute,
-})
-
-function TemplateRequirementsIndexRoute() {
-  const { projectName } = Route.useParams()
-  return <TemplateRequirementsIndexPage projectName={projectName} />
-}
-
-// ---------------------------------------------------------------------------
 // Page component (exported for tests)
 // ---------------------------------------------------------------------------
 
-export function TemplateRequirementsIndexPage({
-  projectName,
-}: {
-  projectName: string
-}) {
-  const search = Route.useSearch() as ResourceGridSearch
+export function OrgTemplateRequirementsIndexPage({
+  orgName: propOrgName,
+}: { orgName?: string } = {}) {
+  let routeOrgName: string | undefined
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    routeOrgName = Route.useParams().orgName
+  } catch {
+    routeOrgName = undefined
+  }
+  const orgName = propOrgName ?? routeOrgName ?? ''
+
+  const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
 
-  // TemplateRequirements are org/folder-scoped — namespace comes from the
-  // selected org, not the project. The project param keeps Templates sidebar
-  // active in a later phase.
-  const { selectedOrg } = useOrg()
-  const namespace = namespaceForOrg(selectedOrg ?? '')
+  const { data: org } = useGetOrganization(orgName)
+
+  const userRole = org?.userRole ?? Role.VIEWER
+  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
+
+  // TemplateRequirements are org-scoped.
+  const namespace = namespaceForOrg(orgName)
 
   const {
     data: requirements = [],
@@ -84,19 +88,16 @@ export function TemplateRequirementsIndexPage({
       requirements.map((r) => ({
         kind: 'TemplateRequirement',
         name: r.name,
-        namespace,
+        namespace: namespace,
         id: r.name,
-        parentId: selectedOrg ?? '',
-        parentLabel: selectedOrg ?? '',
+        parentId: orgName,
+        parentLabel: orgName,
         displayName: r.name,
         description: r.requires?.name ?? '',
         createdAt: timestampToISOString(r.createdAt),
-        detailHref:
-          namespace && selectedOrg
-            ? `/organizations/${selectedOrg}/template-requirements/${r.name}`
-            : undefined,
+        detailHref: `/organizations/${orgName}/template-requirements/${r.name}`,
       })),
-    [requirements, namespace, selectedOrg],
+    [requirements, namespace, orgName],
   )
 
   // ---------------------------------------------------------------------------
@@ -107,12 +108,12 @@ export function TemplateRequirementsIndexPage({
     () => [
       {
         id: 'TemplateRequirement',
-        label: 'TemplateRequirement',
-        // No create in this view — requirements are created from org-level pages.
-        canCreate: false,
+        label: 'Template Requirement',
+        newHref: `/organizations/${orgName}/template-requirements/new`,
+        canCreate: canWrite,
       },
     ],
-    [],
+    [orgName, canWrite],
   )
 
   // ---------------------------------------------------------------------------
@@ -130,6 +131,7 @@ export function TemplateRequirementsIndexPage({
     (updater: (prev: ResourceGridSearch) => ResourceGridSearch) => {
       navigate({
         search: (prev) => updater(prev as ResourceGridSearch),
+        replace: true,
       })
     },
     [navigate],
@@ -137,7 +139,7 @@ export function TemplateRequirementsIndexPage({
 
   return (
     <ResourceGrid
-      title={`${projectName} / Templates / Requirements`}
+      title={`${orgName} / Template Requirements`}
       kinds={kinds}
       rows={rows}
       onDelete={handleDelete}
