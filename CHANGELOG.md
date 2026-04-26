@@ -49,9 +49,15 @@ purposes.
 #### UI (HOL-963)
 
 - Deployments index page: shared singleton Deployments display a "shared
-  dependency" badge.
+  dependency" badge. Badge tooltip now lists each originating
+  `TemplateDependency` / `TemplateRequirement` (kind, namespace, name) sourced
+  from the new `Deployment.dependencies` field exposed over gRPC. Detection
+  switched from the `-shared` suffix heuristic to the resolved edges; the
+  suffix remains as a fallback during the brief gap between singleton creation
+  and the first RenderState write.
 - Per-dependency cascade-delete toggle on the Create/Edit Deployment form;
-  defaults to on.
+  defaults to on. (Per-edge persistence to the originating CRD is tracked in
+  HOL-991 and is not yet wired.)
 - PreflightCheck conflict banner inline on the deployment form before apply.
 
 #### `RenderState.spec.dependencies[]` (HOL-961)

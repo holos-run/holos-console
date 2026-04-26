@@ -4,8 +4,8 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
-import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import type { GetDeploymentPolicyStateRequestSchema, GetDeploymentPolicyStateResponseSchema, LinkedTemplateRef } from "./policy_state_pb";
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 /**
  * Describes the file holos/console/v1/deployments.proto.
@@ -131,6 +131,18 @@ export declare type Deployment = Message<"holos.console.v1.Deployment"> & {
    * @generated from field: string created_at = 15;
    */
   createdAt: string;
+
+  /**
+   * dependencies enumerates the resolved (template, version) edges that
+   * materialised this Deployment as a shared singleton. Empty for ordinary
+   * user-named Deployments. Each entry names the originating CRD object so
+   * the UI can render a "shared dependency" indicator and link the row back
+   * to its TemplateDependency or TemplateRequirement object. Sourced from
+   * RenderState.spec.dependencies[] (HOL-961).
+   *
+   * @generated from field: repeated holos.console.v1.DeploymentDependency dependencies = 16;
+   */
+  dependencies: DeploymentDependency[];
 };
 
 /**
@@ -138,6 +150,85 @@ export declare type Deployment = Message<"holos.console.v1.Deployment"> & {
  * Use `create(DeploymentSchema)` to create a new message.
  */
 export declare const DeploymentSchema: GenMessage<Deployment>;
+
+/**
+ * DeploymentDependency mirrors RenderStateDependency from
+ * templates.holos.run/v1alpha1: a single resolved (template, version) edge
+ * that materialised a Deployment as a shared singleton, plus a typed
+ * reference to the originating CRD object.
+ *
+ * @generated from message holos.console.v1.DeploymentDependency
+ */
+export declare type DeploymentDependency = Message<"holos.console.v1.DeploymentDependency"> & {
+  /**
+   * template is the resolved (namespace, name, version_constraint) of the
+   * singleton's backing Template.
+   *
+   * @generated from field: holos.console.v1.LinkedTemplateRef template = 1;
+   */
+  template?: LinkedTemplateRef;
+
+  /**
+   * version is the resolved semver string (e.g. "v1.2.3") matched by the
+   * version constraint at render time. Empty when the edge targets the live
+   * (unversioned) Template.
+   *
+   * @generated from field: string version = 2;
+   */
+  version: string;
+
+  /**
+   * originating_object names the CRD object that declared this edge.
+   *
+   * @generated from field: holos.console.v1.OriginatingObject originating_object = 3;
+   */
+  originatingObject?: OriginatingObject;
+};
+
+/**
+ * Describes the message holos.console.v1.DeploymentDependency.
+ * Use `create(DeploymentDependencySchema)` to create a new message.
+ */
+export declare const DeploymentDependencySchema: GenMessage<DeploymentDependency>;
+
+/**
+ * OriginatingObject is a typed reference to the CRD that declared a
+ * dependency edge. The api_version is always
+ * "templates.holos.run/v1alpha1"; only kind discriminates between
+ * TemplateDependency and TemplateRequirement.
+ *
+ * @generated from message holos.console.v1.OriginatingObject
+ */
+export declare type OriginatingObject = Message<"holos.console.v1.OriginatingObject"> & {
+  /**
+   * namespace is the Kubernetes namespace that owns the CRD object. For
+   * TemplateDependency this is the project namespace; for
+   * TemplateRequirement this is a folder or organization namespace.
+   *
+   * @generated from field: string namespace = 1;
+   */
+  namespace: string;
+
+  /**
+   * name is the DNS label slug of the CRD object.
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * kind is "TemplateDependency" or "TemplateRequirement".
+   *
+   * @generated from field: string kind = 3;
+   */
+  kind: string;
+};
+
+/**
+ * Describes the message holos.console.v1.OriginatingObject.
+ * Use `create(OriginatingObjectSchema)` to create a new message.
+ */
+export declare const OriginatingObjectSchema: GenMessage<OriginatingObject>;
 
 /**
  * EnvVar represents a container environment variable.

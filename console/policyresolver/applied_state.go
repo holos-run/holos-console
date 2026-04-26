@@ -14,6 +14,7 @@ import (
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/deployments"
 	"github.com/holos-run/holos-console/console/resolver"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -400,6 +401,122 @@ func renderStateTargetKindNameSegment(kind TargetKind) string {
 // kind prefix is a literal, so the concatenation cannot overflow.
 func renderStateObjectName(kind TargetKind, project, target string) string {
 	return fmt.Sprintf("render-state-%s-%s-%s", renderStateTargetKindNameSegment(kind), project, target)
+}
+
+// ListProjectDependencyEdges aggregates RenderStateDependency entries from
+// every Deployment-target RenderState in the project's storage namespace.
+// Returns a map keyed by the deterministic singleton-Deployment name (per
+// `deployments.SingletonName`) of the resolved (template, version,
+// originatingObject) tuples that materialised that singleton in the project
+// namespace. Used by ListDeployments to populate Deployment.dependencies on
+// shared-singleton rows so the UI can render a "shared dependency"
+// indicator that links back to the originating CRD object (HOL-963).
+//
+// # Information disclosure scope
+//
+// The returned `OriginatingObject` may reference a TemplateRequirement that
+// lives in a folder or organization namespace outside the caller's project
+// (TemplateRequirements are scoped to ancestor namespaces by design — see
+// HOL-960). Returning the (kind, namespace, name) tuple is intentional: the
+// UI must surface why a singleton exists, and the singleton itself is already
+// observable to anyone with deployments:read in the project. Callers that need
+// stricter per-edge filtering should layer it above this function.
+//
+// # Cost
+//
+// One List call per invocation, label-scoped to (RenderTargetKind=Deployment,
+// Project=<slug>). Called from the ListDeployments hot path; for projects with
+// many Deployments under a polling UI this is O(N) per request and is not
+// cached. Acceptable for HOL-963 phase 9; revisit if profiling shows it as a
+// bottleneck.
+//
+// A nil client returns nil without error so call sites that run in
+// test/dry-run modes without a Kubernetes client do not need conditional
+// logic. Returns an empty map when the project has no recorded
+// RenderStates yet (typical for an empty project).
+func (c *AppliedRenderStateClient) ListProjectDependencyEdges(
+	ctx context.Context,
+	projectNs string,
+) (map[string][]*consolev1.DeploymentDependency, error) {
+	if c == nil || c.client == nil {
+		return nil, nil
+	}
+	if projectNs == "" {
+		return nil, fmt.Errorf("projectNs is required")
+	}
+	folderNs, err := c.FolderNamespaceForProject(ctx, projectNs)
+	if err != nil {
+		return nil, fmt.Errorf("resolving folder namespace for project %q: %w", projectNs, err)
+	}
+	project, projectErr := c.resolver.ProjectFromNamespace(projectNs)
+	if projectErr != nil {
+		return nil, fmt.Errorf("extracting project name from namespace %q: %w", projectNs, projectErr)
+	}
+	var rsList templatesv1alpha1.RenderStateList
+	listOpts := []ctrlclient.ListOption{
+		ctrlclient.InNamespace(folderNs),
+		ctrlclient.MatchingLabels{
+			templatesv1alpha1.RenderStateTargetKindLabel:    string(templatesv1alpha1.RenderTargetKindDeployment),
+			templatesv1alpha1.RenderStateTargetProjectLabel: project,
+		},
+	}
+	if err := c.client.List(ctx, &rsList, listOpts...); err != nil {
+		return nil, fmt.Errorf("listing RenderStates in %q: %w", folderNs, err)
+	}
+	out := make(map[string][]*consolev1.DeploymentDependency)
+	for i := range rsList.Items {
+		rs := &rsList.Items[i]
+		for j := range rs.Spec.Dependencies {
+			d := &rs.Spec.Dependencies[j]
+			singleton := deployments.SingletonName(templatesv1alpha1.LinkedTemplateRef{
+				Namespace:         d.Template.Namespace,
+				Name:              d.Template.Name,
+				VersionConstraint: d.Template.VersionConstraint,
+			})
+			out[singleton] = append(out[singleton], renderStateDependencyToProto(d))
+		}
+	}
+	return out, nil
+}
+
+// ListDependencyEdgesForDeployment is the single-deployment variant of
+// ListProjectDependencyEdges, used by GetDeployment. Returns the resolved
+// edges that materialised the named singleton, in the project's storage
+// namespace. Returns nil when the deployment is not a singleton — callers
+// can treat this the same as an empty slice.
+func (c *AppliedRenderStateClient) ListDependencyEdgesForDeployment(
+	ctx context.Context,
+	projectNs, deploymentName string,
+) ([]*consolev1.DeploymentDependency, error) {
+	all, err := c.ListProjectDependencyEdges(ctx, projectNs)
+	if err != nil {
+		return nil, err
+	}
+	return all[deploymentName], nil
+}
+
+// renderStateDependencyToProto converts a RenderStateDependency CRD value
+// into the wire-side DeploymentDependency proto. Mirrors
+// renderStateRefsToProto in shape and is intentionally a tiny one-shot helper
+// rather than a method on the CRD type so the proto package and CRD package
+// stay decoupled.
+func renderStateDependencyToProto(d *templatesv1alpha1.RenderStateDependency) *consolev1.DeploymentDependency {
+	if d == nil {
+		return nil
+	}
+	return &consolev1.DeploymentDependency{
+		Template: &consolev1.LinkedTemplateRef{
+			Namespace:         d.Template.Namespace,
+			Name:              d.Template.Name,
+			VersionConstraint: d.Template.VersionConstraint,
+		},
+		Version: d.Version,
+		OriginatingObject: &consolev1.OriginatingObject{
+			Namespace: d.OriginatingObject.Namespace,
+			Name:      d.OriginatingObject.Name,
+			Kind:      string(d.OriginatingObject.Kind),
+		},
+	}
 }
 
 // DiffRenderSets classifies refs as (added, removed, drifted) given a prior

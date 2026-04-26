@@ -156,7 +156,29 @@ type Handler struct {
 	ancestorTemplateProvider AncestorTemplateProvider
 	statusCache              statuscache.Cache
 	policyDriftChecker       PolicyDriftChecker
+	dependencyEdgeProvider   DependencyEdgeProvider
 	gatewayResolver          OrganizationGatewayResolver
+}
+
+// DependencyEdgeProvider exposes the resolved dependency edges that
+// materialised one or more singleton Deployments in a project. Implemented by
+// AppliedRenderStateClient (HOL-963). Defined as a local interface so tests
+// can stub it without depending on console/policyresolver. A nil provider
+// means the handler returns Deployment.dependencies as nil — non-fatal,
+// just no shared-dependency UI affordance.
+//
+// The dependency direction is one-way and deliberate: console/policyresolver
+// imports console/deployments (for `SingletonName`), and console/deployments
+// owns this consumer-side interface. The reverse import does not exist and is
+// not needed; keeping the interface here lets the handler unit tests stay free
+// of the controller-runtime fixtures the policyresolver tests require.
+type DependencyEdgeProvider interface {
+	// ListProjectDependencyEdges returns a map keyed by singleton-Deployment
+	// name listing the edges that materialised each singleton in the project.
+	ListProjectDependencyEdges(ctx context.Context, projectNs string) (map[string][]*consolev1.DeploymentDependency, error)
+	// ListDependencyEdgesForDeployment returns the edges for a single named
+	// deployment. Empty when the deployment is not a singleton.
+	ListDependencyEdgesForDeployment(ctx context.Context, projectNs, deploymentName string) ([]*consolev1.DeploymentDependency, error)
 }
 
 // PolicyDriftChecker exposes the minimal surface a deployment needs from the
@@ -230,6 +252,15 @@ func (h *Handler) WithOrganizationGatewayResolver(r OrganizationGatewayResolver)
 // status summaries (no data yet).
 func (h *Handler) WithStatusCache(c statuscache.Cache) *Handler {
 	h.statusCache = c
+	return h
+}
+
+// WithDependencyEdgeProvider wires the dependency-edge provider used by
+// ListDeployments and GetDeployment to populate Deployment.dependencies on
+// shared-singleton rows. A nil provider leaves the field empty —
+// shared-dependency UI affordances simply do not appear (HOL-963).
+func (h *Handler) WithDependencyEdgeProvider(p DependencyEdgeProvider) *Handler {
+	h.dependencyEdgeProvider = p
 	return h
 }
 
@@ -357,10 +388,28 @@ func (h *Handler) ListDeployments(
 	}
 
 	ns := h.k8s.Resolver.ProjectNamespace(project)
+	// Aggregate dependency edges across the project's RenderStates so each
+	// singleton-Deployment row gets its `dependencies` field populated. A
+	// failure here is non-fatal — the badge simply does not appear.
+	var depEdges map[string][]*consolev1.DeploymentDependency
+	if h.dependencyEdgeProvider != nil {
+		edges, edgeErr := h.dependencyEdgeProvider.ListProjectDependencyEdges(ctx, ns)
+		if edgeErr != nil {
+			slog.WarnContext(ctx, "listing dependency edges failed; shared-dependency badges suppressed",
+				slog.String("project", project),
+				slog.Any("error", edgeErr),
+			)
+		} else {
+			depEdges = edges
+		}
+	}
 	deployments := make([]*consolev1.Deployment, 0, len(cms))
 	for i := range cms {
 		cm := &cms[i]
 		dep := configMapToDeployment(cm, project)
+		if edges := depEdges[dep.Name]; len(edges) > 0 {
+			dep.Dependencies = edges
+		}
 		summary, ok := h.summaryFromCache(ns, cm.Name)
 		if !ok {
 			// Synthesize a minimal summary so cached annotation-driven
@@ -435,6 +484,22 @@ func (h *Handler) GetDeployment(
 
 	deployment := configMapToDeployment(cm, project)
 	ns := h.k8s.Resolver.ProjectNamespace(project)
+	// Populate Deployment.dependencies from the project's RenderStates so the
+	// detail page can render a "shared dependency" indicator and link the
+	// originating CRD object. Non-fatal on error — the badge simply does not
+	// appear.
+	if h.dependencyEdgeProvider != nil {
+		edges, edgeErr := h.dependencyEdgeProvider.ListDependencyEdgesForDeployment(ctx, ns, name)
+		if edgeErr != nil {
+			slog.WarnContext(ctx, "listing dependency edges failed; shared-dependency badge suppressed",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", edgeErr),
+			)
+		} else if len(edges) > 0 {
+			deployment.Dependencies = edges
+		}
+	}
 	// Refresh the aggregated-links cache by scanning owned resources so
 	// links stamped on workloads after the last apply (e.g. an operator
 	// adding `link.argocd.argoproj.io/*` annotations out-of-band) appear

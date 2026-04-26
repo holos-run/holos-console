@@ -82,8 +82,9 @@ func buildDeployment(namespace, name, templateNS, templateName string) *deployme
 // expected names for a variety of VersionConstraint values. The name format is
 // documented in the package comment of dependency_reconciler.go.
 func TestSingletonName_Formats(t *testing.T) {
-	// singletonName is unexported; we verify it indirectly through
-	// EnsureSingletonDependencyDeployment by reading the created object's name.
+	// SingletonName is exercised end-to-end here through
+	// EnsureSingletonDependencyDeployment, which keeps the assertion close to
+	// the user-visible behaviour (the created object's name).
 	tests := []struct {
 		versionConstraint string
 		wantSuffix        string

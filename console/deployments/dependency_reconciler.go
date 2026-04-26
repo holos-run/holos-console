@@ -74,7 +74,7 @@ import (
 	v1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 )
 
-// singletonName returns the deterministic singleton Deployment name for the
+// SingletonName returns the deterministic singleton Deployment name for the
 // given requires reference. The format is documented in the package comment.
 //
 // Format:
@@ -84,7 +84,15 @@ import (
 //
 // The VersionConstraint is sanitised: forward slashes, spaces, angle brackets,
 // and equals signs are stripped so the result is a valid DNS label component.
-func singletonName(requires v1alpha1.LinkedTemplateRef) string {
+//
+// # Stability
+//
+// This function is part of this package's public API. The output format is
+// load-bearing: external callers (notably console/policyresolver) compute the
+// same key to map RenderState dependency edges back to singleton Deployment
+// rows. Changing the format is a breaking change — coordinate with all
+// consumers and migrate stored RenderState data before adjusting it.
+func SingletonName(requires v1alpha1.LinkedTemplateRef) string {
 	if requires.VersionConstraint == "" {
 		return requires.Name + "-shared"
 	}
@@ -139,7 +147,7 @@ func EnsureSingletonDependencyDeployment(
 		return err
 	}
 
-	name := singletonName(requires)
+	name := SingletonName(requires)
 	key := types.NamespacedName{Namespace: dependent.Namespace, Name: name}
 
 	var existing deploymentsv1alpha1.Deployment

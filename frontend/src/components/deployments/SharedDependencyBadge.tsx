@@ -3,84 +3,91 @@
  * materialised by a TemplateDependency or TemplateRequirement reconciler
  * (Phase 5 / Phase 6, HOL-959 / HOL-960).
  *
- * Detection strategy: the singleton naming convention in
- * console/deployments/dependency_reconciler.go deterministically appends a
- * "-shared" suffix to every auto-provisioned singleton Deployment name (e.g.
- * "waypoint-shared", "waypoint-v1-2-3-shared"). No backend changes are
- * required to detect this — the suffix is an invariant of the reconciler.
+ * Detection:
+ *   - Primary: the `dependencies` array on the proto-side Deployment is
+ *     non-empty (HOL-963 deferred AC; populated only on singleton rows by the
+ *     handler from the project's RenderState aggregate).
+ *   - Fallback: the deterministic "-shared" suffix from
+ *     console/deployments/dependency_reconciler.go.
  *
- * The badge is independently clickable via the `linkHref` prop to navigate to
- * the deployment detail page. The surrounding e.stopPropagation() wrapper
- * prevents the row-level click handler from also firing, per the data-grid
- * conventions in docs/agents/data-grid-conventions.md.
+ * The fallback exists so the badge still renders during the brief window
+ * between a singleton's creation and the first RenderState write that records
+ * its originating edges.
  *
- * HOL-963 (Phase 9).
+ * When dependency edges are available the badge shows a tooltip naming each
+ * originating TemplateDependency / TemplateRequirement (kind, namespace, name).
+ * When `linkHref` is provided the badge becomes a TanStack Router Link to the
+ * surrounding row's detail page; the link wrapper calls e.stopPropagation() so
+ * the row-level click handler does not also fire.
  */
 
 import { Badge } from '@/components/ui/badge'
 import { Link } from '@tanstack/react-router'
+import type { DeploymentDependency } from '@/gen/holos/console/v1/deployments_pb'
 
 export interface SharedDependencyBadgeProps {
-  /** Deployment name to inspect for the "-shared" suffix. */
+  /** Deployment name; used as a fallback shared-dependency signal. */
   name: string
   /**
-   * Optional href for the originating CRD object. When provided, the badge
-   * renders as a TanStack Router Link.
-   *
-   * NOTE: Phase 9 cannot link to the originating TemplateDependency or
-   * TemplateRequirement object because the backend API does not yet expose
-   * the `RenderState.spec.dependencies[]` slice over gRPC. The link target is
-   * reserved for a future patch that adds a `dependencies` field to the
-   * Deployment proto message (deferred AC).
+   * Resolved dependency edges from the backend (Deployment.dependencies).
+   * Drives both visibility (non-empty implies shared) and the tooltip
+   * contents listing each originating CRD object.
    */
+  dependencies?: DeploymentDependency[]
+  /** Optional href for the surrounding row's detail page. */
   linkHref?: string
 }
 
 /**
- * isSharedDependency returns true when the deployment name ends with "-shared",
- * matching the singleton naming convention from
- * console/deployments/dependency_reconciler.go.
+ * isSharedDependency returns true when the deployment name ends with "-shared".
+ * Kept exported for callers that still rely on the suffix-based check during
+ * the transition.
  */
 export function isSharedDependency(name: string): boolean {
   return name.endsWith('-shared')
 }
 
 /**
- * SharedDependencyBadge renders a "Shared Dep" badge when the deployment name
- * matches the singleton suffix convention. Returns null for non-singleton
- * deployments so callers can use it unconditionally.
- *
- * The badge is wrapped in an e.stopPropagation() handler so it can be placed
- * inside a clickable ResourceGrid row without triggering row navigation.
+ * formatOriginatingObject returns "Kind: namespace/name" for a dependency edge.
+ * Empty fields are tolerated — partial info is still useful to surface.
  */
-export function SharedDependencyBadge({ name, linkHref }: SharedDependencyBadgeProps) {
-  if (!isSharedDependency(name)) return null
+function formatOriginatingObject(d: DeploymentDependency): string {
+  const o = d.originatingObject
+  if (!o) return ''
+  const ref = [o.namespace, o.name].filter(Boolean).join('/')
+  return o.kind ? `${o.kind}: ${ref}` : ref
+}
+
+export function SharedDependencyBadge({ name, dependencies, linkHref }: SharedDependencyBadgeProps) {
+  const hasDeps = (dependencies?.length ?? 0) > 0
+  if (!hasDeps && !isSharedDependency(name)) return null
+
+  // Originating CRD references as a single tooltip string. Using the native
+  // `title` attribute keeps the badge testable in jsdom and gives screen
+  // readers the info without depending on a hover-driven tooltip.
+  const lines = (dependencies ?? [])
+    .map(formatOriginatingObject)
+    .filter((s) => s.length > 0)
+  const title = lines.length > 0 ? `Required by:\n${lines.join('\n')}` : undefined
 
   const badge = (
     <Badge
       data-testid="shared-dependency-badge"
       variant="outline"
+      title={title}
       className="text-xs border-blue-300 text-blue-700 dark:border-blue-600 dark:text-blue-300 whitespace-nowrap"
     >
       Shared Dep
     </Badge>
   )
 
-  if (linkHref) {
-    return (
-      <span onClick={(e) => e.stopPropagation()}>
-        <Link to={linkHref} className="hover:opacity-80">
-          {badge}
-        </Link>
-      </span>
-    )
-  }
-
-  return (
-    <span
-      onClick={(e) => e.stopPropagation()}
-    >
+  const linked = linkHref ? (
+    <Link to={linkHref} className="hover:opacity-80">
       {badge}
-    </span>
+    </Link>
+  ) : (
+    badge
   )
+
+  return <span onClick={(e) => e.stopPropagation()}>{linked}</span>
 }

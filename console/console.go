@@ -630,6 +630,7 @@ func (s *Server) Serve(ctx context.Context) error {
 			WithAncestorTemplateProvider(ancestorTemplateResolver).
 			WithStatusCache(deploymentStatusCache).
 			WithPolicyDriftChecker(deploymentDriftAdapter).
+			WithDependencyEdgeProvider(appliedRenderStateClient).
 			WithOrganizationGatewayResolver(gatewayResolver)
 		deploymentsPath, deploymentsHTTPHandler := consolev1connect.NewDeploymentServiceHandler(deploymentsHandler, protectedInterceptors)
 		mux.Handle(deploymentsPath, deploymentsHTTPHandler)
