@@ -9,11 +9,13 @@ import { Settings } from 'lucide-react'
 import { useGetFolder } from '@/queries/folders'
 import { useListTemplates } from '@/queries/templates'
 import { useListTemplatePolicies } from '@/queries/templatePolicies'
+import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
 import { useListProjectsByParent } from '@/queries/projects'
 import { namespaceForFolder } from '@/lib/scope-labels'
 import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 import type { Template } from '@/gen/holos/console/v1/templates_pb'
 import type { TemplatePolicy } from '@/gen/holos/console/v1/template_policies_pb'
+import type { TemplatePolicyBinding } from '@/gen/holos/console/v1/template_policy_bindings_pb'
 import type { Project } from '@/gen/holos/console/v1/projects_pb'
 
 export const Route = createFileRoute(
@@ -53,6 +55,7 @@ export function FolderIndexPage({
 
   const templatesQuery = useListTemplates(namespace)
   const policiesQuery = useListTemplatePolicies(namespace)
+  const bindingsQuery = useListTemplatePolicyBindings(namespace)
   // Projects fan out by parent reference; the RPC filter is non-recursive
   // by construction — it only returns projects whose immediate parent is
   // this folder, never grandchildren.
@@ -135,6 +138,12 @@ export function FolderIndexPage({
         policies={policiesQuery.data}
         isPending={policiesQuery.isPending}
         error={policiesQuery.error as Error | null}
+      />
+      <TemplatePolicyBindingsSection
+        folderName={folderName}
+        bindings={bindingsQuery.data}
+        isPending={bindingsQuery.isPending}
+        error={bindingsQuery.error as Error | null}
       />
       <ProjectsSection
         folderName={folderName}
@@ -312,6 +321,63 @@ function TemplatePoliciesSection({
             >
               {p.name}
             </Link>
+          </li>
+        ))}
+      </ul>
+    </SectionCard>
+  )
+}
+
+function TemplatePolicyBindingsSection({
+  folderName,
+  bindings,
+  isPending,
+  error,
+}: {
+  folderName: string
+  bindings: TemplatePolicyBinding[] | undefined
+  isPending: boolean
+  error: Error | null
+}) {
+  const preview = (bindings ?? []).slice(0, SECTION_PREVIEW_LIMIT)
+  return (
+    <SectionCard
+      title="Template Policy Bindings"
+      testId="template-policy-bindings"
+      count={bindings?.length}
+      isPending={isPending}
+      error={error}
+      emptyText="No template policy bindings in this folder."
+      viewAll={
+        <Link
+          to="/folders/$folderName/template-policy-bindings"
+          params={{ folderName }}
+          aria-label="View all template policy bindings"
+        >
+          <Button variant="outline" size="sm">
+            View all
+          </Button>
+        </Link>
+      }
+    >
+      <ul className="divide-y divide-border">
+        {preview.map((b) => (
+          <li
+            key={b.name}
+            className="flex items-center justify-between gap-3 py-2"
+          >
+            <Link
+              to="/folders/$folderName/template-policy-bindings/$bindingName"
+              params={{ folderName, bindingName: b.name }}
+              className="font-medium hover:underline"
+            >
+              {b.displayName || b.name}
+            </Link>
+            {b.policyRef?.name && (
+              <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-500">
+                policy: {b.policyRef.name}
+              </Badge>
+            )}
           </li>
         ))}
       </ul>

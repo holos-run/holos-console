@@ -51,6 +51,10 @@ vi.mock('@/queries/templatePolicies', () => ({
   useListTemplatePolicies: vi.fn(),
 }))
 
+vi.mock('@/queries/templatePolicyBindings', () => ({
+  useListTemplatePolicyBindings: vi.fn(),
+}))
+
 vi.mock('@/queries/projects', () => ({
   useListProjectsByParent: vi.fn(),
 }))
@@ -69,6 +73,7 @@ vi.mock('@/lib/console-config', () => ({
 import { useGetFolder } from '@/queries/folders'
 import { useListTemplates } from '@/queries/templates'
 import { useListTemplatePolicies } from '@/queries/templatePolicies'
+import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
 import { useListProjectsByParent } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { namespaceForFolder } from '@/lib/scope-labels'
@@ -76,6 +81,7 @@ import { FolderIndexPage } from './index'
 
 type TemplateFixture = { name: string; displayName?: string; enabled?: boolean }
 type PolicyFixture = { name: string }
+type BindingFixture = { name: string; displayName?: string; policyRef?: { name: string } }
 type ProjectFixture = { name: string; displayName?: string }
 
 const mockFolder = {
@@ -97,6 +103,9 @@ function setup(
     policies?: PolicyFixture[]
     policiesPending?: boolean
     policiesError?: Error | null
+    bindings?: BindingFixture[]
+    bindingsPending?: boolean
+    bindingsError?: Error | null
     projects?: ProjectFixture[]
     projectsPending?: boolean
     projectsError?: Error | null
@@ -116,6 +125,11 @@ function setup(
     data: overrides.policiesPending ? undefined : overrides.policies ?? [],
     isPending: overrides.policiesPending ?? false,
     error: overrides.policiesError ?? null,
+  })
+  ;(useListTemplatePolicyBindings as Mock).mockReturnValue({
+    data: overrides.bindingsPending ? undefined : overrides.bindings ?? [],
+    isPending: overrides.bindingsPending ?? false,
+    error: overrides.bindingsError ?? null,
   })
   ;(useListProjectsByParent as Mock).mockReturnValue({
     data: overrides.projectsPending ? undefined : overrides.projects ?? [],
@@ -142,7 +156,7 @@ describe('FolderIndexPage', () => {
     )
   })
 
-  it('renders all three summary sections in order: Templates, Template Policies, Projects', () => {
+  it('renders all four summary sections in order: Templates, Template Policies, Template Policy Bindings, Projects', () => {
     setup()
     render(<FolderIndexPage folderName="payments" />)
     // Section order is established by the document order of the
@@ -154,6 +168,9 @@ describe('FolderIndexPage', () => {
     })
     const policiesLink = screen.getByRole('link', {
       name: 'View all template policies',
+    })
+    const bindingsLink = screen.getByRole('link', {
+      name: 'View all template policy bindings',
     })
     const projectsLink = screen.getByRole('link', {
       name: 'View all projects',
@@ -167,7 +184,10 @@ describe('FolderIndexPage', () => {
       templatesLink.compareDocumentPosition(policiesLink),
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
     expect(
-      policiesLink.compareDocumentPosition(projectsLink),
+      policiesLink.compareDocumentPosition(bindingsLink),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(
+      bindingsLink.compareDocumentPosition(projectsLink),
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 
@@ -181,6 +201,7 @@ describe('FolderIndexPage', () => {
     setup({
       templatesPending: true,
       policiesPending: true,
+      bindingsPending: true,
       projectsPending: true,
     })
     const { container } = render(<FolderIndexPage folderName="payments" />)
@@ -189,6 +210,9 @@ describe('FolderIndexPage', () => {
     ).toBeInTheDocument()
     expect(
       container.querySelector('[data-testid="template-policies-loading"]'),
+    ).toBeInTheDocument()
+    expect(
+      container.querySelector('[data-testid="template-policy-bindings-loading"]'),
     ).toBeInTheDocument()
     expect(
       container.querySelector('[data-testid="projects-loading"]'),
@@ -203,6 +227,9 @@ describe('FolderIndexPage', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByText(/no template policies in this folder/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/no template policy bindings in this folder/i),
     ).toBeInTheDocument()
     expect(screen.getByText(/no projects in this folder/i)).toBeInTheDocument()
   })
@@ -243,7 +270,9 @@ describe('FolderIndexPage', () => {
     // ...and the Templates section surfaces a "0 total" count badge so
     // the undefined-data path is visually consistent with the zero-
     // count path — both tell the user there are zero templates.
-    expect(screen.getByLabelText('0 total')).toBeInTheDocument()
+    // getAllByLabelText because other empty sections also render a "0 total" badge.
+    const zeroBadges = screen.getAllByLabelText('0 total')
+    expect(zeroBadges.length).toBeGreaterThan(0)
     // ...and no template-item link leaks through. The two neighbor
     // sections rendered their own items, so "no hrefs into the
     // templates editor" is a tight regression pin.
@@ -306,6 +335,14 @@ describe('FolderIndexPage', () => {
     ).toHaveAttribute('href', '/folders/payments/template-policies/disallow-privileged')
   })
 
+  it('renders template policy bindings with per-item link into the folder scope (HOL-1006)', () => {
+    setup({ bindings: [{ name: 'bind-require-istio', displayName: 'Bind Require Istio' }] })
+    render(<FolderIndexPage folderName="payments" />)
+    expect(
+      screen.getByRole('link', { name: 'Bind Require Istio' }),
+    ).toHaveAttribute('href', '/folders/payments/template-policy-bindings/bind-require-istio')
+  })
+
   it('renders projects with displayName fallback and a per-item link', () => {
     setup({
       projects: [
@@ -328,14 +365,17 @@ describe('FolderIndexPage', () => {
     setup()
     render(<FolderIndexPage folderName="payments" />)
     // Each "View all" link carries a section-specific aria-label so
-    // the three buttons are distinguishable in a screen-reader link
-    // list. All three target folder-scoped indexes.
+    // the four buttons are distinguishable in a screen-reader link
+    // list. All four target folder-scoped indexes.
     expect(
       screen.getByRole('link', { name: 'View all templates' }),
     ).toHaveAttribute('href', '/folders/payments/templates')
     expect(
       screen.getByRole('link', { name: 'View all template policies' }),
     ).toHaveAttribute('href', '/folders/payments/template-policies')
+    expect(
+      screen.getByRole('link', { name: 'View all template policy bindings' }),
+    ).toHaveAttribute('href', '/folders/payments/template-policy-bindings')
     expect(
       screen.getByRole('link', { name: 'View all projects' }),
     ).toHaveAttribute('href', '/folders/payments/projects')
@@ -345,19 +385,24 @@ describe('FolderIndexPage', () => {
     setup({
       templatesError: new Error('template list failed'),
       policiesError: new Error('policy list failed'),
+      bindingsError: new Error('binding list failed'),
       projectsError: new Error('project list failed'),
     })
     render(<FolderIndexPage folderName="payments" />)
     expect(screen.getByText(/template list failed/i)).toBeInTheDocument()
     expect(screen.getByText(/policy list failed/i)).toBeInTheDocument()
+    expect(screen.getByText(/binding list failed/i)).toBeInTheDocument()
     expect(screen.getByText(/project list failed/i)).toBeInTheDocument()
   })
 
-  it('calls useListTemplates with the folder namespace, not the folder name', () => {
+  it('calls useListTemplates, useListTemplatePolicies, and useListTemplatePolicyBindings with the folder namespace', () => {
     setup()
     render(<FolderIndexPage folderName="payments" />)
     expect(useListTemplates).toHaveBeenCalledWith(namespaceForFolder('payments'))
     expect(useListTemplatePolicies).toHaveBeenCalledWith(
+      namespaceForFolder('payments'),
+    )
+    expect(useListTemplatePolicyBindings).toHaveBeenCalledWith(
       namespaceForFolder('payments'),
     )
   })

@@ -1,17 +1,22 @@
 /**
- * Org-scope Platform Templates index — migrated to ResourceGrid v1 (HOL-975).
+ * Org-scope Platform Templates index — unified four-facet surface (HOL-1006).
  *
- * Shows all templates reachable from the org root (org, folder, project scopes)
- * via the useAllTemplatesForOrg fan-out hook. Each row carries a scope-aware
- * detailHref so both the resource ID cell and the full row are clickable.
+ * Shows all template-family resources reachable from the org root across three
+ * kinds — Template, TemplatePolicy, TemplatePolicyBinding — via fan-out hooks.
+ * The ResourceGrid kind-filter toolbar lets users narrow to a single kind; the
+ * scope dropdown further narrows by org / folder scope.
+ *
+ * Each row carries a scope-aware detailHref so both the resource ID cell and
+ * the full row are clickable (using resolveTemplateRowHref from
+ * lib/template-row-link.ts).
  *
  * Extra columns added via the ResourceGrid `extraColumns` prop:
- *   - Scope    — badge indicating org / folder / project + the owner name
+ *   - Scope     — badge indicating org / folder / project + the owner name
  *   - Namespace — raw namespace string for operator debugging
  *
- * A scope dropdown filter (preserved from the pre-refactor page) is rendered
- * above the grid via the ResourceGrid `headerContent` slot. Selecting a scope
- * replaces the URL `?scope=` param so the filter survives refreshes.
+ * A scope dropdown filter is rendered above the grid via the ResourceGrid
+ * `headerContent` slot. Selecting a scope replaces the URL `?scope=` param
+ * so the filter survives refreshes.
  */
 
 import { useCallback, useMemo } from 'react'
@@ -31,29 +36,35 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
 import { useAllTemplatesForOrg } from '@/queries/templates'
+import { useAllTemplatePoliciesForOrg } from '@/queries/templatePolicies'
+import { useAllTemplatePolicyBindingsForOrg } from '@/queries/templatePolicyBindings'
 import { useGetOrganization } from '@/queries/organizations'
 import {
   scopeLabelFromNamespace,
   scopeNameFromNamespace,
   scopeDisplayLabel,
 } from '@/lib/scope-labels'
+import {
+  resolveTemplateRowHref,
+  parentLabelFromNamespace,
+} from '@/lib/template-row-link'
 
 // ---------------------------------------------------------------------------
 // Route search — extends ResourceGridSearch with the scope filter
 // ---------------------------------------------------------------------------
 
 export interface OrgTemplatesSearch extends ResourceGridSearch {
-  /** Optional scope filter: 'org' | 'folder' | 'project'. Absent = all. */
-  scope?: 'org' | 'folder' | 'project'
+  /** Optional scope filter: 'org' | 'folder'. Absent = all scopes. */
+  scope?: 'org' | 'folder'
 }
 
-type ScopeFilter = 'all' | 'org' | 'folder' | 'project'
+type ScopeFilter = 'all' | 'org' | 'folder'
 
 function parseOrgTemplatesSearch(raw: Record<string, unknown>): OrgTemplatesSearch {
   const base = parseGridSearch(raw)
   const result: OrgTemplatesSearch = { ...base }
   const scope = raw['scope']
-  if (scope === 'org' || scope === 'folder' || scope === 'project') {
+  if (scope === 'org' || scope === 'folder') {
     result.scope = scope
   }
   return result
@@ -131,58 +142,108 @@ export function OrgTemplatesIndexPage({
   }
   const orgName = propOrgName ?? routeOrgName ?? ''
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const search = Route.useSearch() as OrgTemplatesSearch
   const navigate = useNavigate({ from: Route.fullPath })
 
   const scopeFilter: ScopeFilter = search.scope ?? 'all'
 
   // Fan-out across all namespaces reachable from the org root.
-  const { data, isPending, error } = useAllTemplatesForOrg(orgName)
+  const templatesResult = useAllTemplatesForOrg(orgName)
+  const policiesResult = useAllTemplatePoliciesForOrg(orgName)
+  const bindingsResult = useAllTemplatePolicyBindingsForOrg(orgName)
   const { data: org } = useGetOrganization(orgName)
 
-  const templates = useMemo(() => data ?? [], [data])
+  const templates = useMemo(() => templatesResult.data ?? [], [templatesResult.data])
+  const policies = useMemo(() => policiesResult.data ?? [], [policiesResult.data])
+  const bindings = useMemo(() => bindingsResult.data ?? [], [bindingsResult.data])
+
   const userRole = org?.userRole ?? Role.VIEWER
   const canWrite = userRole === Role.OWNER
+
+  // Combine loading and error state across all three fan-outs.
+  const isPending = templatesResult.isPending || policiesResult.isPending || bindingsResult.isPending
+  const firstError = templatesResult.error ?? policiesResult.error ?? bindingsResult.error
 
   // ---------------------------------------------------------------------------
   // Build rows — scope-filtered, with scope-aware detailHref
   // ---------------------------------------------------------------------------
 
   const rows: Row[] = useMemo(() => {
-    const all = templates.map((t): Row => {
+    const templateRows: Row[] = templates.flatMap((t) => {
       const scope = scopeLabelFromNamespace(t.namespace)
       const scopeName = scopeNameFromNamespace(t.namespace)
-      let detailHref: string | undefined
 
-      if (scope === 'org') {
-        detailHref = `/organizations/${orgName}/templates/${t.namespace}/${t.name}`
-      } else if (scope === 'folder' && scopeName) {
-        detailHref = `/folders/${scopeName}/templates/${t.name}`
-      } else if (scope === 'project' && scopeName) {
-        detailHref = `/projects/${scopeName}/templates/${t.name}`
-      }
+      // Skip rows outside the active scope filter.
+      if (scopeFilter !== 'all' && scope !== scopeFilter) return []
 
-      return {
+      const row: Row = {
         kind: 'Template',
         name: t.name,
         namespace: t.namespace,
         id: t.name,
         parentId: scopeName || t.namespace,
-        parentLabel: scopeName || t.namespace,
+        parentLabel: parentLabelFromNamespace(t.namespace),
         displayName: t.displayName || t.name,
         description: t.description ?? '',
         createdAt: t.createdAt ?? '',
-        detailHref,
+        detailHref: resolveTemplateRowHref('Template', t.namespace, t.name),
       }
+      return [row]
     })
 
-    if (scopeFilter === 'all') return all
-    return all.filter((r) => scopeLabelFromNamespace(r.namespace) === scopeFilter)
-  }, [templates, orgName, scopeFilter])
+    const policyRows: Row[] = policies.flatMap((p) => {
+      if (!p) return []
+      const scope = scopeLabelFromNamespace(p.namespace)
+      if (scopeFilter !== 'all' && scope !== scopeFilter) return []
+
+      const createdAt = p.createdAt
+        ? new Date(Number(p.createdAt.seconds) * 1000).toISOString()
+        : ''
+
+      const row: Row = {
+        kind: 'TemplatePolicy',
+        name: p.name,
+        namespace: p.namespace,
+        id: `${p.namespace}/${p.name}`,
+        parentId: p.namespace,
+        parentLabel: parentLabelFromNamespace(p.namespace),
+        displayName: p.displayName || p.name,
+        description: p.description ?? '',
+        createdAt,
+        detailHref: resolveTemplateRowHref('TemplatePolicy', p.namespace, p.name),
+      }
+      return [row]
+    })
+
+    const bindingRows: Row[] = bindings.flatMap((b) => {
+      if (!b) return []
+      const scope = scopeLabelFromNamespace(b.namespace)
+      if (scopeFilter !== 'all' && scope !== scopeFilter) return []
+
+      const createdAt = b.createdAt
+        ? new Date(Number(b.createdAt.seconds) * 1000).toISOString()
+        : ''
+
+      const row: Row = {
+        kind: 'TemplatePolicyBinding',
+        name: b.name,
+        namespace: b.namespace,
+        id: `${b.namespace}/${b.name}`,
+        parentId: b.namespace,
+        parentLabel: parentLabelFromNamespace(b.namespace),
+        displayName: b.displayName || b.name,
+        description: b.description ?? '',
+        createdAt,
+        detailHref: resolveTemplateRowHref('TemplatePolicyBinding', b.namespace, b.name),
+      }
+      return [row]
+    })
+
+    return [...templateRows, ...policyRows, ...bindingRows]
+  }, [templates, policies, bindings, scopeFilter])
 
   // ---------------------------------------------------------------------------
-  // Kind definitions
+  // Kind definitions (three kinds for the unified surface)
   // ---------------------------------------------------------------------------
 
   const kinds = useMemo(
@@ -193,6 +254,18 @@ export function OrgTemplatesIndexPage({
         newHref: `/organizations/${orgName}/templates/new`,
         canCreate: canWrite,
       },
+      {
+        id: 'TemplatePolicy',
+        label: 'Template Policy',
+        newHref: `/organizations/${orgName}/template-policies/new`,
+        canCreate: canWrite,
+      },
+      {
+        id: 'TemplatePolicyBinding',
+        label: 'Template Binding',
+        newHref: `/organizations/${orgName}/template-bindings/new`,
+        canCreate: canWrite,
+      },
     ],
     [orgName, canWrite],
   )
@@ -201,13 +274,10 @@ export function OrgTemplatesIndexPage({
   // Handlers
   // ---------------------------------------------------------------------------
 
-  const handleDelete = useCallback(async (_row: Row) => {
-    // Org templates index shows templates from multiple scopes; deletion is
-    // handled from each template's own detail/editor page. This index is
-    // read-only for delete actions — the ResourceGrid delete button is not
-    // rendered when onDelete is undefined, but we provide a no-op so the type
-    // is satisfied. Actual deletion is on the detail page.
-    throw new Error('Delete from the template detail page.')
+  // The unified index spans multiple kinds; deletion is handled from each
+  // resource's own detail page. This index is read-only for delete actions.
+  const handleDelete = useCallback(async () => {
+    throw new Error('Delete from the resource detail page.')
   }, [])
 
   const handleSearchChange = useCallback(
@@ -237,7 +307,7 @@ export function OrgTemplatesIndexPage({
           if (scope === 'all') {
             delete next.scope
           } else {
-            next.scope = scope as 'org' | 'folder' | 'project'
+            next.scope = scope as 'org' | 'folder'
           }
           return next
         },
@@ -248,6 +318,8 @@ export function OrgTemplatesIndexPage({
 
   // ---------------------------------------------------------------------------
   // Scope filter toolbar content (rendered in ResourceGrid headerContent slot)
+  // Note: TemplatePolicies and TemplatePolicyBindings only exist at org and
+  // folder scope — project is intentionally absent from the dropdown.
   // ---------------------------------------------------------------------------
 
   const scopeFilterContent = (
@@ -260,7 +332,6 @@ export function OrgTemplatesIndexPage({
           <SelectItem value="all">All scopes</SelectItem>
           <SelectItem value="org">Organization</SelectItem>
           <SelectItem value="folder">Folder</SelectItem>
-          <SelectItem value="project">Project</SelectItem>
         </SelectContent>
       </Select>
     </div>
@@ -273,7 +344,7 @@ export function OrgTemplatesIndexPage({
       rows={rows}
       onDelete={handleDelete}
       isLoading={isPending || orgName === ''}
-      error={error}
+      error={firstError}
       search={search}
       onSearchChange={handleSearchChange}
       extraColumns={extraColumns}
@@ -282,4 +353,3 @@ export function OrgTemplatesIndexPage({
     />
   )
 }
-
