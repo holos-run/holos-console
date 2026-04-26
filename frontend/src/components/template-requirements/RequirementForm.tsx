@@ -39,7 +39,7 @@ export type RequirementFormProps = {
  * editable. In edit mode the name is locked.
  */
 export function RequirementForm({
-  mode,
+  mode: _mode,
   namespace: _namespace,
   canWrite,
   initialValues,
