@@ -116,6 +116,36 @@ service TemplateService {
   // future revision. The response list is sorted by name ascending so the UI
   // can rely on a stable order without re-sorting.
   rpc ListTemplateExamples(ListTemplateExamplesRequest) returns (ListTemplateExamplesResponse);
+
+  // ListTemplateDependents returns all deployment instances that depend on the
+  // given template (reverse-dependency lookup). This answers "who depends on
+  // me?" for a template identified by (namespace, name). Introduced in HOL-986
+  // to implement the reverse-dependency contract from ADR 032 Decision 3.
+  //
+  // The response covers all three dependency scopes:
+  //   - Scope A (instance): TemplateDependency objects in any project namespace
+  //     where spec.requires matches the requested template.
+  //   - Scope B (project): TemplateRequirement objects in org/folder namespaces
+  //     where spec.requires matches the requested template.
+  //   - Scope C (remote-project): TemplateDependency objects where
+  //     spec.requires.namespace differs from the requesting namespace.
+  //
+  // Authorization: the caller must have PERMISSION_TEMPLATES_READ on the
+  // namespace that owns the requested template. Dependent entries are filtered
+  // by the caller's visibility — a project-level user only sees dependents
+  // within their visible projects; a platform-level user sees the full graph.
+  rpc ListTemplateDependents(ListTemplateDependentsRequest) returns (ListTemplateDependentsResponse);
+
+  // ListDeploymentDependents returns all deployment instances in other project
+  // namespaces that require the given deployment (the cross-project view).
+  // This answers "which other projects depend on this singleton deployment?"
+  // Introduced in HOL-986 alongside ListTemplateDependents.
+  //
+  // The response lists the owner-references encoded on the singleton
+  // Deployment's metadata — each entry where controller=false and
+  // blockOwnerDeletion=true is a dependent. The caller must have
+  // PERMISSION_DEPLOYMENTS_READ on the namespace that owns the singleton.
+  rpc ListDeploymentDependents(ListDeploymentDependentsRequest) returns (ListDeploymentDependentsResponse);
 }
 
 // TemplateDefaults carries optional default values that a template provides
@@ -558,4 +588,93 @@ message ListTemplateExamplesRequest {}
 message ListTemplateExamplesResponse {
   // examples lists all built-in example templates, sorted by name ascending.
   repeated TemplateExample examples = 1;
+}
+
+// DependencyScope identifies which of the three ADR 032 dependency scopes a
+// dependent record belongs to. The UI renders a scope badge from this field —
+// the server derives scope server-side so the client never has to re-derive it.
+enum DependencyScope {
+  // DEPENDENCY_SCOPE_UNSPECIFIED is the zero value; should not appear in
+  // responses.
+  DEPENDENCY_SCOPE_UNSPECIFIED = 0;
+  // DEPENDENCY_SCOPE_INSTANCE is Scope A from ADR 032: a TemplateDependency
+  // where spec.requires.namespace == spec.dependent.namespace (same project).
+  DEPENDENCY_SCOPE_INSTANCE = 1;
+  // DEPENDENCY_SCOPE_PROJECT is Scope B from ADR 032: a TemplateRequirement
+  // stored in an org or folder namespace that mandates a singleton for every
+  // matching project reachable via the ancestor walk.
+  DEPENDENCY_SCOPE_PROJECT = 2;
+  // DEPENDENCY_SCOPE_REMOTE_PROJECT is Scope C from ADR 032: a
+  // TemplateDependency where spec.requires.namespace != spec.dependent.namespace
+  // (cross-namespace reference to another project or platform namespace).
+  DEPENDENCY_SCOPE_REMOTE_PROJECT = 3;
+}
+
+// TemplateDependentRecord describes a single dependent that requires the
+// queried template. It is returned by ListTemplateDependents and carries
+// enough metadata for the UI to render the scope badge without re-deriving scope.
+message TemplateDependentRecord {
+  // scope is the derived dependency scope per ADR 032 Decision 2.
+  DependencyScope scope = 1;
+  // dependent_namespace is the Kubernetes namespace of the declaring object
+  // (TemplateDependency or TemplateRequirement). For TemplateDependency this
+  // is the project namespace; for TemplateRequirement this is the org/folder
+  // namespace.
+  string dependent_namespace = 2;
+  // dependent_name is the DNS label slug of the declaring object.
+  string dependent_name = 3;
+  // requiring_template_namespace is the namespace of the template that holds
+  // the dependency relationship (TemplateDependency.spec.dependent.namespace
+  // or TemplateRequirement.spec.targetRefs[*] project namespace). Empty for
+  // Scope B wildcard records where the concrete set is not yet enumerated.
+  string requiring_template_namespace = 4;
+  // requiring_template_name is the name of the template that holds the
+  // dependency (TemplateDependency.spec.dependent.name). Empty for Scope B
+  // records which target via wildcards rather than a specific template name.
+  string requiring_template_name = 5;
+  // kind discriminates between TemplateDependency and TemplateRequirement
+  // declaring objects so the UI can render appropriate detail links.
+  string kind = 6;
+}
+
+// ListTemplateDependentsRequest requests all dependents of the given template.
+message ListTemplateDependentsRequest {
+  // namespace is the Kubernetes namespace that owns the required template.
+  string namespace = 1;
+  // name is the required template's DNS label slug.
+  string name = 2;
+}
+
+// ListTemplateDependentsResponse lists all dependents of the requested template.
+message ListTemplateDependentsResponse {
+  // dependents lists every dependent record found across all scopes that the
+  // caller can see. Ordered by (scope, dependent_namespace, dependent_name).
+  repeated TemplateDependentRecord dependents = 1;
+}
+
+// DeploymentDependentRecord describes a deployment instance in another
+// namespace that requires the queried singleton deployment.
+message DeploymentDependentRecord {
+  // dependent_namespace is the project namespace of the dependent Deployment.
+  string dependent_namespace = 1;
+  // dependent_name is the DNS label slug of the dependent Deployment.
+  string dependent_name = 2;
+}
+
+// ListDeploymentDependentsRequest requests all dependent deployments of the
+// given singleton deployment.
+message ListDeploymentDependentsRequest {
+  // namespace is the Kubernetes namespace that owns the singleton Deployment.
+  string namespace = 1;
+  // name is the singleton Deployment's DNS label slug.
+  string name = 2;
+}
+
+// ListDeploymentDependentsResponse lists all deployments that own (depend on)
+// the queried singleton.
+message ListDeploymentDependentsResponse {
+  // dependents lists all dependent Deployment instances encoded as
+  // owner-references on the singleton (controller=false,
+  // blockOwnerDeletion=true per ADR 032 Decision 3 point 4).
+  repeated DeploymentDependentRecord dependents = 1;
 }

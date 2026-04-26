@@ -22,6 +22,71 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// DependencyScope identifies which of the three ADR 032 dependency scopes a
+// dependent record belongs to. The UI renders a scope badge from this field —
+// the server derives scope server-side so the client never has to re-derive it.
+type DependencyScope int32
+
+const (
+	// DEPENDENCY_SCOPE_UNSPECIFIED is the zero value; should not appear in
+	// responses.
+	DependencyScope_DEPENDENCY_SCOPE_UNSPECIFIED DependencyScope = 0
+	// DEPENDENCY_SCOPE_INSTANCE is Scope A from ADR 032: a TemplateDependency
+	// where spec.requires.namespace == spec.dependent.namespace (same project).
+	DependencyScope_DEPENDENCY_SCOPE_INSTANCE DependencyScope = 1
+	// DEPENDENCY_SCOPE_PROJECT is Scope B from ADR 032: a TemplateRequirement
+	// stored in an org or folder namespace that mandates a singleton for every
+	// matching project reachable via the ancestor walk.
+	DependencyScope_DEPENDENCY_SCOPE_PROJECT DependencyScope = 2
+	// DEPENDENCY_SCOPE_REMOTE_PROJECT is Scope C from ADR 032: a
+	// TemplateDependency where spec.requires.namespace != spec.dependent.namespace
+	// (cross-namespace reference to another project or platform namespace).
+	DependencyScope_DEPENDENCY_SCOPE_REMOTE_PROJECT DependencyScope = 3
+)
+
+// Enum value maps for DependencyScope.
+var (
+	DependencyScope_name = map[int32]string{
+		0: "DEPENDENCY_SCOPE_UNSPECIFIED",
+		1: "DEPENDENCY_SCOPE_INSTANCE",
+		2: "DEPENDENCY_SCOPE_PROJECT",
+		3: "DEPENDENCY_SCOPE_REMOTE_PROJECT",
+	}
+	DependencyScope_value = map[string]int32{
+		"DEPENDENCY_SCOPE_UNSPECIFIED":    0,
+		"DEPENDENCY_SCOPE_INSTANCE":       1,
+		"DEPENDENCY_SCOPE_PROJECT":        2,
+		"DEPENDENCY_SCOPE_REMOTE_PROJECT": 3,
+	}
+)
+
+func (x DependencyScope) Enum() *DependencyScope {
+	p := new(DependencyScope)
+	*p = x
+	return p
+}
+
+func (x DependencyScope) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DependencyScope) Descriptor() protoreflect.EnumDescriptor {
+	return file_holos_console_v1_templates_proto_enumTypes[0].Descriptor()
+}
+
+func (DependencyScope) Type() protoreflect.EnumType {
+	return &file_holos_console_v1_templates_proto_enumTypes[0]
+}
+
+func (x DependencyScope) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DependencyScope.Descriptor instead.
+func (DependencyScope) EnumDescriptor() ([]byte, []int) {
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{0}
+}
+
 // TemplateDefaults carries optional default values that a template provides
 // for deployment form fields. All fields are optional — an empty message means
 // "no defaults." Field types match the corresponding fields in
@@ -2228,6 +2293,371 @@ func (x *ListTemplateExamplesResponse) GetExamples() []*TemplateExample {
 	return nil
 }
 
+// TemplateDependentRecord describes a single dependent that requires the
+// queried template. It is returned by ListTemplateDependents and carries
+// enough metadata for the UI to render the scope badge without re-deriving scope.
+type TemplateDependentRecord struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// scope is the derived dependency scope per ADR 032 Decision 2.
+	Scope DependencyScope `protobuf:"varint,1,opt,name=scope,proto3,enum=holos.console.v1.DependencyScope" json:"scope,omitempty"`
+	// dependent_namespace is the Kubernetes namespace of the declaring object
+	// (TemplateDependency or TemplateRequirement). For TemplateDependency this
+	// is the project namespace; for TemplateRequirement this is the org/folder
+	// namespace.
+	DependentNamespace string `protobuf:"bytes,2,opt,name=dependent_namespace,json=dependentNamespace,proto3" json:"dependent_namespace,omitempty"`
+	// dependent_name is the DNS label slug of the declaring object.
+	DependentName string `protobuf:"bytes,3,opt,name=dependent_name,json=dependentName,proto3" json:"dependent_name,omitempty"`
+	// requiring_template_namespace is the namespace of the template that holds
+	// the dependency relationship (TemplateDependency.spec.dependent.namespace
+	// or TemplateRequirement.spec.targetRefs[*] project namespace). Empty for
+	// Scope B wildcard records where the concrete set is not yet enumerated.
+	RequiringTemplateNamespace string `protobuf:"bytes,4,opt,name=requiring_template_namespace,json=requiringTemplateNamespace,proto3" json:"requiring_template_namespace,omitempty"`
+	// requiring_template_name is the name of the template that holds the
+	// dependency (TemplateDependency.spec.dependent.name). Empty for Scope B
+	// records which target via wildcards rather than a specific template name.
+	RequiringTemplateName string `protobuf:"bytes,5,opt,name=requiring_template_name,json=requiringTemplateName,proto3" json:"requiring_template_name,omitempty"`
+	// kind discriminates between TemplateDependency and TemplateRequirement
+	// declaring objects so the UI can render appropriate detail links.
+	Kind          string `protobuf:"bytes,6,opt,name=kind,proto3" json:"kind,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TemplateDependentRecord) Reset() {
+	*x = TemplateDependentRecord{}
+	mi := &file_holos_console_v1_templates_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TemplateDependentRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TemplateDependentRecord) ProtoMessage() {}
+
+func (x *TemplateDependentRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_templates_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TemplateDependentRecord.ProtoReflect.Descriptor instead.
+func (*TemplateDependentRecord) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *TemplateDependentRecord) GetScope() DependencyScope {
+	if x != nil {
+		return x.Scope
+	}
+	return DependencyScope_DEPENDENCY_SCOPE_UNSPECIFIED
+}
+
+func (x *TemplateDependentRecord) GetDependentNamespace() string {
+	if x != nil {
+		return x.DependentNamespace
+	}
+	return ""
+}
+
+func (x *TemplateDependentRecord) GetDependentName() string {
+	if x != nil {
+		return x.DependentName
+	}
+	return ""
+}
+
+func (x *TemplateDependentRecord) GetRequiringTemplateNamespace() string {
+	if x != nil {
+		return x.RequiringTemplateNamespace
+	}
+	return ""
+}
+
+func (x *TemplateDependentRecord) GetRequiringTemplateName() string {
+	if x != nil {
+		return x.RequiringTemplateName
+	}
+	return ""
+}
+
+func (x *TemplateDependentRecord) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+// ListTemplateDependentsRequest requests all dependents of the given template.
+type ListTemplateDependentsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// namespace is the Kubernetes namespace that owns the required template.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	// name is the required template's DNS label slug.
+	Name          string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTemplateDependentsRequest) Reset() {
+	*x = ListTemplateDependentsRequest{}
+	mi := &file_holos_console_v1_templates_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTemplateDependentsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTemplateDependentsRequest) ProtoMessage() {}
+
+func (x *ListTemplateDependentsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_templates_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTemplateDependentsRequest.ProtoReflect.Descriptor instead.
+func (*ListTemplateDependentsRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *ListTemplateDependentsRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *ListTemplateDependentsRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// ListTemplateDependentsResponse lists all dependents of the requested template.
+type ListTemplateDependentsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// dependents lists every dependent record found across all scopes that the
+	// caller can see. Ordered by (scope, dependent_namespace, dependent_name).
+	Dependents    []*TemplateDependentRecord `protobuf:"bytes,1,rep,name=dependents,proto3" json:"dependents,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTemplateDependentsResponse) Reset() {
+	*x = ListTemplateDependentsResponse{}
+	mi := &file_holos_console_v1_templates_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTemplateDependentsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTemplateDependentsResponse) ProtoMessage() {}
+
+func (x *ListTemplateDependentsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_templates_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTemplateDependentsResponse.ProtoReflect.Descriptor instead.
+func (*ListTemplateDependentsResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *ListTemplateDependentsResponse) GetDependents() []*TemplateDependentRecord {
+	if x != nil {
+		return x.Dependents
+	}
+	return nil
+}
+
+// DeploymentDependentRecord describes a deployment instance in another
+// namespace that requires the queried singleton deployment.
+type DeploymentDependentRecord struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// dependent_namespace is the project namespace of the dependent Deployment.
+	DependentNamespace string `protobuf:"bytes,1,opt,name=dependent_namespace,json=dependentNamespace,proto3" json:"dependent_namespace,omitempty"`
+	// dependent_name is the DNS label slug of the dependent Deployment.
+	DependentName string `protobuf:"bytes,2,opt,name=dependent_name,json=dependentName,proto3" json:"dependent_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeploymentDependentRecord) Reset() {
+	*x = DeploymentDependentRecord{}
+	mi := &file_holos_console_v1_templates_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeploymentDependentRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeploymentDependentRecord) ProtoMessage() {}
+
+func (x *DeploymentDependentRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_templates_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeploymentDependentRecord.ProtoReflect.Descriptor instead.
+func (*DeploymentDependentRecord) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *DeploymentDependentRecord) GetDependentNamespace() string {
+	if x != nil {
+		return x.DependentNamespace
+	}
+	return ""
+}
+
+func (x *DeploymentDependentRecord) GetDependentName() string {
+	if x != nil {
+		return x.DependentName
+	}
+	return ""
+}
+
+// ListDeploymentDependentsRequest requests all dependent deployments of the
+// given singleton deployment.
+type ListDeploymentDependentsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// namespace is the Kubernetes namespace that owns the singleton Deployment.
+	Namespace string `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	// name is the singleton Deployment's DNS label slug.
+	Name          string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDeploymentDependentsRequest) Reset() {
+	*x = ListDeploymentDependentsRequest{}
+	mi := &file_holos_console_v1_templates_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDeploymentDependentsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDeploymentDependentsRequest) ProtoMessage() {}
+
+func (x *ListDeploymentDependentsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_templates_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDeploymentDependentsRequest.ProtoReflect.Descriptor instead.
+func (*ListDeploymentDependentsRequest) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *ListDeploymentDependentsRequest) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *ListDeploymentDependentsRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// ListDeploymentDependentsResponse lists all deployments that own (depend on)
+// the queried singleton.
+type ListDeploymentDependentsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// dependents lists all dependent Deployment instances encoded as
+	// owner-references on the singleton (controller=false,
+	// blockOwnerDeletion=true per ADR 032 Decision 3 point 4).
+	Dependents    []*DeploymentDependentRecord `protobuf:"bytes,1,rep,name=dependents,proto3" json:"dependents,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDeploymentDependentsResponse) Reset() {
+	*x = ListDeploymentDependentsResponse{}
+	mi := &file_holos_console_v1_templates_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDeploymentDependentsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDeploymentDependentsResponse) ProtoMessage() {}
+
+func (x *ListDeploymentDependentsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_holos_console_v1_templates_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDeploymentDependentsResponse.ProtoReflect.Descriptor instead.
+func (*ListDeploymentDependentsResponse) Descriptor() ([]byte, []int) {
+	return file_holos_console_v1_templates_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *ListDeploymentDependentsResponse) GetDependents() []*DeploymentDependentRecord {
+	if x != nil {
+		return x.Dependents
+	}
+	return nil
+}
+
 var File_holos_console_v1_templates_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_templates_proto_rawDesc = "" +
@@ -2368,7 +2798,36 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\fcue_template\x18\x04 \x01(\tR\vcueTemplate\"\x1d\n" +
 	"\x1bListTemplateExamplesRequest\"]\n" +
 	"\x1cListTemplateExamplesResponse\x12=\n" +
-	"\bexamples\x18\x01 \x03(\v2!.holos.console.v1.TemplateExampleR\bexamples2\xb9\r\n" +
+	"\bexamples\x18\x01 \x03(\v2!.holos.console.v1.TemplateExampleR\bexamples\"\xb8\x02\n" +
+	"\x17TemplateDependentRecord\x127\n" +
+	"\x05scope\x18\x01 \x01(\x0e2!.holos.console.v1.DependencyScopeR\x05scope\x12/\n" +
+	"\x13dependent_namespace\x18\x02 \x01(\tR\x12dependentNamespace\x12%\n" +
+	"\x0edependent_name\x18\x03 \x01(\tR\rdependentName\x12@\n" +
+	"\x1crequiring_template_namespace\x18\x04 \x01(\tR\x1arequiringTemplateNamespace\x126\n" +
+	"\x17requiring_template_name\x18\x05 \x01(\tR\x15requiringTemplateName\x12\x12\n" +
+	"\x04kind\x18\x06 \x01(\tR\x04kind\"Q\n" +
+	"\x1dListTemplateDependentsRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"k\n" +
+	"\x1eListTemplateDependentsResponse\x12I\n" +
+	"\n" +
+	"dependents\x18\x01 \x03(\v2).holos.console.v1.TemplateDependentRecordR\n" +
+	"dependents\"s\n" +
+	"\x19DeploymentDependentRecord\x12/\n" +
+	"\x13dependent_namespace\x18\x01 \x01(\tR\x12dependentNamespace\x12%\n" +
+	"\x0edependent_name\x18\x02 \x01(\tR\rdependentName\"S\n" +
+	"\x1fListDeploymentDependentsRequest\x12\x1c\n" +
+	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"o\n" +
+	" ListDeploymentDependentsResponse\x12K\n" +
+	"\n" +
+	"dependents\x18\x01 \x03(\v2+.holos.console.v1.DeploymentDependentRecordR\n" +
+	"dependents*\x95\x01\n" +
+	"\x0fDependencyScope\x12 \n" +
+	"\x1cDEPENDENCY_SCOPE_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19DEPENDENCY_SCOPE_INSTANCE\x10\x01\x12\x1c\n" +
+	"\x18DEPENDENCY_SCOPE_PROJECT\x10\x02\x12#\n" +
+	"\x1fDEPENDENCY_SCOPE_REMOTE_PROJECT\x10\x032\xba\x0f\n" +
 	"\x0fTemplateService\x12`\n" +
 	"\rListTemplates\x12&.holos.console.v1.ListTemplatesRequest\x1a'.holos.console.v1.ListTemplatesResponse\x12Z\n" +
 	"\vGetTemplate\x12$.holos.console.v1.GetTemplateRequest\x1a%.holos.console.v1.GetTemplateResponse\x12c\n" +
@@ -2386,7 +2845,9 @@ const file_holos_console_v1_templates_proto_rawDesc = "" +
 	"\x13GetTemplateDefaults\x12,.holos.console.v1.GetTemplateDefaultsRequest\x1a-.holos.console.v1.GetTemplateDefaultsResponse\x12\x90\x01\n" +
 	"\x1dGetProjectTemplatePolicyState\x126.holos.console.v1.GetProjectTemplatePolicyStateRequest\x1a7.holos.console.v1.GetProjectTemplatePolicyStateResponse\x12f\n" +
 	"\x0fSearchTemplates\x12(.holos.console.v1.SearchTemplatesRequest\x1a).holos.console.v1.SearchTemplatesResponse\x12u\n" +
-	"\x14ListTemplateExamples\x12-.holos.console.v1.ListTemplateExamplesRequest\x1a..holos.console.v1.ListTemplateExamplesResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
+	"\x14ListTemplateExamples\x12-.holos.console.v1.ListTemplateExamplesRequest\x1a..holos.console.v1.ListTemplateExamplesResponse\x12{\n" +
+	"\x16ListTemplateDependents\x12/.holos.console.v1.ListTemplateDependentsRequest\x1a0.holos.console.v1.ListTemplateDependentsResponse\x12\x81\x01\n" +
+	"\x18ListDeploymentDependents\x121.holos.console.v1.ListDeploymentDependentsRequest\x1a2.holos.console.v1.ListDeploymentDependentsResponseBCZAgithub.com/holos-run/holos-console/gen/holos/console/v1;consolev1b\x06proto3"
 
 var (
 	file_holos_console_v1_templates_proto_rawDescOnce sync.Once
@@ -2400,104 +2861,119 @@ func file_holos_console_v1_templates_proto_rawDescGZIP() []byte {
 	return file_holos_console_v1_templates_proto_rawDescData
 }
 
-var file_holos_console_v1_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
+var file_holos_console_v1_templates_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_holos_console_v1_templates_proto_msgTypes = make([]protoimpl.MessageInfo, 41)
 var file_holos_console_v1_templates_proto_goTypes = []any{
-	(*TemplateDefaults)(nil),                      // 0: holos.console.v1.TemplateDefaults
-	(*GetTemplateDefaultsRequest)(nil),            // 1: holos.console.v1.GetTemplateDefaultsRequest
-	(*GetTemplateDefaultsResponse)(nil),           // 2: holos.console.v1.GetTemplateDefaultsResponse
-	(*Template)(nil),                              // 3: holos.console.v1.Template
-	(*ListTemplatesRequest)(nil),                  // 4: holos.console.v1.ListTemplatesRequest
-	(*ListTemplatesResponse)(nil),                 // 5: holos.console.v1.ListTemplatesResponse
-	(*GetTemplateRequest)(nil),                    // 6: holos.console.v1.GetTemplateRequest
-	(*GetTemplateResponse)(nil),                   // 7: holos.console.v1.GetTemplateResponse
-	(*CreateTemplateRequest)(nil),                 // 8: holos.console.v1.CreateTemplateRequest
-	(*CreateTemplateResponse)(nil),                // 9: holos.console.v1.CreateTemplateResponse
-	(*UpdateTemplateRequest)(nil),                 // 10: holos.console.v1.UpdateTemplateRequest
-	(*UpdateTemplateResponse)(nil),                // 11: holos.console.v1.UpdateTemplateResponse
-	(*DeleteTemplateRequest)(nil),                 // 12: holos.console.v1.DeleteTemplateRequest
-	(*DeleteTemplateResponse)(nil),                // 13: holos.console.v1.DeleteTemplateResponse
-	(*RenderTemplateRequest)(nil),                 // 14: holos.console.v1.RenderTemplateRequest
-	(*RenderTemplateResponse)(nil),                // 15: holos.console.v1.RenderTemplateResponse
-	(*CloneTemplateRequest)(nil),                  // 16: holos.console.v1.CloneTemplateRequest
-	(*CloneTemplateResponse)(nil),                 // 17: holos.console.v1.CloneTemplateResponse
-	(*ListLinkableTemplatesRequest)(nil),          // 18: holos.console.v1.ListLinkableTemplatesRequest
-	(*LinkableTemplate)(nil),                      // 19: holos.console.v1.LinkableTemplate
-	(*ListLinkableTemplatesResponse)(nil),         // 20: holos.console.v1.ListLinkableTemplatesResponse
-	(*ListAncestorTemplatesRequest)(nil),          // 21: holos.console.v1.ListAncestorTemplatesRequest
-	(*ListAncestorTemplatesResponse)(nil),         // 22: holos.console.v1.ListAncestorTemplatesResponse
-	(*Release)(nil),                               // 23: holos.console.v1.Release
-	(*CreateReleaseRequest)(nil),                  // 24: holos.console.v1.CreateReleaseRequest
-	(*CreateReleaseResponse)(nil),                 // 25: holos.console.v1.CreateReleaseResponse
-	(*ListReleasesRequest)(nil),                   // 26: holos.console.v1.ListReleasesRequest
-	(*ListReleasesResponse)(nil),                  // 27: holos.console.v1.ListReleasesResponse
-	(*GetReleaseRequest)(nil),                     // 28: holos.console.v1.GetReleaseRequest
-	(*GetReleaseResponse)(nil),                    // 29: holos.console.v1.GetReleaseResponse
-	(*SearchTemplatesRequest)(nil),                // 30: holos.console.v1.SearchTemplatesRequest
-	(*SearchTemplatesResponse)(nil),               // 31: holos.console.v1.SearchTemplatesResponse
-	(*TemplateExample)(nil),                       // 32: holos.console.v1.TemplateExample
-	(*ListTemplateExamplesRequest)(nil),           // 33: holos.console.v1.ListTemplateExamplesRequest
-	(*ListTemplateExamplesResponse)(nil),          // 34: holos.console.v1.ListTemplateExamplesResponse
-	(*EnvVar)(nil),                                // 35: holos.console.v1.EnvVar
-	(*timestamppb.Timestamp)(nil),                 // 36: google.protobuf.Timestamp
-	(*GetProjectTemplatePolicyStateRequest)(nil),  // 37: holos.console.v1.GetProjectTemplatePolicyStateRequest
-	(*GetProjectTemplatePolicyStateResponse)(nil), // 38: holos.console.v1.GetProjectTemplatePolicyStateResponse
+	(DependencyScope)(0),                          // 0: holos.console.v1.DependencyScope
+	(*TemplateDefaults)(nil),                      // 1: holos.console.v1.TemplateDefaults
+	(*GetTemplateDefaultsRequest)(nil),            // 2: holos.console.v1.GetTemplateDefaultsRequest
+	(*GetTemplateDefaultsResponse)(nil),           // 3: holos.console.v1.GetTemplateDefaultsResponse
+	(*Template)(nil),                              // 4: holos.console.v1.Template
+	(*ListTemplatesRequest)(nil),                  // 5: holos.console.v1.ListTemplatesRequest
+	(*ListTemplatesResponse)(nil),                 // 6: holos.console.v1.ListTemplatesResponse
+	(*GetTemplateRequest)(nil),                    // 7: holos.console.v1.GetTemplateRequest
+	(*GetTemplateResponse)(nil),                   // 8: holos.console.v1.GetTemplateResponse
+	(*CreateTemplateRequest)(nil),                 // 9: holos.console.v1.CreateTemplateRequest
+	(*CreateTemplateResponse)(nil),                // 10: holos.console.v1.CreateTemplateResponse
+	(*UpdateTemplateRequest)(nil),                 // 11: holos.console.v1.UpdateTemplateRequest
+	(*UpdateTemplateResponse)(nil),                // 12: holos.console.v1.UpdateTemplateResponse
+	(*DeleteTemplateRequest)(nil),                 // 13: holos.console.v1.DeleteTemplateRequest
+	(*DeleteTemplateResponse)(nil),                // 14: holos.console.v1.DeleteTemplateResponse
+	(*RenderTemplateRequest)(nil),                 // 15: holos.console.v1.RenderTemplateRequest
+	(*RenderTemplateResponse)(nil),                // 16: holos.console.v1.RenderTemplateResponse
+	(*CloneTemplateRequest)(nil),                  // 17: holos.console.v1.CloneTemplateRequest
+	(*CloneTemplateResponse)(nil),                 // 18: holos.console.v1.CloneTemplateResponse
+	(*ListLinkableTemplatesRequest)(nil),          // 19: holos.console.v1.ListLinkableTemplatesRequest
+	(*LinkableTemplate)(nil),                      // 20: holos.console.v1.LinkableTemplate
+	(*ListLinkableTemplatesResponse)(nil),         // 21: holos.console.v1.ListLinkableTemplatesResponse
+	(*ListAncestorTemplatesRequest)(nil),          // 22: holos.console.v1.ListAncestorTemplatesRequest
+	(*ListAncestorTemplatesResponse)(nil),         // 23: holos.console.v1.ListAncestorTemplatesResponse
+	(*Release)(nil),                               // 24: holos.console.v1.Release
+	(*CreateReleaseRequest)(nil),                  // 25: holos.console.v1.CreateReleaseRequest
+	(*CreateReleaseResponse)(nil),                 // 26: holos.console.v1.CreateReleaseResponse
+	(*ListReleasesRequest)(nil),                   // 27: holos.console.v1.ListReleasesRequest
+	(*ListReleasesResponse)(nil),                  // 28: holos.console.v1.ListReleasesResponse
+	(*GetReleaseRequest)(nil),                     // 29: holos.console.v1.GetReleaseRequest
+	(*GetReleaseResponse)(nil),                    // 30: holos.console.v1.GetReleaseResponse
+	(*SearchTemplatesRequest)(nil),                // 31: holos.console.v1.SearchTemplatesRequest
+	(*SearchTemplatesResponse)(nil),               // 32: holos.console.v1.SearchTemplatesResponse
+	(*TemplateExample)(nil),                       // 33: holos.console.v1.TemplateExample
+	(*ListTemplateExamplesRequest)(nil),           // 34: holos.console.v1.ListTemplateExamplesRequest
+	(*ListTemplateExamplesResponse)(nil),          // 35: holos.console.v1.ListTemplateExamplesResponse
+	(*TemplateDependentRecord)(nil),               // 36: holos.console.v1.TemplateDependentRecord
+	(*ListTemplateDependentsRequest)(nil),         // 37: holos.console.v1.ListTemplateDependentsRequest
+	(*ListTemplateDependentsResponse)(nil),        // 38: holos.console.v1.ListTemplateDependentsResponse
+	(*DeploymentDependentRecord)(nil),             // 39: holos.console.v1.DeploymentDependentRecord
+	(*ListDeploymentDependentsRequest)(nil),       // 40: holos.console.v1.ListDeploymentDependentsRequest
+	(*ListDeploymentDependentsResponse)(nil),      // 41: holos.console.v1.ListDeploymentDependentsResponse
+	(*EnvVar)(nil),                                // 42: holos.console.v1.EnvVar
+	(*timestamppb.Timestamp)(nil),                 // 43: google.protobuf.Timestamp
+	(*GetProjectTemplatePolicyStateRequest)(nil),  // 44: holos.console.v1.GetProjectTemplatePolicyStateRequest
+	(*GetProjectTemplatePolicyStateResponse)(nil), // 45: holos.console.v1.GetProjectTemplatePolicyStateResponse
 }
 var file_holos_console_v1_templates_proto_depIdxs = []int32{
-	35, // 0: holos.console.v1.TemplateDefaults.env:type_name -> holos.console.v1.EnvVar
-	0,  // 1: holos.console.v1.GetTemplateDefaultsResponse.defaults:type_name -> holos.console.v1.TemplateDefaults
-	0,  // 2: holos.console.v1.Template.defaults:type_name -> holos.console.v1.TemplateDefaults
-	3,  // 3: holos.console.v1.ListTemplatesResponse.templates:type_name -> holos.console.v1.Template
-	3,  // 4: holos.console.v1.GetTemplateResponse.template:type_name -> holos.console.v1.Template
-	3,  // 5: holos.console.v1.CreateTemplateRequest.template:type_name -> holos.console.v1.Template
-	3,  // 6: holos.console.v1.UpdateTemplateRequest.template:type_name -> holos.console.v1.Template
-	23, // 7: holos.console.v1.LinkableTemplate.releases:type_name -> holos.console.v1.Release
-	19, // 8: holos.console.v1.ListLinkableTemplatesResponse.templates:type_name -> holos.console.v1.LinkableTemplate
-	3,  // 9: holos.console.v1.ListAncestorTemplatesResponse.templates:type_name -> holos.console.v1.Template
-	0,  // 10: holos.console.v1.Release.defaults:type_name -> holos.console.v1.TemplateDefaults
-	36, // 11: holos.console.v1.Release.created_at:type_name -> google.protobuf.Timestamp
-	23, // 12: holos.console.v1.CreateReleaseRequest.release:type_name -> holos.console.v1.Release
-	23, // 13: holos.console.v1.CreateReleaseResponse.release:type_name -> holos.console.v1.Release
-	23, // 14: holos.console.v1.ListReleasesResponse.releases:type_name -> holos.console.v1.Release
-	23, // 15: holos.console.v1.GetReleaseResponse.release:type_name -> holos.console.v1.Release
-	3,  // 16: holos.console.v1.SearchTemplatesResponse.templates:type_name -> holos.console.v1.Template
-	32, // 17: holos.console.v1.ListTemplateExamplesResponse.examples:type_name -> holos.console.v1.TemplateExample
-	4,  // 18: holos.console.v1.TemplateService.ListTemplates:input_type -> holos.console.v1.ListTemplatesRequest
-	6,  // 19: holos.console.v1.TemplateService.GetTemplate:input_type -> holos.console.v1.GetTemplateRequest
-	8,  // 20: holos.console.v1.TemplateService.CreateTemplate:input_type -> holos.console.v1.CreateTemplateRequest
-	10, // 21: holos.console.v1.TemplateService.UpdateTemplate:input_type -> holos.console.v1.UpdateTemplateRequest
-	12, // 22: holos.console.v1.TemplateService.DeleteTemplate:input_type -> holos.console.v1.DeleteTemplateRequest
-	14, // 23: holos.console.v1.TemplateService.RenderTemplate:input_type -> holos.console.v1.RenderTemplateRequest
-	16, // 24: holos.console.v1.TemplateService.CloneTemplate:input_type -> holos.console.v1.CloneTemplateRequest
-	18, // 25: holos.console.v1.TemplateService.ListLinkableTemplates:input_type -> holos.console.v1.ListLinkableTemplatesRequest
-	21, // 26: holos.console.v1.TemplateService.ListAncestorTemplates:input_type -> holos.console.v1.ListAncestorTemplatesRequest
-	24, // 27: holos.console.v1.TemplateService.CreateRelease:input_type -> holos.console.v1.CreateReleaseRequest
-	26, // 28: holos.console.v1.TemplateService.ListReleases:input_type -> holos.console.v1.ListReleasesRequest
-	28, // 29: holos.console.v1.TemplateService.GetRelease:input_type -> holos.console.v1.GetReleaseRequest
-	1,  // 30: holos.console.v1.TemplateService.GetTemplateDefaults:input_type -> holos.console.v1.GetTemplateDefaultsRequest
-	37, // 31: holos.console.v1.TemplateService.GetProjectTemplatePolicyState:input_type -> holos.console.v1.GetProjectTemplatePolicyStateRequest
-	30, // 32: holos.console.v1.TemplateService.SearchTemplates:input_type -> holos.console.v1.SearchTemplatesRequest
-	33, // 33: holos.console.v1.TemplateService.ListTemplateExamples:input_type -> holos.console.v1.ListTemplateExamplesRequest
-	5,  // 34: holos.console.v1.TemplateService.ListTemplates:output_type -> holos.console.v1.ListTemplatesResponse
-	7,  // 35: holos.console.v1.TemplateService.GetTemplate:output_type -> holos.console.v1.GetTemplateResponse
-	9,  // 36: holos.console.v1.TemplateService.CreateTemplate:output_type -> holos.console.v1.CreateTemplateResponse
-	11, // 37: holos.console.v1.TemplateService.UpdateTemplate:output_type -> holos.console.v1.UpdateTemplateResponse
-	13, // 38: holos.console.v1.TemplateService.DeleteTemplate:output_type -> holos.console.v1.DeleteTemplateResponse
-	15, // 39: holos.console.v1.TemplateService.RenderTemplate:output_type -> holos.console.v1.RenderTemplateResponse
-	17, // 40: holos.console.v1.TemplateService.CloneTemplate:output_type -> holos.console.v1.CloneTemplateResponse
-	20, // 41: holos.console.v1.TemplateService.ListLinkableTemplates:output_type -> holos.console.v1.ListLinkableTemplatesResponse
-	22, // 42: holos.console.v1.TemplateService.ListAncestorTemplates:output_type -> holos.console.v1.ListAncestorTemplatesResponse
-	25, // 43: holos.console.v1.TemplateService.CreateRelease:output_type -> holos.console.v1.CreateReleaseResponse
-	27, // 44: holos.console.v1.TemplateService.ListReleases:output_type -> holos.console.v1.ListReleasesResponse
-	29, // 45: holos.console.v1.TemplateService.GetRelease:output_type -> holos.console.v1.GetReleaseResponse
-	2,  // 46: holos.console.v1.TemplateService.GetTemplateDefaults:output_type -> holos.console.v1.GetTemplateDefaultsResponse
-	38, // 47: holos.console.v1.TemplateService.GetProjectTemplatePolicyState:output_type -> holos.console.v1.GetProjectTemplatePolicyStateResponse
-	31, // 48: holos.console.v1.TemplateService.SearchTemplates:output_type -> holos.console.v1.SearchTemplatesResponse
-	34, // 49: holos.console.v1.TemplateService.ListTemplateExamples:output_type -> holos.console.v1.ListTemplateExamplesResponse
-	34, // [34:50] is the sub-list for method output_type
-	18, // [18:34] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	42, // 0: holos.console.v1.TemplateDefaults.env:type_name -> holos.console.v1.EnvVar
+	1,  // 1: holos.console.v1.GetTemplateDefaultsResponse.defaults:type_name -> holos.console.v1.TemplateDefaults
+	1,  // 2: holos.console.v1.Template.defaults:type_name -> holos.console.v1.TemplateDefaults
+	4,  // 3: holos.console.v1.ListTemplatesResponse.templates:type_name -> holos.console.v1.Template
+	4,  // 4: holos.console.v1.GetTemplateResponse.template:type_name -> holos.console.v1.Template
+	4,  // 5: holos.console.v1.CreateTemplateRequest.template:type_name -> holos.console.v1.Template
+	4,  // 6: holos.console.v1.UpdateTemplateRequest.template:type_name -> holos.console.v1.Template
+	24, // 7: holos.console.v1.LinkableTemplate.releases:type_name -> holos.console.v1.Release
+	20, // 8: holos.console.v1.ListLinkableTemplatesResponse.templates:type_name -> holos.console.v1.LinkableTemplate
+	4,  // 9: holos.console.v1.ListAncestorTemplatesResponse.templates:type_name -> holos.console.v1.Template
+	1,  // 10: holos.console.v1.Release.defaults:type_name -> holos.console.v1.TemplateDefaults
+	43, // 11: holos.console.v1.Release.created_at:type_name -> google.protobuf.Timestamp
+	24, // 12: holos.console.v1.CreateReleaseRequest.release:type_name -> holos.console.v1.Release
+	24, // 13: holos.console.v1.CreateReleaseResponse.release:type_name -> holos.console.v1.Release
+	24, // 14: holos.console.v1.ListReleasesResponse.releases:type_name -> holos.console.v1.Release
+	24, // 15: holos.console.v1.GetReleaseResponse.release:type_name -> holos.console.v1.Release
+	4,  // 16: holos.console.v1.SearchTemplatesResponse.templates:type_name -> holos.console.v1.Template
+	33, // 17: holos.console.v1.ListTemplateExamplesResponse.examples:type_name -> holos.console.v1.TemplateExample
+	0,  // 18: holos.console.v1.TemplateDependentRecord.scope:type_name -> holos.console.v1.DependencyScope
+	36, // 19: holos.console.v1.ListTemplateDependentsResponse.dependents:type_name -> holos.console.v1.TemplateDependentRecord
+	39, // 20: holos.console.v1.ListDeploymentDependentsResponse.dependents:type_name -> holos.console.v1.DeploymentDependentRecord
+	5,  // 21: holos.console.v1.TemplateService.ListTemplates:input_type -> holos.console.v1.ListTemplatesRequest
+	7,  // 22: holos.console.v1.TemplateService.GetTemplate:input_type -> holos.console.v1.GetTemplateRequest
+	9,  // 23: holos.console.v1.TemplateService.CreateTemplate:input_type -> holos.console.v1.CreateTemplateRequest
+	11, // 24: holos.console.v1.TemplateService.UpdateTemplate:input_type -> holos.console.v1.UpdateTemplateRequest
+	13, // 25: holos.console.v1.TemplateService.DeleteTemplate:input_type -> holos.console.v1.DeleteTemplateRequest
+	15, // 26: holos.console.v1.TemplateService.RenderTemplate:input_type -> holos.console.v1.RenderTemplateRequest
+	17, // 27: holos.console.v1.TemplateService.CloneTemplate:input_type -> holos.console.v1.CloneTemplateRequest
+	19, // 28: holos.console.v1.TemplateService.ListLinkableTemplates:input_type -> holos.console.v1.ListLinkableTemplatesRequest
+	22, // 29: holos.console.v1.TemplateService.ListAncestorTemplates:input_type -> holos.console.v1.ListAncestorTemplatesRequest
+	25, // 30: holos.console.v1.TemplateService.CreateRelease:input_type -> holos.console.v1.CreateReleaseRequest
+	27, // 31: holos.console.v1.TemplateService.ListReleases:input_type -> holos.console.v1.ListReleasesRequest
+	29, // 32: holos.console.v1.TemplateService.GetRelease:input_type -> holos.console.v1.GetReleaseRequest
+	2,  // 33: holos.console.v1.TemplateService.GetTemplateDefaults:input_type -> holos.console.v1.GetTemplateDefaultsRequest
+	44, // 34: holos.console.v1.TemplateService.GetProjectTemplatePolicyState:input_type -> holos.console.v1.GetProjectTemplatePolicyStateRequest
+	31, // 35: holos.console.v1.TemplateService.SearchTemplates:input_type -> holos.console.v1.SearchTemplatesRequest
+	34, // 36: holos.console.v1.TemplateService.ListTemplateExamples:input_type -> holos.console.v1.ListTemplateExamplesRequest
+	37, // 37: holos.console.v1.TemplateService.ListTemplateDependents:input_type -> holos.console.v1.ListTemplateDependentsRequest
+	40, // 38: holos.console.v1.TemplateService.ListDeploymentDependents:input_type -> holos.console.v1.ListDeploymentDependentsRequest
+	6,  // 39: holos.console.v1.TemplateService.ListTemplates:output_type -> holos.console.v1.ListTemplatesResponse
+	8,  // 40: holos.console.v1.TemplateService.GetTemplate:output_type -> holos.console.v1.GetTemplateResponse
+	10, // 41: holos.console.v1.TemplateService.CreateTemplate:output_type -> holos.console.v1.CreateTemplateResponse
+	12, // 42: holos.console.v1.TemplateService.UpdateTemplate:output_type -> holos.console.v1.UpdateTemplateResponse
+	14, // 43: holos.console.v1.TemplateService.DeleteTemplate:output_type -> holos.console.v1.DeleteTemplateResponse
+	16, // 44: holos.console.v1.TemplateService.RenderTemplate:output_type -> holos.console.v1.RenderTemplateResponse
+	18, // 45: holos.console.v1.TemplateService.CloneTemplate:output_type -> holos.console.v1.CloneTemplateResponse
+	21, // 46: holos.console.v1.TemplateService.ListLinkableTemplates:output_type -> holos.console.v1.ListLinkableTemplatesResponse
+	23, // 47: holos.console.v1.TemplateService.ListAncestorTemplates:output_type -> holos.console.v1.ListAncestorTemplatesResponse
+	26, // 48: holos.console.v1.TemplateService.CreateRelease:output_type -> holos.console.v1.CreateReleaseResponse
+	28, // 49: holos.console.v1.TemplateService.ListReleases:output_type -> holos.console.v1.ListReleasesResponse
+	30, // 50: holos.console.v1.TemplateService.GetRelease:output_type -> holos.console.v1.GetReleaseResponse
+	3,  // 51: holos.console.v1.TemplateService.GetTemplateDefaults:output_type -> holos.console.v1.GetTemplateDefaultsResponse
+	45, // 52: holos.console.v1.TemplateService.GetProjectTemplatePolicyState:output_type -> holos.console.v1.GetProjectTemplatePolicyStateResponse
+	32, // 53: holos.console.v1.TemplateService.SearchTemplates:output_type -> holos.console.v1.SearchTemplatesResponse
+	35, // 54: holos.console.v1.TemplateService.ListTemplateExamples:output_type -> holos.console.v1.ListTemplateExamplesResponse
+	38, // 55: holos.console.v1.TemplateService.ListTemplateDependents:output_type -> holos.console.v1.ListTemplateDependentsResponse
+	41, // 56: holos.console.v1.TemplateService.ListDeploymentDependents:output_type -> holos.console.v1.ListDeploymentDependentsResponse
+	39, // [39:57] is the sub-list for method output_type
+	21, // [21:39] is the sub-list for method input_type
+	21, // [21:21] is the sub-list for extension type_name
+	21, // [21:21] is the sub-list for extension extendee
+	0,  // [0:21] is the sub-list for field type_name
 }
 
 func init() { file_holos_console_v1_templates_proto_init() }
@@ -2513,13 +2989,14 @@ func file_holos_console_v1_templates_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_holos_console_v1_templates_proto_rawDesc), len(file_holos_console_v1_templates_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   35,
+			NumEnums:      1,
+			NumMessages:   41,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_holos_console_v1_templates_proto_goTypes,
 		DependencyIndexes: file_holos_console_v1_templates_proto_depIdxs,
+		EnumInfos:         file_holos_console_v1_templates_proto_enumTypes,
 		MessageInfos:      file_holos_console_v1_templates_proto_msgTypes,
 	}.Build()
 	File_holos_console_v1_templates_proto = out.File
