@@ -108,18 +108,17 @@ const EMPTY_PROJECTS: readonly Project[] = []
 // useAllTemplatesForOrg fans a ListTemplates call across every namespace
 // reachable from an organization root — the org namespace, every folder
 // namespace, and every project namespace visible to the caller — and flattens
-// the results into one array. HOL-793 uses this to render the unified
-// org-level Templates index with scope indicators and filters without
-// requiring a server-side SearchTemplates fan-out. TemplateService exposes
+// the results into one array. Used by the org-level Templates index
+// (organizations/$orgName/templates) to show scope indicators and filters
+// without a server-side SearchTemplates fan-out. TemplateService exposes
 // `SearchTemplates`, but it returns proto Template payloads scoped by the
 // caller's `organization` filter only, without breaking out folder/project
 // results — and the current UI needs the per-namespace list semantics for
-// correct cache invalidation. Once server-side listing lands (tracked in
-// HOL-590), this hook should be retired in favor of SearchTemplates.
+// correct cache invalidation. Once server-side listing lands, this hook
+// should be retired in favor of SearchTemplates.
 //
-// Semantics match useAllTemplatePoliciesForOrg: partial data + error is
-// preserved so the caller can keep successfully-loaded rows visible while
-// rendering a warning banner.
+// Partial data + error is preserved so the caller can keep successfully-loaded
+// rows visible while rendering a warning banner.
 export function useAllTemplatesForOrg(orgName: string): FanOutAggregate<Template> {
   const { isAuthenticated } = useAuth()
   const transport = useTransport()

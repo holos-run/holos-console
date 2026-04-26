@@ -39,6 +39,7 @@ Query hooks live in `frontend/src/queries/`:
 - `projects.ts`
 - `resources.ts`
 - `secrets.ts`
+- `templateDependencies.ts` — `useListTemplateDependents`, `useListDeploymentDependents` (HOL-986)
 - `templatePolicies.ts`
 - `templatePolicyBindings.ts`
 - `templates.ts`
@@ -65,10 +66,11 @@ return useQuery({
 })
 ```
 
-Fan-out hooks, such as `useAllTemplatesForOrg`,
-`useAllTemplatePoliciesForOrg`, and `useAllTemplatePolicyBindingsForOrg`, keep
-the same auth/parameter guard but compose multiple queries with
-`aggregateFanOut` so partial data can render with a warning.
+Fan-out hooks, such as `useAllTemplatesForOrg`, keep the same auth/parameter
+guard but compose multiple queries with `aggregateFanOut` so partial data can
+render with a warning. `useAllTemplatePoliciesForOrg` and
+`useAllTemplatePolicyBindingsForOrg` were removed in HOL-989 (no route
+consumers).
 
 ### Grid inventory
 
@@ -207,5 +209,7 @@ direct component test and callers only need page-level rendering coverage.
   calls are still needed.
 - Move org/folder TemplatePolicy and TemplatePolicyBinding list pages onto
   `ResourceGrid` if their UX should match project-scoped resource lists.
-- Replace client fan-out with server-side search/list RPCs when backend support
-  is available.
+- Replace client fan-out (`useAllTemplatesForOrg`) with server-side search/list
+  RPCs when backend support is available.
+- Remove `useAllTemplatePoliciesForOrg` and `useAllTemplatePolicyBindingsForOrg`.
+  **Done in HOL-989**: both hooks had no route consumers and were deleted.
