@@ -5,7 +5,7 @@
  * and renders rows via ResourceGrid v1 with scope-aware detailHref values.
  */
 
-import { render, screen, within } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'

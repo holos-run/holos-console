@@ -90,16 +90,7 @@ export function ConsolidatedTemplateEditorPage({
   // Resolve the selected project so the "Clone to project" CTA can build the
   // target URL without requiring additional user input. If no project is
   // currently selected, the CTA is rendered as disabled.
-  let selectedProject: string | null = null
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const projectCtx = useProject()
-    selectedProject = projectCtx.selectedProject
-  } catch {
-    // useProject throws when rendered outside the ProjectProvider (e.g. in
-    // unit tests). Gracefully degrade to no selected project.
-    selectedProject = null
-  }
+  const { selectedProject } = useProject()
 
   const [cueTemplate, setCueTemplate] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
