@@ -472,12 +472,12 @@ func TestProjectNamespaceResolver_FolderAncestorChain(t *testing.T) {
 	}
 }
 
-// TestProjectNamespaceResolver_SiblingFolderDoesNotLeak asserts a binding
+// TestProjectNamespaceResolver_WildcardBindingFolderFanout asserts a binding
 // on a sibling folder does not bleed into a new project whose parent is a
-// different folder. Mirrors TestFolderResolver_WildcardBindingFolderCascade
+// different folder. Mirrors TestFolderResolver_WildcardBindingFolderFanout
 // for the new resolver kind. Wildcard reach is bounded by the binding's
 // ancestor-walk storage scope (ADR 029 "storage scope bounds reach").
-func TestProjectNamespaceResolver_SiblingFolderDoesNotLeak(t *testing.T) {
+func TestProjectNamespaceResolver_WildcardBindingFolderFanout(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
 

@@ -232,7 +232,7 @@ func TestFolderResolver_BindingProjectNameMismatchContributesNothing(t *testing.
 // This is a direct unit test of the match function rather than going through
 // Resolve: it keeps the match-logic AC bullets in HOL-770 on a tight feedback
 // loop and surfaces regressions in a single file when either the sentinel or
-// the comparison strategy drifts. The folder cascade behavior is covered
+// the comparison strategy drifts. The folder binding fan-out behavior is covered
 // separately below.
 func TestBindingAppliesTo_Wildcards(t *testing.T) {
 	type wantMatch struct {
@@ -499,7 +499,7 @@ func TestBindingAppliesTo_NilAndEmptyRefs(t *testing.T) {
 	}
 }
 
-// TestFolderResolver_WildcardBindingFolderCascade asserts that a binding
+// TestFolderResolver_WildcardBindingFolderFanout asserts that a binding
 // at folder `team-a` with `{project: "*", name: "*"}` matches resources
 // in projects under team-a (roses) but does NOT escape to projects under
 // a sibling folder (lilies under eng) or to projects directly under the
@@ -510,7 +510,7 @@ func TestBindingAppliesTo_NilAndEmptyRefs(t *testing.T) {
 // so its `{*, *}` binding is never even seen. The wildcard changes
 // *matching* inside the binding's storage scope, not the storage scope
 // itself (HOL-770 AC; ADR 029 "storage scope bounds reach" bullet).
-func TestFolderResolver_WildcardBindingFolderCascade(t *testing.T) {
+func TestFolderResolver_WildcardBindingFolderFanout(t *testing.T) {
 	client, r, ns := buildFixture()
 	walker := &resolver.Walker{Client: client, Resolver: r}
 

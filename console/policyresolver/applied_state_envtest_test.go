@@ -46,9 +46,9 @@ const (
 	renderStateEnvtestRoundTripPrefix = "rt"
 	renderStateEnvtestAdmissionPrefix = "ad"
 	renderStateEnvtestSelectorPrefix  = "ls"
-	// HOL-772 wildcard cascade prefixes — one per test so the namespace
+	// HOL-772 wildcard binding fan-out prefixes — one per test so the namespace
 	// hierarchy each builds is uniquely named on the shared apiserver.
-	wildcardFolderCascadePrefix     = "wfc"
+	wildcardFolderFanoutPrefix      = "wfc"
 	wildcardSiblingFolderPrefix     = "wsf"
 	wildcardProjectScopeCeilingPref = "wpc"
 	wildcardDeploymentByNamePresent = "wdp"
@@ -287,14 +287,14 @@ func TestAppliedRenderStateClient_LabelSelectorLookup(t *testing.T) {
 	}
 }
 
-// startWildcardCascadeEnvtest boots a Manager that primes the
+// startWildcardBindingEnvtest boots a Manager that primes the
 // TemplatePolicy + TemplatePolicyBinding informers (in addition to the
 // Namespace informer that the cache-backed Manager always carries). The
-// wildcard cascade tests Resolve through a real
+// wildcard binding fan-out tests Resolve through a real
 // NewFolderResolverWithBindings wired against the cache-backed client,
 // so a regression that bypasses the cache or short-circuits the
 // ancestor walk surfaces here rather than only in the unit tests.
-func startWildcardCascadeEnvtest(t *testing.T) *crdmgrtesting.Env {
+func startWildcardBindingEnvtest(t *testing.T) *crdmgrtesting.Env {
 	t.Helper()
 	return crdmgrtesting.StartManager(t, crdmgrtesting.Options{
 		Scheme: cacheBackedTestScheme(t),
@@ -339,21 +339,21 @@ func waitForPolicyCacheVisible(t *testing.T, c ctrlclient.Client, namespace, nam
 	t.Fatalf("policy %s/%s not visible in cache within deadline", namespace, name)
 }
 
-// TestFolderResolver_EnvtestWildcardFolderCascade pins HOL-772's
-// folder-scope cascade contract under wildcards. A folder-scope binding
+// TestFolderResolver_EnvtestWildcardFolderFanout pins HOL-772's
+// folder-scope binding fan-out contract under wildcards. A folder-scope binding
 // with target_refs `[{project: "*", name: "*", kind: PROJECT_TEMPLATE}]`
 // must attach to every project-template render under the folder's
-// projects (cascade reach), and the envtest run uses the production
+// projects (wildcard match across reachable scopes), and the envtest run uses the production
 // cache-backed client so the test exercises the same code path the
 // running console process does.
-func TestFolderResolver_EnvtestWildcardFolderCascade(t *testing.T) {
-	env := startWildcardCascadeEnvtest(t)
+func TestFolderResolver_EnvtestWildcardFolderFanout(t *testing.T) {
+	env := startWildcardBindingEnvtest(t)
 	if env == nil {
 		return
 	}
 
 	r := baseResolver()
-	prefix := wildcardFolderCascadePrefix
+	prefix := wildcardFolderFanoutPrefix
 	orgNs := r.OrgNamespace(prefix + "-acme")
 	folderEngNs := r.FolderNamespace(prefix + "-eng")
 	projectLiliesNs := r.ProjectNamespace(prefix + "-lilies")
@@ -387,7 +387,7 @@ func TestFolderResolver_EnvtestWildcardFolderCascade(t *testing.T) {
 	// targeting PROJECT_TEMPLATE. By HOL-770 this matches every
 	// project-template render below the folder.
 	wildcardBinding := &templatesv1alpha1.TemplatePolicyBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "wild-cascade", Namespace: folderEngNs},
+		ObjectMeta: metav1.ObjectMeta{Name: "wild-fanout", Namespace: folderEngNs},
 		Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
 			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
 				Namespace: orgNs,
@@ -405,7 +405,7 @@ func TestFolderResolver_EnvtestWildcardFolderCascade(t *testing.T) {
 	}
 
 	waitForPolicyCacheVisible(t, env.Client, orgNs, "audit")
-	waitForBindingCacheVisible(t, env.Client, folderEngNs, "wild-cascade")
+	waitForBindingCacheVisible(t, env.Client, folderEngNs, "wild-fanout")
 
 	walker := &resolver.Walker{
 		Getter:   &resolver.CtrlRuntimeNamespaceGetter{Client: env.Client},
@@ -448,7 +448,7 @@ func TestFolderResolver_EnvtestWildcardFolderCascade(t *testing.T) {
 // The ancestor walk caps wildcard reach; a regression that flattened
 // the cache would let a folder-scope wildcard cross folders.
 func TestFolderResolver_EnvtestWildcardSiblingFolderIsolation(t *testing.T) {
-	env := startWildcardCascadeEnvtest(t)
+	env := startWildcardBindingEnvtest(t)
 	if env == nil {
 		return
 	}
@@ -513,7 +513,7 @@ func TestFolderResolver_EnvtestWildcardSiblingFolderIsolation(t *testing.T) {
 	bl := &cacheBackedBindingLister{c: env.Client}
 	fr := NewFolderResolverWithBindings(pl, walker, r, bl)
 
-	// Project under folder eng: wildcard binding cascades down.
+	// Project under folder eng: wildcard binding fans out.
 	got, err := fr.Resolve(context.Background(), projectInEngNs, TargetKindProjectTemplate, "anything")
 	if err != nil {
 		t.Fatalf("Resolve(eng project): %v", err)
@@ -603,7 +603,7 @@ func TestFolderResolver_EnvtestWildcardProjectScopeCeiling(t *testing.T) {
 // "web" across every project reachable from the folder, and contributes
 // zero when the queried target name does not match.
 func TestFolderResolver_EnvtestWildcardProjectMatchesEveryReachableProject(t *testing.T) {
-	env := startWildcardCascadeEnvtest(t)
+	env := startWildcardBindingEnvtest(t)
 	if env == nil {
 		return
 	}
@@ -691,7 +691,7 @@ func TestFolderResolver_EnvtestWildcardProjectMatchesEveryReachableProject(t *te
 // literal name" still narrows by name — a regression that flattened
 // names on top of projects would surface here.
 func TestFolderResolver_EnvtestWildcardProjectZeroMatchesWhenNamesAbsent(t *testing.T) {
-	env := startWildcardCascadeEnvtest(t)
+	env := startWildcardBindingEnvtest(t)
 	if env == nil {
 		return
 	}
