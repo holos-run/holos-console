@@ -31,12 +31,34 @@ rules:
   - list
   - watch
 - apiGroups:
+  - deployments.holos.run
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - deployments.holos.run
+  resources:
+  - deployments/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - templates.holos.run
   resources:
   - renderstates
+  - templatedependencies
   - templatepolicies
   - templatepolicybindings
   - templatereleases
+  - templaterequirements
   - templates
   verbs:
   - create
@@ -50,9 +72,11 @@ rules:
   - templates.holos.run
   resources:
   - renderstates/finalizers
+  - templatedependencies/finalizers
   - templatepolicies/finalizers
   - templatepolicybindings/finalizers
   - templatereleases/finalizers
+  - templaterequirements/finalizers
   - templates/finalizers
   verbs:
   - update
@@ -60,10 +84,12 @@ rules:
   - templates.holos.run
   resources:
   - renderstates/status
+  - templatedependencies/status
   - templategrants/status
   - templatepolicies/status
   - templatepolicybindings/status
   - templatereleases/status
+  - templaterequirements/status
   - templates/status
   verbs:
   - get

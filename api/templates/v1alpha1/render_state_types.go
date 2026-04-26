@@ -20,6 +20,72 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// RenderStateDependencySource identifies which CRD kind produced a given
+// dependency edge recorded on a RenderState. The set is closed: only
+// TemplateDependency (Phase 5, HOL-959) and TemplateRequirement (Phase 6,
+// HOL-960) produce edges today.
+//
+// +kubebuilder:validation:Enum=TemplateDependency;TemplateRequirement
+type RenderStateDependencySource string
+
+const (
+	// RenderStateDependencySourceTemplateDependency indicates the edge was
+	// produced by a TemplateDependency object living in the project namespace.
+	RenderStateDependencySourceTemplateDependency RenderStateDependencySource = "TemplateDependency"
+	// RenderStateDependencySourceTemplateRequirement indicates the edge was
+	// produced by a TemplateRequirement object living in a folder or
+	// organization namespace.
+	RenderStateDependencySourceTemplateRequirement RenderStateDependencySource = "TemplateRequirement"
+)
+
+// RenderStateDependencyOriginatingRef is a lightweight typed reference back
+// to the CRD object that produced a dependency edge. It carries
+// (namespace, name, kind) so the Phase 9 UI can link a shared singleton
+// Deployment back to the originating TemplateDependency or
+// TemplateRequirement without a separate API lookup. The APIVersion is
+// always "templates.holos.run/v1alpha1"; it is not stored redundantly.
+type RenderStateDependencyOriginatingRef struct {
+	// Namespace is the Kubernetes namespace that owns the originating CRD.
+	// For TemplateDependency this is the project namespace; for
+	// TemplateRequirement this is a folder or organization namespace.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$`
+	Namespace string `json:"namespace"`
+	// Name is the DNS label slug of the originating CRD object.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Name string `json:"name"`
+	// Kind is the CRD kind of the originating object — either
+	// "TemplateDependency" or "TemplateRequirement".
+	Kind RenderStateDependencySource `json:"kind"`
+}
+
+// RenderStateDependency records a single resolved (template, version)
+// dependency edge produced by the Phase 5 (TemplateDependency) or Phase 6
+// (TemplateRequirement) reconciler. The edge is captured at render time so
+// the Phase 9 UI can display which shared Deployments exist because of
+// which dependency CRD objects, and so the drift checker can detect when the
+// dependency set changes between renders.
+type RenderStateDependency struct {
+	// Template is the resolved template reference — the (namespace, name,
+	// versionConstraint) triple that identifies the singleton Deployment's
+	// backing template.
+	Template LinkedTemplateRef `json:"template"`
+	// Version is the resolved version string (e.g. "v1.2.3") matched by
+	// the version constraint at render time. Empty when the dependency
+	// targets the live (unversioned) template.
+	Version string `json:"version,omitempty"`
+	// Source identifies which CRD kind produced this edge: either
+	// TemplateDependency or TemplateRequirement.
+	Source RenderStateDependencySource `json:"source"`
+	// OriginatingObject is a typed reference to the CRD object that
+	// declared this dependency. The Phase 9 UI uses it to link singleton
+	// Deployments back to their originating TemplateDependency or
+	// TemplateRequirement objects.
+	OriginatingObject RenderStateDependencyOriginatingRef `json:"originatingObject"`
+}
+
 // RenderTargetKind discriminates the kind of render target a RenderState
 // snapshot belongs to. The set is closed: render targets are either
 // Deployments or project-scope Templates today, and a new value here
@@ -110,6 +176,16 @@ type RenderStateSpec struct {
 	// RenderState (which means "never applied").
 	// +listType=atomic
 	AppliedRefs []RenderStateLinkedTemplateRef `json:"appliedRefs,omitempty"`
+	// Dependencies is the set of resolved (template, version) edges
+	// produced by the Phase 5 (TemplateDependency) and Phase 6
+	// (TemplateRequirement) reconcilers at the time of the last
+	// successful render. Each entry records which CRD object declared
+	// the dependency so the Phase 9 UI can link singleton Deployments
+	// back to their originating objects. The drift checker covers this
+	// field automatically because it diffs the entire RenderStateSpec
+	// as a structural document.
+	// +listType=atomic
+	Dependencies []RenderStateDependency `json:"dependencies,omitempty"`
 }
 
 // RenderStateStatus describes the observed state of a RenderState. There
