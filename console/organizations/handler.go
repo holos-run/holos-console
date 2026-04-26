@@ -1017,25 +1017,18 @@ func ensureCreatorOwner(shareUsers []secrets.AnnotationGrant, email string) []se
 	return append(shareUsers, secrets.AnnotationGrant{Principal: email, Role: "owner"})
 }
 
-// mapK8sError converts Kubernetes API errors to ConnectRPC errors.
+// mapK8sError converts Kubernetes API errors to ConnectRPC errors. The
+// handler-specific sentinel branches ("not managed by" / "not an
+// organization") run BEFORE rpc.MapK8sError so the more-specific
+// CodeNotFound mapping wins over the generic apierrors path. The
+// apierrors -> connect.Code mapping itself is delegated to
+// rpc.MapK8sError so every console handler stays in lock-step.
 func mapK8sError(err error) error {
-	if errors.IsNotFound(err) {
-		return connect.NewError(connect.CodeNotFound, err)
-	}
-	if errors.IsAlreadyExists(err) {
-		return connect.NewError(connect.CodeAlreadyExists, err)
-	}
-	if errors.IsForbidden(err) {
-		return connect.NewError(connect.CodePermissionDenied, err)
-	}
-	if errors.IsUnauthorized(err) {
-		return connect.NewError(connect.CodeUnauthenticated, err)
-	}
-	if errors.IsBadRequest(err) {
-		return connect.NewError(connect.CodeInvalidArgument, err)
+	if err == nil {
+		return nil
 	}
 	if strings.Contains(err.Error(), "not managed by") || strings.Contains(err.Error(), "not an organization") {
 		return connect.NewError(connect.CodeNotFound, err)
 	}
-	return connect.NewError(connect.CodeInternal, err)
+	return rpc.MapK8sError(err)
 }

@@ -16,7 +16,6 @@ import (
 	"connectrpc.com/connect"
 	"cuelang.org/go/cue/parser"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
@@ -1645,18 +1644,12 @@ func serializeResources(resources []RenderResource) (yamlStr, jsonStr string, er
 	return buf.String(), string(jsonBytes), nil
 }
 
-// mapK8sError converts Kubernetes API errors to ConnectRPC errors.
+// mapK8sError delegates to rpc.MapK8sError so the handler shares the
+// canonical apierrors -> connect.Code mapping with every other console
+// handler (notably: IsForbidden -> CodePermissionDenied, which the UI
+// uses to render the access-denied toast).
 func mapK8sError(err error) error {
-	if errors.IsNotFound(err) {
-		return connect.NewError(connect.CodeNotFound, err)
-	}
-	if errors.IsAlreadyExists(err) {
-		return connect.NewError(connect.CodeAlreadyExists, err)
-	}
-	if errors.IsForbidden(err) {
-		return connect.NewError(connect.CodePermissionDenied, err)
-	}
-	return connect.NewError(connect.CodeInternal, err)
+	return rpc.MapK8sError(err)
 }
 
 // GetProjectTemplatePolicyState returns the full TemplatePolicy drift

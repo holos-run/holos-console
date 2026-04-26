@@ -1216,26 +1216,21 @@ func removeGrantPrincipal(grants []secrets.AnnotationGrant, principal string) []
 	return filtered
 }
 
-// mapK8sError converts Kubernetes API errors to ConnectRPC errors.
+// mapK8sError converts Kubernetes API errors to ConnectRPC errors. The
+// handler-specific "not managed by" sentinel runs first so the
+// CodeNotFound mapping wins over the generic apierrors path; the
+// apierrors -> connect.Code mapping itself is delegated to
+// rpc.MapK8sError so every console handler stays in lock-step.
 func mapK8sError(err error) error {
-	if errors.IsNotFound(err) {
-		return connect.NewError(connect.CodeNotFound, err)
+	if err == nil {
+		return nil
 	}
-	if errors.IsAlreadyExists(err) {
-		return connect.NewError(connect.CodeAlreadyExists, err)
-	}
-	if errors.IsForbidden(err) {
-		return connect.NewError(connect.CodePermissionDenied, err)
-	}
-	if errors.IsUnauthorized(err) {
-		return connect.NewError(connect.CodeUnauthenticated, err)
-	}
-	if errors.IsBadRequest(err) {
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	// Check for "not managed by" errors from our K8s layer
+	// "not managed by" originates in our K8s layer, not from the API
+	// server, so it is not an apierrors kind — surface it as
+	// CodeNotFound to keep the response consistent with the
+	// generic-namespace and "no such project" paths.
 	if strings.Contains(err.Error(), "not managed by") {
 		return connect.NewError(connect.CodeNotFound, err)
 	}
-	return connect.NewError(connect.CodeInternal, err)
+	return rpc.MapK8sError(err)
 }
