@@ -1,0 +1,128 @@
+syntax = "proto3";
+
+package holos.console.v1;
+
+import "google/protobuf/timestamp.proto";
+import "holos/console/v1/policy_state.proto";
+import "holos/console/v1/template_policy_bindings.proto";
+
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// TemplateRequirementService manages TemplateRequirement resources. A
+// TemplateRequirement lives in an organization or folder namespace and records
+// that matching project templates or deployments require another template.
+service TemplateRequirementService {
+  // ListTemplateRequirements returns all TemplateRequirement resources in an
+  // organization or folder namespace. Requires
+  // PERMISSION_TEMPLATE_POLICIES_LIST on the owning resource.
+  rpc ListTemplateRequirements(ListTemplateRequirementsRequest) returns (ListTemplateRequirementsResponse);
+
+  // GetTemplateRequirement retrieves a single requirement by (namespace, name).
+  // Requires PERMISSION_TEMPLATE_POLICIES_READ on the owning resource.
+  rpc GetTemplateRequirement(GetTemplateRequirementRequest) returns (GetTemplateRequirementResponse);
+
+  // CreateTemplateRequirement creates a requirement in an organization or
+  // folder namespace. Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the
+  // owning resource.
+  rpc CreateTemplateRequirement(CreateTemplateRequirementRequest) returns (CreateTemplateRequirementResponse);
+
+  // UpdateTemplateRequirement updates an existing requirement.
+  // Requires PERMISSION_TEMPLATE_POLICIES_WRITE on the owning resource.
+  rpc UpdateTemplateRequirement(UpdateTemplateRequirementRequest) returns (UpdateTemplateRequirementResponse);
+
+  // DeleteTemplateRequirement deletes a requirement.
+  // Requires PERMISSION_TEMPLATE_POLICIES_DELETE on the owning resource.
+  rpc DeleteTemplateRequirement(DeleteTemplateRequirementRequest) returns (DeleteTemplateRequirementResponse);
+}
+
+// TemplateRequirementTargetRef identifies one render target gated by a
+// requirement. The literal string "*" is supported on name and project_name.
+message TemplateRequirementTargetRef {
+  // kind discriminates between PROJECT_TEMPLATE and DEPLOYMENT targets.
+  TemplatePolicyBindingTargetKind kind = 1;
+  // name is the target's DNS label slug within project_name, or "*".
+  string name = 2;
+  // project_name is the project that owns the target, or "*".
+  string project_name = 3;
+}
+
+// TemplateRequirement gates target_refs on requires.
+message TemplateRequirement {
+  // name is the unique DNS label slug within the namespace.
+  string name = 1;
+  // namespace is the organization or folder namespace that owns this object.
+  string namespace = 2;
+  // requires identifies the prerequisite template.
+  LinkedTemplateRef requires = 3;
+  // target_refs enumerates the gated render targets.
+  repeated TemplateRequirementTargetRef target_refs = 4;
+  // cascade_delete controls whether deleting requires should cascade to
+  // matching targets. Unset preserves the CRD default of true.
+  optional bool cascade_delete = 5;
+  // creator_email is the email address of the user who created this object.
+  string creator_email = 6;
+  // created_at is the timestamp when this requirement was created.
+  google.protobuf.Timestamp created_at = 7;
+  // status contains reconciler observations.
+  TemplateRequirementStatus status = 8;
+}
+
+// TemplateRequirementStatus mirrors the CRD status subresource.
+message TemplateRequirementStatus {
+  // observed_generation is the latest generation observed by the reconciler.
+  int64 observed_generation = 1;
+  // conditions are Gateway-style status conditions.
+  repeated TemplateRequirementCondition conditions = 2;
+}
+
+// TemplateRequirementCondition is a compact protobuf representation of
+// metav1.Condition.
+message TemplateRequirementCondition {
+  string type = 1;
+  string status = 2;
+  string reason = 3;
+  string message = 4;
+  int64 observed_generation = 5;
+  google.protobuf.Timestamp last_transition_time = 6;
+}
+
+message ListTemplateRequirementsRequest {
+  // namespace is the organization or folder namespace to list.
+  string namespace = 1;
+}
+
+message ListTemplateRequirementsResponse {
+  repeated TemplateRequirement requirements = 1;
+}
+
+message GetTemplateRequirementRequest {
+  string namespace = 1;
+  string name = 2;
+}
+
+message GetTemplateRequirementResponse {
+  TemplateRequirement requirement = 1;
+}
+
+message CreateTemplateRequirementRequest {
+  string namespace = 1;
+  TemplateRequirement requirement = 2;
+}
+
+message CreateTemplateRequirementResponse {
+  string name = 1;
+}
+
+message UpdateTemplateRequirementRequest {
+  string namespace = 1;
+  TemplateRequirement requirement = 2;
+}
+
+message UpdateTemplateRequirementResponse {}
+
+message DeleteTemplateRequirementRequest {
+  string namespace = 1;
+  string name = 2;
+}
+
+message DeleteTemplateRequirementResponse {}
