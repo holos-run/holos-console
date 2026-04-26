@@ -74,13 +74,13 @@ export function AppSidebar() {
 
   const navItems: NavItem[] = [
     {
-      label: 'Projects',
+      label: 'Project',
       icon: Box,
-      href: hasOrg ? `/organizations/${selectedOrg}/projects` : '#',
-      to: '/organizations/$orgName/projects',
-      params: hasOrg ? { orgName: selectedOrg! } : undefined,
-      disabled: !hasOrg,
-      disabledReason: 'Select an organization to view Projects',
+      href: hasProject ? `/projects/${selectedProject}` : '#',
+      to: '/projects/$projectName/',
+      params: hasProject ? { projectName: selectedProject! } : undefined,
+      disabled: !hasProject,
+      disabledReason: 'Select a project to view Project',
     },
     {
       label: 'Secrets',

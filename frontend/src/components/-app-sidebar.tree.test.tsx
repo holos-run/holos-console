@@ -91,7 +91,7 @@ describe('AppSidebar — HOL-914 flat nav (real sidebar primitives)', () => {
 
   it('renders all four nav entries when org and project are selected', () => {
     renderWithProvider(<AppSidebar />)
-    expect(screen.getByRole('link', { name: /^projects$/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /^project$/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /^secrets$/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /^deployments$/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /^templates$/i })).toBeInTheDocument()
@@ -102,11 +102,11 @@ describe('AppSidebar — HOL-914 flat nav (real sidebar primitives)', () => {
     expect(screen.queryByRole('link', { name: /^resource manager$/i })).not.toBeInTheDocument()
   })
 
-  it('Projects, Secrets, Deployments, and Templates are disabled (not links) when no org or project is selected', () => {
+  it('Project, Secrets, Deployments, and Templates are disabled (not links) when no org or project is selected', () => {
     setupNoOrgNoProject()
     renderWithProvider(<AppSidebar />)
     // Disabled entries render as buttons, not anchors
-    expect(screen.queryByRole('link', { name: /^projects$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^project$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /^secrets$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /^deployments$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /^templates$/i })).not.toBeInTheDocument()
