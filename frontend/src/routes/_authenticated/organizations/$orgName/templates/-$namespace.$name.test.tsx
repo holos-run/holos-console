@@ -18,6 +18,35 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       }),
     }),
     useNavigate: () => mockNavigate,
+    Link: ({
+      children,
+      to,
+      params,
+      search,
+      'data-testid': testId,
+    }: {
+      children: React.ReactNode
+      to?: string
+      params?: Record<string, string>
+      search?: Record<string, string>
+      'data-testid'?: string
+    }) => {
+      let href = to ?? '#'
+      if (params) {
+        for (const [k, v] of Object.entries(params)) {
+          href = href.replace(`$${k}`, v)
+        }
+      }
+      if (search) {
+        const qs = new URLSearchParams(search as Record<string, string>).toString()
+        if (qs) href = `${href}?${qs}`
+      }
+      return (
+        <a href={href} data-testid={testId}>
+          {children}
+        </a>
+      )
+    },
   }
 })
 
@@ -31,6 +60,15 @@ vi.mock('@/queries/templates', () => ({
     data: undefined,
     error: null,
     isFetching: false,
+  }),
+}))
+
+vi.mock('@/lib/project-context', () => ({
+  useProject: vi.fn().mockReturnValue({
+    selectedProject: null,
+    setSelectedProject: vi.fn(),
+    projects: [],
+    isLoading: false,
   }),
 }))
 
@@ -51,6 +89,7 @@ import {
 } from '@/queries/templates'
 import type { TemplateDefaults } from '@/queries/templates'
 import { toast } from 'sonner'
+import { useProject } from '@/lib/project-context'
 import { ConsolidatedTemplateEditorPage, templateDefaultsToCueInput } from './$namespace.$name'
 
 const EXAMPLE_HTTPROUTE = {
@@ -590,6 +629,55 @@ describe('ConsolidatedTemplateEditorPage', () => {
         name: /deleting/i,
       })
       expect(deletingButton).toBeDisabled()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // HOL-975: "Clone to project" CTA
+  // ---------------------------------------------------------------------------
+
+  describe('Clone to project CTA (HOL-975)', () => {
+    it('renders a disabled Clone to project button when no project is selected', () => {
+      setupMocks()
+      ;(useProject as Mock).mockReturnValue({
+        selectedProject: null,
+        setSelectedProject: vi.fn(),
+        projects: [],
+        isLoading: false,
+      })
+      render(
+        <ConsolidatedTemplateEditorPage
+          orgName="test-org"
+          namespace="prj-billing"
+          name="web"
+        />,
+      )
+      const btn = screen.getByTestId('clone-to-project-cta-disabled')
+      expect(btn).toBeDisabled()
+    })
+
+    it('renders an enabled Clone to project link when a project is selected', () => {
+      setupMocks()
+      ;(useProject as Mock).mockReturnValue({
+        selectedProject: 'my-proj',
+        setSelectedProject: vi.fn(),
+        projects: [],
+        isLoading: false,
+      })
+      render(
+        <ConsolidatedTemplateEditorPage
+          orgName="test-org"
+          namespace="prj-billing"
+          name="web"
+        />,
+      )
+      const cta = screen.getByTestId('clone-to-project-cta')
+      expect(cta).toBeInTheDocument()
+      // The link should navigate to the project's new template page with the
+      // cloneSource query param encoding "namespace/name".
+      expect(cta.tagName).toBe('A')
+      expect(cta.getAttribute('href')).toContain('/projects/my-proj/templates/new')
+      expect(cta.getAttribute('href')).toContain('cloneSource=prj-billing%2Fweb')
     })
   })
 })

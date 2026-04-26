@@ -1,7 +1,17 @@
-import { render, screen, fireEvent, within } from '@testing-library/react'
+/**
+ * Tests for the org templates index — ResourceGrid v1 migration (HOL-975).
+ *
+ * The page fans out across all org-reachable namespaces via useAllTemplatesForOrg
+ * and renders rows via ResourceGrid v1 with scope-aware detailHref values.
+ */
+
+import { render, screen, within } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
+
+const mockNavigate = vi.fn()
+const mockSearch: Record<string, unknown> = {}
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
@@ -9,17 +19,21 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     ...actual,
     createFileRoute: () => () => ({
       useParams: () => ({ orgName: 'test-org' }),
+      useSearch: () => mockSearch,
+      fullPath: '/organizations/$orgName/templates/',
     }),
     Link: ({
       children,
       to,
       params,
+      search,
       title,
       className,
     }: {
       children: React.ReactNode
       to: string
       params?: Record<string, string>
+      search?: Record<string, string>
       title?: string
       className?: string
     }) => {
@@ -29,12 +43,17 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
           href = href.replace(`$${k}`, v)
         }
       }
+      if (search) {
+        const qs = new URLSearchParams(search).toString()
+        if (qs) href = `${href}?${qs}`
+      }
       return (
         <a href={href} title={title} className={className}>
           {children}
         </a>
       )
     },
+    useNavigate: () => mockNavigate,
   }
 })
 
@@ -52,6 +71,8 @@ vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
 }))
 
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+
 import { useAllTemplatesForOrg } from '@/queries/templates'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
@@ -66,6 +87,7 @@ type TemplateFixture = {
   name: string
   namespace: string
   displayName: string
+  createdAt?: string
 }
 
 const ORG_NS = namespaceForOrg('test-org')
@@ -89,13 +111,20 @@ function setup(
   })
 }
 
-describe('OrgTemplatesIndexPage', () => {
-  beforeEach(() => vi.clearAllMocks())
+describe('OrgTemplatesIndexPage (ResourceGrid v1, HOL-975)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    Object.keys(mockSearch).forEach((k) => delete mockSearch[k])
+  })
+
+  // ---------------------------------------------------------------------------
+  // Loading and error states
+  // ---------------------------------------------------------------------------
 
   it('renders loading skeletons while the fan-out is pending', () => {
     setup([], Role.OWNER, { isPending: true })
     render(<OrgTemplatesIndexPage orgName="test-org" />)
-    expect(screen.getByTestId('templates-loading')).toBeInTheDocument()
+    expect(screen.getByTestId('resource-grid-loading')).toBeInTheDocument()
   })
 
   it('renders the full-page error when the fan-out fails with no data', () => {
@@ -108,7 +137,7 @@ describe('OrgTemplatesIndexPage', () => {
 
   it('renders an inline partial-error banner when some rows loaded', () => {
     ;(useAllTemplatesForOrg as Mock).mockReturnValue({
-      data: [{ name: 'gateway', namespace: ORG_NS, displayName: 'Gateway' }],
+      data: [{ name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' }],
       isPending: false,
       error: new Error('folders unavailable'),
     })
@@ -120,191 +149,209 @@ describe('OrgTemplatesIndexPage', () => {
     render(<OrgTemplatesIndexPage orgName="test-org" />)
     expect(screen.getByText('Gateway')).toBeInTheDocument()
     expect(screen.getByRole('table')).toBeInTheDocument()
-    expect(screen.getByTestId('templates-partial-error')).toBeInTheDocument()
+    expect(screen.getByTestId('resource-grid-partial-error')).toBeInTheDocument()
     expect(screen.getByText('folders unavailable')).toBeInTheDocument()
   })
 
   it('renders the empty state when no templates exist', () => {
     setup([])
     render(<OrgTemplatesIndexPage orgName="test-org" />)
-    expect(screen.getByText(/no templates yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/no resources found/i)).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 
+  // ---------------------------------------------------------------------------
+  // Row rendering
+  // ---------------------------------------------------------------------------
+
   it('renders a row for each template across scopes', () => {
     setup([
-      { name: 'gateway', namespace: ORG_NS, displayName: 'Gateway' },
-      { name: 'backend', namespace: FOLDER_NS, displayName: 'Backend' },
-      { name: 'web', namespace: PROJECT_NS, displayName: 'Web Service' },
+      { name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' },
+      { name: 'backend', namespace: FOLDER_NS, displayName: 'Backend', createdAt: '' },
+      { name: 'web', namespace: PROJECT_NS, displayName: 'Web Service', createdAt: '' },
     ])
     render(<OrgTemplatesIndexPage orgName="test-org" />)
 
-    const rows = screen.getAllByRole('row')
-    // 1 header + 3 body rows
-    expect(rows).toHaveLength(4)
-
-    expect(within(rows[1]).getByText('Gateway')).toBeInTheDocument()
-    expect(within(rows[1]).getByText(ORG_NS)).toBeInTheDocument()
-    expect(within(rows[2]).getByText('Backend')).toBeInTheDocument()
-    expect(within(rows[2]).getByText(FOLDER_NS)).toBeInTheDocument()
-    expect(within(rows[3]).getByText('Web Service')).toBeInTheDocument()
-    expect(within(rows[3]).getByText(PROJECT_NS)).toBeInTheDocument()
+    expect(screen.getByText('Gateway')).toBeInTheDocument()
+    expect(screen.getByText('Backend')).toBeInTheDocument()
+    expect(screen.getByText('Web Service')).toBeInTheDocument()
   })
 
   it('routes org-scoped rows to the org editor', () => {
-    setup([{ name: 'gateway', namespace: ORG_NS, displayName: 'Gateway' }])
+    setup([{ name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' }])
     render(<OrgTemplatesIndexPage orgName="test-org" />)
-    const link = screen.getByRole('link', { name: 'Gateway' })
-    expect(link).toHaveAttribute(
-      'href',
-      `/organizations/test-org/templates/${ORG_NS}/gateway`,
-    )
-  })
-
-  it('routes folder-scoped rows to the folder template editor', () => {
-    setup([
-      { name: 'backend', namespace: FOLDER_NS, displayName: 'Backend' },
-    ])
-    render(<OrgTemplatesIndexPage orgName="test-org" />)
-    const link = screen.getByRole('link', { name: 'Backend' })
-    expect(link).toHaveAttribute(
-      'href',
-      '/folders/team-a/templates/backend',
-    )
-  })
-
-  it('routes project-scoped rows to the project template editor', () => {
-    setup([
-      { name: 'web', namespace: PROJECT_NS, displayName: 'Web Service' },
-    ])
-    render(<OrgTemplatesIndexPage orgName="test-org" />)
-    const link = screen.getByRole('link', { name: 'Web Service' })
-    expect(link).toHaveAttribute(
-      'href',
-      '/projects/billing/templates/web',
-    )
-  })
-
-  it('renders a plain span for unknown namespaces', () => {
-    // Stale caches or proto drift could surface an unrecognizable namespace.
-    // Rather than forge a 404 link, the cell must render as plain text.
-    setup([{ name: 'strange', namespace: 'mystery-ns', displayName: 'Strange' }])
-    render(<OrgTemplatesIndexPage orgName="test-org" />)
-    expect(screen.queryByRole('link', { name: 'Strange' })).toBeNull()
-    expect(screen.getByText('Strange')).toBeInTheDocument()
-  })
-
-  it('falls back to the slug when displayName is empty', () => {
-    setup([{ name: 'ops', namespace: ORG_NS, displayName: '' }])
-    render(<OrgTemplatesIndexPage orgName="test-org" />)
-    const links = screen.getAllByRole('link', { name: 'ops' })
+    // The Resource ID cell and display name cell both link to the detail page.
+    const links = screen.getAllByRole('link', { name: /gateway/i })
     expect(
       links.some(
         (l) =>
-          l.getAttribute('href') === `/organizations/test-org/templates/${ORG_NS}/ops`,
+          l.getAttribute('href') ===
+          `/organizations/test-org/templates/${ORG_NS}/gateway`,
       ),
     ).toBe(true)
   })
 
-  it('filters rows via the global search input by display name', () => {
+  it('routes folder-scoped rows to the folder template editor', () => {
     setup([
-      { name: 'gateway', namespace: ORG_NS, displayName: 'Gateway' },
-      { name: 'backend', namespace: FOLDER_NS, displayName: 'Backend' },
+      { name: 'backend', namespace: FOLDER_NS, displayName: 'Backend', createdAt: '' },
     ])
     render(<OrgTemplatesIndexPage orgName="test-org" />)
-
-    expect(screen.getAllByRole('row')).toHaveLength(3)
-
-    const search = screen.getByLabelText(/search templates/i)
-    fireEvent.change(search, { target: { value: 'Gate' } })
-
-    const rowsAfter = screen.getAllByRole('row')
-    expect(rowsAfter).toHaveLength(2)
-    expect(within(rowsAfter[1]).getByText('Gateway')).toBeInTheDocument()
-  })
-
-  it('filters rows by namespace', () => {
-    setup([
-      { name: 'gateway', namespace: ORG_NS, displayName: 'Gateway' },
-      { name: 'web', namespace: PROJECT_NS, displayName: 'Web Service' },
-    ])
-    render(<OrgTemplatesIndexPage orgName="test-org" />)
-
-    const search = screen.getByLabelText(/search templates/i)
-    fireEvent.change(search, { target: { value: PROJECT_NS } })
-
-    const rows = screen.getAllByRole('row')
-    expect(rows).toHaveLength(2)
-    expect(within(rows[1]).getByText('Web Service')).toBeInTheDocument()
-  })
-
-  it('filters rows by slug name', () => {
-    setup([
-      { name: 'gateway', namespace: ORG_NS, displayName: 'Gateway' },
-      { name: 'backend', namespace: FOLDER_NS, displayName: 'Backend' },
-    ])
-    render(<OrgTemplatesIndexPage orgName="test-org" />)
-
-    const search = screen.getByLabelText(/search templates/i)
-    fireEvent.change(search, { target: { value: 'back' } })
-
-    const rows = screen.getAllByRole('row')
-    expect(rows).toHaveLength(2)
-    expect(within(rows[1]).getByText('Backend')).toBeInTheDocument()
-  })
-
-  it('renders the Create Template button for org OWNERs', () => {
-    setup([], Role.OWNER)
-    render(<OrgTemplatesIndexPage orgName="test-org" />)
-    const link = screen.getByRole('link', { name: /create template/i })
-    expect(link).toHaveAttribute('href', '/organizations/test-org/templates/new')
-  })
-
-  it('hides the Create Template button for non-OWNER users', () => {
-    setup([], Role.VIEWER)
-    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    const links = screen.getAllByRole('link', { name: /backend/i })
     expect(
-      screen.queryByRole('link', { name: /create template/i }),
-    ).not.toBeInTheDocument()
+      links.some(
+        (l) => l.getAttribute('href') === '/folders/team-a/templates/backend',
+      ),
+    ).toBe(true)
   })
 
-  it('empty state prompts OWNERs to create a template', () => {
-    setup([], Role.OWNER)
-    render(<OrgTemplatesIndexPage orgName="test-org" />)
-    expect(
-      screen.getByText(/no templates yet\. create one to get started/i),
-    ).toBeInTheDocument()
-  })
-
-  it('empty state directs non-OWNERs to ask an owner', () => {
-    setup([], Role.VIEWER)
-    render(<OrgTemplatesIndexPage orgName="test-org" />)
-    expect(
-      screen.getByText(/ask an organization owner to create one/i),
-    ).toBeInTheDocument()
-  })
-
-  // HOL-793: Scope column teaches users which rows live where at a glance.
-  it('renders a Scope column with a badge per row', () => {
+  it('routes project-scoped rows to the project template editor', () => {
     setup([
-      { name: 'gateway', namespace: ORG_NS, displayName: 'Gateway' },
-      { name: 'backend', namespace: FOLDER_NS, displayName: 'Backend' },
-      { name: 'web', namespace: PROJECT_NS, displayName: 'Web Service' },
+      { name: 'web', namespace: PROJECT_NS, displayName: 'Web Service', createdAt: '' },
     ])
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    const links = screen.getAllByRole('link', { name: /web service/i })
+    expect(
+      links.some(
+        (l) => l.getAttribute('href') === '/projects/billing/templates/web',
+      ),
+    ).toBe(true)
+  })
+
+  it('falls back to the slug when displayName is empty', () => {
+    setup([{ name: 'ops', namespace: ORG_NS, displayName: '', createdAt: '' }])
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    const links = screen.getAllByRole('link', { name: /^ops$/i })
+    expect(
+      links.some(
+        (l) =>
+          l.getAttribute('href') ===
+          `/organizations/test-org/templates/${ORG_NS}/ops`,
+      ),
+    ).toBe(true)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Scope badge column
+  // ---------------------------------------------------------------------------
+
+  it('renders a Scope column header', () => {
+    setup([{ name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' }])
     render(<OrgTemplatesIndexPage orgName="test-org" />)
     expect(
       screen.getByRole('columnheader', { name: /^scope$/i }),
     ).toBeInTheDocument()
+  })
+
+  it('renders scope badges for org, folder, and project rows', () => {
+    setup([
+      { name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' },
+      { name: 'backend', namespace: FOLDER_NS, displayName: 'Backend', createdAt: '' },
+      { name: 'web', namespace: PROJECT_NS, displayName: 'Web Service', createdAt: '' },
+    ])
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
     expect(screen.getByText('Organization: test-org')).toBeInTheDocument()
     expect(screen.getByText('Folder: team-a')).toBeInTheDocument()
     expect(screen.getByText('Project: billing')).toBeInTheDocument()
   })
 
+  // ---------------------------------------------------------------------------
+  // Create CTA
+  // ---------------------------------------------------------------------------
+
+  it('renders a Create Template / New button for org OWNERs', () => {
+    setup([], Role.OWNER)
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    // ResourceGrid renders a "New Template" button linking to the newHref.
+    const newLink = screen.getByRole('link', { name: /template/i })
+    expect(newLink).toHaveAttribute('href', '/organizations/test-org/templates/new')
+  })
+
+  it('hides the Create button for non-OWNER users', () => {
+    setup([], Role.VIEWER)
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    // When canCreate is false, ResourceGrid suppresses the New button.
+    expect(
+      screen.queryByRole('link', { name: /template/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  // ---------------------------------------------------------------------------
+  // Scope filter dropdown
+  // ---------------------------------------------------------------------------
+
   it('renders a scope filter select in the toolbar', () => {
-    setup([{ name: 'gateway', namespace: ORG_NS, displayName: 'Gateway' }])
+    setup([{ name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' }])
     render(<OrgTemplatesIndexPage orgName="test-org" />)
     expect(
       screen.getByRole('combobox', { name: /filter by scope/i }),
     ).toBeInTheDocument()
+  })
+
+  // ---------------------------------------------------------------------------
+  // Namespace column
+  // ---------------------------------------------------------------------------
+
+  it('renders a Namespace column header', () => {
+    setup([{ name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' }])
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    expect(
+      screen.getByRole('columnheader', { name: /namespace/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('renders the namespace value for each row', () => {
+    setup([
+      { name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' },
+    ])
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    // Namespace column renders the raw namespace string.
+    const ns = screen.getAllByText(ORG_NS)
+    expect(ns.length).toBeGreaterThan(0)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Scope filtering via URL state
+  // ---------------------------------------------------------------------------
+
+  it('filters to only org-scoped rows when scope=org is set in search', () => {
+    mockSearch['scope'] = 'org'
+    setup([
+      { name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' },
+      { name: 'web', namespace: PROJECT_NS, displayName: 'Web Service', createdAt: '' },
+    ])
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    expect(screen.getByText('Gateway')).toBeInTheDocument()
+    expect(screen.queryByText('Web Service')).not.toBeInTheDocument()
+  })
+
+  it('filters to only project-scoped rows when scope=project is set in search', () => {
+    mockSearch['scope'] = 'project'
+    setup([
+      { name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' },
+      { name: 'web', namespace: PROJECT_NS, displayName: 'Web Service', createdAt: '' },
+    ])
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    expect(screen.queryByText('Gateway')).not.toBeInTheDocument()
+    expect(screen.getByText('Web Service')).toBeInTheDocument()
+  })
+
+  it('shows all rows when no scope filter is set', () => {
+    setup([
+      { name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' },
+      { name: 'web', namespace: PROJECT_NS, displayName: 'Web Service', createdAt: '' },
+    ])
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    expect(screen.getByText('Gateway')).toBeInTheDocument()
+    expect(screen.getByText('Web Service')).toBeInTheDocument()
+  })
+
+  // ---------------------------------------------------------------------------
+  // Grid title
+  // ---------------------------------------------------------------------------
+
+  it('renders the grid title with orgName', () => {
+    setup([])
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    expect(screen.getByText('test-org / Templates')).toBeInTheDocument()
   })
 })

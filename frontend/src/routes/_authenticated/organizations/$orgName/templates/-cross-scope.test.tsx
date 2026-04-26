@@ -25,6 +25,31 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       useParams: () => currentParams,
     }),
     useNavigate: () => vi.fn(),
+    Link: ({
+      children,
+      to,
+      params,
+      search,
+      'data-testid': testId,
+    }: {
+      children: React.ReactNode
+      to?: string
+      params?: Record<string, string>
+      search?: Record<string, string>
+      'data-testid'?: string
+    }) => {
+      let href = to ?? '#'
+      if (params) {
+        for (const [k, v] of Object.entries(params)) {
+          href = href.replace(`$${k}`, v)
+        }
+      }
+      if (search) {
+        const qs = new URLSearchParams(search as Record<string, string>).toString()
+        if (qs) href = `${href}?${qs}`
+      }
+      return <a href={href} data-testid={testId}>{children}</a>
+    },
   }
 })
 
@@ -43,6 +68,15 @@ vi.mock('@/queries/templates', () => ({
 
 vi.mock('@/hooks/use-debounced-value', () => ({
   useDebouncedValue: vi.fn((value: unknown) => value),
+}))
+
+vi.mock('@/lib/project-context', () => ({
+  useProject: vi.fn().mockReturnValue({
+    selectedProject: null,
+    setSelectedProject: vi.fn(),
+    projects: [],
+    isLoading: false,
+  }),
 }))
 
 vi.mock('sonner', () => ({

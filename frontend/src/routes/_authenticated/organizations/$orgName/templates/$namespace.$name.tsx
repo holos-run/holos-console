@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -23,6 +23,7 @@ import {
 import type { TemplateExample, TemplateDefaults } from '@/queries/templates'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { TemplateExamplePicker } from '@/components/templates/template-example-picker'
+import { useProject } from '@/lib/project-context'
 
 // templateDefaultsToCueInput converts a TemplateDefaults message into a CUE
 // input snippet suitable for pre-populating the Project Input textarea. Only
@@ -85,6 +86,20 @@ export function ConsolidatedTemplateEditorPage({
   const { data: templateDefaults } = useGetTemplateDefaults({ namespace, name })
   const updateMutation = useUpdateTemplate(namespace, name)
   const deleteMutation = useDeleteTemplate(namespace)
+
+  // Resolve the selected project so the "Clone to project" CTA can build the
+  // target URL without requiring additional user input. If no project is
+  // currently selected, the CTA is rendered as disabled.
+  let selectedProject: string | null = null
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const projectCtx = useProject()
+    selectedProject = projectCtx.selectedProject
+  } catch {
+    // useProject throws when rendered outside the ProjectProvider (e.g. in
+    // unit tests). Gracefully degrade to no selected project.
+    selectedProject = null
+  }
 
   const [cueTemplate, setCueTemplate] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -174,6 +189,28 @@ export function ConsolidatedTemplateEditorPage({
               <h2 className="text-xl font-semibold">{displayName}</h2>
             </div>
           </div>
+          {selectedProject ? (
+            <Link
+              to="/projects/$projectName/templates/new"
+              params={{ projectName: selectedProject }}
+              search={{ cloneSource: `${namespace}/${name}` }}
+              data-testid="clone-to-project-cta"
+            >
+              <Button variant="outline" size="sm">
+                Clone to project
+              </Button>
+            </Link>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled
+              title="Select a project in the sidebar to enable cloning"
+              data-testid="clone-to-project-cta-disabled"
+            >
+              Clone to project
+            </Button>
+          )}
           <Button
             variant="destructive"
             size="sm"

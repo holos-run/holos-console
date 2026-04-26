@@ -1,5 +1,5 @@
 /**
- * Project-scoped template clone page (HOL-974).
+ * Project-scoped template clone page (HOL-974, HOL-975).
  *
  * The Service Owner selects a source from the organization's platform
  * templates (ancestor-scope linkable templates) and gives the clone a
@@ -10,9 +10,13 @@
  * enabled ancestor-scope (org/folder) templates that can be cloned into
  * the project namespace. This is the "clone-as-authoring" flow described
  * in HOL-974.
+ *
+ * HOL-975: accepts an optional `cloneSource` search param encoding
+ * "namespace/name" to pre-select a platform template when navigating from
+ * the org-scope template detail page via the "Clone to project" CTA.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -26,19 +30,42 @@ import {
 } from '@/queries/templates'
 import { namespaceForProject } from '@/lib/scope-labels'
 
+// ---------------------------------------------------------------------------
+// Route search — optional clone source pre-selection (HOL-975)
+// ---------------------------------------------------------------------------
+
+export interface CloneTemplateSearch {
+  /** Encoded as "namespace/name". Set by the org template detail "Clone to project" CTA. */
+  cloneSource?: string
+}
+
+function parseCloneTemplateSearch(raw: Record<string, unknown>): CloneTemplateSearch {
+  const result: CloneTemplateSearch = {}
+  const cloneSource = raw['cloneSource']
+  if (typeof cloneSource === 'string' && cloneSource.length > 0) {
+    result.cloneSource = cloneSource
+  }
+  return result
+}
+
 export const Route = createFileRoute('/_authenticated/projects/$projectName/templates/new')({
+  validateSearch: parseCloneTemplateSearch,
   component: CloneTemplateRoute,
 })
 
 function CloneTemplateRoute() {
   const { projectName } = Route.useParams()
-  return <CloneTemplatePage projectName={projectName} />
+  const search = Route.useSearch() as CloneTemplateSearch
+  return <CloneTemplatePage projectName={projectName} cloneSource={search.cloneSource} />
 }
 
 export function CloneTemplatePage({
   projectName,
+  cloneSource,
 }: {
   projectName: string
+  /** Optional "namespace/name" pre-selection from the org template detail CTA. */
+  cloneSource?: string
 }) {
   const navigate = useNavigate()
   const namespace = namespaceForProject(projectName)
@@ -54,6 +81,30 @@ export function CloneTemplatePage({
   const [displayName, setDisplayName] = useState('')
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
+
+  // Pre-select the source from the cloneSource query param (HOL-975).
+  // Only fires once when templates have loaded and a cloneSource param is present.
+  useEffect(() => {
+    if (!cloneSource || sourcesLoading || linkableTemplates.length === 0) return
+    const slash = cloneSource.indexOf('/')
+    if (slash < 0) return
+    const preNs = cloneSource.slice(0, slash)
+    const preName = cloneSource.slice(slash + 1)
+    const match = linkableTemplates.find(
+      (t) => t.namespace === preNs && t.name === preName,
+    )
+    if (match) {
+      setSourceNamespace(preNs)
+      setSourceName(preName)
+      if (!displayName) {
+        const label = match.displayName || match.name
+        setDisplayName(label)
+        setName(label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))
+      }
+    }
+  // Run only when linkableTemplates becomes non-empty for the first time, or cloneSource changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloneSource, sourcesLoading, linkableTemplates.length])
 
   const slugify = (val: string) =>
     val.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
