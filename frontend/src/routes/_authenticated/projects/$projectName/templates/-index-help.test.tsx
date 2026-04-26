@@ -220,7 +220,7 @@ describe('ProjectTemplatesIndexPage — help pane', () => {
     expect(templateSection.textContent).toMatch(/reusable CUE configuration/i)
 
     const policySection = screen.getByTestId('help-section-template-policy')
-    expect(policySection.textContent).toMatch(/constraint authored at organization/i)
+    expect(policySection.textContent).toMatch(/constraint defined at organization/i)
 
     const bindingSection = screen.getByTestId('help-section-template-policy-binding')
     expect(bindingSection.textContent).toMatch(/enforcement point/i)

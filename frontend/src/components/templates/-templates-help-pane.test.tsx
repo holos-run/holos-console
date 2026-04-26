@@ -66,7 +66,7 @@ describe('TemplatesHelpPane', () => {
 
     const section = screen.getByTestId('help-section-template-policy')
     expect(section).toBeInTheDocument()
-    expect(section.textContent).toMatch(/constraint authored at organization/i)
+    expect(section.textContent).toMatch(/constraint defined at organization/i)
   })
 
   it('renders the TemplatePolicyBinding section copy block', () => {

@@ -23,7 +23,7 @@ export const ORG_SCOPE_INDEX_DESCRIPTION =
   'Platform templates authored at organization scope are available for inclusion by project templates and deployments throughout the organization.'
 
 export const FOLDER_SCOPE_INDEX_DESCRIPTION =
-  'Platform templates authored at this folder scope are available for inclusion by project templates and deployments in this folder and its descendants.'
+  'Platform templates authored at this folder scope are available for inclusion by project templates and deployments within this folder.'
 
 export const REQUIRE_RULE_DESCRIPTION =
   'REQUIRE — when a project template or deployment matching the target is rendered, include this platform template in the effective ref set. The rule affects render-time ref selection only; it does not itself create, apply, or delete resources.'

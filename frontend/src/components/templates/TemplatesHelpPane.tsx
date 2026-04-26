@@ -51,12 +51,11 @@ export function TemplatesHelpPane({ open, onOpenChange }: TemplatesHelpPaneProps
           <section data-testid="help-section-template-policy">
             <h3 className="font-semibold text-base mb-1">Template Policy</h3>
             <p className="text-muted-foreground leading-relaxed">
-              A <strong>Template Policy</strong> is a constraint authored at organization
-              or folder scope. It expresses what is allowed or required in descendant
-              templates — for example, mandating a minimum replica count or prohibiting
-              certain image registries. Policies propagate down the namespace hierarchy
-              so platform and security teams can apply guardrails without touching each
-              project.
+              A <strong>Template Policy</strong> is a constraint defined at organization
+              or folder scope — for example, mandating a minimum replica count or
+              prohibiting certain image registries. A Template Policy has no effect on
+              its own; it must be referenced by a Template Policy Binding before any
+              enforcement takes place.
             </p>
           </section>
 
