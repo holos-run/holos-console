@@ -24,10 +24,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { createColumnHelper } from '@tanstack/react-table'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
 import type { Row } from '@/components/resource-grid/types'
+import type { ColumnDef } from '@tanstack/react-table'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
 import { useAllTemplatesForOrg } from '@/queries/templates'
@@ -77,15 +77,14 @@ function OrgTemplatesIndexRoute() {
 // Extra columns: Scope badge + Namespace
 // ---------------------------------------------------------------------------
 
-const columnHelper = createColumnHelper<Row>()
-
-const extraColumns = [
-  columnHelper.accessor('namespace', {
+const extraColumns: ColumnDef<Row>[] = [
+  {
     id: 'scope',
     header: 'Scope',
     enableSorting: false,
-    cell: ({ getValue }) => {
-      const ns = getValue()
+    accessorFn: (row) => row.namespace,
+    cell: ({ row }) => {
+      const ns = row.original.namespace
       const label = scopeDisplayLabel(ns)
       const name = scopeNameFromNamespace(ns)
       if (!label) {
@@ -102,17 +101,18 @@ const extraColumns = [
         </Badge>
       )
     },
-  }),
-  columnHelper.accessor('namespace', {
+  },
+  {
     id: 'namespace',
     header: 'Namespace',
     enableSorting: false,
-    cell: ({ getValue }) => (
+    accessorFn: (row) => row.namespace,
+    cell: ({ row }) => (
       <span className="text-muted-foreground font-mono text-sm">
-        {getValue()}
+        {row.original.namespace}
       </span>
     ),
-  }),
+  },
 ]
 
 // ---------------------------------------------------------------------------
