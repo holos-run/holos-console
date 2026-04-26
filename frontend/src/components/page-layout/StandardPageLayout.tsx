@@ -126,13 +126,15 @@ export function StandardPageLayout<S extends ResourceGridSearch = ResourceGridSe
   // Bridge the generic onSearchChange to the ResourceGridProps signature.
   // ResourceGrid expects (updater: (prev: ResourceGridSearch) => ResourceGridSearch).
   // The caller may have S = TemplatesSearch which extends ResourceGridSearch.
-  // The cast is safe because S extends ResourceGridSearch and the grid only
-  // reads/writes the ResourceGridSearch subset of the search object.
+  // The cast through unknown is safe: S extends ResourceGridSearch, and the
+  // updater produced by ResourceGrid only reads/writes the ResourceGridSearch
+  // subset. TypeScript requires the unknown hop because the two function types
+  // are not structurally compatible at the call-site constraint level.
   const onSearchChangeBridged:
     | ((updater: (prev: ResourceGridSearch) => ResourceGridSearch) => void)
     | undefined = grid.onSearchChange
     ? (updater) => {
-        grid.onSearchChange!(updater as (prev: S) => S)
+        grid.onSearchChange!(updater as unknown as (prev: S) => S)
       }
     : undefined
 
