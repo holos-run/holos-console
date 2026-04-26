@@ -178,11 +178,22 @@ func (c *AppliedRenderStateClient) RecordAppliedRenderSet(
 	if err != nil {
 		return err
 	}
+
+	// Collect resolved dependency edges produced by the Phase 5
+	// (TemplateDependency) and Phase 6 (TemplateRequirement) reconcilers.
+	// The collection is fail-open: errors are logged inside collectDependencies
+	// and a nil or empty slice is returned so the write still proceeds. An
+	// empty Dependencies slice in the stored RenderState is the correct
+	// representation of "no dependencies declared for this render target" and
+	// the drift checker covers it automatically.
+	deps := collectDependencies(ctx, c.client, projectNs, folderNs, project, targetKind, targetName)
+
 	desiredSpec := templatesv1alpha1.RenderStateSpec{
-		TargetKind:  rsTargetKind,
-		TargetName:  targetName,
-		Project:     project,
-		AppliedRefs: refsToRenderStateRefs(refs),
+		TargetKind:   rsTargetKind,
+		TargetName:   targetName,
+		Project:      project,
+		AppliedRefs:  refsToRenderStateRefs(refs),
+		Dependencies: deps,
 	}
 	desiredLabels := map[string]string{
 		v1alpha2.LabelManagedBy:                         v1alpha2.ManagedByValue,
@@ -200,6 +211,7 @@ func (c *AppliedRenderStateClient) RecordAppliedRenderSet(
 		slog.String("targetName", targetName),
 		slog.String("renderState", rsName),
 		slog.Int("refs", len(refs)),
+		slog.Int("dependencies", len(deps)),
 	)
 
 	rs := &templatesv1alpha1.RenderState{

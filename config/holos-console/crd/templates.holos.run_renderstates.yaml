@@ -126,6 +126,107 @@ spec:
                   type: object
                 type: array
                 x-kubernetes-list-type: atomic
+              dependencies:
+                description: |-
+                  Dependencies is the set of resolved (template, version) edges
+                  produced by the Phase 5 (TemplateDependency) and Phase 6
+                  (TemplateRequirement) reconcilers at the time of the last
+                  successful render. Each entry records which CRD object declared
+                  the dependency so the Phase 9 UI can link singleton Deployments
+                  back to their originating objects. The drift checker covers this
+                  field automatically because it diffs the entire RenderStateSpec
+                  as a structural document.
+                items:
+                  description: |-
+                    RenderStateDependency records a single resolved (template, version)
+                    dependency edge produced by the Phase 5 (TemplateDependency) or Phase 6
+                    (TemplateRequirement) reconciler. The edge is captured at render time so
+                    the Phase 9 UI can display which shared Deployments exist because of
+                    which dependency CRD objects, and so the drift checker can detect when the
+                    dependency set changes between renders.
+                  properties:
+                    originatingObject:
+                      description: |-
+                        OriginatingObject is a typed reference to the CRD object that
+                        declared this dependency. The Phase 9 UI uses it to link singleton
+                        Deployments back to their originating TemplateDependency or
+                        TemplateRequirement objects.
+                      properties:
+                        kind:
+                          description: |-
+                            Kind is the CRD kind of the originating object — either
+                            "TemplateDependency" or "TemplateRequirement".
+                          enum:
+                          - TemplateDependency
+                          - TemplateRequirement
+                          type: string
+                        name:
+                          description: Name is the DNS label slug of the originating
+                            CRD object.
+                          maxLength: 253
+                          minLength: 1
+                          type: string
+                        namespace:
+                          description: |-
+                            Namespace is the Kubernetes namespace that owns the originating CRD.
+                            For TemplateDependency this is the project namespace; for
+                            TemplateRequirement this is a folder or organization namespace.
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$
+                          type: string
+                      required:
+                      - kind
+                      - name
+                      - namespace
+                      type: object
+                    source:
+                      description: |-
+                        Source identifies which CRD kind produced this edge: either
+                        TemplateDependency or TemplateRequirement.
+                      enum:
+                      - TemplateDependency
+                      - TemplateRequirement
+                      type: string
+                    template:
+                      description: |-
+                        Template is the resolved template reference — the (namespace, name,
+                        versionConstraint) triple that identifies the singleton Deployment's
+                        backing template.
+                      properties:
+                        name:
+                          description: Name is the linked template's DNS label slug.
+                          minLength: 1
+                          type: string
+                        namespace:
+                          description: Namespace is the Kubernetes namespace that
+                            owns the linked template.
+                          minLength: 1
+                          type: string
+                        versionConstraint:
+                          description: |-
+                            VersionConstraint is a semver range string (for example
+                            `">=2.0.0 <3.0.0"`) that restricts which release versions of the
+                            linked template are compatible. Empty means no constraint; the
+                            latest version is used.
+                          type: string
+                      required:
+                      - name
+                      - namespace
+                      type: object
+                    version:
+                      description: |-
+                        Version is the resolved version string (e.g. "v1.2.3") matched by
+                        the version constraint at render time. Empty when the dependency
+                        targets the live (unversioned) template.
+                      type: string
+                  required:
+                  - originatingObject
+                  - source
+                  - template
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
               project:
                 description: |-
                   Project is the slug of the project that owns the render target.
