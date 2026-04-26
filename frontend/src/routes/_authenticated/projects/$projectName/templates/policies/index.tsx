@@ -10,7 +10,7 @@
 
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
+import { StandardPageLayout } from '@/components/page-layout'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
@@ -127,15 +127,17 @@ export function TemplatePoliciesIndexPage({
   )
 
   return (
-    <ResourceGrid
-      title={`${projectName} / Templates / Policies`}
-      kinds={kinds}
-      rows={rows}
-      onDelete={handleDelete}
-      isLoading={isPending}
-      error={error}
-      search={search}
-      onSearchChange={handleSearchChange}
+    <StandardPageLayout
+      titleParts={[projectName, 'Templates', 'Policies']}
+      grid={{
+        kinds,
+        rows,
+        onDelete: handleDelete,
+        isLoading: isPending,
+        error,
+        search,
+        onSearchChange: handleSearchChange,
+      }}
     />
   )
 }
