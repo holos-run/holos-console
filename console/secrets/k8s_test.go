@@ -181,7 +181,7 @@ func TestUpdateSecret(t *testing.T) {
 }
 
 func TestCreateSecret(t *testing.T) {
-	t.Run("creates secret with correct labels and sharing annotations", func(t *testing.T) {
+	t.Run("creates secret with correct labels and no sharing annotations", func(t *testing.T) {
 		// Given: No secrets exist
 		ns := projectNS("test-namespace")
 		fakeClient := fake.NewClientset(ns)
@@ -193,7 +193,8 @@ func TestCreateSecret(t *testing.T) {
 		shareRoles := []AnnotationGrant{{Principal: "dev-team", Role: "editor"}}
 		result, err := k8sClient.CreateSecret(context.Background(), "test-namespace", "new-secret", data, shareUsers, shareRoles, "", "")
 
-		// Then: Returns created secret with labels and sharing annotations
+		// Then: Returns created secret with labels. Sharing is represented by
+		// RoleBindings, not Secret annotations.
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -203,21 +204,11 @@ func TestCreateSecret(t *testing.T) {
 		if result.Labels[v1alpha2.LabelManagedBy] != v1alpha2.ManagedByValue {
 			t.Errorf("expected managed-by label, got %v", result.Labels)
 		}
-		// Verify share-users annotation
-		parsedUsers, err := GetShareUsers(result)
-		if err != nil {
-			t.Fatalf("failed to parse share-users: %v", err)
+		if _, ok := result.Annotations[v1alpha2.AnnotationShareUsers]; ok {
+			t.Fatal("did not expect share-users annotation")
 		}
-		if len(parsedUsers) != 1 || parsedUsers[0].Principal != "alice@example.com" || parsedUsers[0].Role != "owner" {
-			t.Errorf("expected [{alice@example.com owner}], got %v", parsedUsers)
-		}
-		// Verify share-roles annotation
-		parsedRoles, err := GetShareRoles(result)
-		if err != nil {
-			t.Fatalf("failed to parse share-roles: %v", err)
-		}
-		if len(parsedRoles) != 1 || parsedRoles[0].Principal != "dev-team" || parsedRoles[0].Role != "editor" {
-			t.Errorf("expected [{dev-team editor}], got %v", parsedRoles)
+		if _, ok := result.Annotations[v1alpha2.AnnotationShareRoles]; ok {
+			t.Fatal("did not expect share-roles annotation")
 		}
 		if string(result.Data["key"]) != "value" {
 			t.Errorf("expected key='value', got %q", string(result.Data["key"]))

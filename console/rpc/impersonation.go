@@ -85,6 +85,13 @@ func ImpersonatedClientsFromContext(ctx context.Context) *ImpersonatedClients {
 	return unauthenticatedClients()
 }
 
+// HasImpersonatedClients reports whether the auth interceptor stored a
+// per-request impersonating client bundle on this context.
+func HasImpersonatedClients(ctx context.Context) bool {
+	clients, _ := ctx.Value(impersonatedClientsKey{}).(*ImpersonatedClients)
+	return clients != nil
+}
+
 // ImpersonatedClientsetFromContext returns the per-request client-go clientset.
 func ImpersonatedClientsetFromContext(ctx context.Context) kubernetes.Interface {
 	return ImpersonatedClientsFromContext(ctx).Clientset
