@@ -318,15 +318,15 @@ export const DependencyScope = /*@__PURE__*/
 
 /**
  * TemplateService is the single unified service for managing CUE-based templates
- * at every hierarchy level (organization, folder, project). It replaces the
+ * at every scope level (organization, folder, project). It replaces the
  * separate DeploymentTemplateService and OrgTemplateService from v1alpha1
  * (ADR 021 Decision 1).
  *
  * All CRUD operations carry a `namespace` that owns the template. The
- * backend resolver classifies the namespace into its hierarchy kind
- * (organization, folder, project) — callers do not supply the kind
- * directly. HOL-619 replaced the earlier TemplateScope / TemplateScopeRef
- * discriminator with this namespace-only model.
+ * backend resolver classifies the namespace as organization, folder, or
+ * project — callers do not supply the kind directly. HOL-619 replaced the
+ * earlier TemplateScope / TemplateScopeRef discriminator with this
+ * namespace-only model.
  *
  * @generated from service holos.console.v1.TemplateService
  */

@@ -28,16 +28,18 @@ type TemplatePolicyKind int32
 const (
 	TemplatePolicyKind_TEMPLATE_POLICY_KIND_UNSPECIFIED TemplatePolicyKind = 0
 	// TEMPLATE_POLICY_KIND_REQUIRE causes the referenced template to be
-	// injected into the effective ref set when a deployment or project template
-	// matching the target is rendered. It does not itself create, apply, or
-	// delete any cluster resources — resources appear only as the output of the
-	// user's deployment or project-template render.
+	// injected into the effective ref set when a TemplatePolicyBinding names
+	// this policy for the deployment or project template being rendered. It does
+	// not itself create, apply, or delete any cluster resources — resources
+	// appear only as the output of the user's deployment or project-template
+	// render.
 	TemplatePolicyKind_TEMPLATE_POLICY_KIND_REQUIRE TemplatePolicyKind = 1
 	// TEMPLATE_POLICY_KIND_EXCLUDE causes the referenced template to be
-	// removed from the effective ref set when a deployment or project template
-	// matching the target is rendered, even if it would otherwise be linked.
-	// Like REQUIRE, it does not itself create, apply, or delete any cluster
-	// resources — it only filters the render-time unification set.
+	// removed from the effective ref set when a TemplatePolicyBinding names this
+	// policy for the deployment or project template being rendered, even if the
+	// template would otherwise be linked. Like REQUIRE, it does not itself
+	// create, apply, or delete any cluster resources — it only filters the
+	// render-time unification set.
 	TemplatePolicyKind_TEMPLATE_POLICY_KIND_EXCLUDE TemplatePolicyKind = 2
 )
 
@@ -143,9 +145,9 @@ type TemplatePolicyRule struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// kind is REQUIRE or EXCLUDE.
 	Kind TemplatePolicyKind `protobuf:"varint,1,opt,name=kind,proto3,enum=holos.console.v1.TemplatePolicyKind" json:"kind,omitempty"`
-	// template identifies the template this rule applies to. The referenced
-	// template may live in any namespace the policy's owning namespace can
-	// reach.
+	// template identifies the template this rule requires or excludes. The
+	// referenced template may live in any namespace the policy's owning
+	// namespace can reach.
 	Template      *LinkedTemplateRef `protobuf:"bytes,2,opt,name=template,proto3" json:"template,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -195,8 +197,9 @@ func (x *TemplatePolicyRule) GetTemplate() *LinkedTemplateRef {
 	return nil
 }
 
-// TemplatePolicy is a named resource that declares one or more rules
-// attaching templates to projects within its namespace.
+// TemplatePolicy is a named resource that declares one or more rules. The
+// rules affect only the explicit render targets named by TemplatePolicyBinding
+// objects that reference this policy.
 //
 // Storage MUST live in a folder or organization namespace. Project-namespace
 // storage is forbidden and enforced by the HOL-618 admission plugin.
@@ -210,10 +213,12 @@ type TemplatePolicy struct {
 	Namespace string `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	// display_name is a human-readable name for UI presentation.
 	DisplayName string `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
-	// description explains what the policy enforces.
+	// description explains what the policy is intended to enforce once attached
+	// by a TemplatePolicyBinding.
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
-	// rules are the REQUIRE/EXCLUDE rules this policy enforces. Rules are
-	// evaluated independently and their effects are combined by the resolver.
+	// rules are the REQUIRE/EXCLUDE rules this policy declares. Rules are
+	// evaluated independently and their effects are combined by the resolver for
+	// render targets selected by matching TemplatePolicyBinding objects.
 	Rules []*TemplatePolicyRule `protobuf:"bytes,5,rep,name=rules,proto3" json:"rules,omitempty"`
 	// creator_email is the email address of the user who created this policy.
 	CreatorEmail string `protobuf:"bytes,6,opt,name=creator_email,json=creatorEmail,proto3" json:"creator_email,omitempty"`

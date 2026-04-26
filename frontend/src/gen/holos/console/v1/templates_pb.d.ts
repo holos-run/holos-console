@@ -653,8 +653,8 @@ export declare const CloneTemplateResponseSchema: GenMessage<CloneTemplateRespon
 export declare type ListLinkableTemplatesRequest = Message<"holos.console.v1.ListLinkableTemplatesRequest"> & {
   /**
    * namespace is the starting namespace (e.g. a project namespace for a
-   * project template). The handler walks up the hierarchy and returns enabled
-   * ancestor templates.
+   * project template). The handler walks ancestor scopes and returns enabled
+   * templates from those scopes.
    *
    * @generated from field: string namespace = 1;
    */
@@ -1065,7 +1065,7 @@ export declare type SearchTemplatesRequest = Message<"holos.console.v1.SearchTem
    * organization, when non-empty, restricts results to templates owned by a
    * namespace reachable from the given root organization. Intended for
    * multi-org deployments where the caller wants to scope a search to one
-   * organization without enumerating every descendant namespace.
+   * organization without enumerating every namespace under that root.
    *
    * @generated from field: string organization = 4;
    */
@@ -1425,15 +1425,15 @@ export declare const DependencyScopeSchema: GenEnum<DependencyScope>;
 
 /**
  * TemplateService is the single unified service for managing CUE-based templates
- * at every hierarchy level (organization, folder, project). It replaces the
+ * at every scope level (organization, folder, project). It replaces the
  * separate DeploymentTemplateService and OrgTemplateService from v1alpha1
  * (ADR 021 Decision 1).
  *
  * All CRUD operations carry a `namespace` that owns the template. The
- * backend resolver classifies the namespace into its hierarchy kind
- * (organization, folder, project) — callers do not supply the kind
- * directly. HOL-619 replaced the earlier TemplateScope / TemplateScopeRef
- * discriminator with this namespace-only model.
+ * backend resolver classifies the namespace as organization, folder, or
+ * project — callers do not supply the kind directly. HOL-619 replaced the
+ * earlier TemplateScope / TemplateScopeRef discriminator with this
+ * namespace-only model.
  *
  * @generated from service holos.console.v1.TemplateService
  */

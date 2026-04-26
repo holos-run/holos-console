@@ -21,8 +21,8 @@ option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;con
 // Project-namespace storage is forbidden for the same reason it is forbidden
 // for TemplatePolicy (HOL-554 storage-isolation design note); the policy a
 // binding references is always folder- or org-scoped, so the binding lives
-// in the same hierarchy level. The HOL-618 admission plugin enforces this
-// by rejecting any TemplatePolicyBinding created in a project namespace.
+// in the same storage scope category. The HOL-618 admission plugin enforces
+// this by rejecting any TemplatePolicyBinding created in a project namespace.
 //
 // Handler wiring, RBAC enforcement, and ConnectRPC registration shipped in
 // HOL-595. The ancestor-aware policy picker (ListLinkableTemplatePolicies) is

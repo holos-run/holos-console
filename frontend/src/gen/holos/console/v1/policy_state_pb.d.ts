@@ -12,17 +12,17 @@ export declare const file_holos_console_v1_policy_state: GenFile;
 
 /**
  * LinkedTemplateRef is a (namespace, name) reference to a template used in
- * the explicit linking list (ADR 021 Decision 5). The resolver classifies
- * the namespace into its hierarchy kind (organization, folder, project) at
- * render time; callers supply the namespace only.
+ * the explicit linking list (ADR 021 Decision 5). The resolver classifies the
+ * namespace as organization, folder, or project at render time; callers supply
+ * the namespace only.
  *
  * @generated from message holos.console.v1.LinkedTemplateRef
  */
 export declare type LinkedTemplateRef = Message<"holos.console.v1.LinkedTemplateRef"> & {
   /**
    * namespace is the Kubernetes namespace that owns the linked template. The
-   * resolver classifies the namespace into its hierarchy kind (organization,
-   * folder, project) at render time — callers supply the namespace only.
+   * resolver classifies the namespace as organization, folder, or project at
+   * render time — callers supply the namespace only.
    *
    * @generated from field: string namespace = 1;
    */
