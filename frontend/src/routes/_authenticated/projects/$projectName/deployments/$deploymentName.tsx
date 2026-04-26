@@ -422,7 +422,7 @@ export function DeploymentDetailPage({
                 <p className="text-sm text-muted-foreground">{projectName} / Deployments / {deploymentName}</p>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <h2 className="text-xl font-semibold">{deployment?.displayName || deploymentName}</h2>
-                  <SharedDependencyBadge name={deploymentName} />
+                  <SharedDependencyBadge name={deploymentName} dependencies={deployment?.dependencies} />
                 </div>
                 <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
                   <span>Image: <span className="font-mono">{deployment?.image}</span></span>

@@ -121,7 +121,7 @@ func DetectCollisions(
 					VersionConstraint: pd.GetVersionConstraint(),
 				}
 			}
-			ownSingleton := singletonName(ref)
+			ownSingleton := SingletonName(ref)
 			if pd.GetName() != ownSingleton {
 				// The planned deployment is trying to use a singleton-pattern
 				// name that belongs to a different dependency edge.

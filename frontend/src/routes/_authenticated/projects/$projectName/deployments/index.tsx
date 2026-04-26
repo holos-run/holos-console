@@ -79,14 +79,17 @@ function useDeploymentExtraColumns(
         id: 'sharedDependency',
         header: 'Dependency',
         cell: ({ row }: { row: { original: Row } }) => {
-          // Link to the detail page for shared singletons. Phase 9 defers
-          // linking back to the originating TemplateDependency / TemplateRequirement
-          // because the backend does not yet expose RenderState.spec.dependencies[]
-          // over gRPC. The detail href points to the singleton deployment itself.
+          // Singleton rows carry the resolved (TemplateDependency /
+          // TemplateRequirement) edges as `deployment.dependencies`. The badge
+          // tooltip surfaces each originating CRD object; the link target
+          // remains the singleton's own detail page (no in-app routes exist
+          // for the originating CRD kinds yet).
           const detailHref = row.original.detailHref ?? `/projects/${projectName}/deployments/${row.original.name}`
+          const dep = deploymentsByName.get(row.original.name)
           return (
             <SharedDependencyBadge
               name={row.original.name}
+              dependencies={dep?.dependencies}
               linkHref={detailHref}
             />
           )

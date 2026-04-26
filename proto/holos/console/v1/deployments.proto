@@ -96,6 +96,44 @@ message Deployment {
   // created_at is the RFC3339-formatted timestamp when the underlying Kubernetes
   // ConfigMap was created, sourced from metadata.creationTimestamp.
   string created_at = 15;
+  // dependencies enumerates the resolved (template, version) edges that
+  // materialised this Deployment as a shared singleton. Empty for ordinary
+  // user-named Deployments. Each entry names the originating CRD object so
+  // the UI can render a "shared dependency" indicator and link the row back
+  // to its TemplateDependency or TemplateRequirement object. Sourced from
+  // RenderState.spec.dependencies[] (HOL-961).
+  repeated DeploymentDependency dependencies = 16;
+}
+
+// DeploymentDependency mirrors RenderStateDependency from
+// templates.holos.run/v1alpha1: a single resolved (template, version) edge
+// that materialised a Deployment as a shared singleton, plus a typed
+// reference to the originating CRD object.
+message DeploymentDependency {
+  // template is the resolved (namespace, name, version_constraint) of the
+  // singleton's backing Template.
+  LinkedTemplateRef template = 1;
+  // version is the resolved semver string (e.g. "v1.2.3") matched by the
+  // version constraint at render time. Empty when the edge targets the live
+  // (unversioned) Template.
+  string version = 2;
+  // originating_object names the CRD object that declared this edge.
+  OriginatingObject originating_object = 3;
+}
+
+// OriginatingObject is a typed reference to the CRD that declared a
+// dependency edge. The api_version is always
+// "templates.holos.run/v1alpha1"; only kind discriminates between
+// TemplateDependency and TemplateRequirement.
+message OriginatingObject {
+  // namespace is the Kubernetes namespace that owns the CRD object. For
+  // TemplateDependency this is the project namespace; for
+  // TemplateRequirement this is a folder or organization namespace.
+  string namespace = 1;
+  // name is the DNS label slug of the CRD object.
+  string name = 2;
+  // kind is "TemplateDependency" or "TemplateRequirement".
+  string kind = 3;
 }
 
 // DeploymentPhase represents the lifecycle phase of a deployment.
