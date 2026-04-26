@@ -1,10 +1,13 @@
 /**
- * Project-scoped Templates / Requirements index (HOL-1013).
+ * Project-scoped Templates / Requirements index (HOL-1013, HOL-1023).
  *
  * TemplateRequirements are org/folder-scoped, not project-scoped. The namespace
  * is derived from the selected organization via useOrg().selectedOrg. The
  * project name still appears in the URL so the Templates collapsible group
  * can stay open in a later sidebar phase (HOL-1014).
+ *
+ * HOL-1023: added "New" header action gated on org OWNER/EDITOR role,
+ * navigating to the org-scoped /template-requirements/new route.
  *
  * Sidebar nesting is handled in HOL-1014; for now the route exists and is
  * reachable by URL.
@@ -12,7 +15,8 @@
 
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { StandardPageLayout } from '@/components/page-layout'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
@@ -20,6 +24,7 @@ import {
   useListTemplateRequirements,
   useDeleteTemplateRequirement,
 } from '@/queries/templateRequirements'
+import { useGetOrganization } from '@/queries/organizations'
 import { useOrg } from '@/lib/org-context'
 import { namespaceForOrg } from '@/lib/scope-labels'
 
@@ -67,6 +72,11 @@ export function TemplateRequirementsIndexPage({
   const { selectedOrg } = useOrg()
   const namespace = namespaceForOrg(selectedOrg ?? '')
 
+  // Org role — used to gate the "New" button (OWNER or EDITOR can create).
+  const { data: org } = useGetOrganization(selectedOrg ?? '')
+  const userRole = org?.userRole ?? Role.VIEWER
+  const canCreate = userRole === Role.OWNER || userRole === Role.EDITOR
+
   const {
     data: requirements = [],
     isPending,
@@ -107,12 +117,14 @@ export function TemplateRequirementsIndexPage({
     () => [
       {
         id: 'TemplateRequirement',
-        label: 'TemplateRequirement',
-        // No create in this view — requirements are created from org-level pages.
-        canCreate: false,
+        label: 'Template Requirement',
+        newHref: selectedOrg
+          ? `/organizations/${selectedOrg}/template-requirements/new`
+          : undefined,
+        canCreate: !!selectedOrg && canCreate,
       },
     ],
-    [],
+    [selectedOrg, canCreate],
   )
 
   // ---------------------------------------------------------------------------
@@ -136,15 +148,17 @@ export function TemplateRequirementsIndexPage({
   )
 
   return (
-    <ResourceGrid
-      title={`${projectName} / Templates / Requirements`}
-      kinds={kinds}
-      rows={rows}
-      onDelete={handleDelete}
-      isLoading={isPending}
-      error={error}
-      search={search}
-      onSearchChange={handleSearchChange}
+    <StandardPageLayout
+      titleParts={[projectName, 'Templates', 'Requirements']}
+      grid={{
+        kinds,
+        rows,
+        onDelete: handleDelete,
+        isLoading: isPending,
+        error,
+        search,
+        onSearchChange: handleSearchChange,
+      }}
     />
   )
 }

@@ -1,18 +1,21 @@
 /**
- * Tests for the project-scoped Templates / Requirements index (HOL-1013).
+ * Tests for the project-scoped Templates / Requirements index (HOL-1013, HOL-1023).
  *
  * TemplateRequirements are org/folder-scoped. Namespace comes from
  * useOrg().selectedOrg via namespaceForOrg(). The project param keeps the
  * Templates sidebar active in a later phase.
  *
  * Covers: happy path, empty state, loading, error, delete flow, page title,
- * undefined createdAt renders em-dash.
+ * undefined createdAt renders em-dash, New button renders for OWNER/EDITOR,
+ * New button hidden for VIEWER, New button links to the correct org route,
+ * canCreate propagates to ResourceGrid.
  */
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
 
 // ---------------------------------------------------------------------------
 // Router mock
@@ -80,6 +83,10 @@ vi.mock('@/queries/templateRequirements', async () => {
   }
 })
 
+vi.mock('@/queries/organizations', () => ({
+  useGetOrganization: vi.fn(),
+}))
+
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 // ---------------------------------------------------------------------------
@@ -90,6 +97,7 @@ import {
   useListTemplateRequirements,
   useDeleteTemplateRequirement,
 } from '@/queries/templateRequirements'
+import { useGetOrganization } from '@/queries/organizations'
 import { useOrg } from '@/lib/org-context'
 import { TemplateRequirementsIndexPage } from './requirements/index'
 
@@ -118,8 +126,13 @@ function setupMocks({
   isPending = false,
   error = null as Error | null,
   selectedOrg = 'test-org',
+  userRole = Role.OWNER,
 } = {}) {
   ;(useOrg as Mock).mockReturnValue({ selectedOrg, setSelectedOrg: vi.fn() })
+  ;(useGetOrganization as Mock).mockReturnValue({
+    data: { name: selectedOrg ?? '', userRole },
+    isPending: false,
+  })
   ;(useListTemplateRequirements as Mock).mockReturnValue({
     data: requirements,
     isPending,
@@ -228,5 +241,53 @@ describe('TemplateRequirementsIndexPage (HOL-1013)', () => {
     })
     render(<TemplateRequirementsIndexPage projectName="test-project" />)
     expect(screen.getByText('—')).toBeInTheDocument()
+  })
+
+  // -------------------------------------------------------------------------
+  // New button — HOL-1023
+  // -------------------------------------------------------------------------
+
+  it('renders "New Template Requirement" button for OWNER', () => {
+    setupMocks({ userRole: Role.OWNER })
+    render(<TemplateRequirementsIndexPage projectName="test-project" />)
+    expect(screen.getByRole('link', { name: /new template requirement/i })).toBeInTheDocument()
+  })
+
+  it('renders "New Template Requirement" button for EDITOR', () => {
+    setupMocks({ userRole: Role.EDITOR })
+    render(<TemplateRequirementsIndexPage projectName="test-project" />)
+    expect(screen.getByRole('link', { name: /new template requirement/i })).toBeInTheDocument()
+  })
+
+  it('does not render "New" button for VIEWER', () => {
+    setupMocks({ userRole: Role.VIEWER })
+    render(<TemplateRequirementsIndexPage projectName="test-project" />)
+    expect(
+      screen.queryByRole('link', { name: /new template requirement/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('"New" button href navigates to the org-scoped new route', () => {
+    setupMocks({ userRole: Role.OWNER })
+    render(<TemplateRequirementsIndexPage projectName="test-project" />)
+    const link = screen.getByRole('link', { name: /new template requirement/i })
+    expect(link).toHaveAttribute(
+      'href',
+      '/organizations/test-org/template-requirements/new',
+    )
+  })
+
+  it('passes canCreate=true to ResourceGrid when OWNER', () => {
+    setupMocks({ userRole: Role.OWNER })
+    render(<TemplateRequirementsIndexPage projectName="test-project" />)
+    expect(screen.getByRole('link', { name: /new template requirement/i })).toBeInTheDocument()
+  })
+
+  it('passes canCreate=false to ResourceGrid when VIEWER', () => {
+    setupMocks({ userRole: Role.VIEWER })
+    render(<TemplateRequirementsIndexPage projectName="test-project" />)
+    expect(
+      screen.queryByRole('link', { name: /new template requirement/i }),
+    ).not.toBeInTheDocument()
   })
 })
