@@ -1,14 +1,17 @@
 /**
- * Organization-scoped TemplateGrant index (HOL-1022).
+ * Organization-scoped TemplateGrant index (HOL-1022, HOL-1038).
  *
  * TemplateGrant objects live in organization or folder namespaces. This
  * org-scoped index shows grants in the current org namespace.
+ *
+ * HOL-1038: migrated from ResourceGrid directly to StandardPageLayout for
+ * consistency with the project-scoped equivalents.
  */
 
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
+import { StandardPageLayout } from '@/components/page-layout'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
@@ -138,15 +141,17 @@ export function OrgTemplateGrantsIndexPage({
   )
 
   return (
-    <ResourceGrid
-      title={`${orgName} / Template Grants`}
-      kinds={kinds}
-      rows={rows}
-      onDelete={handleDelete}
-      isLoading={isPending}
-      error={error}
-      search={search}
-      onSearchChange={handleSearchChange}
+    <StandardPageLayout
+      titleParts={[orgName, 'Template Grants']}
+      grid={{
+        kinds,
+        rows,
+        onDelete: handleDelete,
+        isLoading: isPending,
+        error,
+        search,
+        onSearchChange: handleSearchChange,
+      }}
     />
   )
 }
