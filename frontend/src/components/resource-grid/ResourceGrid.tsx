@@ -578,6 +578,11 @@ export function ResourceGrid({
     onGlobalFilterChange: setGlobalFilter,
     onSortingChange: handleSortingChange,
     globalFilterFn: globalFilterFn,
+    // Stable, kind-aware row identity: HOL-990 changed the visible Resource
+    // ID column to bare metadata.name, which is only unique within a
+    // (kind, namespace) tuple. React keys and any future TanStack row
+    // selection rely on this id, so keep all three fields in the key.
+    getRowId: (row) => `${row.kind}/${row.parentId}/${row.name}`,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),

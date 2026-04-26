@@ -93,7 +93,11 @@ export function OrgProjectsIndexPage({
     updater: (prev: ResourceGridSearch) => ResourceGridSearch,
   ) => {
     navigate({
-      search: (prev) => updater(prev as ResourceGridSearch),
+      // The default useNavigate() returns a router-wide navigate whose
+      // search-updater signature cannot infer the route's search type.
+      // Cast through unknown so the typed updater above flows through.
+      search: ((prev: unknown) =>
+        updater(prev as ResourceGridSearch)) as never,
     })
   }
 

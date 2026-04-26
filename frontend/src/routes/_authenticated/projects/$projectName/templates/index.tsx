@@ -182,6 +182,10 @@ export function ProjectTemplatesIndexPage({
         displayName: t.displayName || t.name,
         description: t.description ?? '',
         createdAt: t.createdAt,
+        // Template proto does not yet expose creator_email, but we set the
+        // bag so the Creator search field stays consistent across kinds —
+        // Template rows simply will not match a creator query.
+        extraSearch: { creator: '' },
         detailHref: resolveTemplateRowHref('Template', t.namespace, t.name),
       })
     }
