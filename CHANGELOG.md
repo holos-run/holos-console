@@ -4,6 +4,61 @@ All notable changes to holos-console are documented here.
 
 ## [Unreleased]
 
+### Added — TemplateDependency, TemplateRequirement, TemplateGrant new/edit/detail pages and ScopePicker (HOL-1017)
+
+Full CRUD UI for the three template-dependency resource families introduced in HOL-954.
+All creation forms use the new `ScopePicker` component so users can choose between
+organization and project scope without leaving the page.
+
+#### ScopePicker component (HOL-1018)
+
+`frontend/src/components/scope-picker/ScopePicker.tsx` — a controlled dropdown that
+lets "new resource" forms toggle between Organization and Project scope. Disables the
+Project option (with tooltip) when no project is selected. Used on all five creation
+forms below.
+
+#### Query hooks (HOL-1019)
+
+Added `useGetTemplateDependency`, `useCreateTemplateDependency`,
+`useUpdateTemplateDependency`, `useGetTemplateRequirement`,
+`useCreateTemplateRequirement`, `useUpdateTemplateRequirement`,
+`useGetTemplateGrant`, `useCreateTemplateGrant`, and `useUpdateTemplateGrant`
+hooks to the existing query modules in `frontend/src/queries/`.
+
+#### TemplateDependency pages (HOL-1020)
+
+- `/organizations/$orgName/template-dependencies/` — ResourceGrid index
+- `/organizations/$orgName/template-dependencies/new` — create form with ScopePicker
+- `/organizations/$orgName/template-dependencies/$dependencyName` — detail / edit / delete
+- `frontend/src/components/template-dependencies/DependencyForm.tsx` — shared form component
+
+#### TemplateRequirement pages (HOL-1021)
+
+- `/organizations/$orgName/template-requirements/` — ResourceGrid index
+- `/organizations/$orgName/template-requirements/new` — create form with ScopePicker
+- `/organizations/$orgName/template-requirements/$requirementName` — detail / edit / delete
+- `frontend/src/components/template-requirements/RequirementForm.tsx` — shared form component
+
+#### TemplateGrant pages (HOL-1022)
+
+- `/organizations/$orgName/template-grants/` — ResourceGrid index
+- `/organizations/$orgName/template-grants/new` — create form with ScopePicker
+- `/organizations/$orgName/template-grants/$grantName` — detail / edit / delete
+- `frontend/src/components/template-grants/GrantForm.tsx` — shared form component
+
+#### New header actions on project-scoped grid pages (HOL-1023)
+
+Added canCreate-gated "New" header actions to the three project-scoped template
+index pages (`/projects/$projectName/templates/dependencies/`,
+`/projects/$projectName/templates/requirements/`,
+`/projects/$projectName/templates/grants/`). The New button navigates to the
+corresponding org-scoped creation route above.
+
+#### ScopePicker adopted on existing new-resource pages (HOL-1024)
+
+`TemplatePolicy`, `TemplatePolicyBinding`, and Template creation pages now render
+`ScopePicker` so the namespace is always visible and selectable at creation time.
+
 ### Chore — Purge cascade/hierarchical-apply TemplatePolicy terminology (HOL-992 / HOL-993)
 
 TemplatePolicy enforcement is now binding-only: a policy in an ancestor namespace

@@ -8,8 +8,7 @@
  * HOL-1023: added "New" header action gated on project OWNER/EDITOR role,
  * navigating to the org-scoped /template-dependencies/new route.
  *
- * Sidebar nesting is handled in HOL-1014; for now the route exists and is
- * reachable by URL.
+ * The sidebar nesting was implemented in HOL-1014.
  */
 
 import { useCallback, useMemo } from 'react'

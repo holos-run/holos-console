@@ -41,6 +41,12 @@
 // a prerequisite template.
 #ResourceTypeTemplateRequirement: "template-requirement"
 
+// ResourceTypeTemplateGrant is the resource type label value for
+// TemplateGrant CRDs. Grants live only in organization or folder
+// namespaces and authorize cross-namespace template references, mirroring
+// the Gateway API ReferenceGrant pattern.
+#ResourceTypeTemplateGrant: "template-grant"
+
 // Annotations.
 #AnnotationDisplayName:  "console.holos.run/display-name"
 #AnnotationDescription:  "console.holos.run/description"

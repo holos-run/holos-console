@@ -156,3 +156,28 @@ navigate({ to: target })
 | `frontend/src/routes/_authenticated/folders/$folderName/settings/index.tsx` | Folder settings (plural + identifier) |
 | `frontend/src/routes/_authenticated/projects/$projectName/settings/index.tsx` | Project settings (plural + identifier) |
 | `frontend/src/lib/return-to.ts` | `buildReturnTo` / `resolveReturnTo` / `isValidReturnTo` |
+
+## Template Resource URL Patterns (HOL-1017)
+
+The following URL patterns were introduced for TemplateDependency, TemplateRequirement,
+and TemplateGrant CRUD pages. They follow the standard plural-identifier convention.
+
+| Pattern | Purpose |
+|---------|---------|
+| `/organizations/$orgName/template-dependencies/` | List org-scoped TemplateDependency resources |
+| `/organizations/$orgName/template-dependencies/new` | Create TemplateDependency (with ScopePicker) |
+| `/organizations/$orgName/template-dependencies/$dependencyName` | Detail / edit / delete TemplateDependency |
+| `/organizations/$orgName/template-requirements/` | List org-scoped TemplateRequirement resources |
+| `/organizations/$orgName/template-requirements/new` | Create TemplateRequirement (with ScopePicker) |
+| `/organizations/$orgName/template-requirements/$requirementName` | Detail / edit / delete TemplateRequirement |
+| `/organizations/$orgName/template-grants/` | List org-scoped TemplateGrant resources |
+| `/organizations/$orgName/template-grants/new` | Create TemplateGrant (with ScopePicker) |
+| `/organizations/$orgName/template-grants/$grantName` | Detail / edit / delete TemplateGrant |
+| `/projects/$projectName/templates/dependencies/` | Project-scoped TemplateDependency index (New navigates to org route above) |
+| `/projects/$projectName/templates/requirements/` | Project-scoped TemplateRequirement index (New navigates to org route above) |
+| `/projects/$projectName/templates/grants/` | Project-scoped TemplateGrant index (New navigates to org route above) |
+
+TemplateDependency objects are stored in **project** namespaces; TemplateRequirement
+and TemplateGrant objects are stored in **org or folder** namespaces. The `ScopePicker`
+on the create pages lets users choose the target namespace at creation time.
+Admission policies enforce the namespace constraint server-side.

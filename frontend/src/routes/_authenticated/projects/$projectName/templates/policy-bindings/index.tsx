@@ -4,10 +4,8 @@
  * TemplatePolicyBindings are org/folder-scoped, not project-scoped. The
  * namespace is derived from the selected organization via useOrg().selectedOrg.
  * The project name still appears in the URL so the Templates collapsible group
- * can stay open in a later sidebar phase (HOL-1014).
- *
- * Sidebar nesting is handled in HOL-1014; for now the route exists and is
- * reachable by URL.
+ * can stay open in the sidebar. The collapsible Templates sidebar was
+ * implemented in HOL-1014.
  */
 
 import { useCallback, useMemo } from 'react'
@@ -63,7 +61,7 @@ export function TemplatePolicyBindingsIndexPage({
 
   // TemplatePolicyBindings are org/folder-scoped — namespace comes from the
   // selected org, not the project. The project param keeps Templates sidebar
-  // active in a later phase.
+  // The project param keeps Templates sidebar active (HOL-1014).
   const { selectedOrg } = useOrg()
   const namespace = namespaceForOrg(selectedOrg ?? '')
 
