@@ -95,14 +95,17 @@ export function PolicyForm({
   const handleSubmit = async () => {
     setError(null)
 
-    // Scope guard: policies can only be authored at folder or organization
-    // scope. Anything else is a programmer error or a contrived URL; the form
-    // refuses to dispatch the mutation and surfaces the constraint to the
-    // user. The backend performs the authoritative check, but the UI must
+    // Scope guard: policies can only be authored at folder, organization, or
+    // project scope. Anything else is a programmer error or a contrived URL;
+    // the form refuses to dispatch the mutation and surfaces the constraint to
+    // the user. The backend performs the authoritative check, but the UI must
     // make it clear before round-tripping.
-    if (scopeType !== 'organization' && scopeType !== 'folder') {
+    //
+    // HOL-1024: 'project' is now a valid scope (ScopePicker on the new page
+    // routes the create mutation to the project namespace when selected).
+    if (scopeType !== 'organization' && scopeType !== 'folder' && scopeType !== 'project') {
       setError(
-        'Template policies can only be created at folder or organization scope. Navigate to a folder or organization to manage policies.',
+        'Template policies can only be created at folder, organization, or project scope. Navigate to a valid scope to manage policies.',
       )
       return
     }
@@ -192,7 +195,7 @@ export function PolicyForm({
         <div className="flex items-center justify-between">
           <Label>Rules</Label>
           <p className="text-xs text-muted-foreground">
-            Scope: {scopeType === 'folder' ? 'Folder' : scopeType === 'organization' ? 'Organization' : 'Invalid'}
+            Scope: {scopeType === 'folder' ? 'Folder' : scopeType === 'organization' ? 'Organization' : scopeType === 'project' ? 'Project' : 'Invalid'}
           </p>
         </div>
         <RuleEditor
