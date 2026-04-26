@@ -1,25 +1,22 @@
-import { useState, useMemo } from 'react'
-import { createFileRoute, Link } from '@tanstack/react-router'
-import {
-  useReactTable,
-  getCoreRowModel,
-  getFilteredRowModel,
-  flexRender,
-  createColumnHelper,
-} from '@tanstack/react-table'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+/**
+ * Org-scope Platform Templates index — migrated to ResourceGrid v1 (HOL-975).
+ *
+ * Shows all templates reachable from the org root (org, folder, project scopes)
+ * via the useAllTemplatesForOrg fan-out hook. Each row carries a scope-aware
+ * detailHref so both the resource ID cell and the full row are clickable.
+ *
+ * Extra columns added via the ResourceGrid `extraColumns` prop:
+ *   - Scope    — badge indicating org / folder / project + the owner name
+ *   - Namespace — raw namespace string for operator debugging
+ *
+ * A scope dropdown filter (preserved from the pre-refactor page) is rendered
+ * above the grid via the ResourceGrid `headerContent` slot. Selecting a scope
+ * replaces the URL `?scope=` param so the filter survives refreshes.
+ */
+
+import { useCallback, useMemo } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import {
   Select,
   SelectContent,
@@ -27,18 +24,47 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
+import type { Row } from '@/components/resource-grid/types'
+import type { ColumnDef } from '@tanstack/react-table'
+import { parseGridSearch } from '@/components/resource-grid/url-state'
+import type { ResourceGridSearch } from '@/components/resource-grid/types'
 import { useAllTemplatesForOrg } from '@/queries/templates'
 import { useGetOrganization } from '@/queries/organizations'
-import type { Template } from '@/gen/holos/console/v1/templates_pb'
 import {
-  scopeDisplayLabel,
   scopeLabelFromNamespace,
   scopeNameFromNamespace,
+  scopeDisplayLabel,
 } from '@/lib/scope-labels'
 
+// ---------------------------------------------------------------------------
+// Route search — extends ResourceGridSearch with the scope filter
+// ---------------------------------------------------------------------------
+
+export interface OrgTemplatesSearch extends ResourceGridSearch {
+  /** Optional scope filter: 'org' | 'folder' | 'project'. Absent = all. */
+  scope?: 'org' | 'folder' | 'project'
+}
+
+type ScopeFilter = 'all' | 'org' | 'folder' | 'project'
+
+function parseOrgTemplatesSearch(raw: Record<string, unknown>): OrgTemplatesSearch {
+  const base = parseGridSearch(raw)
+  const result: OrgTemplatesSearch = { ...base }
+  const scope = raw['scope']
+  if (scope === 'org' || scope === 'folder' || scope === 'project') {
+    result.scope = scope
+  }
+  return result
+}
+
+// ---------------------------------------------------------------------------
+// Route definition
+// ---------------------------------------------------------------------------
+
 export const Route = createFileRoute('/_authenticated/organizations/$orgName/templates/')({
+  validateSearch: parseOrgTemplatesSearch,
   component: OrgTemplatesIndexRoute,
 })
 
@@ -47,13 +73,51 @@ function OrgTemplatesIndexRoute() {
   return <OrgTemplatesIndexPage orgName={orgName} />
 }
 
-const columnHelper = createColumnHelper<Template>()
+// ---------------------------------------------------------------------------
+// Extra columns: Scope badge + Namespace
+// ---------------------------------------------------------------------------
 
-// HOL-793: the scope filter narrows the grid to rows of a single scope. The
-// `project` option is shown even though templates at project scope are
-// browsed from the project sidebar — the org-level view is for discovery
-// across all scopes, and filtering lets users zero in on one.
-type ScopeFilter = 'all' | 'org' | 'folder' | 'project'
+const extraColumns: ColumnDef<Row>[] = [
+  {
+    id: 'scope',
+    header: 'Scope',
+    enableSorting: false,
+    accessorFn: (row) => row.namespace,
+    cell: ({ row }) => {
+      const ns = row.original.namespace
+      const label = scopeDisplayLabel(ns)
+      const name = scopeNameFromNamespace(ns)
+      if (!label) {
+        return (
+          <Badge variant="outline" className="text-xs">
+            unknown
+          </Badge>
+        )
+      }
+      return (
+        <Badge variant="outline" className="text-xs">
+          {label}
+          {name ? `: ${name}` : ''}
+        </Badge>
+      )
+    },
+  },
+  {
+    id: 'namespace',
+    header: 'Namespace',
+    enableSorting: false,
+    accessorFn: (row) => row.namespace,
+    cell: ({ row }) => (
+      <span className="text-muted-foreground font-mono text-sm">
+        {row.original.namespace}
+      </span>
+    ),
+  },
+]
+
+// ---------------------------------------------------------------------------
+// Page component (exported for tests)
+// ---------------------------------------------------------------------------
 
 export function OrgTemplatesIndexPage({
   orgName: propOrgName,
@@ -67,286 +131,155 @@ export function OrgTemplatesIndexPage({
   }
   const orgName = propOrgName ?? routeOrgName ?? ''
 
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const search = Route.useSearch() as OrgTemplatesSearch
+  const navigate = useNavigate({ from: Route.fullPath })
+
+  const scopeFilter: ScopeFilter = search.scope ?? 'all'
+
+  // Fan-out across all namespaces reachable from the org root.
   const { data, isPending, error } = useAllTemplatesForOrg(orgName)
   const { data: org } = useGetOrganization(orgName)
-  // When orgName is empty the fan-out is effectively disabled: isPending is
-  // false (idle) and data is `[]`. The skeleton branch still needs to cover
-  // the authenticated-but-resolving case, so gate on isPending AND data not
-  // yet materialized.
-  const templates = useMemo(() => data ?? [], [data])
 
+  const templates = useMemo(() => data ?? [], [data])
   const userRole = org?.userRole ?? Role.VIEWER
-  // Creation at org scope requires OWNER. Folder/project-scope creates use
-  // their own scoped routes (HOL-793 explicitly leaves those flows alone).
   const canWrite = userRole === Role.OWNER
 
-  const [globalFilter, setGlobalFilter] = useState('')
-  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>('all')
+  // ---------------------------------------------------------------------------
+  // Build rows — scope-filtered, with scope-aware detailHref
+  // ---------------------------------------------------------------------------
 
-  const rows = useMemo(() => {
-    if (scopeFilter === 'all') return templates
-    return templates.filter(
-      (t) => scopeLabelFromNamespace(t.namespace) === scopeFilter,
-    )
-  }, [templates, scopeFilter])
+  const rows: Row[] = useMemo(() => {
+    const all = templates.map((t): Row => {
+      const scope = scopeLabelFromNamespace(t.namespace)
+      const scopeName = scopeNameFromNamespace(t.namespace)
+      let detailHref: string | undefined
 
-  const columns = useMemo(
+      if (scope === 'org') {
+        detailHref = `/organizations/${orgName}/templates/${t.namespace}/${t.name}`
+      } else if (scope === 'folder' && scopeName) {
+        detailHref = `/folders/${scopeName}/templates/${t.name}`
+      } else if (scope === 'project' && scopeName) {
+        detailHref = `/projects/${scopeName}/templates/${t.name}`
+      }
+
+      return {
+        kind: 'Template',
+        name: t.name,
+        namespace: t.namespace,
+        id: t.name,
+        parentId: scopeName || t.namespace,
+        parentLabel: scopeName || t.namespace,
+        displayName: t.displayName || t.name,
+        description: t.description ?? '',
+        createdAt: t.createdAt ?? '',
+        detailHref,
+      }
+    })
+
+    if (scopeFilter === 'all') return all
+    return all.filter((r) => scopeLabelFromNamespace(r.namespace) === scopeFilter)
+  }, [templates, orgName, scopeFilter])
+
+  // ---------------------------------------------------------------------------
+  // Kind definitions
+  // ---------------------------------------------------------------------------
+
+  const kinds = useMemo(
     () => [
-      columnHelper.accessor((row) => row.displayName || row.name, {
-        id: 'displayName',
-        header: 'Display Name',
-        cell: ({ row }) => {
-          const t = row.original
-          const label = t.displayName || t.name
-          const scope = scopeLabelFromNamespace(t.namespace)
-          // Scope-aware link. A namespace that does not match any known
-          // prefix renders as plain text so we never forge a link to a 404.
-          if (scope === 'org') {
-            return (
-              <Link
-                to="/organizations/$orgName/templates/$namespace/$name"
-                params={{ orgName, namespace: t.namespace, name: t.name }}
-                title={t.name}
-                className="hover:underline font-medium"
-              >
-                {label}
-              </Link>
-            )
-          }
-          if (scope === 'folder') {
-            const folderName = scopeNameFromNamespace(t.namespace)
-            if (folderName) {
-              return (
-                <Link
-                  to="/folders/$folderName/templates/$templateName"
-                  params={{ folderName, templateName: t.name }}
-                  title={t.name}
-                  className="hover:underline font-medium"
-                >
-                  {label}
-                </Link>
-              )
-            }
-          }
-          if (scope === 'project') {
-            const projectName = scopeNameFromNamespace(t.namespace)
-            if (projectName) {
-              return (
-                <Link
-                  to="/projects/$projectName/templates/$templateName"
-                  params={{ projectName, templateName: t.name }}
-                  title={t.name}
-                  className="hover:underline font-medium"
-                >
-                  {label}
-                </Link>
-              )
-            }
-          }
-          return (
-            <span className="font-medium" title={t.name}>
-              {label}
-            </span>
-          )
-        },
-      }),
-      columnHelper.accessor((row) => scopeCellText(row.namespace), {
-        id: 'scope',
-        header: 'Scope',
-        cell: ({ row }) => <ScopeBadge namespace={row.original.namespace} />,
-      }),
-      columnHelper.accessor('namespace', {
-        header: 'Namespace',
-        cell: ({ getValue }) => (
-          <span className="text-muted-foreground font-mono text-sm">
-            {getValue()}
-          </span>
-        ),
-      }),
-      columnHelper.accessor('name', {
-        header: 'Name',
-        cell: ({ getValue }) => (
-          <span className="text-muted-foreground font-mono text-sm">
-            {getValue()}
-          </span>
-        ),
-      }),
+      {
+        id: 'Template',
+        label: 'Template',
+        newHref: `/organizations/${orgName}/templates/new`,
+        canCreate: canWrite,
+      },
     ],
-    [orgName],
+    [orgName, canWrite],
   )
 
-  const table = useReactTable({
-    data: rows,
-    columns,
-    state: { globalFilter },
-    onGlobalFilterChange: setGlobalFilter,
-    globalFilterFn: 'includesString',
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-  })
+  // ---------------------------------------------------------------------------
+  // Handlers
+  // ---------------------------------------------------------------------------
 
-  const queryDisabled = orgName === ''
-  if (isPending || queryDisabled) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Templates</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2" data-testid="templates-loading">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-10 w-full" />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
+  const handleDelete = useCallback(async (_row: Row) => {
+    // Org templates index shows templates from multiple scopes; deletion is
+    // handled from each template's own detail/editor page. This index is
+    // read-only for delete actions — the ResourceGrid delete button is not
+    // rendered when onDelete is undefined, but we provide a no-op so the type
+    // is satisfied. Actual deletion is on the detail page.
+    throw new Error('Delete from the template detail page.')
+  }, [])
 
-  // Fall through to the full grid when the fan-out has both an error and
-  // partial data, so successfully-loaded rows remain visible. The banner
-  // below the header surfaces the error without blanking the table.
-  if (error && templates.length === 0) {
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <Alert variant="destructive">
-            <AlertDescription>{error.message}</AlertDescription>
-          </Alert>
-        </CardContent>
-      </Card>
-    )
-  }
+  const handleSearchChange = useCallback(
+    (updater: (prev: ResourceGridSearch) => ResourceGridSearch) => {
+      navigate({
+        search: (prev) => {
+          const typedPrev = prev as OrgTemplatesSearch
+          const updated = updater(typedPrev)
+          const next: OrgTemplatesSearch = { ...updated }
+          if (typedPrev.scope) {
+            next.scope = typedPrev.scope
+          }
+          return next
+        },
+      })
+    },
+    [navigate],
+  )
+
+  const handleScopeChange = useCallback(
+    (value: string) => {
+      const scope = value as ScopeFilter
+      navigate({
+        search: (prev) => {
+          const typedPrev = prev as OrgTemplatesSearch
+          const next: OrgTemplatesSearch = { ...typedPrev }
+          if (scope === 'all') {
+            delete next.scope
+          } else {
+            next.scope = scope as 'org' | 'folder' | 'project'
+          }
+          return next
+        },
+      })
+    },
+    [navigate],
+  )
+
+  // ---------------------------------------------------------------------------
+  // Scope filter toolbar content (rendered in ResourceGrid headerContent slot)
+  // ---------------------------------------------------------------------------
+
+  const scopeFilterContent = (
+    <div className="flex items-center gap-2 pb-3">
+      <Select value={scopeFilter} onValueChange={handleScopeChange}>
+        <SelectTrigger className="w-[180px]" aria-label="Filter by scope">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">All scopes</SelectItem>
+          <SelectItem value="org">Organization</SelectItem>
+          <SelectItem value="folder">Folder</SelectItem>
+          <SelectItem value="project">Project</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
 
   return (
-    <Card>
-      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {orgName} / Templates
-          </p>
-          <CardTitle className="mt-1">Templates</CardTitle>
-        </div>
-        {canWrite && (
-          <Link to="/organizations/$orgName/templates/new" params={{ orgName }}>
-            <Button size="sm">Create Template</Button>
-          </Link>
-        )}
-      </CardHeader>
-      <CardContent>
-        {error && (
-          <Alert
-            variant="destructive"
-            className="mb-4"
-            data-testid="templates-partial-error"
-          >
-            <AlertDescription>{error.message}</AlertDescription>
-          </Alert>
-        )}
-        {templates.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-8 text-center">
-            <p className="text-muted-foreground">
-              No templates yet.
-              {canWrite
-                ? ' Create one to get started.'
-                : ' Ask an organization owner to create one.'}
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="mb-3 flex flex-col sm:flex-row gap-2 sm:items-center">
-              <Input
-                placeholder="Search templates…"
-                value={globalFilter}
-                onChange={(e) => setGlobalFilter(e.target.value)}
-                className="max-w-sm"
-                aria-label="Search templates"
-              />
-              <Select
-                value={scopeFilter}
-                onValueChange={(v) => setScopeFilter(v as ScopeFilter)}
-              >
-                <SelectTrigger
-                  className="w-[180px]"
-                  aria-label="Filter by scope"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All scopes</SelectItem>
-                  <SelectItem value="org">Organization</SelectItem>
-                  <SelectItem value="folder">Folder</SelectItem>
-                  <SelectItem value="project">Project</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {rows.length === 0 && (
-              <div className="mb-3 rounded-md border border-dashed border-border p-4 text-center">
-                <p className="text-sm text-muted-foreground">
-                  No templates match the current filters.
-                </p>
-              </div>
-            )}
-            <Table>
-              <TableHeader>
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => (
-                      <TableHead key={header.id}>
-                        {header.isPlaceholder
-                          ? null
-                          : flexRender(
-                              header.column.columnDef.header,
-                              header.getContext(),
-                            )}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id}>
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </>
-        )}
-      </CardContent>
-    </Card>
+    <ResourceGrid
+      title={`${orgName} / Templates`}
+      kinds={kinds}
+      rows={rows}
+      onDelete={handleDelete}
+      isLoading={isPending || orgName === ''}
+      error={error}
+      search={search}
+      onSearchChange={handleSearchChange}
+      extraColumns={extraColumns}
+      headerContent={scopeFilterContent}
+      sortableColumns={['createdAt']}
+    />
   )
 }
 
-function scopeCellText(namespace: string): string {
-  const label = scopeDisplayLabel(namespace)
-  const name = scopeNameFromNamespace(namespace)
-  if (!label) return ''
-  return name ? `${label}: ${name}` : label
-}
-
-function ScopeBadge({ namespace }: { namespace: string }) {
-  const label = scopeDisplayLabel(namespace)
-  const name = scopeNameFromNamespace(namespace)
-  if (!label) {
-    return (
-      <Badge variant="outline" className="text-xs">
-        unknown
-      </Badge>
-    )
-  }
-  return (
-    <Badge variant="outline" className="text-xs">
-      {label}
-      {name ? `: ${name}` : ''}
-    </Badge>
-  )
-}

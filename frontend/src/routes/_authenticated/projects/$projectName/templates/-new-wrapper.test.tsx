@@ -171,4 +171,35 @@ describe('CloneTemplatePage (HOL-974)', () => {
     render(<CloneTemplatePage projectName="my-proj" />)
     expect(useCloneTemplate).toHaveBeenCalledWith('project-my-proj')
   })
+
+  // -------------------------------------------------------------------------
+  // HOL-975: cloneSource pre-selection
+  // -------------------------------------------------------------------------
+
+  it('pre-selects the source when cloneSource matches a linkable template', async () => {
+    render(
+      <CloneTemplatePage
+        projectName="my-proj"
+        cloneSource="org-my-org/httpbin"
+      />,
+    )
+    // After the effect runs, the slug field should be pre-populated from the
+    // matched template's display name.
+    const slugField = screen.getByLabelText('Name slug') as HTMLInputElement
+    await waitFor(() => {
+      expect(slugField.value).toBe('httpbin-v1')
+    })
+  })
+
+  it('does not pre-select when cloneSource does not match any linkable template', async () => {
+    render(
+      <CloneTemplatePage
+        projectName="my-proj"
+        cloneSource="org-my-org/nonexistent"
+      />,
+    )
+    const slugField = screen.getByLabelText('Name slug') as HTMLInputElement
+    // Slug should remain empty because no template matches.
+    expect(slugField.value).toBe('')
+  })
 })
