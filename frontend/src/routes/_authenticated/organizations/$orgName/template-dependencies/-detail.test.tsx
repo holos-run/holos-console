@@ -211,11 +211,8 @@ describe('OrgTemplateDependencyDetailPage (HOL-1020)', () => {
 
   it('invokes the delete mutation on confirm', async () => {
     const deleteMutateAsync = vi.fn().mockResolvedValue({})
-    ;(useDeleteTemplateDependency as Mock).mockReturnValue({
-      mutateAsync: deleteMutateAsync,
-      isPending: false,
-    })
     setupMocks(Role.OWNER)
+    // Override the delete mock after setupMocks() sets up the generic version.
     ;(useDeleteTemplateDependency as Mock).mockReturnValue({
       mutateAsync: deleteMutateAsync,
       isPending: false,
