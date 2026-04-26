@@ -151,6 +151,43 @@ requeues. When a TemplateGrant is subsequently created, the
 TemplateGrantController updates the cache and the reconciler will succeed on
 the next reconcile triggered by the Deployment watch.
 
+## Open Questions
+
+Three questions were explicitly deferred to the implementation plan per the
+`CONTRIBUTING.md` §"ADR Open Questions" convention.
+
+**Open Question 1 — TemplateRequirement overlap policy** — *Resolved in
+[PR #1189](https://github.com/holos-run/holos-console/pull/1189) (HOL-960)*
+
+When two `TemplateRequirement` objects in the same ancestor chain target the
+same Deployment, what is the correct overlap behaviour? See Decision 10 above.
+The implementation unions the `requires` set: each `(namespace, name,
+versionConstraint)` triple produces one singleton; identical triples are
+idempotent (EnsureSingleton). Incompatible `versionConstraint` values on the
+same `(namespace, name)` pair are rejected hard by the Phase 8 PreflightCheck
+RPC before any `kubectl apply` is attempted.
+
+**Open Question 2 — Render order** — *Resolved in
+[PR #1189](https://github.com/holos-run/holos-console/pull/1189) (HOL-960)*
+
+Should `TemplatePolicy.Require` (render-time) and `TemplateRequirement`
+(controller-time) run in the same pass, or is sequencing required? See Decision
+9 above. `TemplatePolicy.Require` continues to run at render time (unchanged);
+`TemplateRequirement` materialises sibling Deployments only after the
+dependent's render succeeds and produces a Deployment CR. The controller watches
+Deployment objects and only calls `EnsureSingletonDependencyDeployment` for
+Deployments that already exist as CRs.
+
+**Open Question 3 — PreflightCheck RPC shape** — *Resolved in
+[PR #1194](https://github.com/holos-run/holos-console/pull/1194) (HOL-962)*
+
+The request/response message types and the proto location for the
+`PreflightCheck` RPC were deferred to the implementation. The RPC is defined in
+`proto/holos/console/v1/deployments.proto` as `PreflightCheck` on the
+`DeploymentService`. `PreflightCheckRequest` carries `namespace` + optional
+`deploymentName`; `PreflightCheckResponse` returns a `conflicts` repeated
+message listing each detected name collision or `versionConstraint` conflict.
+
 ## Consequences
 
 - Three new CRDs with kubebuilder status subresources and conditions following

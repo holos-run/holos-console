@@ -4,6 +4,110 @@ All notable changes to holos-console are documented here.
 
 ## [Unreleased]
 
+### Added — Deployment Dependencies: TemplateGrant, TemplateDependency, TemplateRequirement, Deployment CRD (HOL-954)
+
+Implements [ADR 035](docs/adrs/035-deployment-dependencies.md): three new tightly-scoped
+CRDs plus a Deployment CRD promotion that together enable platform owners and
+service owners to express mandatory co-deployment relationships between templates.
+
+#### New CRDs
+
+| CRD | Scope | Purpose |
+|-----|-------|---------|
+| `TemplateGrant` (`templates.holos.run/v1alpha1`) | org or folder namespace | Authorizes cross-namespace template references from listed project namespaces (ReferenceGrant-style). Hard-revoke on deletion; existing singletons are preserved, new materializations blocked. |
+| `TemplateDependency` (`templates.holos.run/v1alpha1`) | project namespace | Declares that all Deployments of template A in this project require a singleton of template B. Same-namespace references need no grant; cross-namespace requires a matching `TemplateGrant`. |
+| `TemplateRequirement` (`templates.holos.run/v1alpha1`) | org or folder namespace | Mandates that all Deployments matching `targetRefs[]` across every project under the ancestor require a singleton of template B — no per-project action needed. Mirrors the storage-isolation rule from `TemplatePolicyBinding`. |
+
+#### Deployment CRD (D1 promotion — HOL-957)
+
+`Deployment` is now a Custom Resource (`deployments.holos.run/v1alpha1`) backed
+by kubebuilder status subresources. The server dual-writes via Server-Side Apply
+so the proto store and the CR are kept in sync. Owner-references between
+`Deployment` CRs are the mechanism for GC: a non-controller ownerReference
+(`controller=false`, `blockOwnerDeletion=true`) ties each dependent Deployment
+to the shared singleton it triggered.
+
+#### Singleton lifecycle
+
+The first Deployment that triggers a dependency edge creates a singleton
+Deployment in the same project namespace with the deterministic name
+`<requires.Name>-<sanitized-versionConstraint>-shared` (e.g. `waypoint-v1-shared`).
+Subsequent Deployments add a second non-controller ownerReference. Native
+Kubernetes GC reaps the singleton when the last owner is deleted.
+`cascadeDelete: false` creates the singleton but skips the owner-reference edge,
+decoupling the singleton's lifecycle from the dependent.
+
+#### PreflightCheck RPC (HOL-962)
+
+`DeploymentService.PreflightCheck` in `proto/holos/console/v1/deployments.proto`
+surfaces sibling-Deployment name collisions and `versionConstraint` conflicts
+before any apply. The `versionConstraint` conflict case (same
+`(namespace, name)` template, different version strings) fails hard via
+PreflightCheck rather than silently creating two singletons with overlapping
+purposes.
+
+#### UI (HOL-963)
+
+- Deployments index page: shared singleton Deployments display a "shared
+  dependency" badge.
+- Per-dependency cascade-delete toggle on the Create/Edit Deployment form;
+  defaults to on.
+- PreflightCheck conflict banner inline on the deployment form before apply.
+
+#### `RenderState.spec.dependencies[]` (HOL-961)
+
+`RenderState` snapshots the resolved `(template, version)` dependency edges
+produced by TemplateDependency and TemplateRequirement reconcilers. The existing
+drift checker covers the edges.
+
+#### ValidatingAdmissionPolicy (HOL-956)
+
+Three new CEL-backed `ValidatingAdmissionPolicy` objects enforce namespace
+contracts:
+- `TemplateGrant` must be in an org or folder namespace (not a project namespace).
+- `TemplateDependency` must be in a project namespace.
+- `TemplateRequirement` must be in an org or folder namespace.
+
+#### Example templates (HOL-983 / PR #1193)
+
+Four new built-in template examples added to the registry picker to illustrate
+all three dependency scopes:
+
+| Example | Scope | Description |
+|---------|-------|-------------|
+| `valkey-v1` | A (instance) | Valkey cache — same-namespace TemplateDependency |
+| `shared-configmap-v1` | B (project) | Shared ConfigMap mandated by TemplateRequirement |
+| `httproute-with-grant-v1` | C (remote-project) | Cross-namespace HTTPRoute with TemplateGrant |
+| `all-scopes-v1` | A + B + C | Composite example exercising all three scopes |
+
+#### ADR 035 open questions resolved
+
+Three questions deferred to the implementation plan are now closed:
+
+1. **Overlap policy** (OQ 1, resolved in PR #1189): union the `requires` set;
+   incompatible `versionConstraint`s on the same `(namespace, name)` pair are
+   rejected by PreflightCheck.
+2. **Render order** (OQ 2, resolved in PR #1189): `TemplatePolicy.Require` runs
+   at render time (unchanged); `TemplateRequirement` materialises singletons
+   after the dependent's render succeeds.
+3. **PreflightCheck RPC shape** (OQ 3, resolved in PR #1194): pinned in
+   `proto/holos/console/v1/deployments.proto`.
+
+#### PRs
+
+| Phase | Issue | PR |
+|-------|-------|-----|
+| 1 — CRD types | HOL-955 | [#1183](https://github.com/holos-run/holos-console/pull/1183) |
+| 2 — Admission policies | HOL-956 | [#1185](https://github.com/holos-run/holos-console/pull/1185) |
+| 3 — Deployment CRD (D1) | HOL-957 | [#1186](https://github.com/holos-run/holos-console/pull/1186) |
+| 4 — TemplateGrant validator | HOL-958 | [#1187](https://github.com/holos-run/holos-console/pull/1187) |
+| 5 — TemplateDependency reconciler | HOL-959 | [#1188](https://github.com/holos-run/holos-console/pull/1188) |
+| 6 — TemplateRequirement reconciler | HOL-960 | [#1189](https://github.com/holos-run/holos-console/pull/1189) |
+| 7 — RenderState dependencies | HOL-961 | [#1191](https://github.com/holos-run/holos-console/pull/1191) |
+| 8 — PreflightCheck RPC | HOL-962 | [#1194](https://github.com/holos-run/holos-console/pull/1194) |
+| 9 — UI dependency indicator | HOL-963 | [#1197](https://github.com/holos-run/holos-console/pull/1197) |
+| 10 — Example templates | HOL-983 | [#1193](https://github.com/holos-run/holos-console/pull/1193) |
+
 ### Removed — `/organizations/$orgName/resources` route and ResourceGrid consumer (HOL-938)
 
 - Deleted the org-scoped Resources page at

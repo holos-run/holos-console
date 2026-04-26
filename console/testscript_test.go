@@ -27,6 +27,17 @@ func TestScripts(t *testing.T) {
 		t.Skip("grpcurl not installed")
 	}
 
+	// Skip if the Deployment CRD (deployments.holos.run/v1alpha1) is absent.
+	// The controller manager primes the Deployment informer at startup (HOL-957)
+	// which fails hard when the CRD is not installed in the target cluster.
+	// This mirrors the existing grpcurl skip: the test is meaningful only when
+	// the full cluster stack is present.
+	if out, err := exec.Command(
+		"kubectl", "get", "crd", "deployments.deployments.holos.run",
+	).CombinedOutput(); err != nil {
+		t.Skipf("deployments.holos.run CRD not installed in cluster, skipping testscript server tests: %v\n%s", err, out)
+	}
+
 	testscript.Run(t, testscript.Params{
 		Dir: "testdata/scripts",
 		Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
