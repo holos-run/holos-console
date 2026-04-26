@@ -52,12 +52,21 @@ Three design choices needed explicit decisions before implementation:
 
 ### Option A: Scope = Project, Folder, and Organization namespaces
 
-Extend the mechanism at once to cover every hierarchy level that
-provisions a namespace on creation.
+Allow `TemplatePolicyBinding` objects to be placed in organization, folder,
+and project namespaces — covering every object type that provisions a
+namespace on creation. TemplatePolicy enforcement remains binding-only at
+each level; no cross-level propagation occurs.
+
+_Update (HOL-993): The original prose used "extend the mechanism to every
+hierarchy level" which could be read as implying TemplatePolicy cascades
+across levels. Clarified to binding-placement scope: a binding applies only
+where it is explicitly created. No ancestor-based propagation of policy
+enforcement was ever part of this design option._
 
 Pros:
 - Single feature request; no need for a follow-up.
-- Uniform semantics for all hierarchy-object creation events.
+- Uniform binding semantics for all object-creation events that provision a
+  namespace.
 
 Cons:
 - `CreateFolder` and `CreateOrganization` have different RBAC callers,
