@@ -44,6 +44,33 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
+// ReverseDependents is covered by its own unit test; stub it here so
+// deployment detail tests stay focused on deployment behavior.
+vi.mock('@/components/templates/ReverseDependents', () => ({
+  ReverseDependents: () => <div data-testid="reverse-dependents-stub" />,
+}))
+
+vi.mock('@/queries/templateDependencies', () => ({
+  useListTemplateDependents: vi.fn().mockReturnValue({
+    data: [],
+    isPending: false,
+    error: null,
+  }),
+  useListDeploymentDependents: vi.fn().mockReturnValue({
+    data: [],
+    isPending: false,
+    error: null,
+  }),
+}))
+
+vi.mock('@/lib/scope-labels', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/scope-labels')>()
+  return {
+    ...actual,
+    namespaceForProject: vi.fn((name: string) => `holos-prj-${name}`),
+  }
+})
+
 import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps, useGetDeploymentPolicyState, useGetDeploymentRenderPreview } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'

@@ -80,6 +80,25 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
+// ReverseDependents is covered by its own unit test; here we stub it so the
+// template editor tests stay focused on editor behaviour.
+vi.mock('@/components/templates/ReverseDependents', () => ({
+  ReverseDependents: () => <div data-testid="reverse-dependents-stub" />,
+}))
+
+vi.mock('@/queries/templateDependencies', () => ({
+  useListTemplateDependents: vi.fn().mockReturnValue({
+    data: [],
+    isPending: false,
+    error: null,
+  }),
+  useListDeploymentDependents: vi.fn().mockReturnValue({
+    data: [],
+    isPending: false,
+    error: null,
+  }),
+}))
+
 import {
   useGetTemplate,
   useUpdateTemplate,

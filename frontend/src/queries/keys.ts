@@ -87,6 +87,12 @@ export const keys = {
     get: (namespace: string, name: string) =>
       ['templatePolicyBindings', 'get', namespace, name] as const,
   },
+  templateDependencies: {
+    templateDependents: (namespace: string, name: string) =>
+      ['templateDependencies', 'templateDependents', namespace, name] as const,
+    deploymentDependents: (namespace: string, name: string) =>
+      ['templateDependencies', 'deploymentDependents', namespace, name] as const,
+  },
   templates: {
     list: (namespace: string) => ['templates', 'list', namespace] as const,
     get: (namespace: string, name: string) =>

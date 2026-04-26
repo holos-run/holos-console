@@ -44,6 +44,8 @@ import { isSafeHttpUrl } from '@/lib/url'
 import { PolicySection } from '@/components/policy-drift/PolicySection'
 import { SharedDependencyBadge } from '@/components/deployments/SharedDependencyBadge'
 import { CascadeDeleteToggle } from '@/components/deployments/CascadeDeleteToggle'
+import { ReverseDependents } from '@/components/templates/ReverseDependents'
+import { namespaceForProject } from '@/lib/scope-labels'
 
 type DeploymentTab = 'status' | 'logs' | 'preview'
 
@@ -672,6 +674,17 @@ export function DeploymentDetailPage({
                   ) : undefined
                 }
               />
+
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium">Dependents</h3>
+                <Separator />
+                <ReverseDependents
+                  kind="Deployment"
+                  namespace={namespaceForProject(projectName)}
+                  name={deploymentName}
+                  enabled={!!projectName && !!deploymentName}
+                />
+              </div>
 
               {deployment && deployment.env && deployment.env.length > 0 && (
                 <div className="space-y-4">

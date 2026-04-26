@@ -24,6 +24,7 @@ import type { TemplateExample, TemplateDefaults } from '@/queries/templates'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { TemplateExamplePicker } from '@/components/templates/template-example-picker'
 import { useProject } from '@/lib/project-context'
+import { ReverseDependents } from '@/components/templates/ReverseDependents'
 
 // templateDefaultsToCueInput converts a TemplateDefaults message into a CUE
 // input snippet suitable for pre-populating the Project Input textarea. Only
@@ -239,6 +240,20 @@ export function ConsolidatedTemplateEditorPage({
             isSaving={updateMutation.isPending}
             defaultProjectInput={templateDefaultsToCueInput(templateDefaults)}
             namespace={namespace}
+          />
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-sm font-medium">Dependents</h3>
+          <Separator />
+          <p className="text-xs text-muted-foreground">
+            Other templates and deployments that depend on this template.
+          </p>
+          <ReverseDependents
+            kind="Template"
+            namespace={namespace}
+            name={name}
+            enabled={!!namespace && !!name}
           />
         </div>
       </CardContent>

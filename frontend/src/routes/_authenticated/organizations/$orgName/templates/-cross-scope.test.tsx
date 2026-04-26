@@ -1,6 +1,7 @@
 import { render, screen, cleanup } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
+import React from 'react'
 
 // Parameterized test for HOL-607 AC: the consolidated editor must render the
 // same shape regardless of whether the template's namespace originates at the
@@ -81,6 +82,24 @@ vi.mock('@/lib/project-context', () => ({
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
+}))
+
+// ReverseDependents is covered by its own unit test.
+vi.mock('@/components/templates/ReverseDependents', () => ({
+  ReverseDependents: () => <div data-testid="reverse-dependents-stub" />,
+}))
+
+vi.mock('@/queries/templateDependencies', () => ({
+  useListTemplateDependents: vi.fn().mockReturnValue({
+    data: [],
+    isPending: false,
+    error: null,
+  }),
+  useListDeploymentDependents: vi.fn().mockReturnValue({
+    data: [],
+    isPending: false,
+    error: null,
+  }),
 }))
 
 import {
