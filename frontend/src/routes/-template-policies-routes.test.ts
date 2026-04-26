@@ -1,11 +1,12 @@
-// Route tree guard for HOL-558: TemplatePolicies must NEVER be mounted under
-// a project-scoped path. Per the ticket's "Storage isolation: folder-only
-// routes" note, policies live only at folder or organization scope.
+// Route tree guard for HOL-558 / HOL-978: TemplatePolicies must NEVER be
+// mounted under a project-scoped path. Per HOL-978 the folder-scoped routes
+// have been removed (folder hierarchy cut for MVP); policies now live only at
+// organization scope.
 //
 // This test reads the generated route tree and asserts:
 //   1. No path matching `/projects/.+/template-policies` exists.
-//   2. The folder and org template-policies trees are present (sanity check
-//      so a stray rename doesn't let the guard pass vacuously).
+//   2. No folder-scoped template-policies route exists (cut for MVP by HOL-978).
+//   3. The org-scoped template-policies tree is present (canonical replacement).
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -22,8 +23,8 @@ describe('TemplatePolicies route tree', () => {
     expect(source).not.toMatch(forbidden)
   })
 
-  it('includes folder-scoped template-policies route', () => {
-    expect(source).toMatch(/\/folders\/\$folderName\/template-policies/)
+  it('does not include folder-scoped template-policies route (cut for MVP by HOL-978)', () => {
+    expect(source).not.toMatch(/\/folders\/\$folderName\/template-policies/)
   })
 
   it('includes org-scoped template-policies route', () => {

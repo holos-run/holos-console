@@ -3,7 +3,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { TemplatePolicyBinding } from '@/queries/templatePolicyBindings'
-import { namespaceForOrg, namespaceForFolder } from '@/lib/scope-labels'
+import { namespaceForOrg } from '@/lib/scope-labels'
 
 /**
  * PolicyBindingsSection surfaces the TemplatePolicyBindings that attach the
@@ -13,36 +13,23 @@ import { namespaceForOrg, namespaceForFolder } from '@/lib/scope-labels'
  * (the glob Target fields on each rule were removed from the editor). The
  * section calls `useListTemplatePolicyBindings(scope)` at the policy's own
  * scope and filters client-side by the full `(scope, scope_name, name)`
- * triple on `policyRef`. Matching on the name alone would conflate a
- * folder-scope and an organization-scope policy that happen to share a
- * slug; the resolver's own policy key uses the same triple, so the UI
- * mirrors it to avoid pointing an operator at the wrong binding.
+ * triple on `policyRef`. Matching on the name alone would conflate policies
+ * that happen to share a slug; the resolver's own policy key uses the same
+ * triple, so the UI mirrors it to avoid pointing an operator at the wrong binding.
  */
-export type PolicyBindingsSectionProps =
-  | {
-      scopeType: 'organization'
-      orgName: string
-      policyName: string
-      bindings: TemplatePolicyBinding[]
-      isPending: boolean
-      error: Error | null
-    }
-  | {
-      scopeType: 'folder'
-      folderName: string
-      policyName: string
-      bindings: TemplatePolicyBinding[]
-      isPending: boolean
-      error: Error | null
-    }
+export type PolicyBindingsSectionProps = {
+  scopeType: 'organization'
+  orgName: string
+  policyName: string
+  bindings: TemplatePolicyBinding[]
+  isPending: boolean
+  error: Error | null
+}
 
 export function PolicyBindingsSection(props: PolicyBindingsSectionProps) {
   const { policyName, bindings, isPending, error } = props
 
-  const expectedNamespace =
-    props.scopeType === 'organization'
-      ? namespaceForOrg(props.orgName)
-      : namespaceForFolder(props.folderName)
+  const expectedNamespace = namespaceForOrg(props.orgName)
 
   const matched = bindings.filter((b) => {
     if (b.policyRef?.name !== policyName) return false
@@ -85,29 +72,16 @@ export function PolicyBindingsSection(props: PolicyBindingsSectionProps) {
         <ul className="space-y-2" data-testid="policy-bindings-list">
           {matched.map((binding) => (
             <li key={binding.name}>
-              {props.scopeType === 'organization' ? (
-                <Link
-                  to="/organizations/$orgName/template-bindings/$bindingName"
-                  params={{
-                    orgName: props.orgName,
-                    bindingName: binding.name,
-                  }}
-                  className="flex items-center gap-2 p-3 rounded-md hover:bg-muted transition-colors border border-border"
-                >
-                  <BindingRow binding={binding} />
-                </Link>
-              ) : (
-                <Link
-                  to="/folders/$folderName/template-policy-bindings/$bindingName"
-                  params={{
-                    folderName: props.folderName,
-                    bindingName: binding.name,
-                  }}
-                  className="flex items-center gap-2 p-3 rounded-md hover:bg-muted transition-colors border border-border"
-                >
-                  <BindingRow binding={binding} />
-                </Link>
-              )}
+              <Link
+                to="/organizations/$orgName/template-bindings/$bindingName"
+                params={{
+                  orgName: props.orgName,
+                  bindingName: binding.name,
+                }}
+                className="flex items-center gap-2 p-3 rounded-md hover:bg-muted transition-colors border border-border"
+              >
+                <BindingRow binding={binding} />
+              </Link>
             </li>
           ))}
         </ul>

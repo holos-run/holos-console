@@ -37,12 +37,6 @@ export const keys = {
   folders: {
     list: (organization: string, parentType?: number, parentName?: string) =>
       ['folders', 'list', organization, parentType, parentName] as const,
-    listScope: (organization: string) => ['folders', 'list', organization] as const,
-    get: (name: string, organization?: string) =>
-      ['folders', 'get', organization ?? '', name] as const,
-    getScope: () => ['folders', 'get'] as const,
-    raw: (organization: string | undefined, name: string) =>
-      ['folders', 'raw', organization ?? '', name] as const,
   },
   organizations: {
     list: () => ['organizations', 'list'] as const,
