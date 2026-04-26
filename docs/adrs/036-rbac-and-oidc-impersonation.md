@@ -166,11 +166,13 @@ This is the only model the codebase implements. Specifically:
   impersonated user and surface whatever Kubernetes returns. SSAR is an
   advisory-only optimization for the UI; it never substitutes for the real call.
 - A handler MUST NOT mix SSAR-as-gate with an in-process role check as a fallback.
-  If SSAR is unavailable (e.g. the user has no read access to
-  `selfsubjectaccessreviews`, which would be a misconfiguration), the handler
-  returns the `permissions` block with all `false` values; the UI hides the buttons,
-  and the user reaches the resource through direct URL navigation if they are
-  authorized.
+  Kubernetes grants `create` on `selfsubjectaccessreviews` to every authenticated
+  user via the default `system:basic-user` `ClusterRoleBinding`, so SSAR is
+  effectively always available. If a cluster operator has removed that default
+  binding (an unsupported configuration), the handler returns the `permissions`
+  block with all `false` values and surfaces the underlying error in logs;
+  authorized users can still reach the resource through direct URL navigation
+  because the optimistic action path always re-checks at the API server.
 - SSAR is batched per request: handlers issue at most one SSAR per `(resource,
   verb)` pair per row, and rows are evaluated in a single fan-out goroutine pool
   (size 8) to keep tail latency bounded. Phase 6
@@ -362,10 +364,16 @@ subjects:
     name: oidc:<sub-or-group>
 ```
 
-The `RoleBinding` name is `<role-purpose>-<u|g>-<base32-of-sha256(name)[0:10]>` —
-deterministic, lowercase, DNS-1123-compliant, and bounded to ≤ 63 chars. The hash
-is sufficient to disambiguate; the labels carry the human-readable subject for
-operator queries (`kubectl get rolebindings -l
+The `RoleBinding` name is `<role-purpose>-<u|g>-<base32-of-sha256(name)[0:10]>`,
+where `<role-purpose>` is the value of the `console.holos.run/role-purpose`
+label (`project-secrets` or `deployment-<deployment-name>`) and `<u|g>`
+indicates user vs. group. The result is deterministic, lowercase, and
+DNS-1123-compliant. The 10-char base32 (50 bits) of `sha256(subject-name)`
+collision-resists worst-case subject sets in a single project namespace. The
+helper truncates `<role-purpose>` if needed to keep the composed name ≤ 63
+characters (DNS-1123 label limit), preserving the hash suffix as the
+disambiguator. The labels carry the full human-readable subject for operator
+queries (`kubectl get rolebindings -l
 console.holos.run/share-target-name=alice@example.com`).
 
 Workers in subsequent phases generate the name by calling a single helper
@@ -550,5 +558,4 @@ Phase 1 closes every open question in the parent issue.
   in Decision 6.
 - [ADR 031](031-secret-injection-service.md) — secret-injector ServiceAccount and
   no-sensitive-on-CRs invariant referenced in Decision 5.
-- [ADR 033](033-render-state-crd.md) — RenderState contains no secret material;
-  referenced in Decision 6.2.
+- [ADR 033 — RenderState as a sibling CRD](033-render-state-crd.md) — RenderState contains no secret material; referenced in Decision 6.2. Colocated with `holos-console` (this repo).
