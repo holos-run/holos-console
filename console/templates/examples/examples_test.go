@@ -22,8 +22,8 @@ func TestExamples(t *testing.T) {
 		t.Fatalf("Examples() error: %v", err)
 	}
 
-	// There must be exactly six examples.
-	if got, want := len(list), 6; got != want {
+	// There must be exactly ten examples.
+	if got, want := len(list), 10; got != want {
 		t.Fatalf("Examples() returned %d examples, want %d", got, want)
 	}
 
@@ -40,6 +40,11 @@ func TestExamples(t *testing.T) {
 		"project-namespace-reference-grant-v1",
 		"httpbin-v1",
 		"podinfo-v1",
+		// ADR 032 scope examples (HOL-983).
+		"valkey-v1",
+		"shared-configmap-v1",
+		"httproute-with-grant-v1",
+		"all-scopes-v1",
 	}
 	for _, name := range wantNames {
 		ex, ok := byName[name]
@@ -129,7 +134,9 @@ func buildPreviewProjectInput() string {
 // concrete objects, so they are excluded from the non-empty output assertion.
 func exampleResourcesEmitted(name string) bool {
 	switch name {
-	case "httproute-v1", "httpbin-v1", "podinfo-v1":
+	case "httproute-v1", "httpbin-v1", "podinfo-v1",
+		// ADR 032 scope examples (HOL-983): all produce concrete K8s resources.
+		"valkey-v1", "shared-configmap-v1", "httproute-with-grant-v1", "all-scopes-v1":
 		return true
 	default:
 		// Policy-only examples produce no concrete K8s resources but must still
@@ -313,4 +320,160 @@ func TestExamplePreviewRender_KnownExamples(t *testing.T) {
 			}
 		})
 	}
+
+	// ADR 032 scope examples (HOL-983): regression guards for each new scope example.
+
+	t.Run("valkey-v1", func(t *testing.T) {
+		// Scope A (instance): Valkey cache — same-namespace TemplateDependency.
+		ex, ok := byName["valkey-v1"]
+		if !ok {
+			t.Fatal("valkey-v1 example not found in registry")
+		}
+		grouped, err := adapter.RenderGrouped(
+			context.Background(),
+			ex.CueTemplate,
+			cuePlatformInput,
+			cueProjectInput,
+		)
+		if err != nil {
+			t.Fatalf("valkey-v1: RenderGrouped failed: %v", err)
+		}
+		var projectYAML strings.Builder
+		for _, r := range grouped.Project {
+			projectYAML.WriteString(r.YAML)
+		}
+		yaml := projectYAML.String()
+		if yaml == "" {
+			t.Error("valkey-v1: expected non-empty project_resources_yaml")
+		}
+		for _, kind := range []string{"kind: ServiceAccount", "kind: Deployment", "kind: Service"} {
+			if !strings.Contains(yaml, kind) {
+				t.Errorf("valkey-v1: project_resources_yaml must contain %q, got:\n%s", kind, yaml)
+			}
+		}
+		// Valkey Service must use the "valkey" named port (port number may be
+		// overridden by the preview project input seed, so check the name).
+		if !strings.Contains(yaml, "name: valkey") {
+			t.Errorf("valkey-v1: project_resources_yaml must use named port 'valkey', got:\n%s", yaml)
+		}
+		if len(grouped.Platform) > 0 {
+			t.Errorf("valkey-v1: expected empty platform resources, got %d", len(grouped.Platform))
+		}
+	})
+
+	t.Run("shared-configmap-v1", func(t *testing.T) {
+		// Scope B (project): shared ConfigMap mandated by TemplateRequirement.
+		ex, ok := byName["shared-configmap-v1"]
+		if !ok {
+			t.Fatal("shared-configmap-v1 example not found in registry")
+		}
+		grouped, err := adapter.RenderGrouped(
+			context.Background(),
+			ex.CueTemplate,
+			cuePlatformInput,
+			cueProjectInput,
+		)
+		if err != nil {
+			t.Fatalf("shared-configmap-v1: RenderGrouped failed: %v", err)
+		}
+		var projectYAML strings.Builder
+		for _, r := range grouped.Project {
+			projectYAML.WriteString(r.YAML)
+		}
+		yaml := projectYAML.String()
+		if yaml == "" {
+			t.Error("shared-configmap-v1: expected non-empty project_resources_yaml")
+		}
+		if !strings.Contains(yaml, "kind: ConfigMap") {
+			t.Errorf("shared-configmap-v1: project_resources_yaml must contain 'kind: ConfigMap', got:\n%s", yaml)
+		}
+		if !strings.Contains(yaml, "apiVersion: v1") {
+			t.Errorf("shared-configmap-v1: project_resources_yaml must contain 'apiVersion: v1', got:\n%s", yaml)
+		}
+		// ConfigMap data must reference the gateway namespace (platform input).
+		if !strings.Contains(yaml, deployments.DefaultGatewayNamespace) {
+			t.Errorf("shared-configmap-v1: project_resources_yaml must reference gatewayNamespace %q, got:\n%s",
+				deployments.DefaultGatewayNamespace, yaml)
+		}
+	})
+
+	t.Run("httproute-with-grant-v1", func(t *testing.T) {
+		// Scope C (remote-project): HTTPRoute in gateway namespace with TemplateGrant wiring.
+		ex, ok := byName["httproute-with-grant-v1"]
+		if !ok {
+			t.Fatal("httproute-with-grant-v1 example not found in registry")
+		}
+		grouped, err := adapter.RenderGrouped(
+			context.Background(),
+			ex.CueTemplate,
+			cuePlatformInput,
+			cueProjectInput,
+		)
+		if err != nil {
+			t.Fatalf("httproute-with-grant-v1: RenderGrouped failed: %v", err)
+		}
+		var platformYAML strings.Builder
+		for _, r := range grouped.Platform {
+			platformYAML.WriteString(r.YAML)
+		}
+		yaml := platformYAML.String()
+		if yaml == "" {
+			t.Error("httproute-with-grant-v1: expected non-empty platform_resources_yaml")
+		}
+		if !strings.Contains(yaml, "kind: HTTPRoute") {
+			t.Errorf("httproute-with-grant-v1: platform_resources_yaml must contain 'kind: HTTPRoute', got:\n%s", yaml)
+		}
+		if !strings.Contains(yaml, "apiVersion: gateway.networking.k8s.io/v1") {
+			t.Errorf("httproute-with-grant-v1: must use apiVersion 'gateway.networking.k8s.io/v1', got:\n%s", yaml)
+		}
+		if !strings.Contains(yaml, deployments.DefaultGatewayNamespace) {
+			t.Errorf("httproute-with-grant-v1: must reference gatewayNamespace %q, got:\n%s",
+				deployments.DefaultGatewayNamespace, yaml)
+		}
+		// Scope C annotation must be present to document the dependency scope.
+		if !strings.Contains(yaml, "remote-project") {
+			t.Errorf("httproute-with-grant-v1: must annotate dependency-scope 'remote-project', got:\n%s", yaml)
+		}
+		if grouped.Project != nil && len(grouped.Project) > 0 {
+			t.Errorf("httproute-with-grant-v1: expected empty project resources for platform-only template, got %d", len(grouped.Project))
+		}
+	})
+
+	t.Run("all-scopes-v1", func(t *testing.T) {
+		// All three scopes: composite example exercising A + B + C.
+		ex, ok := byName["all-scopes-v1"]
+		if !ok {
+			t.Fatal("all-scopes-v1 example not found in registry")
+		}
+		grouped, err := adapter.RenderGrouped(
+			context.Background(),
+			ex.CueTemplate,
+			cuePlatformInput,
+			cueProjectInput,
+		)
+		if err != nil {
+			t.Fatalf("all-scopes-v1: RenderGrouped failed: %v", err)
+		}
+		var projectYAML strings.Builder
+		for _, r := range grouped.Project {
+			projectYAML.WriteString(r.YAML)
+		}
+		yaml := projectYAML.String()
+		if yaml == "" {
+			t.Error("all-scopes-v1: expected non-empty project_resources_yaml")
+		}
+		for _, kind := range []string{"kind: ServiceAccount", "kind: Deployment", "kind: Service"} {
+			if !strings.Contains(yaml, kind) {
+				t.Errorf("all-scopes-v1: project_resources_yaml must contain %q, got:\n%s", kind, yaml)
+			}
+		}
+		// Scope A: Valkey address must appear in the Deployment env.
+		if !strings.Contains(yaml, "VALKEY_ADDR") {
+			t.Errorf("all-scopes-v1: project_resources_yaml must contain VALKEY_ADDR env var (Scope A), got:\n%s", yaml)
+		}
+		// Scope B: shared ConfigMap key reference must appear.
+		if !strings.Contains(yaml, "platform-config") {
+			t.Errorf("all-scopes-v1: project_resources_yaml must reference platform-config ConfigMap (Scope B), got:\n%s", yaml)
+		}
+	})
 }
