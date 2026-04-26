@@ -1,7 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { createClient } from '@connectrpc/connect'
-import { useTransport } from '@connectrpc/connect-query'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,8 +19,7 @@ import { SecretDataGrid } from '@/components/secret-data-grid'
 import { RawView } from '@/components/raw-view'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { isSafeUrl } from '@/lib/utils'
-import { useGetSecret, useGetSecretMetadata, useUpdateSecret, useUpdateSecretSharing, useDeleteSecret } from '@/queries/secrets'
-import { SecretsService } from '@/gen/holos/console/v1/secrets_pb.js'
+import { useGetSecret, useGetSecretMetadata, useGetSecretRaw, useUpdateSecret, useUpdateSecretSharing, useDeleteSecret } from '@/queries/secrets'
 import type { ShareGrant } from '@/gen/holos/console/v1/secrets_pb.js'
 import { isOwner as computeIsOwner } from '@/lib/isOwner'
 
@@ -44,7 +41,6 @@ export function SecretPage() {
   const { projectName, name } = Route.useParams()
   const navigate = useNavigate()
   const { user, isAuthenticated, isLoading: authLoading } = useAuth()
-  const transport = useTransport()
 
   const { data: fetchedData, isLoading: dataLoading, error: dataError } = useGetSecret(projectName, name)
   const { data: metadata, isLoading: metaLoading } = useGetSecretMetadata(projectName, name)
@@ -52,8 +48,6 @@ export function SecretPage() {
   const updateMutation = useUpdateSecret(projectName)
   const updateSharingMutation = useUpdateSecretSharing(projectName)
   const deleteMutation = useDeleteSecret(projectName)
-
-  const secretsClient = useMemo(() => createClient(SecretsService, transport), [transport])
 
   const [secretData, setSecretData] = useState<Record<string, Uint8Array> | null>(null)
   const [description, setDescription] = useState<string | null>(null)
@@ -71,9 +65,12 @@ export function SecretPage() {
   // View mode
   const [editMode, setEditMode] = useState(false)
   const [viewMode, setViewMode] = useState<'editor' | 'raw'>('editor')
-  const [rawJson, setRawJson] = useState<string | null>(null)
-  const [rawError, setRawError] = useState<Error | null>(null)
+  // rawEnabled gates the useGetSecretRaw query so the RPC is not issued on
+  // initial mount — only when the user explicitly switches to the Raw view.
+  const [rawEnabled, setRawEnabled] = useState(false)
   const [includeAllFields, setIncludeAllFields] = useState(false)
+
+  const { data: rawJson, error: rawQueryError } = useGetSecretRaw(projectName, name, rawEnabled)
 
   // Delete
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -134,15 +131,11 @@ export function SecretPage() {
     }
   }
 
-  const handleViewModeChange = async (newMode: string) => {
+  const handleViewModeChange = (newMode: string) => {
     setViewMode(newMode as 'editor' | 'raw')
-    if (newMode === 'raw' && rawJson === null) {
-      try {
-        const response = await secretsClient.getSecretRaw({ name, project: projectName })
-        setRawJson(response.raw)
-      } catch (err) {
-        setRawError(err instanceof Error ? err : new Error(String(err)))
-      }
+    if (newMode === 'raw') {
+      // Enable the raw query on first switch; subsequent switches reuse the cache.
+      setRawEnabled(true)
     }
   }
 
@@ -159,7 +152,9 @@ export function SecretPage() {
       setOriginalDataSerialized(serializeData(effectiveData))
       setOriginalDescription(effectiveDescription)
       setOriginalUrl(effectiveUrl)
-      setRawJson(null)
+      // Invalidate the raw cache by disabling the query; re-enabling it on the
+      // next Raw view switch will fetch fresh data.
+      setRawEnabled(false)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err))
     }
@@ -197,7 +192,7 @@ export function SecretPage() {
     )
   }
 
-  const displayError = dataError || rawError
+  const displayError = dataError || rawQueryError
   if (displayError) {
     const msg = displayError.message.toLowerCase()
     let displayMessage = displayError.message
@@ -335,7 +330,7 @@ export function SecretPage() {
           </>
         )}
 
-        {viewMode === 'raw' && rawJson && (
+        {viewMode === 'raw' && rawJson !== undefined && (
           <RawView raw={rawJson} includeAllFields={includeAllFields} onToggleIncludeAllFields={() => setIncludeAllFields((p) => !p)} />
         )}
 

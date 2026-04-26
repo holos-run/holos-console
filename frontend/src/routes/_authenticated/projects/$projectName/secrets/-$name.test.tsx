@@ -17,6 +17,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
 vi.mock('@/queries/secrets', () => ({
   useGetSecret: vi.fn(),
   useGetSecretMetadata: vi.fn(),
+  useGetSecretRaw: vi.fn(),
   useUpdateSecret: vi.fn(),
   useUpdateSecretSharing: vi.fn(),
   useDeleteSecret: vi.fn(),
@@ -24,10 +25,7 @@ vi.mock('@/queries/secrets', () => ({
 
 vi.mock('@/lib/auth', () => ({ useAuth: vi.fn() }))
 
-vi.mock('@connectrpc/connect-query', () => ({ useTransport: vi.fn() }))
-vi.mock('@connectrpc/connect', () => ({ createClient: vi.fn(() => ({})) }))
-
-import { useGetSecret, useGetSecretMetadata, useUpdateSecret, useUpdateSecretSharing, useDeleteSecret } from '@/queries/secrets'
+import { useGetSecret, useGetSecretMetadata, useGetSecretRaw, useUpdateSecret, useUpdateSecretSharing, useDeleteSecret } from '@/queries/secrets'
 import { useAuth } from '@/lib/auth'
 import { SecretPage } from './$name'
 
@@ -48,6 +46,13 @@ function setupMocks(overrides: { metadata?: typeof mockMetadata; isOwner?: boole
   })
   ;(useGetSecretMetadata as Mock).mockReturnValue({
     data: metadata,
+    isLoading: false,
+  })
+  // Raw query is disabled by default on initial mount; returns no data until
+  // the user switches to the Raw view tab.
+  ;(useGetSecretRaw as Mock).mockReturnValue({
+    data: undefined,
+    error: null,
     isLoading: false,
   })
   ;(useUpdateSecret as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
@@ -112,5 +117,21 @@ describe('SecretPage sharing panel', () => {
     })
     render(<SecretPage />)
     expect(screen.getByText(/no sharing grants/i)).toBeInTheDocument()
+  })
+
+  it('does not call useGetSecretRaw on initial mount (no auth refresh on row click)', () => {
+    // The detail page must NOT trigger the raw-secret RPC when it first mounts.
+    // Calling createClient/useTransport directly in a component body was the
+    // root cause of the spurious auth-refresh bug. The refactored page gates
+    // the query behind rawEnabled=false until the user explicitly clicks "Raw".
+    // This test asserts the hook was called with enabled=false on mount so the
+    // network request is never issued during normal list→detail navigation.
+    setupMocks()
+    render(<SecretPage />)
+    expect(useGetSecretRaw).toHaveBeenCalledWith(
+      'test-project',
+      'test-secret',
+      false, // enabled must be false on initial mount
+    )
   })
 })

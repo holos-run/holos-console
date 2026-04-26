@@ -97,8 +97,8 @@ export function SecretCreatePage({ projectName }: { projectName: string }) {
         url: url.trim() || undefined,
       })
       await navigate({
-        to: '/projects/$projectName/secrets',
-        params: { projectName },
+        to: '/projects/$projectName/secrets/$name',
+        params: { projectName, name: name.trim() },
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

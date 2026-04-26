@@ -12,6 +12,7 @@ import { keys } from '@/queries/keys'
 import {
   useCreateSecret,
   useDeleteSecret,
+  useGetSecretRaw,
   useListSecrets,
   useUpdateSecret,
   useUpdateSecretSharing,
@@ -170,6 +171,53 @@ describe('secret mutation invalidation', () => {
     })
 
     expectSecretInvalidation(invalidateSpy, 'demo-project', 'api-key')
+  })
+})
+
+describe('useGetSecretRaw', () => {
+  let queryClient: QueryClient
+  let mockClient: Record<string, Mock>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    mockClient = {
+      getSecretRaw: vi.fn().mockResolvedValue({ raw: '{"kind":"Secret"}' }),
+    }
+    ;(createClient as Mock).mockReturnValue(mockClient)
+    ;(useTransport as Mock).mockReturnValue({})
+    ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true })
+  })
+
+  it('does not issue the RPC when enabled=false (no auth refresh on mount)', async () => {
+    // The hook must be disabled on initial mount so navigating to the detail
+    // page does not trigger getSecretRaw — the root cause of the spurious auth
+    // refresh bug. The RPC is only issued after the user switches to Raw view.
+    const { result } = renderHook(
+      () => useGetSecretRaw('demo-project', 'api-key', false),
+      { wrapper: makeWrapper(queryClient) },
+    )
+
+    // Query should remain idle (not even pending)
+    expect(result.current.data).toBeUndefined()
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(mockClient.getSecretRaw).not.toHaveBeenCalled()
+  })
+
+  it('uses the canonical raw key factory and fetches when enabled=true', async () => {
+    const { result } = renderHook(
+      () => useGetSecretRaw('demo-project', 'api-key', true),
+      { wrapper: makeWrapper(queryClient) },
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toBe('{"kind":"Secret"}')
+
+    const matches = queryClient.getQueryCache().findAll({
+      queryKey: keys.secrets.raw('demo-project', 'api-key'),
+    })
+    expect(matches).toHaveLength(1)
+    expect(matches[0]?.queryKey).toEqual(keys.secrets.raw('demo-project', 'api-key'))
   })
 })
 
