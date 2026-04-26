@@ -35,6 +35,12 @@
 // very binding the platform meant to constrain them with (HOL-554).
 #ResourceTypeTemplatePolicyBinding: "template-policy-binding"
 
+// ResourceTypeTemplateRequirement is the resource type label value for
+// TemplateRequirement CRDs. Requirements live only in organization or
+// folder namespaces and gate matching project templates or deployments on
+// a prerequisite template.
+#ResourceTypeTemplateRequirement: "template-requirement"
+
 // Annotations.
 #AnnotationDisplayName:  "console.holos.run/display-name"
 #AnnotationDescription:  "console.holos.run/description"

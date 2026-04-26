@@ -50,6 +50,7 @@ import (
 	"github.com/holos-run/holos-console/console/templatedependencies"
 	"github.com/holos-run/holos-console/console/templatepolicies"
 	"github.com/holos-run/holos-console/console/templatepolicybindings"
+	"github.com/holos-run/holos-console/console/templaterequirements"
 	"github.com/holos-run/holos-console/console/templates"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 	controllermgr "github.com/holos-run/holos-console/internal/controller"
@@ -547,6 +548,15 @@ func (s *Server) Serve(ctx context.Context) error {
 		templateDependenciesPath, templateDependenciesHTTPHandler := consolev1connect.NewTemplateDependencyServiceHandler(templateDependenciesHandler, protectedInterceptors)
 		mux.Handle(templateDependenciesPath, templateDependenciesHTTPHandler)
 
+		// TemplateRequirementService handler manages organization/folder scoped
+		// TemplateRequirement CRDs used by ADR 032 dependency materialisation.
+		templateRequirementsK8s := templaterequirements.NewK8sClient(templateCtrlClient)
+		templateRequirementsHandler := templaterequirements.NewHandler(templateRequirementsK8s, nsResolver).
+			WithOrgGrantResolver(orgGrantResolver).
+			WithFolderGrantResolver(folderGrantResolver)
+		templateRequirementsPath, templateRequirementsHTTPHandler := consolev1connect.NewTemplateRequirementServiceHandler(templateRequirementsHandler, protectedInterceptors)
+		mux.Handle(templateRequirementsPath, templateRequirementsHTTPHandler)
+
 		// TemplatePolicyService handler — manages REQUIRE/EXCLUDE policies at
 		// organization and folder scopes (HOL-556). Project scope is rejected:
 		// a project owner has write access to the project namespace, so any
@@ -666,6 +676,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		consolev1connect.ProjectSettingsServiceName,
 		consolev1connect.TemplateServiceName,
 		consolev1connect.TemplateDependencyServiceName,
+		consolev1connect.TemplateRequirementServiceName,
 		consolev1connect.TemplatePolicyServiceName,
 		consolev1connect.TemplatePolicyBindingServiceName,
 		consolev1connect.FolderServiceName,
