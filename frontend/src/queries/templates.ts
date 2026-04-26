@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { create } from '@bufbuild/protobuf'
 import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
 import {
@@ -11,11 +10,9 @@ import {
 } from '@tanstack/react-query'
 import {
   TemplateService,
-  ReleaseSchema,
 } from '@/gen/holos/console/v1/templates_pb.js'
 import type {
   LinkableTemplate,
-  Release,
   Template,
   TemplateExample,
   TemplateDefaults,
@@ -40,7 +37,6 @@ import { keys } from '@/queries/keys'
 // Re-export generated types used by consumers.
 export type {
   LinkableTemplate,
-  Release,
   TemplateExample,
   TemplateDefaults,
 }
@@ -401,67 +397,6 @@ export function useListLinkableTemplates(
       return response.templates
     },
     enabled: isAuthenticated && !!namespace,
-  })
-}
-
-// --- Release hooks ---
-
-export function useListReleases(namespace: string, templateName: string) {
-  const { isAuthenticated } = useAuth()
-  const transport = useTransport()
-  const client = useMemo(() => createClient(TemplateService, transport), [transport])
-  return useQuery({
-    queryKey: keys.releases.list(namespace, templateName),
-    queryFn: async () => {
-      const response = await client.listReleases({ namespace, templateName })
-      return response.releases
-    },
-    enabled: isAuthenticated && !!namespace && !!templateName,
-  })
-}
-
-export function useGetRelease(namespace: string, templateName: string, version: string) {
-  const { isAuthenticated } = useAuth()
-  const transport = useTransport()
-  const client = useMemo(() => createClient(TemplateService, transport), [transport])
-  return useQuery({
-    queryKey: keys.releases.get(namespace, templateName, version),
-    queryFn: async () => {
-      const response = await client.getRelease({ namespace, templateName, version })
-      return response.release
-    },
-    enabled: isAuthenticated && !!namespace && !!templateName && !!version,
-  })
-}
-
-export function useCreateRelease(namespace: string, templateName: string) {
-  const transport = useTransport()
-  const client = useMemo(() => createClient(TemplateService, transport), [transport])
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (params: {
-      version: string
-      changelog: string
-      upgradeAdvice?: string
-      cueTemplate: string
-      defaults?: Release['defaults']
-    }) => {
-      return client.createRelease({
-        namespace,
-        release: create(ReleaseSchema, {
-          templateName,
-          namespace,
-          version: params.version,
-          changelog: params.changelog,
-          upgradeAdvice: params.upgradeAdvice ?? '',
-          cueTemplate: params.cueTemplate,
-          defaults: params.defaults,
-        }),
-      })
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: keys.releases.list(namespace, templateName) })
-    },
   })
 }
 

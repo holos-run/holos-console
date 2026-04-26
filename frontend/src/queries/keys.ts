@@ -55,12 +55,6 @@ export const keys = {
     ) => ['projects', 'listByParent', organization, parentType, parentName] as const,
     get: (name: string) => keys.connect.getProject(name),
   },
-  releases: {
-    list: (namespace: string, templateName: string) =>
-      ['releases', 'list', namespace, templateName] as const,
-    get: (namespace: string, templateName: string, version: string) =>
-      ['releases', 'get', namespace, templateName, version] as const,
-  },
   secrets: {
     list: (project: string) => ['secrets', 'list', project] as const,
     get: (project: string, name: string) =>
