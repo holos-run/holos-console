@@ -87,11 +87,24 @@ export function AppSidebar() {
     {
       label: 'Templates',
       icon: LayoutTemplate,
-      href: hasProject ? `/projects/${selectedProject}/templates` : '#',
-      to: '/projects/$projectName/templates',
-      params: hasProject ? { projectName: selectedProject! } : undefined,
-      disabled: !hasProject,
-      disabledReason: 'Select a project to view Templates',
+      // When an org is selected, link to the unified org-level surface
+      // (Templates + Policies + Bindings). Fall back to the project-scoped
+      // page if a project but no org is selected, or disable if neither.
+      href: hasOrg
+        ? `/organizations/${selectedOrg}/templates`
+        : hasProject
+          ? `/projects/${selectedProject}/templates`
+          : '#',
+      to: hasOrg
+        ? '/organizations/$orgName/templates'
+        : '/projects/$projectName/templates',
+      params: hasOrg
+        ? { orgName: selectedOrg! }
+        : hasProject
+          ? { projectName: selectedProject! }
+          : undefined,
+      disabled: !hasOrg && !hasProject,
+      disabledReason: 'Select an organization to view Templates',
     },
   ]
 

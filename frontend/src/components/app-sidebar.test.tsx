@@ -379,11 +379,13 @@ describe('AppSidebar — nav links when a project is selected', () => {
     ).toBe('/projects/my-project/deployments')
   })
 
-  it('Templates link resolves to the correct project-scoped URL', () => {
+  it('Templates link resolves to the org-scoped unified surface URL when an org is selected (HOL-1006)', () => {
     render(<AppSidebar />)
+    // When an org is selected, Templates navigates to the unified org-level
+    // surface (Templates + Policies + Bindings) regardless of project selection.
     expect(
       screen.getByRole('link', { name: /^templates$/i }).getAttribute('href'),
-    ).toBe('/projects/my-project/templates')
+    ).toBe('/organizations/my-org/templates')
   })
 
   it('no disabled buttons when org and project are selected', () => {

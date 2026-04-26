@@ -5,6 +5,7 @@ import { useTransport } from '@connectrpc/connect-query'
 import {
   keepPreviousData,
   useQuery,
+  useQueries,
   useMutation,
   useQueryClient,
   type QueryClient,
@@ -20,6 +21,14 @@ import type {
   LinkedTemplatePolicyRef,
 } from '@/gen/holos/console/v1/template_policy_bindings_pb.js'
 import { useAuth } from '@/lib/auth'
+import { useListFolders } from '@/queries/folders'
+import type { Folder } from '@/gen/holos/console/v1/folders_pb.js'
+import { namespaceForFolder, namespaceForOrg } from '@/lib/scope-labels'
+import {
+  aggregateFanOut,
+  type FanOutAggregate,
+  type FanOutQueryState,
+} from '@/queries/templatePolicies'
 import { keys } from '@/queries/keys'
 
 // WILDCARD is the sentinel value that matches any resource name or project
@@ -86,6 +95,86 @@ export function invalidateDeploymentPreviews(
 // Re-export generated types/enums used by UI consumers.
 export type { TemplatePolicyBinding, TemplatePolicyBindingTargetRef, LinkedTemplatePolicyRef }
 export { TemplatePolicyBindingTargetKind }
+
+// Module-level sentinel so the `folders` useMemo fallback preserves reference
+// identity across renders when the folders list is still pending or empty.
+const EMPTY_FOLDERS: readonly Folder[] = []
+
+// useAllTemplatePolicyBindingsForOrg fans a ListTemplatePolicyBindings call
+// across every namespace reachable from an organization root — the org namespace
+// plus one namespace per folder visible to the caller — and flattens the results
+// into one array. Re-introduced for HOL-1006 to power the unified four-facet
+// Templates surface (Templates | Policies | Bindings) at the org-level
+// templates index. TemplatePolicyBindings do not exist at project scope, so
+// only org and folder namespaces are queried.
+//
+// See aggregateFanOut (from templatePolicies.ts) for the exact pending / error
+// semantics.
+export function useAllTemplatePolicyBindingsForOrg(
+  orgName: string,
+): FanOutAggregate<TemplatePolicyBinding> {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(
+    () => createClient(TemplatePolicyBindingService, transport),
+    [transport],
+  )
+  const orgNamespace = namespaceForOrg(orgName)
+  const foldersQuery = useListFolders(orgName)
+  const folders = useMemo(
+    () => foldersQuery.data ?? EMPTY_FOLDERS,
+    [foldersQuery.data],
+  )
+
+  const folderQueries = useQueries({
+    queries: folders.map((folder) => ({
+      queryKey: keys.templatePolicyBindings.list(namespaceForFolder(folder.name)),
+      queryFn: async (): Promise<TemplatePolicyBinding[]> => {
+        const response = await client.listTemplatePolicyBindings({
+          namespace: namespaceForFolder(folder.name),
+        })
+        return response.bindings
+      },
+      enabled: isAuthenticated && !!folder.name,
+    })),
+  })
+
+  const orgQuery = useQuery({
+    queryKey: keys.templatePolicyBindings.list(orgNamespace),
+    queryFn: async () => {
+      const response = await client.listTemplatePolicyBindings({
+        namespace: orgNamespace,
+      })
+      return response.bindings
+    },
+    enabled: isAuthenticated && !!orgNamespace,
+  })
+
+  // Model the folders-list query as one more input to aggregateFanOut so
+  // pending folders postpone the aggregate and folders errors surface inline.
+  const foldersAsQuery: FanOutQueryState<TemplatePolicyBinding[]> = {
+    data: foldersQuery.data === undefined ? undefined : [],
+    error: foldersQuery.error,
+    isPending: foldersQuery.isPending,
+    fetchStatus: foldersQuery.fetchStatus,
+  }
+
+  return aggregateFanOut<TemplatePolicyBinding>([
+    foldersAsQuery,
+    {
+      data: orgQuery.data,
+      error: orgQuery.error,
+      isPending: orgQuery.isPending,
+      fetchStatus: orgQuery.fetchStatus,
+    },
+    ...folderQueries.map((q) => ({
+      data: q.data,
+      error: q.error,
+      isPending: q.isPending,
+      fetchStatus: q.fetchStatus,
+    })),
+  ])
+}
 
 // useListTemplatePolicyBindings fetches all bindings visible within a namespace.
 // Mirrors the shape of useListTemplatePolicies in queries/templatePolicies.ts.

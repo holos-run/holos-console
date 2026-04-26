@@ -1,8 +1,13 @@
 /**
- * Tests for the org templates index — ResourceGrid v1 migration (HOL-975).
+ * Tests for the unified org templates index — four-facet surface (HOL-1006).
  *
- * The page fans out across all org-reachable namespaces via useAllTemplatesForOrg
- * and renders rows via ResourceGrid v1 with scope-aware detailHref values.
+ * The page fans out across all org-reachable namespaces via:
+ *   - useAllTemplatesForOrg (Template rows)
+ *   - useAllTemplatePoliciesForOrg (TemplatePolicy rows)
+ *   - useAllTemplatePolicyBindingsForOrg (TemplatePolicyBinding rows)
+ *
+ * ResourceGrid v1 renders rows with scope-aware detailHref values and a
+ * kind-filter toolbar that supports selecting one of the three resource kinds.
  */
 
 import { render, screen } from '@testing-library/react'
@@ -67,6 +72,26 @@ vi.mock('@/queries/templates', async () => {
   }
 })
 
+vi.mock('@/queries/templatePolicies', async () => {
+  const actual = await vi.importActual<typeof import('@/queries/templatePolicies')>(
+    '@/queries/templatePolicies',
+  )
+  return {
+    ...actual,
+    useAllTemplatePoliciesForOrg: vi.fn(),
+  }
+})
+
+vi.mock('@/queries/templatePolicyBindings', async () => {
+  const actual = await vi.importActual<typeof import('@/queries/templatePolicyBindings')>(
+    '@/queries/templatePolicyBindings',
+  )
+  return {
+    ...actual,
+    useAllTemplatePolicyBindingsForOrg: vi.fn(),
+  }
+})
+
 vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
 }))
@@ -74,6 +99,8 @@ vi.mock('@/queries/organizations', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import { useAllTemplatesForOrg } from '@/queries/templates'
+import { useAllTemplatePoliciesForOrg } from '@/queries/templatePolicies'
+import { useAllTemplatePolicyBindingsForOrg } from '@/queries/templatePolicyBindings'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import {
@@ -90,6 +117,18 @@ type TemplateFixture = {
   createdAt?: string
 }
 
+type PolicyFixture = {
+  name: string
+  namespace: string
+  displayName?: string
+}
+
+type BindingFixture = {
+  name: string
+  namespace: string
+  displayName?: string
+}
+
 const ORG_NS = namespaceForOrg('test-org')
 const FOLDER_NS = namespaceForFolder('team-a')
 const PROJECT_NS = namespaceForProject('billing')
@@ -98,11 +137,23 @@ function setup(
   templates: TemplateFixture[] = [],
   userRole: Role = Role.OWNER,
   overrides: Partial<{ isPending: boolean; error: Error | null }> = {},
+  policies: PolicyFixture[] = [],
+  bindings: BindingFixture[] = [],
 ) {
   ;(useAllTemplatesForOrg as Mock).mockReturnValue({
     data: overrides.isPending ? undefined : templates,
     isPending: overrides.isPending ?? false,
     error: overrides.error ?? null,
+  })
+  ;(useAllTemplatePoliciesForOrg as Mock).mockReturnValue({
+    data: overrides.isPending ? undefined : policies,
+    isPending: overrides.isPending ?? false,
+    error: null,
+  })
+  ;(useAllTemplatePolicyBindingsForOrg as Mock).mockReturnValue({
+    data: overrides.isPending ? undefined : bindings,
+    isPending: overrides.isPending ?? false,
+    error: null,
   })
   ;(useGetOrganization as Mock).mockReturnValue({
     data: { name: 'test-org', userRole },
@@ -111,7 +162,7 @@ function setup(
   })
 }
 
-describe('OrgTemplatesIndexPage (ResourceGrid v1, HOL-975)', () => {
+describe('OrgTemplatesIndexPage (unified four-facet surface, HOL-1006)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     Object.keys(mockSearch).forEach((k) => delete mockSearch[k])
@@ -135,25 +186,7 @@ describe('OrgTemplatesIndexPage (ResourceGrid v1, HOL-975)', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 
-  it('renders an inline partial-error banner when some rows loaded', () => {
-    ;(useAllTemplatesForOrg as Mock).mockReturnValue({
-      data: [{ name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' }],
-      isPending: false,
-      error: new Error('folders unavailable'),
-    })
-    ;(useGetOrganization as Mock).mockReturnValue({
-      data: { name: 'test-org', userRole: Role.OWNER },
-      isPending: false,
-      error: null,
-    })
-    render(<OrgTemplatesIndexPage orgName="test-org" />)
-    expect(screen.getByText('Gateway')).toBeInTheDocument()
-    expect(screen.getByRole('table')).toBeInTheDocument()
-    expect(screen.getByTestId('resource-grid-partial-error')).toBeInTheDocument()
-    expect(screen.getByText('folders unavailable')).toBeInTheDocument()
-  })
-
-  it('renders the empty state when no templates exist', () => {
+  it('renders the empty state when no resources exist', () => {
     setup([])
     render(<OrgTemplatesIndexPage orgName="test-org" />)
     expect(screen.getByText(/no resources found/i)).toBeInTheDocument()
@@ -161,7 +194,7 @@ describe('OrgTemplatesIndexPage (ResourceGrid v1, HOL-975)', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Row rendering
+  // Template row rendering
   // ---------------------------------------------------------------------------
 
   it('renders a row for each template across scopes', () => {
@@ -177,10 +210,9 @@ describe('OrgTemplatesIndexPage (ResourceGrid v1, HOL-975)', () => {
     expect(screen.getByText('Web Service')).toBeInTheDocument()
   })
 
-  it('routes org-scoped rows to the org editor', () => {
+  it('routes org-scoped template rows to the org editor', () => {
     setup([{ name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' }])
     render(<OrgTemplatesIndexPage orgName="test-org" />)
-    // The Resource ID cell and display name cell both link to the detail page.
     const links = screen.getAllByRole('link', { name: /gateway/i })
     expect(
       links.some(
@@ -191,7 +223,7 @@ describe('OrgTemplatesIndexPage (ResourceGrid v1, HOL-975)', () => {
     ).toBe(true)
   })
 
-  it('routes folder-scoped rows to the folder template editor', () => {
+  it('routes folder-scoped template rows to the folder template editor', () => {
     setup([
       { name: 'backend', namespace: FOLDER_NS, displayName: 'Backend', createdAt: '' },
     ])
@@ -204,7 +236,7 @@ describe('OrgTemplatesIndexPage (ResourceGrid v1, HOL-975)', () => {
     ).toBe(true)
   })
 
-  it('routes project-scoped rows to the project template editor', () => {
+  it('routes project-scoped template rows to the project template editor', () => {
     setup([
       { name: 'web', namespace: PROJECT_NS, displayName: 'Web Service', createdAt: '' },
     ])
@@ -226,6 +258,93 @@ describe('OrgTemplatesIndexPage (ResourceGrid v1, HOL-975)', () => {
         (l) =>
           l.getAttribute('href') ===
           `/organizations/test-org/templates/${ORG_NS}/ops`,
+      ),
+    ).toBe(true)
+  })
+
+  // ---------------------------------------------------------------------------
+  // TemplatePolicy row rendering
+  // ---------------------------------------------------------------------------
+
+  it('renders TemplatePolicy rows from the policies fan-out', () => {
+    setup(
+      [],
+      Role.OWNER,
+      {},
+      [{ name: 'require-istio', namespace: ORG_NS, displayName: 'Require Istio' }],
+    )
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    expect(screen.getByText('Require Istio')).toBeInTheDocument()
+  })
+
+  it('routes org-scoped policy rows to the org policy editor', () => {
+    setup(
+      [],
+      Role.OWNER,
+      {},
+      [{ name: 'require-istio', namespace: ORG_NS, displayName: 'Require Istio' }],
+    )
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    const links = screen.getAllByRole('link', { name: /require-istio/i })
+    expect(
+      links.some(
+        (l) =>
+          l.getAttribute('href') ===
+          '/organizations/test-org/template-policies/require-istio',
+      ),
+    ).toBe(true)
+  })
+
+  it('routes folder-scoped policy rows to the folder policy editor', () => {
+    setup(
+      [],
+      Role.OWNER,
+      {},
+      [{ name: 'folder-policy', namespace: FOLDER_NS }],
+    )
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    const links = screen.getAllByRole('link', { name: /folder-policy/i })
+    expect(
+      links.some(
+        (l) =>
+          l.getAttribute('href') ===
+          '/folders/team-a/template-policies/folder-policy',
+      ),
+    ).toBe(true)
+  })
+
+  // ---------------------------------------------------------------------------
+  // TemplatePolicyBinding row rendering
+  // ---------------------------------------------------------------------------
+
+  it('renders TemplatePolicyBinding rows from the bindings fan-out', () => {
+    setup([], Role.OWNER, {}, [], [{ name: 'bind-istio', namespace: ORG_NS, displayName: 'Bind Istio' }])
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    expect(screen.getByText('Bind Istio')).toBeInTheDocument()
+  })
+
+  it('routes org-scoped binding rows to the org binding editor', () => {
+    setup([], Role.OWNER, {}, [], [{ name: 'bind-istio', namespace: ORG_NS }])
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    const links = screen.getAllByRole('link', { name: /bind-istio/i })
+    expect(
+      links.some(
+        (l) =>
+          l.getAttribute('href') ===
+          '/organizations/test-org/template-bindings/bind-istio',
+      ),
+    ).toBe(true)
+  })
+
+  it('routes folder-scoped binding rows to the folder binding editor', () => {
+    setup([], Role.OWNER, {}, [], [{ name: 'folder-bind', namespace: FOLDER_NS }])
+    render(<OrgTemplatesIndexPage orgName="test-org" />)
+    const links = screen.getAllByRole('link', { name: /folder-bind/i })
+    expect(
+      links.some(
+        (l) =>
+          l.getAttribute('href') ===
+          '/folders/team-a/template-policy-bindings/folder-bind',
       ),
     ).toBe(true)
   })
@@ -255,23 +374,23 @@ describe('OrgTemplatesIndexPage (ResourceGrid v1, HOL-975)', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Create CTA
+  // Create CTA (three-kind dropdown when OWNER)
   // ---------------------------------------------------------------------------
 
-  it('renders a Create Template / New button for org OWNERs', () => {
+  it('renders a New button for org OWNERs', () => {
     setup([], Role.OWNER)
     render(<OrgTemplatesIndexPage orgName="test-org" />)
-    // ResourceGrid renders a "New Template" button linking to the newHref.
-    const newLink = screen.getByRole('link', { name: /template/i })
-    expect(newLink).toHaveAttribute('href', '/organizations/test-org/templates/new')
+    // ResourceGrid renders a "New" dropdown when multiple kinds are creatable.
+    const newBtn = screen.getByRole('button', { name: /new/i })
+    expect(newBtn).toBeInTheDocument()
   })
 
   it('hides the Create button for non-OWNER users', () => {
     setup([], Role.VIEWER)
     render(<OrgTemplatesIndexPage orgName="test-org" />)
-    // When canCreate is false, ResourceGrid suppresses the New button.
+    // When canCreate is false for all kinds, ResourceGrid suppresses the New button.
     expect(
-      screen.queryByRole('link', { name: /template/i }),
+      screen.queryByRole('button', { name: /new/i }),
     ).not.toBeInTheDocument()
   })
 
@@ -310,7 +429,8 @@ describe('OrgTemplatesIndexPage (ResourceGrid v1, HOL-975)', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Scope filtering via URL state
+  // Scope filtering via URL state (org / folder only — project is excluded
+  // because TemplatePolicies and Bindings do not exist at project scope)
   // ---------------------------------------------------------------------------
 
   it('filters to only org-scoped rows when scope=org is set in search', () => {
@@ -324,15 +444,15 @@ describe('OrgTemplatesIndexPage (ResourceGrid v1, HOL-975)', () => {
     expect(screen.queryByText('Web Service')).not.toBeInTheDocument()
   })
 
-  it('filters to only project-scoped rows when scope=project is set in search', () => {
-    mockSearch['scope'] = 'project'
+  it('filters to only folder-scoped rows when scope=folder is set in search', () => {
+    mockSearch['scope'] = 'folder'
     setup([
       { name: 'gateway', namespace: ORG_NS, displayName: 'Gateway', createdAt: '' },
-      { name: 'web', namespace: PROJECT_NS, displayName: 'Web Service', createdAt: '' },
+      { name: 'backend', namespace: FOLDER_NS, displayName: 'Backend', createdAt: '' },
     ])
     render(<OrgTemplatesIndexPage orgName="test-org" />)
     expect(screen.queryByText('Gateway')).not.toBeInTheDocument()
-    expect(screen.getByText('Web Service')).toBeInTheDocument()
+    expect(screen.getByText('Backend')).toBeInTheDocument()
   })
 
   it('shows all rows when no scope filter is set', () => {

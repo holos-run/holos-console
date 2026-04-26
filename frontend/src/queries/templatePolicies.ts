@@ -5,6 +5,7 @@ import { useTransport } from '@connectrpc/connect-query'
 import {
   keepPreviousData,
   useQuery,
+  useQueries,
   useMutation,
   useQueryClient,
 } from '@tanstack/react-query'
@@ -19,6 +20,9 @@ import type {
   LinkableTemplatePolicy,
 } from '@/gen/holos/console/v1/template_policies_pb.js'
 import { useAuth } from '@/lib/auth'
+import { useListFolders } from '@/queries/folders'
+import type { Folder } from '@/gen/holos/console/v1/folders_pb.js'
+import { namespaceForFolder, namespaceForOrg } from '@/lib/scope-labels'
 import { keys } from '@/queries/keys'
 
 // Re-export generated types/enums used by UI consumers. HOL-600 removed
@@ -129,6 +133,85 @@ export function aggregateFanOut<T>(
     if (q.data) data.push(...q.data)
   }
   return { data, isPending: false, error }
+}
+
+// Module-level sentinel so the `folders` useMemo fallback preserves reference
+// identity across renders when the folders list is still pending or empty.
+const EMPTY_FOLDERS: readonly Folder[] = []
+
+// useAllTemplatePoliciesForOrg fans a ListTemplatePolicies call across every
+// namespace reachable from an organization root — the org namespace plus one
+// namespace per folder visible to the caller — and flattens the results into
+// one array. Re-introduced for HOL-1006 to power the unified four-facet
+// Templates surface (Templates | Policies | Bindings) at the org-level
+// templates index. Template policies do not exist at project scope, so only
+// org and folder namespaces are queried.
+//
+// See aggregateFanOut for the exact pending / error semantics.
+export function useAllTemplatePoliciesForOrg(
+  orgName: string,
+): FanOutAggregate<TemplatePolicy> {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(
+    () => createClient(TemplatePolicyService, transport),
+    [transport],
+  )
+  const orgNamespace = namespaceForOrg(orgName)
+  const foldersQuery = useListFolders(orgName)
+  const folders = useMemo(
+    () => foldersQuery.data ?? EMPTY_FOLDERS,
+    [foldersQuery.data],
+  )
+
+  const folderQueries = useQueries({
+    queries: folders.map((folder) => ({
+      queryKey: keys.templatePolicies.list(namespaceForFolder(folder.name)),
+      queryFn: async (): Promise<TemplatePolicy[]> => {
+        const response = await client.listTemplatePolicies({
+          namespace: namespaceForFolder(folder.name),
+        })
+        return response.policies
+      },
+      enabled: isAuthenticated && !!folder.name,
+    })),
+  })
+
+  const orgQuery = useQuery({
+    queryKey: keys.templatePolicies.list(orgNamespace),
+    queryFn: async () => {
+      const response = await client.listTemplatePolicies({
+        namespace: orgNamespace,
+      })
+      return response.policies
+    },
+    enabled: isAuthenticated && !!orgNamespace,
+  })
+
+  // Model the folders-list query as one more input to aggregateFanOut so
+  // pending folders postpone the aggregate and folders errors surface inline.
+  const foldersAsQuery: FanOutQueryState<TemplatePolicy[]> = {
+    data: foldersQuery.data === undefined ? undefined : [],
+    error: foldersQuery.error,
+    isPending: foldersQuery.isPending,
+    fetchStatus: foldersQuery.fetchStatus,
+  }
+
+  return aggregateFanOut<TemplatePolicy>([
+    foldersAsQuery,
+    {
+      data: orgQuery.data,
+      error: orgQuery.error,
+      isPending: orgQuery.isPending,
+      fetchStatus: orgQuery.fetchStatus,
+    },
+    ...folderQueries.map((q) => ({
+      data: q.data,
+      error: q.error,
+      isPending: q.isPending,
+      fetchStatus: q.fetchStatus,
+    })),
+  ])
 }
 
 // useGetTemplatePolicy fetches a single policy by name within a namespace.
