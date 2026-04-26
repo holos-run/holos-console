@@ -1,7 +1,8 @@
 // HTTPRoute with TemplateGrant — folder-level platform template (Scope C: remote-project).
-// Emits an HTTPRoute in the org-configured ingress gateway namespace and a
-// TemplateGrant that authorises project namespaces to declare cross-namespace
-// dependencies on this gateway template.
+// Emits an HTTPRoute in the org-configured ingress gateway namespace.
+// A companion TemplateGrant (shown in the comments below) must be created in the
+// gateway platform namespace to authorise project namespaces to declare cross-namespace
+// TemplateDependency objects referencing this template.
 //
 // Demonstrates Scope C (remote-project scope) from ADR 032: a TemplateDependency
 // in a project namespace references a template owned by a different namespace
