@@ -757,7 +757,10 @@ func (h *Handler) rollbackCreate(ctx context.Context, ns, project, name string) 
 			slog.Any("error", cleanupErr),
 		)
 	}
-	if deleteErr := h.k8s.DeleteDeployment(ctx, project, name); deleteErr != nil {
+	// Use the per-request impersonated client to delete the ConfigMap so the
+	// rollback runs as the same principal that created it, mirroring the
+	// authorization context of the rest of CreateDeployment under ADR 036.
+	if deleteErr := h.requestK8s(ctx).DeleteDeployment(ctx, project, name); deleteErr != nil {
 		slog.WarnContext(ctx, "rollback: delete ConfigMap failed",
 			slog.String("project", project),
 			slog.String("name", name),
