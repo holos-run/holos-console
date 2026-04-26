@@ -223,17 +223,15 @@ describe('OrgTemplatesIndexPage (unified four-facet surface, HOL-1006)', () => {
     ).toBe(true)
   })
 
-  it('routes folder-scoped template rows to the folder template editor', () => {
+  it('renders folder-scoped template rows as plain text (no link) after HOL-978 route cut', () => {
     setup([
       { name: 'backend', namespace: FOLDER_NS, displayName: 'Backend', createdAt: '' },
     ])
     render(<OrgTemplatesIndexPage orgName="test-org" />)
-    const links = screen.getAllByRole('link', { name: /backend/i })
-    expect(
-      links.some(
-        (l) => l.getAttribute('href') === '/folders/team-a/templates/backend',
-      ),
-    ).toBe(true)
+    // HOL-978 removed folder routes — no link should exist for folder-scoped rows.
+    expect(screen.queryByRole('link', { name: /backend/i })).toBeNull()
+    // The cell text should still appear.
+    expect(screen.getByText('Backend')).toBeInTheDocument()
   })
 
   it('routes project-scoped template rows to the project template editor', () => {
@@ -295,7 +293,7 @@ describe('OrgTemplatesIndexPage (unified four-facet surface, HOL-1006)', () => {
     ).toBe(true)
   })
 
-  it('routes folder-scoped policy rows to the folder policy editor', () => {
+  it('renders folder-scoped policy rows as plain text (no link) after HOL-978 route cut', () => {
     setup(
       [],
       Role.OWNER,
@@ -303,14 +301,10 @@ describe('OrgTemplatesIndexPage (unified four-facet surface, HOL-1006)', () => {
       [{ name: 'folder-policy', namespace: FOLDER_NS }],
     )
     render(<OrgTemplatesIndexPage orgName="test-org" />)
-    const links = screen.getAllByRole('link', { name: /folder-policy/i })
-    expect(
-      links.some(
-        (l) =>
-          l.getAttribute('href') ===
-          '/folders/team-a/template-policies/folder-policy',
-      ),
-    ).toBe(true)
+    // HOL-978 removed folder routes — no link should exist for folder-scoped policy rows.
+    expect(screen.queryByRole('link', { name: /folder-policy/i })).toBeNull()
+    // The cell text should still appear.
+    expect(screen.getByText('folder-policy')).toBeInTheDocument()
   })
 
   // ---------------------------------------------------------------------------
@@ -336,17 +330,13 @@ describe('OrgTemplatesIndexPage (unified four-facet surface, HOL-1006)', () => {
     ).toBe(true)
   })
 
-  it('routes folder-scoped binding rows to the folder binding editor', () => {
+  it('renders folder-scoped binding rows as plain text (no link) after HOL-978 route cut', () => {
     setup([], Role.OWNER, {}, [], [{ name: 'folder-bind', namespace: FOLDER_NS }])
     render(<OrgTemplatesIndexPage orgName="test-org" />)
-    const links = screen.getAllByRole('link', { name: /folder-bind/i })
-    expect(
-      links.some(
-        (l) =>
-          l.getAttribute('href') ===
-          '/folders/team-a/template-policy-bindings/folder-bind',
-      ),
-    ).toBe(true)
+    // HOL-978 removed folder routes — no link should exist for folder-scoped binding rows.
+    expect(screen.queryByRole('link', { name: /folder-bind/i })).toBeNull()
+    // The cell text should still appear.
+    expect(screen.getByText('folder-bind')).toBeInTheDocument()
   })
 
   // ---------------------------------------------------------------------------

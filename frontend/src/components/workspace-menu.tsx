@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Box, ChevronsUpDown, Info, Settings, ArrowRightLeft, FolderKanban, User, Wrench } from 'lucide-react'
+import { Box, ChevronsUpDown, Settings, ArrowRightLeft, FolderKanban, User } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,19 +9,16 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useOrg } from '@/lib/org-context'
 import { useProject } from '@/lib/project-context'
-import { getConsoleConfig } from '@/lib/console-config'
 
 /**
  * WorkspaceMenu is the Linear-style "Holos Console" menu rendered at the top
  * of the sidebar. It replaces the previous stacked OrgPicker + ProjectPicker
  * dropdowns. Menu items appear in the canonical order:
  *
- *   About, Project Settings, Organization Settings, Switch Projects,
- *   Switch Organization, separator, Profile, Dev Tools
+ *   Project Settings, Organization Settings, Switch Projects,
+ *   Switch Organization, separator, Profile
  *
- * Dev Tools is only visible when the server gates it on via `--enable-dev-tools`
- * (mirrored to the frontend via `getConsoleConfig().devToolsEnabled`). The
- * `Project Settings` item routes to project settings when a project is selected;
+ * The `Project Settings` item routes to project settings when a project is selected;
  * `Organization Settings` routes to org settings when an org is selected. Both
  * are rendered disabled when the respective scope is not selected so the
  * canonical item order stays visible in every state. `Switch Projects` links to
@@ -30,7 +27,6 @@ import { getConsoleConfig } from '@/lib/console-config'
 export function WorkspaceMenu() {
   const { selectedOrg, organizations } = useOrg()
   const { selectedProject, projects } = useProject()
-  const { devToolsEnabled } = getConsoleConfig()
 
   const selectedOrgObj = organizations.find((o) => o.name === selectedOrg)
   const orgDisplayName = selectedOrgObj
@@ -71,12 +67,6 @@ export function WorkspaceMenu() {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56" align="start">
-          <DropdownMenuItem asChild>
-            <Link to="/about" data-testid="workspace-menu-item-about">
-              <Info className="h-4 w-4" />
-              <span>About</span>
-            </Link>
-          </DropdownMenuItem>
           {selectedProject ? (
             <DropdownMenuItem asChild>
               <Link
@@ -113,10 +103,8 @@ export function WorkspaceMenu() {
           )}
           {selectedOrg ? (
             <DropdownMenuItem asChild>
-              {/* Route /organizations/$orgName/projects is added in HOL-915;
-                  cast suppresses TS until the route file exists. */}
               <Link
-                to={'/organizations/$orgName/projects' as string}
+                to="/organizations/$orgName/projects"
                 params={{ orgName: selectedOrg }}
                 data-testid="workspace-menu-item-switch-projects"
               >
@@ -143,14 +131,6 @@ export function WorkspaceMenu() {
               <span>Profile</span>
             </Link>
           </DropdownMenuItem>
-          {devToolsEnabled ? (
-            <DropdownMenuItem asChild>
-              <Link to="/dev-tools" data-testid="workspace-menu-item-dev-tools">
-                <Wrench className="h-4 w-4" />
-                <span>Dev Tools</span>
-              </Link>
-            </DropdownMenuItem>
-          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

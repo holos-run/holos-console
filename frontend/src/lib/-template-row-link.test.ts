@@ -1,8 +1,11 @@
 /**
- * Tests for template-row-link.ts (HOL-859).
+ * Tests for template-row-link.ts (HOL-859 / HOL-978).
  *
  * Exercises resolveTemplateRowHref for all three template-family kinds across
  * all three scopes (org / folder / project).
+ *
+ * HOL-978: Folder-scoped routes were removed for MVP. Folder-scope now returns
+ * undefined (treated as "no link — render plain text") for all three kinds.
  */
 
 import { describe, it, expect, vi } from 'vitest'
@@ -35,10 +38,8 @@ describe('resolveTemplateRowHref', () => {
       )
     })
 
-    it('resolves folder-scope Template link', () => {
-      expect(resolveTemplateRowHref('Template', 'folder-platform', 'my-tpl')).toBe(
-        '/folders/platform/templates/my-tpl',
-      )
+    it('returns undefined for folder-scope Template (routes removed for MVP by HOL-978)', () => {
+      expect(resolveTemplateRowHref('Template', 'folder-platform', 'my-tpl')).toBeUndefined()
     })
 
     it('resolves project-scope Template link', () => {
@@ -60,10 +61,10 @@ describe('resolveTemplateRowHref', () => {
       )
     })
 
-    it('resolves folder-scope TemplatePolicy link', () => {
+    it('returns undefined for folder-scope TemplatePolicy (routes removed for MVP by HOL-978)', () => {
       expect(
         resolveTemplateRowHref('TemplatePolicy', 'folder-platform', 'my-policy'),
-      ).toBe('/folders/platform/template-policies/my-policy')
+      ).toBeUndefined()
     })
 
     it('returns undefined for project-scope TemplatePolicy (unsupported)', () => {
@@ -79,10 +80,10 @@ describe('resolveTemplateRowHref', () => {
       ).toBe('/organizations/acme/template-bindings/my-binding')
     })
 
-    it('resolves folder-scope TemplatePolicyBinding link', () => {
+    it('returns undefined for folder-scope TemplatePolicyBinding (routes removed for MVP by HOL-978)', () => {
       expect(
         resolveTemplateRowHref('TemplatePolicyBinding', 'folder-platform', 'my-binding'),
-      ).toBe('/folders/platform/template-policy-bindings/my-binding')
+      ).toBeUndefined()
     })
 
     it('returns undefined for project-scope TemplatePolicyBinding (unsupported)', () => {

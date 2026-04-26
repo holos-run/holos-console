@@ -6,13 +6,15 @@
  * project-scoped unified Templates index (HOL-859) can reuse the same routing
  * logic without duplicating it.
  *
- * Rules:
- *  - Template   → org / folder / project detail routes keyed by (namespace, name)
- *  - TemplatePolicy → org / folder detail routes keyed by (namespace, name)
- *  - TemplatePolicyBinding → org / folder detail routes keyed by (namespace, name)
+ * Rules (post HOL-978 folder-route cut):
+ *  - Template   → org / project detail routes keyed by (namespace, name)
+ *  - TemplatePolicy → org detail routes keyed by (namespace, name)
+ *  - TemplatePolicyBinding → org detail routes keyed by (namespace, name)
+ *  - Folder-scoped resources return `undefined` (no route exists; render plain text)
  *
- * Returns `undefined` when the namespace does not match any known prefix, which
- * the caller should treat as "no link — render plain text".
+ * Returns `undefined` when the namespace does not match any known prefix or
+ * when the resource lives at folder scope (folder routes removed for MVP).
+ * The caller should treat `undefined` as "no link — render plain text".
  */
 
 import {
@@ -46,8 +48,9 @@ export function resolveTemplateRowHref(
       if (scope === 'org') {
         return `/organizations/${scopeName}/templates/${namespace}/${name}`
       }
+      // Folder-scoped template routes removed for MVP (HOL-978).
       if (scope === 'folder') {
-        return `/folders/${scopeName}/templates/${name}`
+        return undefined
       }
       if (scope === 'project') {
         return `/projects/${scopeName}/templates/${name}`
@@ -59,9 +62,7 @@ export function resolveTemplateRowHref(
       if (scope === 'org') {
         return `/organizations/${scopeName}/template-policies/${name}`
       }
-      if (scope === 'folder') {
-        return `/folders/${scopeName}/template-policies/${name}`
-      }
+      // Folder-scoped template-policy routes removed for MVP (HOL-978).
       // TemplatePolicies do not exist at project scope.
       return undefined
     }
@@ -70,9 +71,7 @@ export function resolveTemplateRowHref(
       if (scope === 'org') {
         return `/organizations/${scopeName}/template-bindings/${name}`
       }
-      if (scope === 'folder') {
-        return `/folders/${scopeName}/template-policy-bindings/${name}`
-      }
+      // Folder-scoped template-policy-binding routes removed for MVP (HOL-978).
       // TemplatePolicyBindings do not exist at project scope.
       return undefined
     }
