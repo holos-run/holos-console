@@ -34,6 +34,8 @@ review boundary matches the `CODEOWNERS` boundary in this repository.
 | [032](032-template-release-crd.md) | TemplateRelease as a sibling CRD (HOL-693) | Accepted | `holos-console` |
 | [033](033-render-state-crd.md) | RenderState as a sibling CRD (HOL-694) | Accepted | `holos-console` |
 | [034](034-namespace-template-policy-binding-for-new-projects.md) | Namespace TemplatePolicyBinding for new Projects (HOL-806) | Accepted | `holos-console` |
+| [035](035-deployment-dependencies.md) | Deployment Dependencies via TemplateGrant, TemplateDependency, TemplateRequirement (HOL-954) | Accepted | `holos-console` |
+| [036](036-rbac-and-oidc-impersonation.md) | Kubernetes RBAC + OIDC Impersonation as the Holos Access-Control Model (HOL-1028) | Accepted | `holos-console` (workspace-wide) |
 
 ## Why colocate?
 
