@@ -267,9 +267,9 @@ describe('AppSidebar — sidebar nav structure', () => {
     expect(screen.getByTestId('workspace-menu')).toBeInTheDocument()
   })
 
-  it('renders Projects, Secrets, Deployments, and Templates nav entries', () => {
+  it('renders Project, Secrets, Deployments, and Templates nav entries', () => {
     render(<AppSidebar />)
-    expect(getNavButton('projects')).toBeInTheDocument()
+    expect(getNavButton('project')).toBeInTheDocument()
     expect(getNavButton('secrets')).toBeInTheDocument()
     expect(getNavButton('deployments')).toBeInTheDocument()
     expect(getNavButton('templates')).toBeInTheDocument()
@@ -280,15 +280,15 @@ describe('AppSidebar — sidebar nav structure', () => {
     expect(screen.queryByTestId('nav-resource-manager')).toBeNull()
   })
 
-  it('renders nav entries in canonical order: Projects, Secrets, Deployments, Templates', () => {
+  it('renders nav entries in canonical order: Project, Secrets, Deployments, Templates', () => {
     render(<AppSidebar />)
-    const projects = getNavButton('projects')
+    const project = getNavButton('project')
     const secrets = getNavButton('secrets')
     const deployments = getNavButton('deployments')
     const templates = getNavButton('templates')
     // Node.DOCUMENT_POSITION_FOLLOWING = 4
     expect(
-      projects.compareDocumentPosition(secrets) &
+      project.compareDocumentPosition(secrets) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
     expect(
@@ -348,9 +348,9 @@ describe('AppSidebar — nav links when no org or project is selected (disabled 
     setDefaults()
   })
 
-  it('Projects button is disabled when no org is selected', () => {
+  it('Project button is disabled when no project is selected', () => {
     render(<AppSidebar />)
-    expect(getNavButton('projects')).toBeDisabled()
+    expect(getNavButton('project')).toBeDisabled()
   })
 
   it('Secrets, Deployments, and Templates buttons are disabled when no project is selected', () => {
@@ -370,13 +370,13 @@ describe('AppSidebar — nav links when no org or project is selected (disabled 
     expect(templatesToolTip?.textContent).toContain('Select an organization')
   })
 
-  it('Projects disabled button renders tooltip "Select an organization to view Projects"', () => {
+  it('Project disabled button renders tooltip "Select a project to view Project"', () => {
     render(<AppSidebar />)
     const tooltips = screen.getAllByTestId('tooltip-content')
-    const projectsTooltip = tooltips.find((el) =>
-      el.textContent?.includes('Select an organization to view Projects'),
+    const projectTooltip = tooltips.find((el) =>
+      el.textContent?.includes('Select a project to view Project'),
     )
-    expect(projectsTooltip).toBeDefined()
+    expect(projectTooltip).toBeDefined()
   })
 
   it('disabled buttons render a tooltip with the prerequisite reason for Secrets', () => {
@@ -408,26 +408,75 @@ describe('AppSidebar — nav links when no org or project is selected (disabled 
   })
 })
 
-describe('AppSidebar — Projects nav entry when org is selected', () => {
+describe('AppSidebar — Project nav entry (HOL-1004)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPathname = '/'
     setDefaults()
-    setupOrgSelected()
   })
 
-  it('Projects link resolves to the correct org-scoped URL', () => {
+  it('Project button is disabled when no project is selected (even if org is selected)', () => {
+    setupOrgSelected()
+    render(<AppSidebar />)
+    expect(getNavButton('project')).toBeDisabled()
+  })
+
+  it('Project link resolves to /projects/$projectName when a project is selected', () => {
+    setupOrgSelected()
+    setupProjectSelected()
     render(<AppSidebar />)
     expect(
-      screen.getByRole('link', { name: /^projects$/i }).getAttribute('href'),
-    ).toBe('/organizations/my-org/projects')
+      screen.getByRole('link', { name: /^project$/i }).getAttribute('href'),
+    ).toBe('/projects/my-project/')
   })
 
-  it('Projects nav button is enabled when an org is selected', () => {
+  it('Project nav button is enabled when a project is selected', () => {
+    setupOrgSelected()
+    setupProjectSelected()
     render(<AppSidebar />)
-    const projectsContainer = getNavButton('projects')
-    expect(projectsContainer).not.toHaveAttribute('disabled')
-    expect(projectsContainer.querySelector('a')).not.toBeNull()
+    const projectContainer = getNavButton('project')
+    expect(projectContainer).not.toHaveAttribute('disabled')
+    expect(projectContainer.querySelector('a')).not.toBeNull()
+  })
+
+  it('Project nav entry is active when on /projects/$projectName', () => {
+    setupOrgSelected()
+    setupProjectSelected()
+    mockPathname = '/projects/my-project'
+    render(<AppSidebar />)
+    expect(getNavButton('project')).toHaveAttribute('data-active', 'true')
+  })
+
+  it('Project nav entry is active when on a descendant route (secrets)', () => {
+    setupOrgSelected()
+    setupProjectSelected()
+    mockPathname = '/projects/my-project/secrets'
+    render(<AppSidebar />)
+    expect(getNavButton('project')).toHaveAttribute('data-active', 'true')
+  })
+
+  it('Project nav entry is active when on a descendant route (deployments)', () => {
+    setupOrgSelected()
+    setupProjectSelected()
+    mockPathname = '/projects/my-project/deployments'
+    render(<AppSidebar />)
+    expect(getNavButton('project')).toHaveAttribute('data-active', 'true')
+  })
+
+  it('Project nav entry is active when on a descendant route (templates)', () => {
+    setupOrgSelected()
+    setupProjectSelected()
+    mockPathname = '/projects/my-project/templates'
+    render(<AppSidebar />)
+    expect(getNavButton('project')).toHaveAttribute('data-active', 'true')
+  })
+
+  it('Project nav entry is not active when on an unrelated route', () => {
+    setupOrgSelected()
+    setupProjectSelected()
+    mockPathname = '/'
+    render(<AppSidebar />)
+    expect(getNavButton('project')).toHaveAttribute('data-active', 'false')
   })
 })
 
@@ -463,15 +512,15 @@ describe('AppSidebar — nav links when a project is selected', () => {
 
   it('no disabled buttons when org and project are selected', () => {
     render(<AppSidebar />)
-    const projectsContainer = getNavButton('projects')
+    const projectContainer = getNavButton('project')
     const secretsContainer = getNavButton('secrets')
     const deploymentsContainer = getNavButton('deployments')
     const templatesContainer = getNavButton('templates')
-    expect(projectsContainer).not.toHaveAttribute('disabled')
+    expect(projectContainer).not.toHaveAttribute('disabled')
     expect(secretsContainer).not.toHaveAttribute('disabled')
     expect(deploymentsContainer).not.toHaveAttribute('disabled')
     expect(templatesContainer).not.toHaveAttribute('disabled')
-    expect(projectsContainer.querySelector('a')).not.toBeNull()
+    expect(projectContainer.querySelector('a')).not.toBeNull()
     expect(secretsContainer.querySelector('a')).not.toBeNull()
     expect(deploymentsContainer.querySelector('a')).not.toBeNull()
     expect(templatesContainer.querySelector('a')).not.toBeNull()
@@ -655,10 +704,10 @@ describe('AppSidebar — active-state highlighting', () => {
     expect(screen.getByRole('link', { name: /^secrets$/i })).toBeInTheDocument()
   })
 
-  it('Projects link is rendered when org is selected', () => {
-    mockPathname = '/organizations/my-org/projects'
+  it('Project link is rendered when project is selected', () => {
+    mockPathname = '/projects/my-project'
     render(<AppSidebar />)
-    expect(screen.getByRole('link', { name: /^projects$/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /^project$/i })).toBeInTheDocument()
   })
 })
 
