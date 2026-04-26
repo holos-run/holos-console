@@ -11,7 +11,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -51,11 +50,8 @@ func (h *Handler) GetDeploymentStatusSummary(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsRead); err != nil {
-		return nil, err
-	}
-
-	ns := h.k8s.Resolver.ProjectNamespace(project)
+	rk8s := h.requestK8s(ctx)
+	ns := rk8s.Resolver.ProjectNamespace(project)
 	summary, ok := h.summaryFromCache(ns, name)
 	if !ok {
 		summary = &consolev1.DeploymentStatusSummary{
@@ -72,7 +68,7 @@ func (h *Handler) GetDeploymentStatusSummary(
 	// clients receive the same `output.links` and promoted primary URL
 	// the list/detail RPCs serve, keeping the three read paths
 	// observably consistent.
-	if cm, cmErr := h.k8s.GetDeployment(ctx, project, name); cmErr == nil {
+	if cm, cmErr := rk8s.GetDeployment(ctx, project, name); cmErr == nil {
 		mergeOutputURLAnnotation(summary, cm)
 		mergeAggregatedLinksAnnotation(summary, cm)
 	} else {
@@ -141,13 +137,10 @@ func (h *Handler) GetDeploymentStatus(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsRead); err != nil {
-		return nil, err
-	}
+	rk8s := h.requestK8s(ctx)
+	ns := rk8s.Resolver.ProjectNamespace(project)
 
-	ns := h.k8s.Resolver.ProjectNamespace(project)
-
-	dep, err := h.k8s.client.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
+	dep, err := rk8s.client.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -179,7 +172,7 @@ func (h *Handler) GetDeploymentStatus(
 		}
 	}
 
-	podList, err := h.k8s.client.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
+	podList, err := rk8s.client.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
 		LabelSelector: labelSelector,
 	})
 	if err != nil {
@@ -189,7 +182,7 @@ func (h *Handler) GetDeploymentStatus(
 	// Fetch deployment-level events using field selectors. In production the API
 	// server filters server-side. The fake K8s client ignores field selectors and
 	// returns all events, so tests seed only relevant events for correctness.
-	depEventList, err := h.k8s.client.CoreV1().Events(ns).List(ctx, metav1.ListOptions{
+	depEventList, err := rk8s.client.CoreV1().Events(ns).List(ctx, metav1.ListOptions{
 		FieldSelector: "involvedObject.name=" + name + ",involvedObject.kind=Deployment",
 	})
 	if err != nil {
@@ -216,7 +209,7 @@ func (h *Handler) GetDeploymentStatus(
 		containerStatuses = append(containerStatuses, mapContainerStatuses(pod.Status.ContainerStatuses)...)
 
 		// Fetch pod-level events using field selectors.
-		podEventList, err := h.k8s.client.CoreV1().Events(ns).List(ctx, metav1.ListOptions{
+		podEventList, err := rk8s.client.CoreV1().Events(ns).List(ctx, metav1.ListOptions{
 			FieldSelector: "involvedObject.name=" + pod.Name + ",involvedObject.kind=Pod",
 		})
 		if err != nil {

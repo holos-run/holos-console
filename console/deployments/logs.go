@@ -11,7 +11,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -56,14 +55,11 @@ func (h *Handler) GetDeploymentLogs(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsLogs); err != nil {
-		return nil, err
-	}
-
-	ns := h.k8s.Resolver.ProjectNamespace(project)
+	rk8s := h.requestK8s(ctx)
+	ns := rk8s.Resolver.ProjectNamespace(project)
 
 	// Find pods matching the deployment's label selector.
-	dep, err := h.k8s.client.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
+	dep, err := rk8s.client.AppsV1().Deployments(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -82,7 +78,7 @@ func (h *Handler) GetDeploymentLogs(
 		}
 	}
 
-	podList, err := h.k8s.client.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
+	podList, err := rk8s.client.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
 		LabelSelector: labelSelector,
 	})
 	if err != nil {
