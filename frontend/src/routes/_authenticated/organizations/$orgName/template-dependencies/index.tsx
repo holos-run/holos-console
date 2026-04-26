@@ -1,16 +1,14 @@
 /**
- * Project-scoped Templates / Dependencies index (HOL-1013).
+ * Organization-scoped TemplateDependency index (HOL-1020).
  *
- * TemplateDependencies are project-scoped. The namespace is derived from the
- * $projectName URL parameter via namespaceForProject(). The project name also
- * keeps the Templates collapsible group open in the sidebar (HOL-1014).
- *
- * Sidebar nesting is handled in HOL-1014; for now the route exists and is
- * reachable by URL.
+ * TemplateDependency objects live in project namespaces. This org-scoped index
+ * shows dependencies from the currently-selected project. When no project is
+ * selected, an empty state prompts the user to select one.
  */
 
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
@@ -19,52 +17,62 @@ import {
   useListTemplateDependencies,
   useDeleteTemplateDependency,
 } from '@/queries/templateDependencies'
+import { useGetOrganization } from '@/queries/organizations'
+import { useProject } from '@/lib/project-context'
 import { namespaceForProject } from '@/lib/scope-labels'
-import { useOrg } from '@/lib/org-context'
+
+// ---------------------------------------------------------------------------
+// Route
+// ---------------------------------------------------------------------------
+
+export const Route = createFileRoute(
+  '/_authenticated/organizations/$orgName/template-dependencies/',
+)({
+  validateSearch: parseGridSearch,
+  component: OrgTemplateDependenciesIndexRoute,
+})
+
+function OrgTemplateDependenciesIndexRoute() {
+  const { orgName } = Route.useParams()
+  return <OrgTemplateDependenciesIndexPage orgName={orgName} />
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Convert a proto Timestamp to an ISO-8601 string for ResourceGrid createdAt. */
 function timestampToISOString(ts: { seconds: bigint } | undefined): string {
   if (!ts) return ''
   return new Date(Number(ts.seconds) * 1000).toISOString()
 }
 
 // ---------------------------------------------------------------------------
-// Route definition
-// ---------------------------------------------------------------------------
-
-export const Route = createFileRoute(
-  '/_authenticated/projects/$projectName/templates/dependencies/',
-)({
-  validateSearch: parseGridSearch,
-  component: TemplateDependenciesIndexRoute,
-})
-
-function TemplateDependenciesIndexRoute() {
-  const { projectName } = Route.useParams()
-  return <TemplateDependenciesIndexPage projectName={projectName} />
-}
-
-// ---------------------------------------------------------------------------
 // Page component (exported for tests)
 // ---------------------------------------------------------------------------
 
-export function TemplateDependenciesIndexPage({
-  projectName,
-}: {
-  projectName: string
-}) {
-  const search = Route.useSearch() as ResourceGridSearch
+export function OrgTemplateDependenciesIndexPage({
+  orgName: propOrgName,
+}: { orgName?: string } = {}) {
+  let routeOrgName: string | undefined
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    routeOrgName = Route.useParams().orgName
+  } catch {
+    routeOrgName = undefined
+  }
+  const orgName = propOrgName ?? routeOrgName ?? ''
+
+  const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
 
-  // TemplateDependencies are project-scoped — namespace comes from projectName.
-  const namespace = namespaceForProject(projectName)
+  const { data: org } = useGetOrganization(orgName)
+  const { selectedProject } = useProject()
 
-  // selectedOrg is used to build detailHref links to the org-scoped detail page.
-  const { selectedOrg } = useOrg()
+  const userRole = org?.userRole ?? Role.VIEWER
+  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
+
+  // TemplateDependencies are project-scoped. Use the selected project namespace.
+  const namespace = selectedProject ? namespaceForProject(selectedProject) : ''
 
   const {
     data: dependencies = [],
@@ -83,18 +91,18 @@ export function TemplateDependenciesIndexPage({
       dependencies.map((d) => ({
         kind: 'TemplateDependency',
         name: d.name,
-        namespace,
+        namespace: namespace,
         id: d.name,
-        parentId: projectName,
-        parentLabel: projectName,
+        parentId: selectedProject ?? '',
+        parentLabel: selectedProject ?? '',
         displayName: d.name,
         description: `${d.dependent?.name ?? ''} → ${d.requires?.name ?? ''}`,
         createdAt: timestampToISOString(d.createdAt),
-        detailHref: selectedOrg
-          ? `/organizations/${selectedOrg}/template-dependencies/${d.name}?namespace=${encodeURIComponent(namespace)}`
+        detailHref: namespace
+          ? `/organizations/${orgName}/template-dependencies/${d.name}?namespace=${encodeURIComponent(namespace)}`
           : undefined,
       })),
-    [dependencies, namespace, projectName, selectedOrg],
+    [dependencies, namespace, orgName, selectedProject],
   )
 
   // ---------------------------------------------------------------------------
@@ -105,12 +113,12 @@ export function TemplateDependenciesIndexPage({
     () => [
       {
         id: 'TemplateDependency',
-        label: 'TemplateDependency',
-        // No create in this view — dependencies are managed programmatically.
-        canCreate: false,
+        label: 'Template Dependency',
+        newHref: `/organizations/${orgName}/template-dependencies/new`,
+        canCreate: canWrite,
       },
     ],
-    [],
+    [orgName, canWrite],
   )
 
   // ---------------------------------------------------------------------------
@@ -128,14 +136,17 @@ export function TemplateDependenciesIndexPage({
     (updater: (prev: ResourceGridSearch) => ResourceGridSearch) => {
       navigate({
         search: (prev) => updater(prev as ResourceGridSearch),
+        replace: true,
       })
     },
     [navigate],
   )
 
+  const titleSuffix = selectedProject ? ` (${selectedProject})` : ''
+
   return (
     <ResourceGrid
-      title={`${projectName} / Templates / Dependencies`}
+      title={`${orgName} / Template Dependencies${titleSuffix}`}
       kinds={kinds}
       rows={rows}
       onDelete={handleDelete}

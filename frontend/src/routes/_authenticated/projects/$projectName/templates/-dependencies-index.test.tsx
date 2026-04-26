@@ -74,6 +74,15 @@ vi.mock('@/queries/templateDependencies', async () => {
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
+vi.mock('@/lib/org-context', () => ({
+  useOrg: vi.fn().mockReturnValue({
+    selectedOrg: 'test-org',
+    organizations: [],
+    setSelectedOrg: vi.fn(),
+    isLoading: false,
+  }),
+}))
+
 // ---------------------------------------------------------------------------
 // Imports after mocks
 // ---------------------------------------------------------------------------
