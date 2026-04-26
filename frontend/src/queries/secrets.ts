@@ -52,6 +52,26 @@ export function useGetSecret(project: string, name: string) {
   })
 }
 
+/**
+ * useGetSecretRaw fetches the full Kubernetes Secret object as verbatim JSON.
+ * The query is disabled by default; pass enabled=true to trigger the fetch.
+ * This keeps transport and client creation inside the hook, preventing spurious
+ * auth refreshes when the detail page mounts in read-only mode.
+ */
+export function useGetSecretRaw(project: string, name: string, enabled: boolean) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(SecretsService, transport), [transport])
+  return useQuery({
+    queryKey: keys.secrets.raw(project, name),
+    queryFn: async () => {
+      const response = await client.getSecretRaw({ name, project })
+      return response.raw
+    },
+    enabled: isAuthenticated && !!project && !!name && enabled,
+  })
+}
+
 // GetSecret only returns data (bytes), not metadata (description, url, grants).
 // There is no dedicated GetSecretMetadata RPC, so we derive metadata from the
 // listSecrets cache. Uses the same query key as useListSecrets so TanStack Query

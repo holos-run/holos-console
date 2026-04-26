@@ -68,6 +68,8 @@ export const keys = {
     list: (project: string) => ['secrets', 'list', project] as const,
     get: (project: string, name: string) =>
       ['secrets', 'get', project, name] as const,
+    raw: (project: string, name: string) =>
+      ['secrets', 'raw', project, name] as const,
     fanout: (project: string) => ['secrets', 'list', project, 'fanout'] as const,
   },
   templatePolicies: {
