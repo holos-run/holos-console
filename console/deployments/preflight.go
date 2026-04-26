@@ -37,12 +37,16 @@ limitations under the License.
 //
 // # Collision detection
 //
-// For each (template_namespace, template_name, version_constraint) triple in
-// the planned set, singletonName() computes the singleton Deployment name (e.g.
-// "waypoint-v1-shared").  If that name matches an existing user-named
-// Deployment (one without a "-shared" suffix), a CollisionDetail is emitted.
-// Same-named singletons are idempotent in the reconciler, so singleton→singleton
-// matches are not reported as collisions.
+// A collision is detected when the planned deployment's own name ends with
+// "-shared" (the auto-managed singleton suffix from Decision 3 of ADR 035)
+// AND a Deployment with that name already exists in the project namespace.
+// This catches users who inadvertently choose a reserved singleton-pattern
+// name that the reconciler uses for shared dependency Deployments.
+//
+// The case where the planned deployment's singleton name (auto-computed from
+// its template) matches an already-existing singleton is NOT flagged —
+// EnsureSingletonDependencyDeployment handles that idempotently by adding an
+// ownerReference to the existing Deployment without any user intervention.
 //
 // # Version-constraint compatibility
 //

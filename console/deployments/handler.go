@@ -1754,6 +1754,17 @@ func (h *Handler) PreflightCheck(
 
 	planned := req.Msg.GetPlannedDeployments()
 
+	// Validate that each planned deployment that carries a version constraint
+	// also supplies a linked_template_ref.  Without a ref the version
+	// constraint has no target and the conflict-detection loop would silently
+	// skip it, which is confusing.
+	for _, pd := range planned {
+		if pd.GetVersionConstraint() != "" && pd.GetLinkedTemplateRef() == nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("planned deployment %q has a version_constraint but no linked_template_ref", pd.GetName()))
+		}
+	}
+
 	// Run the two independent checks.
 	collisions := DetectCollisions(planned, existingNames)
 	versionConflicts := DetectVersionConflicts(planned)
