@@ -482,7 +482,8 @@ func (c *AppliedRenderStateClient) ListProjectDependencyEdges(
 // ListDependencyEdgesForDeployment is the single-deployment variant of
 // ListProjectDependencyEdges, used by GetDeployment. Returns the resolved
 // edges that materialised the named singleton, in the project's storage
-// namespace. Returns an empty slice when the deployment is not a singleton.
+// namespace. Returns nil when the deployment is not a singleton — callers
+// can treat this the same as an empty slice.
 func (c *AppliedRenderStateClient) ListDependencyEdgesForDeployment(
 	ctx context.Context,
 	projectNs, deploymentName string,
