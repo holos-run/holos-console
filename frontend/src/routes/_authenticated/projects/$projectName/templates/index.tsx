@@ -1,6 +1,7 @@
 /**
  * Project-scoped Templates index — refactored to the authoring (clone/edit)
  * cluster (HOL-974).
+ * Adopted StandardPageLayout (HOL-1002).
  *
  * Shows only Template rows scoped to the current project namespace. The
  * query key factory (keys.templates.list(namespace)) is shared with the
@@ -18,7 +19,7 @@ import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { HelpCircle } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
+import { StandardPageLayout } from '@/components/page-layout'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
@@ -159,8 +160,10 @@ export function ProjectTemplatesIndexPage({
     [deleteMutation],
   )
 
+  // onSearchChange is generic over TemplatesSearch so that the help param is
+  // preserved across grid-search updates.
   const handleSearchChange = useCallback(
-    (updater: (prev: ResourceGridSearch) => ResourceGridSearch) => {
+    (updater: (prev: TemplatesSearch) => TemplatesSearch) => {
       navigate({
         search: (prev) => {
           const typedPrev = prev as TemplatesSearch
@@ -190,20 +193,21 @@ export function ProjectTemplatesIndexPage({
   )
 
   return (
-    <>
-      <ResourceGrid
-        title={`${projectName} / Templates`}
-        kinds={kinds}
-        rows={rows}
-        onDelete={handleDelete}
-        isLoading={isPending}
-        error={error}
-        search={search}
-        onSearchChange={handleSearchChange}
-        headerActions={helpButton}
-        extraSearchFields={[{ id: 'creator', label: 'Creator' }]}
-      />
+    <StandardPageLayout<TemplatesSearch>
+      titleParts={[projectName, 'Templates']}
+      headerActions={helpButton}
+      grid={{
+        kinds,
+        rows,
+        onDelete: handleDelete,
+        isLoading: isPending,
+        error,
+        search,
+        onSearchChange: handleSearchChange,
+        extraSearchFields: [{ id: 'creator', label: 'Creator' }],
+      }}
+    >
       <TemplatesHelpPane open={helpOpen} onOpenChange={handleHelpOpenChange} />
-    </>
+    </StandardPageLayout>
   )
 }
