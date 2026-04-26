@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { createClient } from '@connectrpc/connect'
 import { useQuery, useTransport } from '@connectrpc/connect-query'
-import { useQuery as useTanstackQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery as useTanstackQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   OrganizationService,
 } from '@/gen/holos/console/v1/organizations_pb.js'
@@ -15,6 +15,26 @@ export function useListOrganizations() {
     {},
     { enabled: isAuthenticated },
   )
+}
+
+/**
+ * TanStack-native list hook with keepPreviousData for ResourceGrid v1 pages.
+ * Uses keys.organizations.list() so search-param changes do not blank the
+ * table while the fresh response is in flight.
+ */
+export function useListOrganizationsKPD() {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(OrganizationService, transport), [transport])
+  return useTanstackQuery({
+    queryKey: keys.organizations.list(),
+    queryFn: async () => {
+      const response = await client.listOrganizations({})
+      return response.organizations
+    },
+    enabled: isAuthenticated,
+    placeholderData: keepPreviousData,
+  })
 }
 
 export function useGetOrganization(name: string) {
