@@ -47,6 +47,7 @@ import (
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/settings"
+	"github.com/holos-run/holos-console/console/templatedependencies"
 	"github.com/holos-run/holos-console/console/templatepolicies"
 	"github.com/holos-run/holos-console/console/templatepolicybindings"
 	"github.com/holos-run/holos-console/console/templates"
@@ -536,6 +537,16 @@ func (s *Server) Serve(ctx context.Context) error {
 		templatesPath, templatesHTTPHandler := consolev1connect.NewTemplateServiceHandler(templatesHandler, protectedInterceptors)
 		mux.Handle(templatesPath, templatesHTTPHandler)
 
+		// TemplateDependencyService handler manages project-namespaced
+		// TemplateDependency CRDs used by ADR 032 dependency materialisation.
+		// These share the Template permission family because dependency edges
+		// are part of the project template authoring surface.
+		templateDependenciesK8s := templatedependencies.NewK8sClient(templateCtrlClient)
+		templateDependenciesHandler := templatedependencies.NewHandler(templateDependenciesK8s, nsResolver).
+			WithProjectGrantResolver(projectResolver)
+		templateDependenciesPath, templateDependenciesHTTPHandler := consolev1connect.NewTemplateDependencyServiceHandler(templateDependenciesHandler, protectedInterceptors)
+		mux.Handle(templateDependenciesPath, templateDependenciesHTTPHandler)
+
 		// TemplatePolicyService handler — manages REQUIRE/EXCLUDE policies at
 		// organization and folder scopes (HOL-556). Project scope is rejected:
 		// a project owner has write access to the project namespace, so any
@@ -654,6 +665,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		consolev1connect.OrganizationServiceName,
 		consolev1connect.ProjectSettingsServiceName,
 		consolev1connect.TemplateServiceName,
+		consolev1connect.TemplateDependencyServiceName,
 		consolev1connect.TemplatePolicyServiceName,
 		consolev1connect.TemplatePolicyBindingServiceName,
 		consolev1connect.FolderServiceName,

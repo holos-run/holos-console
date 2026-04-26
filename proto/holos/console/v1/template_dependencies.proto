@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package holos.console.v1;
+
+import "google/protobuf/timestamp.proto";
+import "holos/console/v1/policy_state.proto";
+
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// TemplateDependencyService manages TemplateDependency resources. A
+// TemplateDependency lives in a project namespace and records that one
+// project template or deployment instance depends on another template.
+service TemplateDependencyService {
+  // ListTemplateDependencies returns all TemplateDependency resources in a
+  // project namespace. Requires PERMISSION_TEMPLATES_LIST on the project.
+  rpc ListTemplateDependencies(ListTemplateDependenciesRequest) returns (ListTemplateDependenciesResponse);
+
+  // GetTemplateDependency retrieves a single dependency by (namespace, name).
+  // Requires PERMISSION_TEMPLATES_READ on the project.
+  rpc GetTemplateDependency(GetTemplateDependencyRequest) returns (GetTemplateDependencyResponse);
+
+  // CreateTemplateDependency creates a dependency in a project namespace.
+  // Requires PERMISSION_TEMPLATES_WRITE on the project.
+  rpc CreateTemplateDependency(CreateTemplateDependencyRequest) returns (CreateTemplateDependencyResponse);
+
+  // UpdateTemplateDependency updates an existing dependency.
+  // Requires PERMISSION_TEMPLATES_WRITE on the project.
+  rpc UpdateTemplateDependency(UpdateTemplateDependencyRequest) returns (UpdateTemplateDependencyResponse);
+
+  // DeleteTemplateDependency deletes a dependency.
+  // Requires PERMISSION_TEMPLATES_DELETE on the project.
+  rpc DeleteTemplateDependency(DeleteTemplateDependencyRequest) returns (DeleteTemplateDependencyResponse);
+}
+
+// TemplateDependency records that dependent requires requires. The object is
+// stored only in a project namespace. Cross-namespace requires refs are
+// authorised by TemplateGrant at reconcile time.
+message TemplateDependency {
+  // name is the unique DNS label slug within the namespace.
+  string name = 1;
+  // namespace is the project namespace that owns this dependency.
+  string namespace = 2;
+  // dependent identifies the template or deployment instance that has the
+  // dependency. Its namespace must match this object's namespace.
+  LinkedTemplateRef dependent = 3;
+  // requires identifies the template the dependent needs.
+  LinkedTemplateRef requires = 4;
+  // cascade_delete controls whether deleting requires should cascade to
+  // dependent. Unset preserves the CRD default of true.
+  optional bool cascade_delete = 5;
+  // creator_email is the email address of the user who created this object.
+  string creator_email = 6;
+  // created_at is the timestamp when this dependency was created.
+  google.protobuf.Timestamp created_at = 7;
+  // status contains reconciler observations.
+  TemplateDependencyStatus status = 8;
+}
+
+// TemplateDependencyStatus mirrors the CRD status subresource.
+message TemplateDependencyStatus {
+  // observed_generation is the latest generation observed by the reconciler.
+  int64 observed_generation = 1;
+  // conditions are Gateway-style status conditions.
+  repeated TemplateDependencyCondition conditions = 2;
+}
+
+// TemplateDependencyCondition is a compact protobuf representation of
+// metav1.Condition.
+message TemplateDependencyCondition {
+  string type = 1;
+  string status = 2;
+  string reason = 3;
+  string message = 4;
+  int64 observed_generation = 5;
+  google.protobuf.Timestamp last_transition_time = 6;
+}
+
+message ListTemplateDependenciesRequest {
+  // namespace is the project namespace to list.
+  string namespace = 1;
+}
+
+message ListTemplateDependenciesResponse {
+  repeated TemplateDependency dependencies = 1;
+}
+
+message GetTemplateDependencyRequest {
+  string namespace = 1;
+  string name = 2;
+}
+
+message GetTemplateDependencyResponse {
+  TemplateDependency dependency = 1;
+}
+
+message CreateTemplateDependencyRequest {
+  string namespace = 1;
+  TemplateDependency dependency = 2;
+}
+
+message CreateTemplateDependencyResponse {
+  string name = 1;
+}
+
+message UpdateTemplateDependencyRequest {
+  string namespace = 1;
+  TemplateDependency dependency = 2;
+}
+
+message UpdateTemplateDependencyResponse {}
+
+message DeleteTemplateDependencyRequest {
+  string namespace = 1;
+  string name = 2;
+}
+
+message DeleteTemplateDependencyResponse {}
