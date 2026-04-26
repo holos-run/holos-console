@@ -38,15 +38,16 @@ import {
 import { ArrowLeft, CheckCircle2, ExternalLink, Info, TriangleAlert, XCircle } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import type { EnvVar, Event, ContainerStatus, Link as DeploymentLink } from '@/gen/holos/console/v1/deployments_pb'
-import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentPolicyState, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
+import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useGetDeploymentPolicyState, useGetDeploymentRenderPreview, useUpdateDeployment, useDeleteDeployment } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 import { isSafeHttpUrl } from '@/lib/url'
 import { PolicySection } from '@/components/policy-drift/PolicySection'
 
-type DeploymentTab = 'status' | 'logs'
+type DeploymentTab = 'status' | 'logs' | 'preview'
 
 function validateTab(value: unknown): DeploymentTab {
   if (value === 'logs') return value
+  if (value === 'preview') return value
   return 'status'
 }
 
@@ -258,6 +259,7 @@ export function DeploymentDetailPage({
   const { data: status } = useGetDeploymentStatus(projectName, deploymentName, { refetchInterval: 5000 })
   const { data: project } = useGetProject(projectName)
   const { data: policyState, isPending: isPolicyPending, error: policyError } = useGetDeploymentPolicyState(projectName, deploymentName)
+  const { data: renderPreview, isPending: isPreviewPending, error: previewError } = useGetDeploymentRenderPreview(projectName, deploymentName)
 
   const [tailLines, setTailLines] = useState<number>(100)
   const [previous, setPrevious] = useState(false)
@@ -441,6 +443,7 @@ export function DeploymentDetailPage({
             <TabsList>
               <TabsTrigger value="status">Status</TabsTrigger>
               <TabsTrigger value="logs">Logs</TabsTrigger>
+              <TabsTrigger value="preview">Preview</TabsTrigger>
             </TabsList>
 
             {/* Status tab — replicas, conditions, pods, environment variables */}
@@ -726,6 +729,84 @@ export function DeploymentDetailPage({
               <pre className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto max-h-[70vh] whitespace-pre-wrap">
                 {logs || 'No logs available.'}
               </pre>
+            </TabsContent>
+
+            {/*
+              Preview tab — shows the rendered Kubernetes manifests produced by
+              evaluating the deployment template against the current platform
+              and project inputs. The `platformResourcesYaml` section surfaces
+              resources contributed by organisation- and folder-level platform
+              templates via `TemplatePolicyBinding`, which is the key signal
+              operators need to verify policy-mixed-in resources before
+              reconciling.
+            */}
+            <TabsContent value="preview" className="mt-4 space-y-6">
+              {isPreviewPending && (
+                <div className="space-y-2" data-testid="preview-loading">
+                  <Skeleton className="h-5 w-40" />
+                  <Skeleton className="h-40 w-full" />
+                </div>
+              )}
+              {previewError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{previewError.message}</AlertDescription>
+                </Alert>
+              )}
+              {renderPreview && !isPreviewPending && (
+                <>
+                  {/*
+                    Platform resources — contributed by TemplatePolicyBinding.
+                    Shown first so operators can immediately see what the platform
+                    injected before comparing to the project template's own output.
+                  */}
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className="text-sm font-medium">Platform Resources</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Resources contributed by organisation/folder-level templates via{' '}
+                        <span className="font-mono">TemplatePolicyBinding</span>
+                      </p>
+                    </div>
+                    <Separator />
+                    {renderPreview.platformResourcesYaml ? (
+                      <pre
+                        data-testid="preview-platform-resources"
+                        className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto max-h-[40vh] whitespace-pre-wrap"
+                      >
+                        {renderPreview.platformResourcesYaml}
+                      </pre>
+                    ) : (
+                      <p className="text-sm text-muted-foreground" data-testid="preview-platform-resources-empty">
+                        No platform resources. Link a platform template via{' '}
+                        <span className="font-mono">TemplatePolicyBinding</span> to see resources here.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Project resources — contributed by the deployment template */}
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className="text-sm font-medium">Project Resources</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Resources rendered directly from this deployment&apos;s template
+                      </p>
+                    </div>
+                    <Separator />
+                    {renderPreview.projectResourcesYaml ? (
+                      <pre
+                        data-testid="preview-project-resources"
+                        className="rounded-md bg-muted p-4 text-xs font-mono overflow-auto max-h-[40vh] whitespace-pre-wrap"
+                      >
+                        {renderPreview.projectResourcesYaml}
+                      </pre>
+                    ) : (
+                      <p className="text-sm text-muted-foreground" data-testid="preview-project-resources-empty">
+                        No project resources rendered.
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
             </TabsContent>
           </Tabs>
         </CardContent>

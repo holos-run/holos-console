@@ -38,6 +38,16 @@ export function parseGridSearch(raw: Record<string, unknown>): ResourceGridSearc
     result.search = search
   }
 
+  const sort = raw['sort']
+  if (typeof sort === 'string' && sort.length > 0) {
+    result.sort = sort
+  }
+
+  const sortDir = raw['sortDir']
+  if (sortDir === 'asc' || sortDir === 'desc') {
+    result.sortDir = sortDir
+  }
+
   return result
 }
 
@@ -52,6 +62,8 @@ export function serialiseGridSearch(
   return {
     kind: params.kind || undefined,
     search: params.search || undefined,
+    sort: params.sort || undefined,
+    sortDir: params.sortDir || undefined,
   }
 }
 

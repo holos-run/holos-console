@@ -19,11 +19,13 @@ import {
   useReactTable,
   getCoreRowModel,
   getFilteredRowModel,
+  getSortedRowModel,
   flexRender,
   createColumnHelper,
   type VisibilityState,
+  type SortingState,
 } from '@tanstack/react-table'
-import { Trash2 } from 'lucide-react'
+import { ArrowUpDown, ArrowUp, ArrowDown, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -98,6 +100,12 @@ export interface ResourceGridProps {
    * New button. Use for icon buttons such as the Templates help pane toggle.
    */
   headerActions?: ReactNode
+  /**
+   * Optional set of column IDs that should be rendered with a sort toggle
+   * button. Defaults to ['createdAt'] when unset so the Created At column is
+   * always sortable. Pass an empty array to disable all sorting.
+   */
+  sortableColumns?: string[]
 }
 
 // ---------------------------------------------------------------------------
@@ -116,6 +124,7 @@ export function ResourceGrid({
   extraColumns = [],
   headerContent,
   headerActions,
+  sortableColumns = ['createdAt'],
 }: ResourceGridProps) {
   const navigate = useNavigate()
 
@@ -127,6 +136,12 @@ export function ResourceGrid({
   )
 
   const globalFilter = search.search ?? ''
+
+  // Derive sorting state from URL params.
+  const sorting: SortingState = useMemo(() => {
+    if (!search.sort) return []
+    return [{ id: search.sort, desc: search.sortDir === 'desc' }]
+  }, [search.sort, search.sortDir])
 
   // --- URL updater helpers -----------------------------------------------
 
@@ -152,6 +167,19 @@ export function ResourceGrid({
       }))
     },
     [updateSearch],
+  )
+
+  const handleSortingChange = useCallback(
+    (updaterOrValue: SortingState | ((prev: SortingState) => SortingState)) => {
+      const next = typeof updaterOrValue === 'function' ? updaterOrValue(sorting) : updaterOrValue
+      const first = next[0]
+      updateSearch((prev) => ({
+        ...prev,
+        sort: first?.id ?? undefined,
+        sortDir: first ? (first.desc ? 'desc' : 'asc') : undefined,
+      }))
+    },
+    [updateSearch, sorting],
   )
 
   const {
@@ -185,6 +213,10 @@ export function ResourceGrid({
     const kindSet = new Set(selectedKindIds)
     return rows.filter((r) => kindSet.has(r.kind))
   }, [rows, selectedKindIds])
+
+  // --- Stable set of sortable column IDs --------------------------------
+
+  const sortableSet = useMemo(() => new Set(sortableColumns), [sortableColumns])
 
   // --- TanStack Table columns --------------------------------------------
 
@@ -266,7 +298,39 @@ export function ResourceGrid({
       ...extraColumns,
       columnHelper.accessor('createdAt', {
         id: 'createdAt',
-        header: 'Created At',
+        header: ({ column }) => {
+          if (!sortableSet.has('createdAt')) {
+            return <span>Created At</span>
+          }
+          const isSorted = column.getIsSorted()
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="-ml-3 h-8 font-normal"
+              onClick={() => column.toggleSorting(isSorted === 'asc')}
+              aria-label="Sort by Created At"
+            >
+              Created At
+              {isSorted === 'asc' ? (
+                <ArrowUp className="ml-1 h-4 w-4" aria-hidden="true" />
+              ) : isSorted === 'desc' ? (
+                <ArrowDown className="ml-1 h-4 w-4" aria-hidden="true" />
+              ) : (
+                <ArrowUpDown className="ml-1 h-4 w-4 opacity-50" aria-hidden="true" />
+              )}
+            </Button>
+          )
+        },
+        enableSorting: sortableSet.has('createdAt'),
+        sortingFn: (rowA, rowB) => {
+          const a = rowA.original.createdAt
+          const b = rowB.original.createdAt
+          if (!a && !b) return 0
+          if (!a) return 1
+          if (!b) return -1
+          return a < b ? -1 : a > b ? 1 : 0
+        },
         cell: ({ getValue }) => {
           const raw = getValue()
           if (!raw) {
@@ -305,7 +369,7 @@ export function ResourceGrid({
         ),
       }),
     ],
-    [handleDeleteClick, extraColumns],
+    [handleDeleteClick, extraColumns, sortableSet],
   )
 
   // --- TanStack Table instance -------------------------------------------
@@ -313,11 +377,13 @@ export function ResourceGrid({
   const table = useReactTable({
     data: kindFilteredRows,
     columns,
-    state: { globalFilter, columnVisibility },
+    state: { globalFilter, columnVisibility, sorting },
     onGlobalFilterChange: setGlobalFilter,
+    onSortingChange: handleSortingChange,
     globalFilterFn: 'includesString',
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
   })
 
   // --- Loading skeleton --------------------------------------------------

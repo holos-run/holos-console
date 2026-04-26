@@ -474,4 +474,75 @@ describe('ResourceGrid', () => {
     const result = updater({ search: 'existing' })
     expect(result['search']).toBeUndefined()
   })
+
+  // --- Sorting — Created At column (HOL-971) ---
+
+  it('renders Created At column header as a sortable button by default', () => {
+    renderGrid()
+    // Default sortableColumns includes 'createdAt', so the header is a button.
+    const sortBtn = screen.getByRole('button', { name: /sort by created at/i })
+    expect(sortBtn).toBeInTheDocument()
+  })
+
+  it('clicking Created At sort button calls onSearchChange with sort=createdAt asc', () => {
+    const onSearchChange = vi.fn()
+    renderGrid({ onSearchChange })
+    const sortBtn = screen.getByRole('button', { name: /sort by created at/i })
+    fireEvent.click(sortBtn)
+    expect(onSearchChange).toHaveBeenCalled()
+    // The updater produced by the first click should set sort=createdAt asc.
+    const updater = onSearchChange.mock.calls[0][0] as (prev: Record<string, unknown>) => Record<string, unknown>
+    const result = updater({})
+    expect(result['sort']).toBe('createdAt')
+    expect(result['sortDir']).toBe('asc')
+  })
+
+  it('clicking Created At sort button a second time toggles to desc', () => {
+    const onSearchChange = vi.fn()
+    // Render with sort=createdAt asc already active.
+    renderGrid({ onSearchChange, search: { sort: 'createdAt', sortDir: 'asc' } })
+    const sortBtn = screen.getByRole('button', { name: /sort by created at/i })
+    fireEvent.click(sortBtn)
+    expect(onSearchChange).toHaveBeenCalled()
+    const updater = onSearchChange.mock.calls[0][0] as (prev: Record<string, unknown>) => Record<string, unknown>
+    const result = updater({ sort: 'createdAt', sortDir: 'asc' })
+    expect(result['sort']).toBe('createdAt')
+    expect(result['sortDir']).toBe('desc')
+  })
+
+  it('sorts rows by createdAt ascending when search.sort is createdAt and sortDir is asc', () => {
+    renderGrid({
+      rows: [
+        makeRow({ id: 'b', name: 'b', displayName: 'B', description: '', createdAt: '2025-06-01T00:00:00Z' }),
+        makeRow({ id: 'a', name: 'a', displayName: 'A', description: '', createdAt: '2025-01-01T00:00:00Z' }),
+      ],
+      search: { sort: 'createdAt', sortDir: 'asc' },
+    })
+    const cells = screen.getAllByRole('cell').map((c) => c.textContent)
+    const aIndex = cells.findIndex((t) => t?.includes('A'))
+    const bIndex = cells.findIndex((t) => t?.includes('B'))
+    expect(aIndex).toBeLessThan(bIndex)
+  })
+
+  it('sorts rows by createdAt descending when sortDir is desc', () => {
+    renderGrid({
+      rows: [
+        makeRow({ id: 'a', name: 'a', displayName: 'A', description: '', createdAt: '2025-01-01T00:00:00Z' }),
+        makeRow({ id: 'b', name: 'b', displayName: 'B', description: '', createdAt: '2025-06-01T00:00:00Z' }),
+      ],
+      search: { sort: 'createdAt', sortDir: 'desc' },
+    })
+    const cells = screen.getAllByRole('cell').map((c) => c.textContent)
+    const aIndex = cells.findIndex((t) => t?.includes('A'))
+    const bIndex = cells.findIndex((t) => t?.includes('B'))
+    expect(bIndex).toBeLessThan(aIndex)
+  })
+
+  it('renders Created At as plain text (not a button) when sortableColumns is empty', () => {
+    renderGrid({ sortableColumns: [] })
+    // No sort toggle button should be present.
+    expect(screen.queryByRole('button', { name: /sort by created at/i })).not.toBeInTheDocument()
+    // The header text is still shown.
+    expect(screen.getByRole('columnheader', { name: /created at/i })).toBeInTheDocument()
+  })
 })

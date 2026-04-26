@@ -35,6 +35,7 @@ vi.mock('@/queries/deployments', () => ({
   useListNamespaceSecrets: vi.fn(),
   useListNamespaceConfigMaps: vi.fn(),
   useGetDeploymentPolicyState: vi.fn(),
+  useGetDeploymentRenderPreview: vi.fn(),
 }))
 
 vi.mock('@/queries/projects', () => ({
@@ -43,7 +44,7 @@ vi.mock('@/queries/projects', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
-import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps, useGetDeploymentPolicyState } from '@/queries/deployments'
+import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpdateDeployment, useDeleteDeployment, useListNamespaceSecrets, useListNamespaceConfigMaps, useGetDeploymentPolicyState, useGetDeploymentRenderPreview } from '@/queries/deployments'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentPhase } from '@/gen/holos/console/v1/deployments_pb'
@@ -169,6 +170,7 @@ function setupMocks(userRole = Role.OWNER) {
   ;(useListNamespaceSecrets as Mock).mockReturnValue({ data: [], isLoading: false })
   ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
   ;(useGetDeploymentPolicyState as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
+  ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
 }
 
 describe('DeploymentDetailPage', () => {
@@ -1275,6 +1277,131 @@ describe('DeploymentDetailPage', () => {
       render(<DeploymentDetailPage />)
       const btn = screen.getByRole('button', { name: /reconcile policy drift/i })
       expect(btn).toBeDisabled()
+    })
+  })
+
+  // ── Preview tab tests (HOL-971) ─────────────────────────────────────────
+  //
+  // The Preview tab shows the rendered Kubernetes manifests from
+  // GetDeploymentRenderPreview. platformResourcesYaml surfaces resources
+  // contributed by organisation/folder-level templates via
+  // TemplatePolicyBinding. projectResourcesYaml surfaces the deployment
+  // template's own project resources.
+
+  describe('Preview tab', () => {
+    const mockRenderPreview = {
+      $typeName: 'holos.console.v1.GetDeploymentRenderPreviewResponse' as const,
+      cueTemplate: '// template',
+      cuePlatformInput: '// platform',
+      cueProjectInput: '// project',
+      renderedYaml: 'apiVersion: v1\nkind: Service',
+      renderedJson: '[]',
+      platformResourcesYaml: 'apiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: platform-policy',
+      platformResourcesJson: '[]',
+      projectResourcesYaml: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: api',
+      projectResourcesJson: '[]',
+      defaultsJson: '{}',
+    }
+
+    it('renders a Preview tab trigger', () => {
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      expect(screen.getByRole('tab', { name: /preview/i })).toBeInTheDocument()
+    })
+
+    it('does not activate the Preview tab by default', () => {
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      const previewTab = screen.getByRole('tab', { name: /preview/i })
+      expect(previewTab).toHaveAttribute('data-state', 'inactive')
+    })
+
+    it('activates the Preview tab when URL has ?tab=preview', () => {
+      mockUseSearch.mockReturnValue({ tab: 'preview' })
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: mockRenderPreview,
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      const previewTab = screen.getByRole('tab', { name: /preview/i })
+      expect(previewTab).toHaveAttribute('data-state', 'active')
+    })
+
+    it('renders platform resources YAML when preview data is available', async () => {
+      const user = userEvent.setup()
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: mockRenderPreview,
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+      expect(screen.getByTestId('preview-platform-resources')).toBeInTheDocument()
+      expect(screen.getByText(/NetworkPolicy/)).toBeInTheDocument()
+    })
+
+    it('renders project resources YAML when preview data is available', async () => {
+      const user = userEvent.setup()
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: mockRenderPreview,
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+      expect(screen.getByTestId('preview-project-resources')).toBeInTheDocument()
+      expect(screen.getByText(/kind: Deployment/)).toBeInTheDocument()
+    })
+
+    it('renders empty platform resources message when platformResourcesYaml is empty', async () => {
+      const user = userEvent.setup()
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: { ...mockRenderPreview, platformResourcesYaml: '' },
+        isPending: false,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+      const emptyMsg = screen.getByTestId('preview-platform-resources-empty')
+      expect(emptyMsg).toBeInTheDocument()
+      expect(emptyMsg.textContent).toContain('TemplatePolicyBinding')
+    })
+
+    it('renders loading skeleton while preview is pending', async () => {
+      const user = userEvent.setup()
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: undefined,
+        isPending: true,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+      expect(screen.getByTestId('preview-loading')).toBeInTheDocument()
+    })
+
+    it('renders error when preview fetch fails', async () => {
+      const user = userEvent.setup()
+      setupMocks()
+      ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({
+        data: undefined,
+        isPending: false,
+        error: new Error('preview fetch failed'),
+      })
+      render(<DeploymentDetailPage />)
+      await user.click(screen.getByRole('tab', { name: /preview/i }))
+      expect(screen.getByText(/preview fetch failed/i)).toBeInTheDocument()
+    })
+
+    it('calls useGetDeploymentRenderPreview with project and deployment name', () => {
+      setupMocks()
+      render(<DeploymentDetailPage />)
+      expect(useGetDeploymentRenderPreview).toHaveBeenCalledWith('test-project', 'api')
     })
   })
 })
