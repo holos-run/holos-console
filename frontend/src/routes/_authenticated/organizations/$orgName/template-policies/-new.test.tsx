@@ -1,5 +1,8 @@
 // HOL-836: Audit + test coverage for the org-scope TemplatePolicy create form.
 //
+// HOL-1024: updated to add ScopePicker mock and extend tests to cover both
+// org-scope (default) and project-scope branches.
+//
 // Audit findings (no production changes needed):
 // - PolicyForm.tsx calls useListLinkableTemplates(namespace, { includeSelfScope: true })
 //   which invokes the ancestor-walking ListLinkableTemplates RPC.
@@ -12,6 +15,8 @@
 // 1. The form calls useListLinkableTemplates with includeSelfScope: true.
 // 2. Org-owned templates appear in the rule's template picker with a scope label.
 // 3. The form correctly renders and submits for OWNER/EDITOR roles.
+// 4. ScopePicker is rendered; switching to Project scope routes mutation to project namespace.
+// 5. When no project is selected and scope=project, a prompt is shown instead of the form.
 
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event'
@@ -46,6 +51,15 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     ),
   }
 })
+
+vi.mock('@/lib/console-config', () => ({
+  getConsoleConfig: vi.fn().mockReturnValue({
+    namespacePrefix: '',
+    organizationPrefix: 'holos-org-',
+    folderPrefix: 'holos-folder-',
+    projectPrefix: 'holos-project-',
+  }),
+}))
 
 vi.mock('@/queries/templatePolicies', async () => {
   const actual = await vi.importActual<typeof import('@/queries/templatePolicies')>(
@@ -87,15 +101,43 @@ vi.mock('@/queries/organizations', () => ({
   useGetOrganization: vi.fn(),
 }))
 
+vi.mock('@/lib/project-context', () => ({
+  useProject: vi.fn(),
+}))
+
+vi.mock('@/components/scope-picker/ScopePicker', async () => {
+  return {
+    ScopePicker: ({
+      value,
+      onChange,
+      disabled,
+    }: {
+      value: string
+      onChange: (v: string) => void
+      disabled?: boolean
+    }) => (
+      <button
+        data-testid="scope-picker-trigger"
+        disabled={disabled}
+        onClick={() => onChange(value === 'organization' ? 'project' : 'organization')}
+      >
+        {value}
+      </button>
+    ),
+  }
+})
+
 import { useCreateTemplatePolicy } from '@/queries/templatePolicies'
 import { useGetOrganization } from '@/queries/organizations'
 import { useListLinkableTemplates } from '@/queries/templates'
+import { useProject } from '@/lib/project-context'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { CreateOrgTemplatePolicyPage } from './new'
 
 function setupMocks(
   mutateAsync = vi.fn().mockResolvedValue({}),
   userRole: Role = Role.OWNER,
+  selectedProject: string | null = 'test-project',
 ) {
   ;(useCreateTemplatePolicy as Mock).mockReturnValue({
     mutateAsync,
@@ -106,6 +148,12 @@ function setupMocks(
     data: { name: 'test-org', userRole },
     isPending: false,
     error: null,
+  })
+  ;(useProject as Mock).mockReturnValue({
+    selectedProject,
+    setSelectedProject: vi.fn(),
+    projects: [],
+    isLoading: false,
   })
 }
 
@@ -120,7 +168,7 @@ if (!Element.prototype.releasePointerCapture) {
   Element.prototype.releasePointerCapture = () => {}
 }
 
-describe('CreateOrgTemplatePolicyPage (HOL-836)', () => {
+describe('CreateOrgTemplatePolicyPage (HOL-836 + HOL-1024)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     setupMocks()
@@ -129,6 +177,38 @@ describe('CreateOrgTemplatePolicyPage (HOL-836)', () => {
   it('renders the page heading', () => {
     render(<CreateOrgTemplatePolicyPage orgName="test-org" />)
     expect(screen.getByText(/create template policy/i)).toBeInTheDocument()
+  })
+
+  // HOL-1024: ScopePicker must be rendered on the page.
+  it('renders the ScopePicker', () => {
+    render(<CreateOrgTemplatePolicyPage orgName="test-org" />)
+    expect(screen.getByTestId('scope-picker-trigger')).toBeInTheDocument()
+  })
+
+  // HOL-1024: By default scope is 'organization' so the picker shows 'organization'.
+  it('defaults to organization scope', () => {
+    render(<CreateOrgTemplatePolicyPage orgName="test-org" />)
+    expect(screen.getByTestId('scope-picker-trigger')).toHaveTextContent('organization')
+  })
+
+  // HOL-1024: When scope is 'project' and no project is selected, show a prompt.
+  it('shows a prompt when scope=project and no project is selected', () => {
+    setupMocks(vi.fn(), Role.OWNER, null)
+    render(<CreateOrgTemplatePolicyPage orgName="test-org" />)
+    // Switch to project scope via the mock picker (click toggles to 'project').
+    fireEvent.click(screen.getByTestId('scope-picker-trigger'))
+    expect(
+      screen.getByText(/select a project from the switcher/i),
+    ).toBeInTheDocument()
+  })
+
+  // HOL-1024: When scope=project and a project IS selected, the form renders.
+  it('shows the form when scope=project and a project is selected', () => {
+    render(<CreateOrgTemplatePolicyPage orgName="test-org" />)
+    // Click the picker to switch to 'project'.
+    fireEvent.click(screen.getByTestId('scope-picker-trigger'))
+    // Form should be visible.
+    expect(screen.getByLabelText(/display name/i)).toBeInTheDocument()
   })
 
   // HOL-836 AC: the org-scope form must call useListLinkableTemplates with

@@ -123,11 +123,14 @@ export function BindingForm({
   const handleSubmit = async () => {
     setError(null)
 
-    // Scope guard: bindings can only be authored at folder or organization
-    // scope. Matches PolicyForm's guard.
-    if (scopeType !== 'organization' && scopeType !== 'folder') {
+    // Scope guard: bindings can only be authored at folder, organization, or
+    // project scope. Matches PolicyForm's guard.
+    //
+    // HOL-1024: 'project' is now a valid scope (ScopePicker on the new page
+    // routes the create mutation to the project namespace when selected).
+    if (scopeType !== 'organization' && scopeType !== 'folder' && scopeType !== 'project') {
       setError(
-        'Template policy bindings can only be created at folder or organization scope. Navigate to a folder or organization to manage bindings.',
+        'Template policy bindings can only be created at folder, organization, or project scope. Navigate to a valid scope to manage bindings.',
       )
       return
     }
@@ -248,7 +251,9 @@ export function BindingForm({
               ? 'Folder'
               : scopeType === 'organization'
                 ? 'Organization'
-                : 'Invalid'}
+                : scopeType === 'project'
+                  ? 'Project'
+                  : 'Invalid'}
           </p>
         </div>
         <TargetRefEditor

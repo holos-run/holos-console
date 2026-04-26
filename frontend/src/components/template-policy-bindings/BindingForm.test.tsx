@@ -367,12 +367,15 @@ describe('BindingForm', () => {
     })
   })
 
-  it('blocks submission when the resolved scope is project (contrived URL)', async () => {
+  // HOL-1024: 'project' is now a valid scope for bindings (ScopePicker routes
+  // the create mutation to the project namespace). Test that 'unknown' scope
+  // (a contrived or unsupported value) still blocks submission.
+  it('blocks submission when the resolved scope is unknown (contrived URL)', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined)
     render(
       <BindingForm
         mode="create"
-        scopeType="project"
+        scopeType="unknown"
         namespace={ORG_NAMESPACE}
         organization="test-org"
         canWrite
@@ -390,7 +393,7 @@ describe('BindingForm', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('binding-form-error')).toHaveTextContent(
-        /only be created at folder or organization scope/i,
+        /only be created at folder, organization, or project scope/i,
       )
     })
     expect(onSubmit).not.toHaveBeenCalled()

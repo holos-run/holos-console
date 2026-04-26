@@ -14,6 +14,11 @@
  * HOL-975: accepts an optional `cloneSource` search param encoding
  * "namespace/name" to pre-select a platform template when navigating from
  * the org-scope template detail page via the "Clone to project" CTA.
+ *
+ * HOL-1024: ScopePicker is rendered with value fixed to 'project' (disabled)
+ * because the clone destination is always the project namespace encoded in
+ * the route URL. The picker communicates the scope visually, aligning this
+ * page with all other "new" pages in the HOL-1016 wave.
  */
 
 import { useState, useEffect } from 'react'
@@ -24,6 +29,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Combobox } from '@/components/ui/combobox'
+import { ScopePicker } from '@/components/scope-picker/ScopePicker'
 import {
   useCloneTemplate,
   useListLinkableTemplates,
@@ -175,6 +181,14 @@ export function CloneTemplatePage({
         <CardTitle>Clone Platform Template</CardTitle>
       </CardHeader>
       <CardContent>
+        {/* HOL-1024: scope is always 'project' for this clone-only route. The
+            picker is disabled because the destination namespace is fixed by the
+            $projectName URL segment. It communicates the scope visually and
+            aligns this page with the other HOL-1016 "new" pages. */}
+        <div className="mb-4 flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Scope:</span>
+          <ScopePicker value="project" onChange={() => {}} disabled />
+        </div>
         <div className="space-y-4">
           <div>
             <Label>Source Platform Template</Label>

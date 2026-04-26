@@ -1,6 +1,10 @@
 /**
  * Tests for the project-scoped template clone page (HOL-974).
  *
+ * HOL-1024: updated to add ScopePicker mock. The clone page always shows
+ * scope=project (fixed/disabled) per the integration decision documented in the
+ * PR and in docs/agents/frontend-architecture.md.
+ *
  * Covers: source picker rendering, display name → slug auto-derive,
  * clone mutation call, navigation to the new template's detail on success,
  * and validation errors.
@@ -46,6 +50,25 @@ vi.mock('@/queries/templates', () => ({
   useListLinkableTemplates: vi.fn(),
 }))
 
+// HOL-1024: mock ScopePicker — the clone page renders it with value='project'
+// and disabled=true (scope is fixed by the route URL).
+vi.mock('@/components/scope-picker/ScopePicker', async () => {
+  return {
+    ScopePicker: ({
+      value,
+      disabled,
+    }: {
+      value: string
+      onChange: (v: string) => void
+      disabled?: boolean
+    }) => (
+      <button data-testid="scope-picker-trigger" disabled={disabled}>
+        {value}
+      </button>
+    ),
+  }
+})
+
 import { useCloneTemplate, useListLinkableTemplates } from '@/queries/templates'
 import { CloneTemplatePage } from './new'
 
@@ -69,7 +92,19 @@ beforeEach(() => {
   })
 })
 
-describe('CloneTemplatePage (HOL-974)', () => {
+describe('CloneTemplatePage (HOL-974 + HOL-1024)', () => {
+  // -------------------------------------------------------------------------
+  // HOL-1024: ScopePicker integration
+  // -------------------------------------------------------------------------
+
+  it('renders the ScopePicker with value=project and disabled', () => {
+    render(<CloneTemplatePage projectName="my-proj" />)
+    const picker = screen.getByTestId('scope-picker-trigger')
+    expect(picker).toBeInTheDocument()
+    expect(picker).toHaveTextContent('project')
+    expect(picker).toBeDisabled()
+  })
+
   // -------------------------------------------------------------------------
   // Source picker
   // -------------------------------------------------------------------------
