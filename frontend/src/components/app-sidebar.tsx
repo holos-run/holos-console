@@ -2,6 +2,7 @@ import type React from 'react'
 import { Link, useLocation } from '@tanstack/react-router'
 import {
   Box,
+  ChevronRight,
   KeyRound,
   LayoutTemplate,
   Layers,
@@ -16,7 +17,15 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from '@/components/ui/sidebar'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import {
   Tooltip,
   TooltipContent,
@@ -32,15 +41,26 @@ import { WorkspaceMenu } from '@/components/workspace-menu'
 interface NavItem {
   label: string
   icon: React.ComponentType<{ className?: string }>
-  // href is the fully-resolved href string for the anchor (used by the Link mock in tests).
   href: string
-  // to / params are the TanStack Router typed route args; undefined for
-  // always-enabled top-level routes that don't take params.
   to?: string
   params?: Record<string, string>
-  // When disabled, the link is replaced by a Tooltip explaining the prerequisite.
   disabled: boolean
   disabledReason?: string
+}
+
+// TemplatesSubLink describes a single leaf link inside the Templates collapsible group.
+interface TemplatesSubLink {
+  label: string
+  href: string
+  to: string
+  params: Record<string, string>
+  testId: string
+}
+
+// TemplatesSubGroup groups related sub-links under a labelled section heading.
+interface TemplatesSubGroup {
+  heading: string
+  links: TemplatesSubLink[]
 }
 
 export function AppSidebar() {
@@ -52,10 +72,6 @@ export function AppSidebar() {
   const hasOrg = Boolean(selectedOrg)
   const hasProject = Boolean(selectedProject)
 
-  // Flat 4-item nav: Projects, Secrets, Deployments, Templates.
-  // Projects is org-scoped and disabled until an org is chosen.
-  // Secrets, Deployments, and Templates are project-scoped and disabled until
-  // a project is chosen from the WorkspaceMenu.
   const navItems: NavItem[] = [
     {
       label: 'Projects',
@@ -84,42 +100,97 @@ export function AppSidebar() {
       disabled: !hasProject,
       disabledReason: 'Select a project to view Deployments',
     },
-    {
-      label: 'Templates',
-      icon: LayoutTemplate,
-      // When an org is selected, link to the unified org-level surface
-      // (Templates + Policies + Bindings). Fall back to the project-scoped
-      // page if a project but no org is selected, or disable if neither.
-      href: hasOrg
-        ? `/organizations/${selectedOrg}/templates`
-        : hasProject
-          ? `/projects/${selectedProject}/templates`
-          : '#',
-      to: hasOrg
-        ? '/organizations/$orgName/templates'
-        : '/projects/$projectName/templates',
-      params: hasOrg
-        ? { orgName: selectedOrg! }
-        : hasProject
-          ? { projectName: selectedProject! }
-          : undefined,
-      disabled: !hasOrg && !hasProject,
-      disabledReason: 'Select an organization to view Templates',
-    },
   ]
+
+  // Templates root link resolves the same way as the old flat entry.
+  const templatesRootHref = hasOrg
+    ? `/organizations/${selectedOrg}/templates`
+    : hasProject
+      ? `/projects/${selectedProject}/templates`
+      : '#'
+  const templatesDisabled = !hasOrg && !hasProject
+  const templatesDisabledReason = 'Select an organization to view Templates'
+
+  // Sub-links within the Templates collapsible group (project-scoped, HOL-1009 and HOL-1013).
+  const templatesSubGroups: TemplatesSubGroup[] = hasProject
+    ? [
+        {
+          heading: 'Policy',
+          links: [
+            {
+              label: 'Template Policies',
+              href: `/projects/${selectedProject}/templates/policies`,
+              to: '/projects/$projectName/templates/policies/',
+              params: { projectName: selectedProject! },
+              testId: 'nav-template-policies',
+            },
+            {
+              label: 'Policy Bindings',
+              href: `/projects/${selectedProject}/templates/policy-bindings`,
+              to: '/projects/$projectName/templates/policy-bindings/',
+              params: { projectName: selectedProject! },
+              testId: 'nav-policy-bindings',
+            },
+          ],
+        },
+        {
+          heading: 'Dependencies',
+          links: [
+            {
+              label: 'Template Dependencies',
+              href: `/projects/${selectedProject}/templates/dependencies`,
+              to: '/projects/$projectName/templates/dependencies/',
+              params: { projectName: selectedProject! },
+              testId: 'nav-template-dependencies',
+            },
+            {
+              label: 'Requirements',
+              href: `/projects/${selectedProject}/templates/requirements`,
+              to: '/projects/$projectName/templates/requirements/',
+              params: { projectName: selectedProject! },
+              testId: 'nav-requirements',
+            },
+          ],
+        },
+        {
+          heading: 'Grants',
+          links: [
+            {
+              label: 'Template Grants',
+              href: `/projects/${selectedProject}/templates/grants`,
+              to: '/projects/$projectName/templates/grants/',
+              params: { projectName: selectedProject! },
+              testId: 'nav-template-grants',
+            },
+          ],
+        },
+      ]
+    : []
+
+  // Expand the Templates group when any descendant route (or root) is active.
+  const allSubHrefs = templatesSubGroups
+    .flatMap((g) => g.links)
+    .map((l) => l.href)
+  const isTemplatesActive =
+    templatesRootHref !== '#' &&
+    (pathname === templatesRootHref ||
+      pathname.startsWith(`${templatesRootHref}/`) ||
+      allSubHrefs.some(
+        (h) => pathname === h || pathname.startsWith(`${h}/`),
+      ))
 
   return (
     <Sidebar>
       <SidebarHeader className="px-2 py-2">
-          {/* WorkspaceMenu provides org/project selection, profile, and dev tools. */}
+        {/* WorkspaceMenu provides org/project selection, profile, and dev tools. */}
         <WorkspaceMenu />
       </SidebarHeader>
 
       <SidebarContent>
-        {/* Flat 4-item nav — Projects, Secrets, Deployments, Templates */}
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
+              {/* Flat nav items: Projects, Secrets, Deployments */}
               {navItems.map((item) => {
                 const resolvedPath = item.href
                 const isActive =
@@ -169,6 +240,96 @@ export function AppSidebar() {
                   </SidebarMenuItem>
                 )
               })}
+
+              {/* Templates — collapsible group when enabled;
+                  disabled tooltip button when no org or project is selected. */}
+              {templatesDisabled ? (
+                <SidebarMenuItem>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <SidebarMenuButton
+                          disabled
+                          aria-disabled="true"
+                          data-testid="nav-templates"
+                        >
+                          <LayoutTemplate className="h-4 w-4" />
+                          <span>Templates</span>
+                        </SidebarMenuButton>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        {templatesDisabledReason}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </SidebarMenuItem>
+              ) : (
+                <Collapsible
+                  asChild
+                  open={isTemplatesActive}
+                  className="group/collapsible"
+                >
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isTemplatesActive}
+                        data-testid="nav-templates"
+                      >
+                        <Link
+                          to={
+                            hasOrg
+                              ? '/organizations/$orgName/templates'
+                              : '/projects/$projectName/templates'
+                          }
+                          params={
+                            hasOrg
+                              ? { orgName: selectedOrg! }
+                              : { projectName: selectedProject! }
+                          }
+                        >
+                          <LayoutTemplate className="h-4 w-4" />
+                          <span>Templates</span>
+                          <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                        </Link>
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+
+                    <CollapsibleContent>
+                      {templatesSubGroups.map((group) => (
+                        <SidebarMenuSub key={group.heading}>
+                          <SidebarMenuSubItem>
+                            <span
+                              className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+                              data-testid={`nav-group-${group.heading.toLowerCase()}`}
+                            >
+                              {group.heading}
+                            </span>
+                          </SidebarMenuSubItem>
+                          {group.links.map((link) => {
+                            const isLinkActive =
+                              pathname === link.href ||
+                              pathname.startsWith(`${link.href}/`)
+                            return (
+                              <SidebarMenuSubItem key={link.label}>
+                                <SidebarMenuSubButton
+                                  asChild
+                                  isActive={isLinkActive}
+                                  data-testid={link.testId}
+                                >
+                                  <Link to={link.to} params={link.params}>
+                                    <span>{link.label}</span>
+                                  </Link>
+                                </SidebarMenuSubButton>
+                              </SidebarMenuSubItem>
+                            )
+                          })}
+                        </SidebarMenuSub>
+                      ))}
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

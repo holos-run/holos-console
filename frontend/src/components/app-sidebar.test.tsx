@@ -3,9 +3,9 @@ import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
 
-// Tests for the flat 4-item sidebar nav: Projects, Secrets, Deployments,
-// Templates. The workspace picker lives in SidebarHeader; the version label
-// lives in SidebarFooter.
+// Tests for the sidebar nav: Projects, Secrets, Deployments (flat), and
+// Templates (collapsible group with Policy / Dependencies / Grants submenus).
+// The workspace picker lives in SidebarHeader; the version label in SidebarFooter.
 
 // Configurable per-test so we can drive route-based active-state gating.
 let mockPathname = '/'
@@ -110,6 +110,71 @@ vi.mock('@/components/ui/sidebar', () => ({
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => (
     <li>{children}</li>
   ),
+  SidebarMenuSub: ({ children }: { children: React.ReactNode }) => (
+    <ul>{children}</ul>
+  ),
+  SidebarMenuSubItem: ({ children }: { children: React.ReactNode }) => (
+    <li>{children}</li>
+  ),
+  SidebarMenuSubButton: ({
+    children,
+    asChild,
+    isActive,
+    'data-testid': dataTestId,
+    ...rest
+  }: React.HTMLAttributes<HTMLElement> & {
+    children: React.ReactNode
+    asChild?: boolean
+    isActive?: boolean
+    'data-testid'?: string
+  }) => {
+    if (asChild) {
+      return (
+        <span
+          data-testid={dataTestId}
+          data-active={isActive ? 'true' : 'false'}
+        >
+          {children}
+        </span>
+      )
+    }
+    return (
+      <a
+        data-testid={dataTestId}
+        data-active={isActive ? 'true' : 'false'}
+        {...rest}
+      >
+        {children}
+      </a>
+    )
+  },
+}))
+
+// Stub Collapsible so CollapsibleContent is always rendered (open=true in tests)
+// and CollapsibleTrigger passes through its child.
+vi.mock('@/components/ui/collapsible', () => ({
+  Collapsible: ({
+    children,
+    className,
+  }: {
+    children: React.ReactNode
+    open?: boolean
+    className?: string
+  }) => (
+    <div data-testid="collapsible" className={className}>
+      {children}
+    </div>
+  ),
+  CollapsibleTrigger: ({
+    children,
+    asChild,
+  }: {
+    children: React.ReactNode
+    asChild?: boolean
+  }) => (asChild ? <>{children}</> : <button>{children}</button>),
+  CollapsibleContent: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
 }))
 
 // Flatten Tooltip so TooltipContent renders inline; content-level assertions
@@ -190,7 +255,7 @@ function getNavButton(label: string) {
   )
 }
 
-describe('AppSidebar — HOL-914 flat 4-item nav', () => {
+describe('AppSidebar — sidebar nav structure', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPathname = '/'
@@ -202,7 +267,7 @@ describe('AppSidebar — HOL-914 flat 4-item nav', () => {
     expect(screen.getByTestId('workspace-menu')).toBeInTheDocument()
   })
 
-  it('renders exactly four top-level nav entries', () => {
+  it('renders Projects, Secrets, Deployments, and Templates nav entries', () => {
     render(<AppSidebar />)
     expect(getNavButton('projects')).toBeInTheDocument()
     expect(getNavButton('secrets')).toBeInTheDocument()
@@ -276,7 +341,7 @@ describe('AppSidebar — HOL-914 flat 4-item nav', () => {
   })
 })
 
-describe('AppSidebar — nav links when no org or project is selected', () => {
+describe('AppSidebar — nav links when no org or project is selected (disabled state)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockPathname = '/'
@@ -293,6 +358,16 @@ describe('AppSidebar — nav links when no org or project is selected', () => {
     expect(getNavButton('secrets')).toBeDisabled()
     expect(getNavButton('deployments')).toBeDisabled()
     expect(getNavButton('templates')).toBeDisabled()
+  })
+
+  it('Templates disabled button renders tooltip with the prerequisite reason', () => {
+    render(<AppSidebar />)
+    const tooltips = screen.getAllByTestId('tooltip-content')
+    const templatesToolTip = tooltips.find((el) =>
+      el.textContent?.includes('Templates'),
+    )
+    expect(templatesToolTip).toBeDefined()
+    expect(templatesToolTip?.textContent).toContain('Select an organization')
   })
 
   it('Projects disabled button renders tooltip "Select an organization to view Projects"', () => {
@@ -323,13 +398,13 @@ describe('AppSidebar — nav links when no org or project is selected', () => {
     expect(tooltip).toBeDefined()
   })
 
-  it('disabled buttons render tooltip for Templates', () => {
+  it('no Templates sub-links render when Templates is disabled', () => {
     render(<AppSidebar />)
-    const tooltips = screen.getAllByTestId('tooltip-content')
-    const tooltip = tooltips.find((el) =>
-      el.textContent?.includes('Templates'),
-    )
-    expect(tooltip).toBeDefined()
+    expect(screen.queryByTestId('nav-template-policies')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('nav-policy-bindings')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('nav-template-dependencies')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('nav-requirements')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('nav-template-grants')).not.toBeInTheDocument()
   })
 })
 
@@ -381,8 +456,6 @@ describe('AppSidebar — nav links when a project is selected', () => {
 
   it('Templates link resolves to the org-scoped unified surface URL when an org is selected (HOL-1006)', () => {
     render(<AppSidebar />)
-    // When an org is selected, Templates navigates to the unified org-level
-    // surface (Templates + Policies + Bindings) regardless of project selection.
     expect(
       screen.getByRole('link', { name: /^templates$/i }).getAttribute('href'),
     ).toBe('/organizations/my-org/templates')
@@ -402,6 +475,163 @@ describe('AppSidebar — nav links when a project is selected', () => {
     expect(secretsContainer.querySelector('a')).not.toBeNull()
     expect(deploymentsContainer.querySelector('a')).not.toBeNull()
     expect(templatesContainer.querySelector('a')).not.toBeNull()
+  })
+})
+
+describe('AppSidebar — Templates collapsible group (HOL-1014)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPathname = '/'
+    setDefaults()
+    setupOrgSelected()
+    setupProjectSelected()
+  })
+
+  it('renders all five sub-links when project is selected', () => {
+    render(<AppSidebar />)
+    expect(screen.getByTestId('nav-template-policies')).toBeInTheDocument()
+    expect(screen.getByTestId('nav-policy-bindings')).toBeInTheDocument()
+    expect(screen.getByTestId('nav-template-dependencies')).toBeInTheDocument()
+    expect(screen.getByTestId('nav-requirements')).toBeInTheDocument()
+    expect(screen.getByTestId('nav-template-grants')).toBeInTheDocument()
+  })
+
+  it('Template Policies sub-link resolves to the correct project-scoped URL', () => {
+    render(<AppSidebar />)
+    const btn = screen.getByTestId('nav-template-policies')
+    expect(btn.querySelector('a')?.getAttribute('href')).toBe(
+      '/projects/my-project/templates/policies/',
+    )
+  })
+
+  it('Policy Bindings sub-link resolves to the correct project-scoped URL', () => {
+    render(<AppSidebar />)
+    const btn = screen.getByTestId('nav-policy-bindings')
+    expect(btn.querySelector('a')?.getAttribute('href')).toBe(
+      '/projects/my-project/templates/policy-bindings/',
+    )
+  })
+
+  it('Template Dependencies sub-link resolves to the correct project-scoped URL', () => {
+    render(<AppSidebar />)
+    const btn = screen.getByTestId('nav-template-dependencies')
+    expect(btn.querySelector('a')?.getAttribute('href')).toBe(
+      '/projects/my-project/templates/dependencies/',
+    )
+  })
+
+  it('Requirements sub-link resolves to the correct project-scoped URL', () => {
+    render(<AppSidebar />)
+    const btn = screen.getByTestId('nav-requirements')
+    expect(btn.querySelector('a')?.getAttribute('href')).toBe(
+      '/projects/my-project/templates/requirements/',
+    )
+  })
+
+  it('Template Grants sub-link resolves to the correct project-scoped URL', () => {
+    render(<AppSidebar />)
+    const btn = screen.getByTestId('nav-template-grants')
+    expect(btn.querySelector('a')?.getAttribute('href')).toBe(
+      '/projects/my-project/templates/grants/',
+    )
+  })
+
+  it('sub-links do not render when only org is selected (no project)', () => {
+    ;(useProject as Mock).mockReturnValue({
+      projects: [],
+      selectedProject: null,
+      setSelectedProject: vi.fn(),
+      isLoading: false,
+    })
+    render(<AppSidebar />)
+    expect(screen.queryByTestId('nav-template-policies')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('nav-policy-bindings')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('nav-template-dependencies')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('nav-requirements')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('nav-template-grants')).not.toBeInTheDocument()
+  })
+
+  it('Template Policies sub-link is active when on the policies route', () => {
+    mockPathname = '/projects/my-project/templates/policies'
+    render(<AppSidebar />)
+    expect(screen.getByTestId('nav-template-policies')).toHaveAttribute(
+      'data-active',
+      'true',
+    )
+    expect(screen.getByTestId('nav-policy-bindings')).toHaveAttribute(
+      'data-active',
+      'false',
+    )
+  })
+
+  it('Policy Bindings sub-link is active when on the policy-bindings route', () => {
+    mockPathname = '/projects/my-project/templates/policy-bindings'
+    render(<AppSidebar />)
+    expect(screen.getByTestId('nav-policy-bindings')).toHaveAttribute(
+      'data-active',
+      'true',
+    )
+    expect(screen.getByTestId('nav-template-policies')).toHaveAttribute(
+      'data-active',
+      'false',
+    )
+  })
+
+  it('Template Dependencies sub-link is active when on the dependencies route', () => {
+    mockPathname = '/projects/my-project/templates/dependencies'
+    render(<AppSidebar />)
+    expect(screen.getByTestId('nav-template-dependencies')).toHaveAttribute(
+      'data-active',
+      'true',
+    )
+  })
+
+  it('Requirements sub-link is active when on the requirements route', () => {
+    mockPathname = '/projects/my-project/templates/requirements'
+    render(<AppSidebar />)
+    expect(screen.getByTestId('nav-requirements')).toHaveAttribute(
+      'data-active',
+      'true',
+    )
+  })
+
+  it('Template Grants sub-link is active when on the grants route', () => {
+    mockPathname = '/projects/my-project/templates/grants'
+    render(<AppSidebar />)
+    expect(screen.getByTestId('nav-template-grants')).toHaveAttribute(
+      'data-active',
+      'true',
+    )
+  })
+
+  it('Templates root button is active when on any descendant route', () => {
+    mockPathname = '/projects/my-project/templates/policies'
+    render(<AppSidebar />)
+    expect(screen.getByTestId('nav-templates')).toHaveAttribute(
+      'data-active',
+      'true',
+    )
+  })
+
+  it('Templates root button is not active when on unrelated route', () => {
+    mockPathname = '/projects/my-project/secrets'
+    render(<AppSidebar />)
+    expect(screen.getByTestId('nav-templates')).toHaveAttribute(
+      'data-active',
+      'false',
+    )
+  })
+
+  it('group headings Policy, Dependencies, Grants are rendered', () => {
+    render(<AppSidebar />)
+    expect(screen.getByTestId('nav-group-policy')).toBeInTheDocument()
+    expect(screen.getByTestId('nav-group-dependencies')).toBeInTheDocument()
+    expect(screen.getByTestId('nav-group-grants')).toBeInTheDocument()
+  })
+
+  it('uses a Collapsible wrapper for the Templates group when enabled', () => {
+    render(<AppSidebar />)
+    expect(screen.getByTestId('collapsible')).toBeInTheDocument()
   })
 })
 
@@ -467,5 +697,21 @@ describe('AppSidebar — active-state re-renders on navigation (HOL-968 regressi
     // Secrets should now be active, Deployments should not.
     expect(getNavButton('secrets')).toHaveAttribute('data-active', 'true')
     expect(getNavButton('deployments')).toHaveAttribute('data-active', 'false')
+  })
+
+  it('Templates sub-link active state updates reactively on navigation', async () => {
+    mockPathname = '/projects/my-project/templates/policies'
+    const { rerender } = render(<AppSidebar />)
+
+    expect(screen.getByTestId('nav-template-policies')).toHaveAttribute('data-active', 'true')
+    expect(screen.getByTestId('nav-requirements')).toHaveAttribute('data-active', 'false')
+
+    await act(async () => {
+      mockPathname = '/projects/my-project/templates/requirements'
+      rerender(<AppSidebar />)
+    })
+
+    expect(screen.getByTestId('nav-requirements')).toHaveAttribute('data-active', 'true')
+    expect(screen.getByTestId('nav-template-policies')).toHaveAttribute('data-active', 'false')
   })
 })
