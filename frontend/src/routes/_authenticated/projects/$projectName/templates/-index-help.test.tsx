@@ -1,5 +1,5 @@
 /**
- * Tests for the Templates index help pane integration (HOL-860).
+ * Tests for the Templates index help pane integration (HOL-860, updated HOL-974).
  *
  * Covers:
  *   - ? icon button is rendered in the page header
@@ -76,53 +76,16 @@ vi.mock('@/lib/console-config', () => ({
 }))
 
 // ---------------------------------------------------------------------------
-// Query mocks
+// Query mocks — refactored to project-scoped hooks (HOL-974)
 // ---------------------------------------------------------------------------
 
 vi.mock('@/queries/templates', () => ({
-  useAllTemplatesForOrg: vi.fn(),
-}))
-
-vi.mock('@/queries/templatePolicies', () => ({
-  useAllTemplatePoliciesForOrg: vi.fn(),
-}))
-
-vi.mock('@/queries/templatePolicyBindings', () => ({
-  useAllTemplatePolicyBindingsForOrg: vi.fn(),
+  useListTemplates: vi.fn(),
+  useDeleteTemplate: vi.fn(),
 }))
 
 vi.mock('@/queries/projects', () => ({
   useGetProject: vi.fn(),
-}))
-
-vi.mock('@/queries/organizations', () => ({
-  useGetOrganization: vi.fn(),
-}))
-
-vi.mock('@/lib/org-context', () => ({
-  useOrg: vi.fn(),
-}))
-
-vi.mock('@connectrpc/connect-query', () => ({
-  useTransport: vi.fn().mockReturnValue({}),
-}))
-
-vi.mock('@tanstack/react-query', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@tanstack/react-query')>()
-  return {
-    ...actual,
-    useQueryClient: vi.fn().mockReturnValue({
-      invalidateQueries: vi.fn().mockResolvedValue(undefined),
-    }),
-  }
-})
-
-vi.mock('@connectrpc/connect', () => ({
-  createClient: vi.fn().mockReturnValue({
-    deleteTemplate: vi.fn().mockResolvedValue({}),
-    deleteTemplatePolicy: vi.fn().mockResolvedValue({}),
-    deleteTemplatePolicyBinding: vi.fn().mockResolvedValue({}),
-  }),
 }))
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
@@ -131,12 +94,8 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 // Imports after mocks
 // ---------------------------------------------------------------------------
 
-import { useAllTemplatesForOrg } from '@/queries/templates'
-import { useAllTemplatePoliciesForOrg } from '@/queries/templatePolicies'
-import { useAllTemplatePolicyBindingsForOrg } from '@/queries/templatePolicyBindings'
+import { useListTemplates, useDeleteTemplate } from '@/queries/templates'
 import { useGetProject } from '@/queries/projects'
-import { useGetOrganization } from '@/queries/organizations'
-import { useOrg } from '@/lib/org-context'
 import { ProjectTemplatesIndexPage } from './index'
 
 // ---------------------------------------------------------------------------
@@ -144,7 +103,7 @@ import { ProjectTemplatesIndexPage } from './index'
 // ---------------------------------------------------------------------------
 
 function makeTemplate(name: string, namespace = 'project-test-project') {
-  return { name, namespace, displayName: name, description: '', cueTemplate: '' }
+  return { name, namespace, displayName: name, description: '', cueTemplate: '', createdAt: '' }
 }
 
 // ---------------------------------------------------------------------------
@@ -153,38 +112,23 @@ function makeTemplate(name: string, namespace = 'project-test-project') {
 
 function setupMocks({
   templates = [makeTemplate('my-template')],
-  orgName = 'acme',
   projectRole = Role.OWNER,
-  orgRole = Role.OWNER,
 }: {
   templates?: ReturnType<typeof makeTemplate>[]
-  orgName?: string | null
   projectRole?: number
-  orgRole?: number
 } = {}) {
-  ;(useOrg as Mock).mockReturnValue({ selectedOrg: orgName })
   ;(useGetProject as Mock).mockReturnValue({
     data: { name: 'test-project', userRole: projectRole },
     isPending: false,
   })
-  ;(useGetOrganization as Mock).mockReturnValue({
-    data: { name: orgName, userRole: orgRole },
-    isPending: false,
-  })
-  ;(useAllTemplatesForOrg as Mock).mockReturnValue({
+  ;(useListTemplates as Mock).mockReturnValue({
     data: templates,
     isPending: false,
     error: null,
   })
-  ;(useAllTemplatePoliciesForOrg as Mock).mockReturnValue({
-    data: [],
+  ;(useDeleteTemplate as Mock).mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue({}),
     isPending: false,
-    error: null,
-  })
-  ;(useAllTemplatePolicyBindingsForOrg as Mock).mockReturnValue({
-    data: [],
-    isPending: false,
-    error: null,
   })
 }
 

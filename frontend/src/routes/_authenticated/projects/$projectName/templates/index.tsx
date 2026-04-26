@@ -1,29 +1,23 @@
 /**
- * Project-scoped unified Templates index — reimplemented on ResourceGrid v1
- * (HOL-859).
+ * Project-scoped Templates index — refactored to the authoring (clone/edit)
+ * cluster (HOL-974).
  *
- * Shows three template-family kinds together:
- *   Template, TemplatePolicy, TemplatePolicyBinding
+ * Shows only Template rows scoped to the current project namespace. The
+ * query key factory (keys.templates.list(namespace)) is shared with the
+ * detail/edit page so mutations invalidate both the index and the detail.
  *
- * The grid fans out across the whole org tree via the three useAll*ForOrg
- * hooks so ancestor-scope templates/policies/bindings are discoverable.
- * Default URL state: kind=Template — only Template rows visible. The user
- * can widen to other kinds by toggling the kind filter checkboxes.
+ * The New button routes to the clone page (/templates/new) where the user
+ * selects an org platform template as the source and gives the clone a name.
  *
- * orgName is derived from the OrgContext (useOrg()), not the URL, because
- * this route is project-scoped.
+ * This page no longer fans out across TemplatePolicy / TemplatePolicyBinding
+ * rows. Those are shown in the org-level Templates index
+ * (/organizations/$orgName/templates).
  */
 
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { createClient } from '@connectrpc/connect'
-import { useTransport } from '@connectrpc/connect-query'
-import { useQueryClient } from '@tanstack/react-query'
 import { HelpCircle } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { TemplateService } from '@/gen/holos/console/v1/templates_pb.js'
-import { TemplatePolicyService } from '@/gen/holos/console/v1/template_policies_pb.js'
-import { TemplatePolicyBindingService } from '@/gen/holos/console/v1/template_policy_bindings_pb.js'
 import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
@@ -31,28 +25,8 @@ import type { ResourceGridSearch } from '@/components/resource-grid/types'
 import { Button } from '@/components/ui/button'
 import { TemplatesHelpPane } from '@/components/templates/TemplatesHelpPane'
 import { useGetProject } from '@/queries/projects'
-import { useGetOrganization } from '@/queries/organizations'
-import { keys } from '@/queries/keys'
-import { useAllTemplatesForOrg } from '@/queries/templates'
-import { useAllTemplatePoliciesForOrg } from '@/queries/templatePolicies'
-import { useAllTemplatePolicyBindingsForOrg } from '@/queries/templatePolicyBindings'
-import { useOrg } from '@/lib/org-context'
-import {
-  resolveTemplateRowHref,
-  parentLabelFromNamespace,
-  type TemplateKind,
-} from '@/lib/template-row-link'
-import type { Timestamp } from '@bufbuild/protobuf/wkt'
-
-// ---------------------------------------------------------------------------
-// timestampToISOString converts a google.protobuf.Timestamp to an ISO-8601
-// string. Returns '' when ts is undefined so callers can unconditionally
-// assign the result to createdAt without a separate null-check.
-// ---------------------------------------------------------------------------
-function timestampToISOString(ts: Timestamp | undefined): string {
-  if (!ts) return ''
-  return new Date(Number(ts.seconds) * 1000).toISOString()
-}
+import { useListTemplates, useDeleteTemplate } from '@/queries/templates'
+import { namespaceForProject } from '@/lib/scope-labels'
 
 // ---------------------------------------------------------------------------
 // Route search — extends ResourceGridSearch with the help pane state
@@ -118,105 +92,45 @@ export function ProjectTemplatesIndexPage({
     [navigate],
   )
 
-  // Derive orgName from the OrgContext — the route is project-scoped so there
-  // is no $orgName in the URL.
-  const { selectedOrg: orgName } = useOrg()
-
-  // Transport and query-client for direct delete calls (multi-namespace).
-  const transport = useTransport()
-  const queryClient = useQueryClient()
+  const namespace = namespaceForProject(projectName)
 
   // Project data — used to determine the user's role for create permissions.
   const { data: project } = useGetProject(projectName)
-  // Org data — used to determine org-level ownership for policy/binding creation.
-  const { data: org } = useGetOrganization(orgName ?? '')
+  const userRole = project?.userRole ?? Role.VIEWER
+  const canCreate = userRole === Role.OWNER || userRole === Role.EDITOR
 
-  const projectRole = project?.userRole ?? Role.VIEWER
-  const orgRole = org?.userRole ?? Role.VIEWER
-
-  const canCreateTemplate = projectRole === Role.OWNER || projectRole === Role.EDITOR
-  const canCreateOrgResources = orgRole === Role.OWNER
-
-  // Fan-out hooks — all three enabled only when orgName is known.
+  // Project-scoped templates list — key shared with detail/edit page.
   const {
     data: templates = [],
-    isPending: templatesPending,
-    error: templatesError,
-  } = useAllTemplatesForOrg(orgName ?? '')
+    isPending,
+    error,
+  } = useListTemplates(namespace)
 
-  const {
-    data: policies = [],
-    isPending: policiesPending,
-    error: policiesError,
-  } = useAllTemplatePoliciesForOrg(orgName ?? '')
-
-  const {
-    data: bindings = [],
-    isPending: bindingsPending,
-    error: bindingsError,
-  } = useAllTemplatePolicyBindingsForOrg(orgName ?? '')
-
-  // Combined loading / error states
-  const isLoading = !orgName || templatesPending || policiesPending || bindingsPending
-  const firstError = templatesError ?? policiesError ?? bindingsError
+  const deleteMutation = useDeleteTemplate(namespace)
 
   // ---------------------------------------------------------------------------
-  // Build rows from all three kinds
+  // Build rows
   // ---------------------------------------------------------------------------
 
-  const rows: Row[] = useMemo(() => {
-    const result: Row[] = []
-
-    for (const t of templates) {
-      result.push({
+  const rows: Row[] = useMemo(
+    () =>
+      templates.map((t) => ({
         kind: 'Template',
         name: t.name,
-        namespace: t.namespace,
-        id: `Template/${t.namespace}/${t.name}`,
-        parentId: t.namespace,
-        parentLabel: parentLabelFromNamespace(t.namespace),
+        namespace,
+        id: t.name,
+        parentId: projectName,
+        parentLabel: projectName,
         displayName: t.displayName || t.name,
         description: t.description ?? '',
         createdAt: t.createdAt,
-        detailHref: resolveTemplateRowHref('Template', t.namespace, t.name),
-      })
-    }
-
-    for (const p of policies) {
-      result.push({
-        kind: 'TemplatePolicy',
-        name: p.name,
-        namespace: p.namespace,
-        id: `TemplatePolicy/${p.namespace}/${p.name}`,
-        parentId: p.namespace,
-        parentLabel: parentLabelFromNamespace(p.namespace),
-        displayName: p.displayName || p.name,
-        description: p.description ?? '',
-        createdAt: timestampToISOString(p.createdAt),
-        detailHref: resolveTemplateRowHref('TemplatePolicy', p.namespace, p.name),
-      })
-    }
-
-    for (const b of bindings) {
-      result.push({
-        kind: 'TemplatePolicyBinding',
-        name: b.name,
-        namespace: b.namespace,
-        id: `TemplatePolicyBinding/${b.namespace}/${b.name}`,
-        parentId: b.namespace,
-        parentLabel: parentLabelFromNamespace(b.namespace),
-        displayName: b.displayName || b.name,
-        description: b.description ?? '',
-        createdAt: timestampToISOString(b.createdAt),
-        detailHref: resolveTemplateRowHref('TemplatePolicyBinding', b.namespace, b.name),
-      })
-    }
-
-    return result
-  }, [templates, policies, bindings])
+        detailHref: `/projects/${projectName}/templates/${t.name}`,
+      })),
+    [templates, namespace, projectName],
+  )
 
   // ---------------------------------------------------------------------------
-  // Kind definitions with default URL state: kind=Template
+  // Kind definitions — single "Template" kind, new = clone page
   // ---------------------------------------------------------------------------
 
   const kinds = useMemo(
@@ -225,80 +139,21 @@ export function ProjectTemplatesIndexPage({
         id: 'Template',
         label: 'Template',
         newHref: `/projects/${projectName}/templates/new`,
-        canCreate: canCreateTemplate,
-      },
-      {
-        id: 'TemplatePolicy',
-        label: 'Template Policy',
-        newHref: orgName ? `/organizations/${orgName}/template-policies/new` : undefined,
-        canCreate: canCreateOrgResources,
-      },
-      {
-        id: 'TemplatePolicyBinding',
-        label: 'Template Policy Binding',
-        newHref: orgName ? `/organizations/${orgName}/template-bindings/new` : undefined,
-        canCreate: canCreateOrgResources,
+        canCreate,
       },
     ],
-    [projectName, orgName, canCreateTemplate, canCreateOrgResources],
+    [projectName, canCreate],
   )
 
   // ---------------------------------------------------------------------------
-  // Default URL state: kind=Template
-  // Apply default when URL omits it so the initial view shows only
-  // the current project's Template rows.
-  // ---------------------------------------------------------------------------
-
-  const searchWithDefaults: ResourceGridSearch = useMemo(
-    () => ({
-      kind: search.kind ?? 'Template',
-      search: search.search,
-    }),
-    [search],
-  )
-
-  // ---------------------------------------------------------------------------
-  // Delete handler — dispatches to the correct service per kind/namespace.
-  // We call the service directly so we can pass the exact namespace from each
-  // row without calling separate per-namespace mutation hooks (which would
-  // require a fixed namespace at hook-call time).
+  // Handlers
   // ---------------------------------------------------------------------------
 
   const handleDelete = useCallback(
     async (row: Row) => {
-      const { namespace, name, kind } = row
-      const templateKind = kind as TemplateKind
-
-      switch (templateKind) {
-        case 'Template': {
-          const client = createClient(TemplateService, transport)
-          await client.deleteTemplate({ namespace, name })
-          await queryClient.invalidateQueries({
-            queryKey: keys.templates.list(namespace),
-          })
-          break
-        }
-        case 'TemplatePolicy': {
-          const client = createClient(TemplatePolicyService, transport)
-          await client.deleteTemplatePolicy({ namespace, name })
-          await queryClient.invalidateQueries({
-            queryKey: keys.templatePolicies.list(namespace),
-          })
-          break
-        }
-        case 'TemplatePolicyBinding': {
-          const client = createClient(TemplatePolicyBindingService, transport)
-          await client.deleteTemplatePolicyBinding({ namespace, name })
-          await queryClient.invalidateQueries({
-            queryKey: keys.templatePolicyBindings.list(namespace),
-          })
-          break
-        }
-        default:
-          throw new Error(`Unknown kind: ${kind}`)
-      }
+      await deleteMutation.mutateAsync({ name: row.name })
     },
-    [transport, queryClient],
+    [deleteMutation],
   )
 
   const handleSearchChange = useCallback(
@@ -319,15 +174,6 @@ export function ProjectTemplatesIndexPage({
     [navigate],
   )
 
-  // Guard: no org selected yet
-  if (!orgName) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-12 text-center">
-        <p className="text-muted-foreground">Select an organization to browse templates.</p>
-      </div>
-    )
-  }
-
   const helpButton = (
     <Button
       variant="ghost"
@@ -347,9 +193,9 @@ export function ProjectTemplatesIndexPage({
         kinds={kinds}
         rows={rows}
         onDelete={handleDelete}
-        isLoading={isLoading}
-        error={firstError}
-        search={searchWithDefaults}
+        isLoading={isPending}
+        error={error}
+        search={search}
         onSearchChange={handleSearchChange}
         headerActions={helpButton}
       />
