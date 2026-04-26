@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
@@ -9,6 +9,12 @@ import React from 'react'
 
 // Configurable per-test so we can drive route-based active-state gating.
 let mockPathname = '/'
+
+// Expose a setter so regression tests can update the pathname and trigger
+// a re-render of the same component instance via act().
+export function setMockPathname(path: string) {
+  mockPathname = path
+}
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
@@ -31,10 +37,7 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
       }
       return <a href={href}>{children}</a>
     },
-    useRouter: () => ({
-      state: { location: { pathname: mockPathname } },
-      navigate: vi.fn(),
-    }),
+    useLocation: () => ({ pathname: mockPathname }),
     useNavigate: () => vi.fn(),
   }
 })
@@ -424,5 +427,43 @@ describe('AppSidebar — active-state highlighting', () => {
     mockPathname = '/organizations/my-org/projects'
     render(<AppSidebar />)
     expect(screen.getByRole('link', { name: /^projects$/i })).toBeInTheDocument()
+  })
+})
+
+describe('AppSidebar — active-state re-renders on navigation (HOL-968 regression)', () => {
+  // This test suite demonstrates the bug that was fixed: previously AppSidebar
+  // read router.state.location.pathname (a non-reactive snapshot), so it would
+  // never re-render on client-side navigation. The fix uses useLocation() which
+  // is a reactive subscription.
+  //
+  // The test re-renders the SAME component instance (via rerender) rather than
+  // calling render() twice, to prove the component updates reactively.
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setDefaults()
+    setupOrgSelected()
+    setupProjectSelected()
+  })
+
+  it('active entry flips from Deployments to Secrets when location changes — same instance', async () => {
+    // Step 1: Start on the Deployments route.
+    mockPathname = '/projects/my-project/deployments'
+    const { rerender } = render(<AppSidebar />)
+
+    // Deployments should be active, Secrets should not.
+    expect(getNavButton('deployments')).toHaveAttribute('data-active', 'true')
+    expect(getNavButton('secrets')).toHaveAttribute('data-active', 'false')
+
+    // Step 2: Navigate to Secrets by updating mockPathname and re-rendering
+    // the same component instance via act() + rerender.
+    await act(async () => {
+      mockPathname = '/projects/my-project/secrets'
+      rerender(<AppSidebar />)
+    })
+
+    // Secrets should now be active, Deployments should not.
+    expect(getNavButton('secrets')).toHaveAttribute('data-active', 'true')
+    expect(getNavButton('deployments')).toHaveAttribute('data-active', 'false')
   })
 })

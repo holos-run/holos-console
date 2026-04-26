@@ -1,5 +1,5 @@
 import type React from 'react'
-import { Link, useRouter } from '@tanstack/react-router'
+import { Link, useLocation } from '@tanstack/react-router'
 import {
   Box,
   KeyRound,
@@ -45,8 +45,7 @@ interface NavItem {
 
 export function AppSidebar() {
   const { data: versionData } = useVersion()
-  const router = useRouter()
-  const pathname = router.state.location.pathname
+  const { pathname } = useLocation()
   const { selectedOrg } = useOrg()
   const { selectedProject } = useProject()
 
