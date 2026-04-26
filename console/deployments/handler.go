@@ -1711,3 +1711,63 @@ func (h *Handler) GetDeploymentPolicyState(
 	}
 	return connect.NewResponse(&consolev1.GetDeploymentPolicyStateResponse{State: state}), nil
 }
+
+// PreflightCheck is a planning-time validation RPC that surfaces sibling-
+// Deployment name collisions and versionConstraint conflicts before the user
+// clicks Apply.  It is safe to call at any time and MUST NOT mutate cluster
+// state.
+//
+// Introduced in HOL-962 as part of Phase 8 of the deployment-dependencies
+// plan (ADR 035).
+func (h *Handler) PreflightCheck(
+	ctx context.Context,
+	req *connect.Request[consolev1.PreflightCheckRequest],
+) (*connect.Response[consolev1.PreflightCheckResponse], error) {
+	project := req.Msg.GetProject()
+	if project == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project is required"))
+	}
+	if len(req.Msg.GetPlannedDeployments()) == 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("planned_deployments must not be empty"))
+	}
+
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
+	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsRead); err != nil {
+		return nil, err
+	}
+
+	// Fetch the existing deployment ConfigMaps from the project namespace so we
+	// can detect name collisions without mutating anything.
+	existingCMs, err := h.k8s.ListDeployments(ctx, project)
+	if err != nil {
+		return nil, mapK8sError(err)
+	}
+
+	// Build a name-set from the existing deployments.
+	existingNames := make(map[string]bool, len(existingCMs))
+	for i := range existingCMs {
+		existingNames[existingCMs[i].Name] = true
+	}
+
+	planned := req.Msg.GetPlannedDeployments()
+
+	// Run the two independent checks.
+	collisions := DetectCollisions(planned, existingNames)
+	versionConflicts := DetectVersionConflicts(planned)
+
+	slog.InfoContext(ctx, "preflight check complete",
+		slog.String("project", project),
+		slog.String("sub", claims.Sub),
+		slog.Int("planned", len(planned)),
+		slog.Int("collisions", len(collisions)),
+		slog.Int("version_conflicts", len(versionConflicts)),
+	)
+
+	return connect.NewResponse(&consolev1.PreflightCheckResponse{
+		Collisions:       collisions,
+		VersionConflicts: versionConflicts,
+	}), nil
+}

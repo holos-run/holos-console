@@ -5,7 +5,7 @@
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import type { GetDeploymentPolicyStateRequestSchema, GetDeploymentPolicyStateResponseSchema } from "./policy_state_pb";
+import type { GetDeploymentPolicyStateRequestSchema, GetDeploymentPolicyStateResponseSchema, LinkedTemplateRef } from "./policy_state_pb";
 
 /**
  * Describes the file holos/console/v1/deployments.proto.
@@ -1401,6 +1401,190 @@ export declare type Link = Message<"holos.console.v1.Link"> & {
 export declare const LinkSchema: GenMessage<Link>;
 
 /**
+ * PlannedDeployment is a single deployment the caller intends to create or
+ * update. The PreflightCheck RPC validates the planned set against the
+ * existing project state.
+ *
+ * @generated from message holos.console.v1.PlannedDeployment
+ */
+export declare type PlannedDeployment = Message<"holos.console.v1.PlannedDeployment"> & {
+  /**
+   * name is the deployment name the caller intends to use.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * linked_template_ref is the (namespace, name) of the template backing
+   * this planned deployment.
+   *
+   * @generated from field: holos.console.v1.LinkedTemplateRef linked_template_ref = 2;
+   */
+  linkedTemplateRef?: LinkedTemplateRef;
+
+  /**
+   * version_constraint is the semver constraint the caller wants to pin.
+   * Empty means no constraint.
+   *
+   * @generated from field: string version_constraint = 3;
+   */
+  versionConstraint: string;
+};
+
+/**
+ * Describes the message holos.console.v1.PlannedDeployment.
+ * Use `create(PlannedDeploymentSchema)` to create a new message.
+ */
+export declare const PlannedDeploymentSchema: GenMessage<PlannedDeployment>;
+
+/**
+ * CollisionDetail describes a single sibling-Deployment name collision.
+ * A collision occurs when a planned deployment's computed singleton name
+ * (per Decision 3 of ADR 035) matches an existing user-named Deployment
+ * in the same project namespace.
+ *
+ * @generated from message holos.console.v1.CollisionDetail
+ */
+export declare type CollisionDetail = Message<"holos.console.v1.CollisionDetail"> & {
+  /**
+   * planned_name is the name of the planned Deployment that triggered the
+   * collision.
+   *
+   * @generated from field: string planned_name = 1;
+   */
+  plannedName: string;
+
+  /**
+   * conflicting_name is the existing Deployment name that collides.
+   *
+   * @generated from field: string conflicting_name = 2;
+   */
+  conflictingName: string;
+
+  /**
+   * advice is a human-readable suggestion for resolving the conflict.
+   *
+   * @generated from field: string advice = 3;
+   */
+  advice: string;
+};
+
+/**
+ * Describes the message holos.console.v1.CollisionDetail.
+ * Use `create(CollisionDetailSchema)` to create a new message.
+ */
+export declare const CollisionDetailSchema: GenMessage<CollisionDetail>;
+
+/**
+ * VersionConflictDetail describes an incompatible-versionConstraint conflict
+ * between two or more dependents that pin different constraints on the same
+ * shared dependency template.  The minimum version satisfying all constraints
+ * could not be determined.
+ *
+ * @generated from message holos.console.v1.VersionConflictDetail
+ */
+export declare type VersionConflictDetail = Message<"holos.console.v1.VersionConflictDetail"> & {
+  /**
+   * template_namespace is the namespace of the shared dependency template.
+   *
+   * @generated from field: string template_namespace = 1;
+   */
+  templateNamespace: string;
+
+  /**
+   * template_name is the name of the shared dependency template.
+   *
+   * @generated from field: string template_name = 2;
+   */
+  templateName: string;
+
+  /**
+   * constraints is the set of version-constraint expressions contributed by
+   * the conflicting dependents.
+   *
+   * @generated from field: repeated string constraints = 3;
+   */
+  constraints: string[];
+
+  /**
+   * dependent_names lists the deployment names that contributed the
+   * conflicting constraints.
+   *
+   * @generated from field: repeated string dependent_names = 4;
+   */
+  dependentNames: string[];
+};
+
+/**
+ * Describes the message holos.console.v1.VersionConflictDetail.
+ * Use `create(VersionConflictDetailSchema)` to create a new message.
+ */
+export declare const VersionConflictDetailSchema: GenMessage<VersionConflictDetail>;
+
+/**
+ * PreflightCheckRequest carries the project identifier and the set of planned
+ * Deployments the caller intends to create or update. The backend validates
+ * the planned set against the current project state without mutating anything.
+ *
+ * @generated from message holos.console.v1.PreflightCheckRequest
+ */
+export declare type PreflightCheckRequest = Message<"holos.console.v1.PreflightCheckRequest"> & {
+  /**
+   * project is the project that will own the planned deployments.
+   *
+   * @generated from field: string project = 1;
+   */
+  project: string;
+
+  /**
+   * planned_deployments is the set of deployments the caller intends to
+   * create or update.  At least one entry is required.
+   *
+   * @generated from field: repeated holos.console.v1.PlannedDeployment planned_deployments = 2;
+   */
+  plannedDeployments: PlannedDeployment[];
+};
+
+/**
+ * Describes the message holos.console.v1.PreflightCheckRequest.
+ * Use `create(PreflightCheckRequestSchema)` to create a new message.
+ */
+export declare const PreflightCheckRequestSchema: GenMessage<PreflightCheckRequest>;
+
+/**
+ * PreflightCheckResponse enumerates any conflicts found in the planned set.
+ * An empty response (no collisions, no version conflicts) means the plan is
+ * safe to apply.
+ *
+ * @generated from message holos.console.v1.PreflightCheckResponse
+ */
+export declare type PreflightCheckResponse = Message<"holos.console.v1.PreflightCheckResponse"> & {
+  /**
+   * collisions lists sibling-Deployment name collisions between computed
+   * singleton names and existing user-named Deployments in the project
+   * namespace.
+   *
+   * @generated from field: repeated holos.console.v1.CollisionDetail collisions = 1;
+   */
+  collisions: CollisionDetail[];
+
+  /**
+   * version_conflicts lists incompatible versionConstraint conflicts between
+   * dependents that pin different constraints on the same shared dependency.
+   *
+   * @generated from field: repeated holos.console.v1.VersionConflictDetail version_conflicts = 2;
+   */
+  versionConflicts: VersionConflictDetail[];
+};
+
+/**
+ * Describes the message holos.console.v1.PreflightCheckResponse.
+ * Use `create(PreflightCheckResponseSchema)` to create a new message.
+ */
+export declare const PreflightCheckResponseSchema: GenMessage<PreflightCheckResponse>;
+
+/**
  * DeploymentPhase represents the lifecycle phase of a deployment.
  *
  * @generated from enum holos.console.v1.DeploymentPhase
@@ -1559,6 +1743,32 @@ export declare const DeploymentService: GenService<{
     methodKind: "unary";
     input: typeof GetDeploymentPolicyStateRequestSchema;
     output: typeof GetDeploymentPolicyStateResponseSchema;
+  },
+  /**
+   * PreflightCheck is a planning-time validation RPC that surfaces two
+   * classes of conflict before the user clicks Apply:
+   *
+   *  (a) Sibling-Deployment name collisions — a planned Deployment shares its
+   *      computed singleton name with an existing user-named Deployment in the
+   *      same project namespace.
+   *
+   *  (b) versionConstraint conflicts — two or more dependents in the same
+   *      project namespace pin incompatible version constraints on the same
+   *      shared dependency template.  The conflict is detected with
+   *      Go-module-style minimum version selection (Decision 9 in ADR 035):
+   *      the resolver attempts to find a single version that satisfies every
+   *      constraint; when none exists it reports a VersionConflictDetail.
+   *
+   * The RPC is safe to call before Apply. It MUST NOT mutate any cluster
+   * state. Phase 9 (HOL-963) wires the deployment form to call it before
+   * the user submits.
+   *
+   * @generated from rpc holos.console.v1.DeploymentService.PreflightCheck
+   */
+  preflightCheck: {
+    methodKind: "unary";
+    input: typeof PreflightCheckRequestSchema;
+    output: typeof PreflightCheckResponseSchema;
   },
 }>;
 

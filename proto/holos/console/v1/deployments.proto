@@ -33,6 +33,24 @@ service DeploymentService {
   // per-ref add/remove diff. Introduced in HOL-567 as the single source
   // of truth for "is this deployment drifted from policy?".
   rpc GetDeploymentPolicyState(GetDeploymentPolicyStateRequest) returns (GetDeploymentPolicyStateResponse);
+  // PreflightCheck is a planning-time validation RPC that surfaces two
+  // classes of conflict before the user clicks Apply:
+  //
+  //  (a) Sibling-Deployment name collisions — a planned Deployment shares its
+  //      computed singleton name with an existing user-named Deployment in the
+  //      same project namespace.
+  //
+  //  (b) versionConstraint conflicts — two or more dependents in the same
+  //      project namespace pin incompatible version constraints on the same
+  //      shared dependency template.  The conflict is detected with
+  //      Go-module-style minimum version selection (Decision 9 in ADR 035):
+  //      the resolver attempts to find a single version that satisfies every
+  //      constraint; when none exists it reports a VersionConflictDetail.
+  //
+  // The RPC is safe to call before Apply. It MUST NOT mutate any cluster
+  // state. Phase 9 (HOL-963) wires the deployment form to call it before
+  // the user submits.
+  rpc PreflightCheck(PreflightCheckRequest) returns (PreflightCheckResponse);
 }
 
 // Deployment represents a deployed application instance.
@@ -494,3 +512,71 @@ message Link {
   string name = 5;
 }
 
+// PlannedDeployment is a single deployment the caller intends to create or
+// update. The PreflightCheck RPC validates the planned set against the
+// existing project state.
+message PlannedDeployment {
+  // name is the deployment name the caller intends to use.
+  string name = 1;
+  // linked_template_ref is the (namespace, name) of the template backing
+  // this planned deployment.
+  LinkedTemplateRef linked_template_ref = 2;
+  // version_constraint is the semver constraint the caller wants to pin.
+  // Empty means no constraint.
+  string version_constraint = 3;
+}
+
+// CollisionDetail describes a single sibling-Deployment name collision.
+// A collision occurs when a planned deployment's computed singleton name
+// (per Decision 3 of ADR 035) matches an existing user-named Deployment
+// in the same project namespace.
+message CollisionDetail {
+  // planned_name is the name of the planned Deployment that triggered the
+  // collision.
+  string planned_name = 1;
+  // conflicting_name is the existing Deployment name that collides.
+  string conflicting_name = 2;
+  // advice is a human-readable suggestion for resolving the conflict.
+  string advice = 3;
+}
+
+// VersionConflictDetail describes an incompatible-versionConstraint conflict
+// between two or more dependents that pin different constraints on the same
+// shared dependency template.  The minimum version satisfying all constraints
+// could not be determined.
+message VersionConflictDetail {
+  // template_namespace is the namespace of the shared dependency template.
+  string template_namespace = 1;
+  // template_name is the name of the shared dependency template.
+  string template_name = 2;
+  // constraints is the set of version-constraint expressions contributed by
+  // the conflicting dependents.
+  repeated string constraints = 3;
+  // dependent_names lists the deployment names that contributed the
+  // conflicting constraints.
+  repeated string dependent_names = 4;
+}
+
+// PreflightCheckRequest carries the project identifier and the set of planned
+// Deployments the caller intends to create or update. The backend validates
+// the planned set against the current project state without mutating anything.
+message PreflightCheckRequest {
+  // project is the project that will own the planned deployments.
+  string project = 1;
+  // planned_deployments is the set of deployments the caller intends to
+  // create or update.  At least one entry is required.
+  repeated PlannedDeployment planned_deployments = 2;
+}
+
+// PreflightCheckResponse enumerates any conflicts found in the planned set.
+// An empty response (no collisions, no version conflicts) means the plan is
+// safe to apply.
+message PreflightCheckResponse {
+  // collisions lists sibling-Deployment name collisions between computed
+  // singleton names and existing user-named Deployments in the project
+  // namespace.
+  repeated CollisionDetail collisions = 1;
+  // version_conflicts lists incompatible versionConstraint conflicts between
+  // dependents that pin different constraints on the same shared dependency.
+  repeated VersionConflictDetail version_conflicts = 2;
+}

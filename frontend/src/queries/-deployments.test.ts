@@ -9,7 +9,9 @@ import {
   useCreateDeployment,
   useDeleteDeployment,
   useUpdateDeployment,
+  usePreflightCheck,
 } from '@/queries/deployments'
+import type { PlannedDeployment } from '@/gen/holos/console/v1/deployments_pb.js'
 
 vi.mock('@connectrpc/connect', () => ({
   createClient: vi.fn(),
@@ -232,5 +234,90 @@ describe('deployment list keep-previous-data', () => {
     })
     await waitFor(() => expect(result.current.data?.[0]?.name).toBe('beta-dep'))
     expect(result.current.isPlaceholderData).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PreflightCheck query (HOL-962)
+// ---------------------------------------------------------------------------
+
+describe('usePreflightCheck', () => {
+  let queryClient: QueryClient
+  let mockClient: Record<string, Mock>
+
+  const plannedDeployment: PlannedDeployment = {
+    name: 'api',
+    linkedTemplateRef: { namespace: 'org-ns', name: 'waypoint', versionConstraint: '' },
+    versionConstraint: '',
+    $typeName: 'holos.console.v1.PlannedDeployment',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    mockClient = {
+      preflightCheck: vi.fn().mockResolvedValue({
+        collisions: [],
+        versionConflicts: [],
+      }),
+    }
+    ;(createClient as Mock).mockReturnValue(mockClient)
+    ;(useTransport as Mock).mockReturnValue({})
+    ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true })
+  })
+
+  it('uses the canonical preflight-check key factory', async () => {
+    const { result } = renderHook(
+      () => usePreflightCheck('demo-project', [plannedDeployment]),
+      { wrapper: makeWrapper(queryClient) },
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const matches = queryClient.getQueryCache().findAll({
+      queryKey: keys.deployments.preflightCheck('demo-project', ['api']),
+    })
+    expect(matches).toHaveLength(1)
+    expect(matches[0]?.queryKey).toEqual(
+      keys.deployments.preflightCheck('demo-project', ['api']),
+    )
+  })
+
+  it('is disabled when project is empty', () => {
+    const { result } = renderHook(
+      () => usePreflightCheck('', [plannedDeployment]),
+      { wrapper: makeWrapper(queryClient) },
+    )
+
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(mockClient.preflightCheck).not.toHaveBeenCalled()
+  })
+
+  it('is disabled when plannedDeployments is empty', () => {
+    const { result } = renderHook(
+      () => usePreflightCheck('demo-project', []),
+      { wrapper: makeWrapper(queryClient) },
+    )
+
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(mockClient.preflightCheck).not.toHaveBeenCalled()
+  })
+
+  it('returns collisions and version conflicts from the RPC response', async () => {
+    mockClient.preflightCheck.mockResolvedValue({
+      collisions: [
+        { plannedName: 'api', conflictingName: 'waypoint-shared', advice: 'rename' },
+      ],
+      versionConflicts: [],
+    })
+
+    const { result } = renderHook(
+      () => usePreflightCheck('demo-project', [plannedDeployment]),
+      { wrapper: makeWrapper(queryClient) },
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.collisions).toHaveLength(1)
+    expect(result.current.data?.collisions[0]?.plannedName).toBe('api')
   })
 })
