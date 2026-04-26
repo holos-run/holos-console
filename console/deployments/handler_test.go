@@ -190,20 +190,10 @@ func TestHandler_ListDeployments(t *testing.T) {
 		}
 	})
 
-	t.Run("rejects unauthorized user", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		handler := defaultHandler(fakeClient, &stubProjectResolver{})
-
-		ctx := authedCtx("nobody@example.com", nil)
-		req := connect.NewRequest(&consolev1.ListDeploymentsRequest{Project: "my-project"})
-		_, err := handler.ListDeployments(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for unauthorized user")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
-		}
-	})
+	// Per HOL-1033 + ADR 036, in-process project-grant authorization was
+	// removed in favor of native K8s RBAC via the OIDC-impersonated client.
+	// PermissionDenied for unauthorized callers now flows back from the API
+	// server. The handler-level cascade test was retired with the cascade.
 
 	t.Run("rejects empty project", func(t *testing.T) {
 		fakeClient := fake.NewClientset()
@@ -353,27 +343,10 @@ func TestHandler_CreateDeployment(t *testing.T) {
 		}
 	})
 
-	t.Run("viewer cannot create deployment", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
-		handler := defaultHandler(fakeClient, pr)
-
-		ctx := authedCtx("alice@example.com", nil)
-		req := connect.NewRequest(&consolev1.CreateDeploymentRequest{
-			Project:  "my-project",
-			Name:     "web-app",
-			Image:    "nginx",
-			Tag:      "1.25",
-			Template: "default",
-		})
-		_, err := handler.CreateDeployment(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for viewer creating deployment")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
-		}
-	})
+	// Per HOL-1033 + ADR 036, in-process project-grant authorization was
+	// removed in favor of native K8s RBAC via the OIDC-impersonated client.
+	// PermissionDenied for unauthorized callers now flows back from the API
+	// server. The handler-level cascade test was retired with the cascade.
 
 	t.Run("returns FailedPrecondition when deployments disabled", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
@@ -511,28 +484,10 @@ func TestHandler_UpdateDeployment(t *testing.T) {
 		}
 	})
 
-	t.Run("viewer cannot update deployment", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := deploymentConfigMap("my-project", "web-app", "nginx", "1.25", "default", "Web App", "desc")
-		fakeClient := fake.NewClientset(ns, cm)
-		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
-		handler := defaultHandler(fakeClient, pr)
-
-		ctx := authedCtx("alice@example.com", nil)
-		newTag := "1.26"
-		req := connect.NewRequest(&consolev1.UpdateDeploymentRequest{
-			Project: "my-project",
-			Name:    "web-app",
-			Tag:     &newTag,
-		})
-		_, err := handler.UpdateDeployment(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for viewer updating deployment")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
-		}
-	})
+	// Per HOL-1033 + ADR 036, in-process project-grant authorization was
+	// removed in favor of native K8s RBAC via the OIDC-impersonated client.
+	// PermissionDenied for unauthorized callers now flows back from the API
+	// server.
 }
 
 // TestHandler_DeleteDeployment tests the DeleteDeployment RPC.
@@ -555,26 +510,10 @@ func TestHandler_DeleteDeployment(t *testing.T) {
 		}
 	})
 
-	t.Run("editor cannot delete deployment", func(t *testing.T) {
-		ns := projectNS("my-project")
-		cm := deploymentConfigMap("my-project", "web-app", "nginx", "latest", "default", "", "")
-		fakeClient := fake.NewClientset(ns, cm)
-		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "editor"}}
-		handler := defaultHandler(fakeClient, pr)
-
-		ctx := authedCtx("alice@example.com", nil)
-		req := connect.NewRequest(&consolev1.DeleteDeploymentRequest{
-			Project: "my-project",
-			Name:    "web-app",
-		})
-		_, err := handler.DeleteDeployment(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for editor deleting deployment")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
-		}
-	})
+	// Per HOL-1033 + ADR 036, in-process project-grant authorization was
+	// removed in favor of native K8s RBAC via the OIDC-impersonated client.
+	// PermissionDenied for unauthorized callers now flows back from the API
+	// server.
 }
 
 // TestHandler_ListNamespaceSecrets tests the ListNamespaceSecrets RPC.
@@ -611,21 +550,10 @@ func TestHandler_ListNamespaceSecrets(t *testing.T) {
 		}
 	})
 
-	t.Run("viewer cannot list namespace secrets", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
-		handler := defaultHandler(fakeClient, pr)
-
-		ctx := authedCtx("alice@example.com", nil)
-		req := connect.NewRequest(&consolev1.ListNamespaceSecretsRequest{Project: "my-project"})
-		_, err := handler.ListNamespaceSecrets(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for viewer listing namespace secrets")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
-		}
-	})
+	// Per HOL-1033 + ADR 036, in-process project-grant authorization was
+	// removed in favor of native K8s RBAC via the OIDC-impersonated client.
+	// PermissionDenied for unauthorized callers now flows back from the API
+	// server.
 
 	t.Run("rejects unauthenticated request", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
@@ -692,21 +620,10 @@ func TestHandler_ListNamespaceConfigMaps(t *testing.T) {
 		}
 	})
 
-	t.Run("viewer cannot list namespace configmaps", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
-		handler := defaultHandler(fakeClient, pr)
-
-		ctx := authedCtx("alice@example.com", nil)
-		req := connect.NewRequest(&consolev1.ListNamespaceConfigMapsRequest{Project: "my-project"})
-		_, err := handler.ListNamespaceConfigMaps(ctx, req)
-		if err == nil {
-			t.Fatal("expected error for viewer listing namespace configmaps")
-		}
-		if connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("expected CodePermissionDenied, got %v", connect.CodeOf(err))
-		}
-	})
+	// Per HOL-1033 + ADR 036, in-process project-grant authorization was
+	// removed in favor of native K8s RBAC via the OIDC-impersonated client.
+	// PermissionDenied for unauthorized callers now flows back from the API
+	// server.
 
 	t.Run("rejects unauthenticated request", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))

@@ -137,7 +137,7 @@ func TestCRWriter_ApplyOnCreate_CreatesMatchingCR(t *testing.T) {
 	project := "cr-create"
 	ensureProjectNamespace(t, env.Direct, project)
 
-	if err := w.ApplyOnCreate(
+	if _, err := w.ApplyOnCreate(
 		context.Background(),
 		project, "web-app",
 		"nginx", "latest",
@@ -176,7 +176,7 @@ func TestCRWriter_ApplyOnUpdate_UpdatesCR(t *testing.T) {
 	ensureProjectNamespace(t, env.Direct, project)
 
 	// Seed with initial values.
-	if err := w.ApplyOnCreate(context.Background(), project, "api-svc", "my-image", "v1", "tmpl", "", "", nil, nil, nil, 9000); err != nil {
+	if _, err := w.ApplyOnCreate(context.Background(), project, "api-svc", "my-image", "v1", "tmpl", "", "", nil, nil, nil, 9000); err != nil {
 		t.Fatalf("ApplyOnCreate (seed): %v", err)
 	}
 	eventuallyGetCR(t, env.Direct, "prj-"+project, "api-svc")
@@ -212,7 +212,7 @@ func TestCRWriter_DeleteCR_RemovesCR(t *testing.T) {
 	ensureProjectNamespace(t, env.Direct, project)
 
 	// Seed a CR.
-	if err := w.ApplyOnCreate(context.Background(), project, "svc-to-delete", "img", "v1", "tmpl", "", "", nil, nil, nil, 0); err != nil {
+	if _, err := w.ApplyOnCreate(context.Background(), project, "svc-to-delete", "img", "v1", "tmpl", "", "", nil, nil, nil, 0); err != nil {
 		t.Fatalf("ApplyOnCreate (seed): %v", err)
 	}
 	eventuallyGetCR(t, env.Direct, "prj-"+project, "svc-to-delete")
@@ -254,7 +254,7 @@ func TestCRWriter_OwnerRefsPreservedAcrossUpdate(t *testing.T) {
 	ensureProjectNamespace(t, env.Direct, project)
 
 	// Step 1: create the CR via the writer.
-	if err := w.ApplyOnCreate(context.Background(), project, "svc", "img", "v1", "tmpl", "", "", nil, nil, nil, 0); err != nil {
+	if _, err := w.ApplyOnCreate(context.Background(), project, "svc", "img", "v1", "tmpl", "", "", nil, nil, nil, 0); err != nil {
 		t.Fatalf("ApplyOnCreate: %v", err)
 	}
 	cr := eventuallyGetCR(t, env.Direct, "prj-"+project, "svc")

@@ -74,14 +74,20 @@ func NewCRWriter(cl ctrlclient.Client, r *resolver.Resolver) *CRWriter {
 // the desired state for each field manager in isolation, so omitting
 // ownerReferences means the reconciler-written entries are never touched by
 // this writer.
+//
+// On success the returned *Deployment carries the live cluster representation
+// of the CR after the apply, including metadata.uid which callers need to
+// stamp into ownerReferences on per-Deployment Roles and RoleBindings
+// (HOL-1033). A nil receiver returns (nil, nil) so local/dev wiring without
+// a CRWriter is a no-op.
 func (w *CRWriter) applyDeploymentCR(
 	ctx context.Context,
 	project, name, image, tag, templateName, displayName, description string,
 	command, args []string,
 	port int32,
-) error {
+) (*deploymentsv1alpha1.Deployment, error) {
 	if w == nil {
-		return nil
+		return nil, nil
 	}
 	ns := w.resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "applying deployment CR via SSA",
@@ -107,14 +113,14 @@ func (w *CRWriter) applyDeploymentCR(
 			},
 		},
 		Spec: deploymentsv1alpha1.DeploymentSpec{
-			ProjectName:  project,
-			DisplayName:  displayName,
-			Description:  description,
-			Image:        image,
-			Tag:          tag,
-			Command:      command,
-			Args:         args,
-			Port:         port,
+			ProjectName: project,
+			DisplayName: displayName,
+			Description: description,
+			Image:       image,
+			Tag:         tag,
+			Command:     command,
+			Args:        args,
+			Port:        port,
 			TemplateRef: deploymentsv1alpha1.DeploymentTemplateRef{
 				Namespace: ns,
 				Name:      templateName,
@@ -130,14 +136,21 @@ func (w *CRWriter) applyDeploymentCR(
 	// deployments/apply.go).
 	data, err := json.Marshal(desired)
 	if err != nil {
-		return fmt.Errorf("marshaling deployment CR for SSA: %w", err)
+		return nil, fmt.Errorf("marshaling deployment CR for SSA: %w", err)
 	}
 
 	force := true
-	return w.client.Patch(ctx, desired, ctrlclient.RawPatch(types.ApplyPatchType, data), &ctrlclient.PatchOptions{
+	if err := w.client.Patch(ctx, desired, ctrlclient.RawPatch(types.ApplyPatchType, data), &ctrlclient.PatchOptions{
 		FieldManager: crFieldManager,
 		Force:        &force,
-	})
+	}); err != nil {
+		return nil, err
+	}
+	// After a successful Patch the controller-runtime client copies the
+	// server response back into the desired object, so metadata.uid is set
+	// and can be used to stamp ownerReferences on per-Deployment Roles and
+	// RoleBindings.
+	return desired, nil
 }
 
 // ApplyOnCreate writes the Deployment CR after a successful proto-store create.
@@ -145,15 +158,20 @@ func (w *CRWriter) applyDeploymentCR(
 // for API symmetry with CreateDeployment but is intentionally not written to
 // the CR: DeploymentSpec carries no Env field (env vars are proto-side only,
 // stored in the ConfigMap and surfaced via the ConnectRPC surface).
+//
+// On success the returned *Deployment exposes the post-apply CR (including
+// metadata.uid). Callers stamp the UID into ownerReferences on per-Deployment
+// Roles and RoleBindings so K8s garbage collection cascades cleanup when the
+// Deployment is deleted (HOL-1033).
 func (w *CRWriter) ApplyOnCreate(
 	ctx context.Context,
 	project, name, image, tag, templateName, displayName, description string,
 	command, args []string,
 	_ []v1alpha2.EnvVar, // env — proto-store only; not reflected in DeploymentSpec
 	port int32,
-) error {
+) (*deploymentsv1alpha1.Deployment, error) {
 	if w == nil {
-		return nil
+		return nil, nil
 	}
 	return w.applyDeploymentCR(ctx, project, name, image, tag, templateName, displayName, description, command, args, port)
 }
@@ -170,7 +188,8 @@ func (w *CRWriter) ApplyOnUpdate(
 	if w == nil {
 		return nil
 	}
-	return w.applyDeploymentCR(ctx, project, name, image, tag, templateName, displayName, description, command, args, port)
+	_, err := w.applyDeploymentCR(ctx, project, name, image, tag, templateName, displayName, description, command, args, port)
+	return err
 }
 
 // DeleteCR removes the Deployment CR when the proto-store record is deleted.

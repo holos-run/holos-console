@@ -19,7 +19,6 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/deployments/statuscache"
-	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
@@ -389,11 +388,7 @@ func (h *Handler) ListDeployments(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsList); err != nil {
-		return nil, err
-	}
-
-	cms, err := h.k8s.ListDeployments(ctx, project)
+	cms, err := h.requestK8s(ctx).ListDeployments(ctx, project)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -476,11 +471,7 @@ func (h *Handler) GetDeployment(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsRead); err != nil {
-		return nil, err
-	}
-
-	cm, err := h.k8s.GetDeployment(ctx, project, name)
+	cm, err := h.requestK8s(ctx).GetDeployment(ctx, project, name)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -568,10 +559,6 @@ func (h *Handler) CreateDeployment(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsWrite); err != nil {
-		return nil, err
-	}
-
 	// Check that deployments are enabled in project settings.
 	if h.settingsResolver != nil {
 		s, err := h.settingsResolver.GetSettings(ctx, project)
@@ -611,9 +598,29 @@ func (h *Handler) CreateDeployment(
 		description = *req.Msg.Description
 	}
 
-	_, err = h.k8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port)
+	rk8s := h.requestK8s(ctx)
+	_, err = rk8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port)
 	if err != nil {
 		return nil, mapK8sError(err)
+	}
+
+	// Provision the per-Deployment Roles + creator-Owner RoleBinding so
+	// subsequent reads/writes flow through native K8s RBAC under ADR 036
+	// (HOL-1033). The Roles and RoleBindings carry an OwnerReference to
+	// the Deployment CR so K8s GC cascades cleanup on Delete. The call is
+	// a no-op when no dynamic client is configured (local/dev wiring).
+	// A provisioning failure rolls back the create — without RBAC the user
+	// who just created the deployment would see a 403 on every subsequent
+	// read.
+	if rbacErr := rk8s.EnsureDeploymentRBAC(ctx, project, name, claims.Sub, RoleOwner); rbacErr != nil {
+		slog.WarnContext(ctx, "per-deployment RBAC provisioning failed — rolling back",
+			slog.String("project", project),
+			slog.String("name", name),
+			slog.Any("error", rbacErr),
+		)
+		ns := h.k8s.Resolver.ProjectNamespace(project)
+		h.rollbackCreate(ctx, ns, project, name)
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("provisioning deployment RBAC: %w", rbacErr))
 	}
 
 	// Render and apply the deployment resources. On any failure, roll back by
@@ -687,7 +694,7 @@ func (h *Handler) CreateDeployment(
 		// meaningful URL; failures here are logged and do not fail the RPC
 		// because the deployment itself was created successfully.
 		if url := outputURLFromJSON(ctx, project, name, grouped.OutputJSON); url != "" {
-			if err := h.k8s.SetOutputURLAnnotation(ctx, project, name, url); err != nil {
+			if err := rk8s.SetOutputURLAnnotation(ctx, project, name, url); err != nil {
 				slog.WarnContext(ctx, "failed to cache output URL annotation after create",
 					slog.String("project", project),
 					slog.String("name", name),
@@ -750,7 +757,10 @@ func (h *Handler) rollbackCreate(ctx context.Context, ns, project, name string) 
 			slog.Any("error", cleanupErr),
 		)
 	}
-	if deleteErr := h.k8s.DeleteDeployment(ctx, project, name); deleteErr != nil {
+	// Use the per-request impersonated client to delete the ConfigMap so the
+	// rollback runs as the same principal that created it, mirroring the
+	// authorization context of the rest of CreateDeployment under ADR 036.
+	if deleteErr := h.requestK8s(ctx).DeleteDeployment(ctx, project, name); deleteErr != nil {
 		slog.WarnContext(ctx, "rollback: delete ConfigMap failed",
 			slog.String("project", project),
 			slog.String("name", name),
@@ -778,16 +788,13 @@ func (h *Handler) UpdateDeployment(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsWrite); err != nil {
-		return nil, err
-	}
-
 	envInputs, err := validateEnvVars(req.Msg.Env)
 	if err != nil {
 		return nil, err
 	}
 
-	updated, err := h.k8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port)
+	rk8s := h.requestK8s(ctx)
+	updated, err := rk8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -884,7 +891,7 @@ func (h *Handler) UpdateDeployment(
 		// A failure here is logged but does not fail the RPC because the
 		// reconcile itself succeeded.
 		url := outputURLFromJSON(ctx, project, name, grouped.OutputJSON)
-		if err := h.k8s.SetOutputURLAnnotation(ctx, project, name, url); err != nil {
+		if err := rk8s.SetOutputURLAnnotation(ctx, project, name, url); err != nil {
 			slog.WarnContext(ctx, "failed to refresh output URL annotation after update",
 				slog.String("project", project),
 				slog.String("name", name),
@@ -929,10 +936,6 @@ func (h *Handler) DeleteDeployment(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsDelete); err != nil {
-		return nil, err
-	}
-
 	// Clean up all K8s resources owned by this deployment before removing the record.
 	// Discover all namespaces with owned resources so cross-namespace resources
 	// are cleaned up (not just the project namespace). On partial discovery
@@ -969,7 +972,7 @@ func (h *Handler) DeleteDeployment(
 		}
 	}
 
-	if err := h.k8s.DeleteDeployment(ctx, project, name); err != nil {
+	if err := h.requestK8s(ctx).DeleteDeployment(ctx, project, name); err != nil {
 		return nil, mapK8sError(err)
 	}
 
@@ -1000,11 +1003,7 @@ func (h *Handler) ListNamespaceSecrets(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsWrite); err != nil {
-		return nil, err
-	}
-
-	items, err := h.k8s.ListNamespaceSecrets(ctx, project)
+	items, err := h.requestK8s(ctx).ListNamespaceSecrets(ctx, project)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -1044,11 +1043,7 @@ func (h *Handler) ListNamespaceConfigMaps(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsWrite); err != nil {
-		return nil, err
-	}
-
-	items, err := h.k8s.ListNamespaceConfigMaps(ctx, project)
+	items, err := h.requestK8s(ctx).ListNamespaceConfigMaps(ctx, project)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -1093,12 +1088,8 @@ func (h *Handler) GetDeploymentRenderPreview(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsRead); err != nil {
-		return nil, err
-	}
-
 	// Look up the deployment record.
-	cm, err := h.k8s.GetDeployment(ctx, project, name)
+	cm, err := h.requestK8s(ctx).GetDeployment(ctx, project, name)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -1369,7 +1360,8 @@ func (h *Handler) refreshAggregatedLinksCache(ctx context.Context, project, name
 		// path (no cluster) still surfaces previously-stamped links.
 		return cachedLinks, cachedPrimary
 	}
-	resources, err := h.k8s.ListDeploymentResources(ctx, project, name)
+	rk8s := h.requestK8s(ctx)
+	resources, err := rk8s.ListDeploymentResources(ctx, project, name)
 	if err != nil {
 		// Partial-scan errors mean some kinds were not observed; the
 		// returned slice is therefore not a faithful view of the
@@ -1395,7 +1387,7 @@ func (h *Handler) refreshAggregatedLinksCache(ctx context.Context, project, name
 	// non-empty fresh result overwrites it. Either way the cache
 	// converges on what the live cluster actually says.
 	payload := serializeAggregatedLinks(ctx, project, name, freshLinks, freshPrimary)
-	if err := h.k8s.SetAggregatedLinksAnnotation(ctx, project, name, payload); err != nil {
+	if err := rk8s.SetAggregatedLinksAnnotation(ctx, project, name, payload); err != nil {
 		slog.WarnContext(ctx, "failed to update aggregated links cache after drift",
 			slog.String("project", project),
 			slog.String("name", name),
@@ -1412,7 +1404,8 @@ func (h *Handler) refreshAggregatedLinksCache(ctx context.Context, project, name
 // failure here is logged at warn but does not fail the RPC because the
 // deployment itself was applied successfully.
 func (h *Handler) stampAggregatedLinks(ctx context.Context, project, name string) {
-	resources, err := h.k8s.ListDeploymentResources(ctx, project, name)
+	rk8s := h.requestK8s(ctx)
+	resources, err := rk8s.ListDeploymentResources(ctx, project, name)
 	if err != nil {
 		slog.WarnContext(ctx, "failed to list owned resources for aggregated links cache",
 			slog.String("project", project),
@@ -1423,7 +1416,7 @@ func (h *Handler) stampAggregatedLinks(ctx context.Context, project, name string
 	}
 	aggregated, primaryURL := aggregateLinksFromResources(ctx, project, name, resources)
 	payload := serializeAggregatedLinks(ctx, project, name, aggregated, primaryURL)
-	if err := h.k8s.SetAggregatedLinksAnnotation(ctx, project, name, payload); err != nil {
+	if err := rk8s.SetAggregatedLinksAnnotation(ctx, project, name, payload); err != nil {
 		slog.WarnContext(ctx, "failed to set aggregated links annotation after apply",
 			slog.String("project", project),
 			slog.String("name", name),
@@ -1432,20 +1425,35 @@ func (h *Handler) stampAggregatedLinks(ctx context.Context, project, name string
 	}
 }
 
-// checkProjectAccess verifies that the user has the given permission via project cascade grants.
-func (h *Handler) checkProjectAccess(ctx context.Context, claims *rpc.Claims, project string, permission rbac.Permission) error {
-	if h.projectResolver == nil {
-		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
+// requestK8s returns a per-request K8sClient bound to the impersonated
+// Kubernetes clients on the context (set by the auth interceptor under ADR
+// 036). Falls back to the handler's startup-scoped K8sClient when no
+// impersonated bundle is present (local/dev wiring without OIDC). Mirrors
+// the pattern established by secrets.Handler.requestK8s in HOL-1032.
+//
+// The impersonated bundle's typed clientset and dynamic client carry the
+// caller's OIDC subject and groups, so subsequent CR/Role/RoleBinding
+// reads and writes are authorized by the API server's RBAC machinery
+// against the request principal — which replaces the in-process
+// project-grant cascade that previously gated this handler.
+func (h *Handler) requestK8s(ctx context.Context) *K8sClient {
+	if !rpc.HasImpersonatedClients(ctx) {
+		return h.k8s
 	}
-	users, roles, err := h.projectResolver.GetProjectGrants(ctx, project)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to resolve project grants",
-			slog.String("project", project),
-			slog.Any("error", err),
-		)
-		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
+	rebuilt := &K8sClient{
+		client:   rpc.ImpersonatedClientsetFromContext(ctx),
+		dynamic:  rpc.ImpersonatedDynamicClientFromContext(ctx),
+		Resolver: h.k8s.Resolver,
+		crWriter: h.k8s.crWriter,
 	}
-	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, permission, rbac.ProjectCascadeDeploymentPerms)
+	if rebuilt.crWriter != nil {
+		// Rebuild the CR writer with the impersonated controller-runtime
+		// client so SSA writes carry the OIDC subject too.
+		if cl := rpc.ImpersonatedCtrlClientFromContext(ctx); cl != nil {
+			rebuilt.crWriter = &CRWriter{client: cl, resolver: h.k8s.crWriter.resolver}
+		}
+	}
+	return rebuilt
 }
 
 // serializeUnstructured converts a slice of unstructured Kubernetes resources
@@ -1762,11 +1770,7 @@ func (h *Handler) GetDeploymentPolicyState(
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsRead); err != nil {
-		return nil, err
-	}
-
-	if _, err := h.k8s.GetDeployment(ctx, project, name); err != nil {
+	if _, err := h.requestK8s(ctx).GetDeployment(ctx, project, name); err != nil {
 		return nil, mapK8sError(err)
 	}
 
@@ -1810,13 +1814,9 @@ func (h *Handler) PreflightCheck(
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsRead); err != nil {
-		return nil, err
-	}
-
 	// Fetch the existing deployment ConfigMaps from the project namespace so we
 	// can detect name collisions without mutating anything.
-	existingCMs, err := h.k8s.ListDeployments(ctx, project)
+	existingCMs, err := h.requestK8s(ctx).ListDeployments(ctx, project)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -1903,10 +1903,6 @@ func (h *Handler) GetDependencyEdgeCascadeDelete(
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsRead); err != nil {
-		return nil, err
-	}
-
 	if h.dependencyEdgeWriter == nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("dependency-edge writer not configured"))
@@ -1953,10 +1949,6 @@ func (h *Handler) SetDependencyEdgeCascadeDelete(
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
-	if err := h.checkProjectAccess(ctx, claims, project, rbac.PermissionDeploymentsWrite); err != nil {
-		return nil, err
-	}
-
 	if h.dependencyEdgeWriter == nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition,
 			fmt.Errorf("dependency-edge writer not configured"))

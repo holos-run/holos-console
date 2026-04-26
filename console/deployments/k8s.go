@@ -12,13 +12,26 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
+
+// deploymentGVR is the GroupVersionResource for the holos-console
+// Deployment CRD, used for namespace-scoped dynamic client lookups (UID
+// retrieval and other CR operations that do not require ctrlclient typing).
+var deploymentGVR = schema.GroupVersionResource{
+	Group:    "deployments.holos.run",
+	Version:  "v1alpha1",
+	Resource: "deployments",
+}
 
 // ErrPartialScan is returned by ListDeploymentResources when at least one
 // per-kind List call failed. The returned slice still contains every
@@ -121,7 +134,12 @@ func (k *K8sClient) GetDeployment(ctx context.Context, project, name string) (*c
 	return k.client.CoreV1().ConfigMaps(ns).Get(ctx, name, metav1.GetOptions{})
 }
 
-// CreateDeployment creates a new deployment ConfigMap.
+// CreateDeployment creates a new deployment ConfigMap and dual-writes the CR.
+// principal, when non-empty, identifies the OIDC-prefixed user the handler
+// will bind as the creator-Owner via a per-Deployment RoleBinding (HOL-1033).
+// principal is plumbed through unchanged here — the Role + RoleBinding
+// provisioning lives in EnsureDeploymentRBAC, which the handler invokes after
+// CreateDeployment returns the live CR (so the OwnerReference UID is known).
 func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, tag, tmpl, displayName, description string, command, args []string, env []v1alpha2.EnvVar, port int32) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "creating deployment in kubernetes",
@@ -168,8 +186,12 @@ func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, 
 		return nil, err
 	}
 	// Dual-write: mirror the new Deployment to the CRD store. A nil crWriter
-	// (local/dev wiring without a controller-runtime client) is a no-op.
-	if crErr := k.crWriter.ApplyOnCreate(ctx, project, name, image, tag, tmpl, displayName, description, command, args, env, port); crErr != nil {
+	// (local/dev wiring without a controller-runtime client) is a no-op. The
+	// returned CR is intentionally discarded here — the handler invokes
+	// EnsureDeploymentRBAC separately, which fetches the CR (with UID) via
+	// the dynamic client to stamp ownerReferences on per-Deployment Roles
+	// and RoleBindings.
+	if _, crErr := k.crWriter.ApplyOnCreate(ctx, project, name, image, tag, tmpl, displayName, description, command, args, env, port); crErr != nil {
 		slog.WarnContext(ctx, "deployment CR dual-write failed after proto-store create",
 			slog.String("project", project),
 			slog.String("namespace", ns),
@@ -181,6 +203,303 @@ func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, 
 	}
 	return created, nil
 }
+
+// EnsureDeploymentRBAC provisions the three per-Deployment Roles (viewer,
+// editor, owner) and a creator-Owner RoleBinding for the given principal.
+// All Roles and RoleBindings carry an OwnerReference to the Deployment CR
+// so K8s garbage collection cascades the cleanup when the Deployment is
+// deleted (HOL-1033 AC #3). The Deployment CR's UID is fetched via the
+// dynamic client so the function works under both real and impersonated
+// clients without requiring a typed scheme.
+//
+// principal is the OIDC subject (with or without the "oidc:" prefix) that
+// will receive the Owner RoleBinding. An empty principal skips the
+// RoleBinding write — the Roles still land so subsequent UpdateSharing
+// calls have something to bind. role overrides the default Owner tier
+// (callers that grant a different starting tier — e.g. Viewer for a
+// service-account creator — pass it explicitly).
+//
+// EnsureDeploymentRBAC is idempotent: re-running for the same deployment
+// updates each Role's labels/rules in place and reapplies the creator's
+// RoleBinding so policy churn is observable without a delete-recreate.
+func (k *K8sClient) EnsureDeploymentRBAC(ctx context.Context, project, name, principal, role string) error {
+	if k.dynamic == nil {
+		// Without a dynamic client we cannot fetch the CR UID, so we cannot
+		// stamp ownerReferences. Skip provisioning so local/dev wiring
+		// without a cluster degrades gracefully — the proto-store flow
+		// continues to work.
+		slog.DebugContext(ctx, "skipping per-deployment RBAC provisioning: no dynamic client",
+			slog.String("project", project),
+			slog.String("name", name),
+		)
+		return nil
+	}
+	ns := k.Resolver.ProjectNamespace(project)
+	ownerRefs, err := k.deploymentOwnerRefs(ctx, ns, name)
+	if err != nil {
+		// If the CR has not been created yet (dual-write disabled, fake
+		// dynamic client without registered GVR, or any other CR-not-found
+		// signal), degrade gracefully: per-deployment RBAC will be
+		// reconciled the next time the deployment is updated. This matches
+		// the lazy-creation guarantee CRWriter relies on.
+		if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
+			slog.WarnContext(ctx, "skipping per-deployment RBAC provisioning: deployment CR absent",
+				slog.String("project", project),
+				slog.String("name", name),
+				slog.Any("error", err),
+			)
+			return nil
+		}
+		return fmt.Errorf("resolving deployment ownerReferences: %w", err)
+	}
+	for _, r := range DeploymentRoles(ns, name, ownerRefs) {
+		if err := k.applyRole(ctx, r); err != nil {
+			return fmt.Errorf("applying deployment role %q: %w", r.Name, err)
+		}
+	}
+	if principal == "" {
+		return nil
+	}
+	binding := RoleBinding(ns, name, ShareTargetUser, principal, role, ownerRefs)
+	if err := k.applyRoleBinding(ctx, binding); err != nil {
+		return fmt.Errorf("applying creator role binding: %w", err)
+	}
+	return nil
+}
+
+// ReconcileDeploymentRoleBindings reconciles the user/group sharing
+// RoleBindings for the named deployment against the desired set. Existing
+// per-deployment RoleBindings not present in the desired set are deleted;
+// missing ones are created; mismatched RoleRefs are recreated (RoleRef is
+// immutable). Mirrors secrets.reconcileProjectSecretRoleBindings in shape.
+func (k *K8sClient) ReconcileDeploymentRoleBindings(ctx context.Context, project, name string, shareUsers, shareRoles []DeploymentGrant) error {
+	ns := k.Resolver.ProjectNamespace(project)
+	ownerRefs, err := k.deploymentOwnerRefs(ctx, ns, name)
+	if err != nil {
+		// CR absent → no ownerReferences possible. The reconcile still
+		// succeeds: any existing per-deployment RoleBindings get pruned
+		// against the desired set, and new bindings are created without
+		// ownerReferences. They will be retro-stamped on the next
+		// update once the CR materialises.
+		if !apierrors.IsNotFound(err) && !meta.IsNoMatchError(err) {
+			return fmt.Errorf("resolving deployment ownerReferences: %w", err)
+		}
+		ownerRefs = nil
+	}
+	desired := make(map[string]*rbacv1.RoleBinding)
+	for _, g := range deduplicateDeploymentGrants(shareUsers) {
+		if g.Principal == "" {
+			continue
+		}
+		rb := RoleBinding(ns, name, ShareTargetUser, g.Principal, g.Role, ownerRefs)
+		desired[rb.Name] = rb
+	}
+	for _, g := range deduplicateDeploymentGrants(shareRoles) {
+		if g.Principal == "" {
+			continue
+		}
+		rb := RoleBinding(ns, name, ShareTargetGroup, g.Principal, g.Role, ownerRefs)
+		desired[rb.Name] = rb
+	}
+
+	selector := labels.SelectorFromSet(labels.Set{
+		v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
+		LabelRolePurpose:        RolePurposeDeployment,
+		LabelDeploymentName:     name,
+	})
+	current, err := k.client.RbacV1().RoleBindings(ns).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
+	if err != nil {
+		return err
+	}
+	for _, existing := range current.Items {
+		if _, ok := desired[existing.Name]; ok {
+			continue
+		}
+		if err := k.client.RbacV1().RoleBindings(ns).Delete(ctx, existing.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
+	for _, rb := range desired {
+		if err := k.applyRoleBinding(ctx, rb); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ListDeploymentSharing returns the user and group RoleBindings currently
+// bound to the named deployment, decoded back into the wire-stable
+// DeploymentGrant shape.
+func (k *K8sClient) ListDeploymentSharing(ctx context.Context, project, name string) ([]DeploymentGrant, []DeploymentGrant, error) {
+	ns := k.Resolver.ProjectNamespace(project)
+	selector := labels.SelectorFromSet(labels.Set{
+		v1alpha2.LabelManagedBy: v1alpha2.ManagedByValue,
+		LabelRolePurpose:        RolePurposeDeployment,
+		LabelDeploymentName:     name,
+	})
+	list, err := k.client.RbacV1().RoleBindings(ns).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
+	if err != nil {
+		return nil, nil, err
+	}
+	users := roleBindingsToGrants(list.Items, rbacv1.UserKind)
+	groups := roleBindingsToGrants(list.Items, rbacv1.GroupKind)
+	return users, groups, nil
+}
+
+// deploymentOwnerRefs returns an ownerReferences slice pointing at the
+// Deployment CR with the given name in the project namespace. Used by
+// EnsureDeploymentRBAC and ReconcileDeploymentRoleBindings to stamp
+// ownerReferences on per-Deployment Roles and RoleBindings so K8s GC
+// cascades cleanup.
+func (k *K8sClient) deploymentOwnerRefs(ctx context.Context, namespace, name string) ([]metav1.OwnerReference, error) {
+	if k.dynamic == nil {
+		return nil, fmt.Errorf("dynamic client required to resolve deployment UID")
+	}
+	cr, err := k.dynamic.Resource(deploymentGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	controller := true
+	blockOwnerDeletion := true
+	return []metav1.OwnerReference{{
+		APIVersion:         "deployments.holos.run/v1alpha1",
+		Kind:               "Deployment",
+		Name:               cr.GetName(),
+		UID:                cr.GetUID(),
+		Controller:         &controller,
+		BlockOwnerDeletion: &blockOwnerDeletion,
+	}}, nil
+}
+
+// applyRole creates or updates a per-Deployment Role. Idempotent: an
+// already-existing Role has its labels, rules, and ownerReferences
+// reconciled against the desired state via Update.
+func (k *K8sClient) applyRole(ctx context.Context, role *rbacv1.Role) error {
+	created, err := k.client.RbacV1().Roles(role.Namespace).Create(ctx, role, metav1.CreateOptions{})
+	if err == nil {
+		*role = *created
+		return nil
+	}
+	if !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	existing, err := k.client.RbacV1().Roles(role.Namespace).Get(ctx, role.Name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	existing.Labels = role.Labels
+	existing.Rules = role.Rules
+	existing.OwnerReferences = role.OwnerReferences
+	updated, err := k.client.RbacV1().Roles(role.Namespace).Update(ctx, existing, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+	*role = *updated
+	return nil
+}
+
+// applyRoleBinding creates or updates a per-Deployment RoleBinding. RoleRef
+// is immutable in K8s, so when an existing RoleBinding's RoleRef differs
+// from the desired one (e.g. role tier changed) the old binding is deleted
+// and recreated.
+func (k *K8sClient) applyRoleBinding(ctx context.Context, binding *rbacv1.RoleBinding) error {
+	created, err := k.client.RbacV1().RoleBindings(binding.Namespace).Create(ctx, binding, metav1.CreateOptions{})
+	if err == nil {
+		*binding = *created
+		return nil
+	}
+	if !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	existing, err := k.client.RbacV1().RoleBindings(binding.Namespace).Get(ctx, binding.Name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if existing.RoleRef != binding.RoleRef {
+		if err := k.client.RbacV1().RoleBindings(binding.Namespace).Delete(ctx, binding.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+		recreated, err := k.client.RbacV1().RoleBindings(binding.Namespace).Create(ctx, binding, metav1.CreateOptions{})
+		if err == nil {
+			*binding = *recreated
+		}
+		return err
+	}
+	existing.Labels = binding.Labels
+	existing.Annotations = binding.Annotations
+	existing.Subjects = binding.Subjects
+	existing.OwnerReferences = binding.OwnerReferences
+	updated, err := k.client.RbacV1().RoleBindings(binding.Namespace).Update(ctx, existing, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+	*binding = *updated
+	return nil
+}
+
+// DeploymentGrant mirrors the secrets sharing grant shape so the
+// deployments handler can reuse one wire format across the two RBAC
+// migrations. Fields match secrets.AnnotationGrant intentionally (HOL-1032
+// precedent) so a future shared package can subsume both.
+type DeploymentGrant struct {
+	Principal string
+	Role      string
+}
+
+// deploymentGrantRoleRank lets deduplicateDeploymentGrants pick the
+// highest-privilege grant when the same principal appears more than once.
+var deploymentGrantRoleRank = map[string]int{
+	RoleViewer: 1,
+	RoleEditor: 2,
+	RoleOwner:  3,
+}
+
+// deduplicateDeploymentGrants merges duplicate principals, keeping the
+// grant with the highest role. Empty-principal entries are dropped. The
+// original insertion order of first-seen principals is preserved so the
+// resulting list is stable across reconcile passes.
+func deduplicateDeploymentGrants(grants []DeploymentGrant) []DeploymentGrant {
+	seen := make(map[string]int)
+	out := make([]DeploymentGrant, 0, len(grants))
+	for _, g := range grants {
+		if g.Principal == "" {
+			continue
+		}
+		if idx, ok := seen[g.Principal]; ok {
+			if deploymentGrantRoleRank[NormalizeRole(g.Role)] > deploymentGrantRoleRank[NormalizeRole(out[idx].Role)] {
+				out[idx] = g
+			}
+			continue
+		}
+		seen[g.Principal] = len(out)
+		out = append(out, g)
+	}
+	return out
+}
+
+// roleBindingsToGrants converts per-Deployment RoleBindings back into the
+// stable DeploymentGrant wire shape. kind selects user or group subjects
+// (rbacv1.UserKind / rbacv1.GroupKind).
+func roleBindingsToGrants(bindings []rbacv1.RoleBinding, kind string) []DeploymentGrant {
+	var grants []DeploymentGrant
+	for _, rb := range bindings {
+		role := RoleFromLabels(rb.Labels)
+		for _, subject := range rb.Subjects {
+			if subject.Kind != kind {
+				continue
+			}
+			grants = append(grants, DeploymentGrant{
+				Principal: UnprefixedPrincipal(subject.Name),
+				Role:      role,
+			})
+		}
+	}
+	return deduplicateDeploymentGrants(grants)
+}
+
+// patchTypeApply is a constant alias to keep types.ApplyPatchType visible
+// in this file even though only a few helpers reference patch types.
+var _ = types.ApplyPatchType
 
 // UpdateDeployment updates an existing deployment ConfigMap.
 // Only non-nil scalar fields are updated. Non-empty command/args slices replace stored values.

@@ -95,19 +95,10 @@ func TestHandler_GetDependencyEdgeCascadeDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("non-grantee rejected with PermissionDenied", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		h := defaultHandler(fakeClient, &stubProjectResolver{}).WithDependencyEdgeWriter(&stubDependencyEdgeWriter{})
-		ctx := authedCtx("nobody@example.com", nil)
-
-		_, err := h.GetDependencyEdgeCascadeDelete(ctx, connect.NewRequest(&consolev1.GetDependencyEdgeCascadeDeleteRequest{
-			Project:           "my-project",
-			OriginatingObject: newOriginating(KindTemplateDependency, "prj-other", "edge-1"),
-		}))
-		if got := connect.CodeOf(err); got != connect.CodePermissionDenied {
-			t.Errorf("code = %v, want PermissionDenied", got)
-		}
-	})
+	// Per HOL-1033 + ADR 036, in-process project-grant authorization was
+	// removed in favor of native K8s RBAC via the OIDC-impersonated client.
+	// PermissionDenied for unauthorized callers now flows back from the API
+	// server.
 
 	t.Run("invalid kind rejected", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))
@@ -297,25 +288,10 @@ func TestHandler_SetDependencyEdgeCascadeDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("viewer cannot write", func(t *testing.T) {
-		fakeClient := fake.NewClientset(projectNS("my-project"))
-		pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
-		stub := &stubDependencyEdgeWriter{}
-		h := defaultHandler(fakeClient, pr).WithDependencyEdgeWriter(stub)
-		ctx := authedCtx("alice@example.com", nil)
-
-		_, err := h.SetDependencyEdgeCascadeDelete(ctx, connect.NewRequest(&consolev1.SetDependencyEdgeCascadeDeleteRequest{
-			Project:           "my-project",
-			OriginatingObject: newOriginating(KindTemplateDependency, "prj-other", "edge-1"),
-			CascadeDelete:     true,
-		}))
-		if got := connect.CodeOf(err); got != connect.CodePermissionDenied {
-			t.Errorf("code = %v, want PermissionDenied", got)
-		}
-		if stub.setCalls != 0 {
-			t.Errorf("setCalls = %d, want 0", stub.setCalls)
-		}
-	})
+	// Per HOL-1033 + ADR 036, in-process project-grant authorization was
+	// removed in favor of native K8s RBAC via the OIDC-impersonated client.
+	// PermissionDenied for unauthorized callers now flows back from the API
+	// server.
 
 	t.Run("not-found mapped", func(t *testing.T) {
 		fakeClient := fake.NewClientset(projectNS("my-project"))

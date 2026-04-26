@@ -123,12 +123,11 @@ func TestGetDeploymentPolicyState(t *testing.T) {
 			req:      &consolev1.GetDeploymentPolicyStateRequest{Project: project, Name: name},
 			wantCode: connect.CodeUnauthenticated,
 		},
-		{
-			desc:     "caller without project grant is denied",
-			ctx:      authedCtx("nobody@example.com", nil),
-			req:      &consolev1.GetDeploymentPolicyStateRequest{Project: project, Name: name},
-			wantCode: connect.CodePermissionDenied,
-		},
+		// Per HOL-1033, in-process project-grant authorization was removed
+		// in favor of native K8s RBAC via the OIDC-impersonated client (ADR
+		// 036). PermissionDenied now flows back from the API server when an
+		// unauthorized principal performs a read; this handler-level test
+		// no longer exercises the authorization seam.
 		{
 			desc:      "missing deployment ConfigMap returns NotFound",
 			ctx:       authedCtx("viewer@example.com", nil),

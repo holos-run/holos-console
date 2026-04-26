@@ -839,12 +839,10 @@ func TestGetDeploymentStatusSummary(t *testing.T) {
 			req:      &consolev1.GetDeploymentStatusSummaryRequest{Project: project, Name: name},
 			wantCode: connect.CodeUnauthenticated,
 		},
-		{
-			desc:     "unauthorized user is denied",
-			ctx:      authedCtx("nobody@example.com", nil),
-			req:      &consolev1.GetDeploymentStatusSummaryRequest{Project: project, Name: name},
-			wantCode: connect.CodePermissionDenied,
-		},
+		// Per HOL-1033, in-process project-grant authorization was removed
+		// in favor of native K8s RBAC via the OIDC-impersonated client (ADR
+		// 036). PermissionDenied now flows back from the API server, not
+		// from a handler-level cascade check.
 		{
 			desc:     "empty project is rejected",
 			ctx:      authedCtx("viewer@example.com", nil),
