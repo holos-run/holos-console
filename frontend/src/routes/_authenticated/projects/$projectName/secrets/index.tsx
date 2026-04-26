@@ -1,5 +1,6 @@
 /**
  * Secrets index page — reimplemented on ResourceGrid v1 (HOL-857).
+ * Adopted StandardPageLayout (HOL-1002).
  *
  * Default view: current project as the single parent with Parent column hidden.
  *
@@ -9,7 +10,7 @@
 import { useCallback } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
-import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
+import { StandardPageLayout } from '@/components/page-layout'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
@@ -77,15 +78,17 @@ export function SecretsListPage() {
   )
 
   return (
-    <ResourceGrid
-      title={`${projectName} / Secrets`}
-      kinds={kinds}
-      rows={rows}
-      onDelete={handleDelete}
-      isLoading={isPending}
-      error={error}
-      search={search}
-      onSearchChange={handleSearchChange}
+    <StandardPageLayout
+      titleParts={[projectName, 'Secrets']}
+      grid={{
+        kinds,
+        rows,
+        onDelete: handleDelete,
+        isLoading: isPending,
+        error,
+        search,
+        onSearchChange: handleSearchChange,
+      }}
     />
   )
 }
