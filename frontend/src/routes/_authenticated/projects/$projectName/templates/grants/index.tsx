@@ -65,7 +65,7 @@ export function TemplateGrantsIndexPage({
 
   // TemplateGrants are org/folder-scoped — namespace comes from the selected
   // org, not the project. The project param keeps Templates sidebar active
-  // The project param keeps Templates sidebar active (HOL-1014).
+  // in the sidebar (HOL-1014).
   const { selectedOrg } = useOrg()
   const namespace = namespaceForOrg(selectedOrg ?? '')
 

@@ -65,7 +65,7 @@ export function TemplateRequirementsIndexPage({
 
   // TemplateRequirements are org/folder-scoped — namespace comes from the
   // selected org, not the project. The project param keeps Templates sidebar
-  // The project param keeps Templates sidebar active (HOL-1014).
+  // active in the sidebar (HOL-1014).
   const { selectedOrg } = useOrg()
   const namespace = namespaceForOrg(selectedOrg ?? '')
 
