@@ -44,15 +44,27 @@ export function SearchFieldsFilter({
   selectedIds,
   onChange,
 }: SearchFieldsFilterProps) {
+  // Drop any extraField whose id collides with a built-in key field id —
+  // duplicate ids would render two checkboxes with the same htmlFor target
+  // and cause the wrong filter branch to run (the switch in ResourceGrid's
+  // filter loop treats key-field ids specially).
+  const dedupedExtras = extraFields.filter(
+    (f) => !DEFAULT_SEARCH_FIELD_IDS.includes(f.id as never),
+  )
   const allFields = [
     ...DEFAULT_SEARCH_FIELD_IDS.map((id) => ({ id, label: KEY_FIELD_LABELS[id] })),
-    ...extraFields,
+    ...dedupedExtras,
   ]
   const selectedSet = new Set(selectedIds)
 
   const toggle = (id: string) => {
     const next = new Set(selectedSet)
     if (next.has(id)) {
+      // Refuse to drop the last selected field — searching across zero
+      // fields is meaningless and would otherwise snap back to defaults
+      // (parseSearchFieldIds restores defaults when ?fields= is empty),
+      // making the UI feel like the checkbox state was magically reset.
+      if (next.size === 1) return
       next.delete(id)
     } else {
       next.add(id)
