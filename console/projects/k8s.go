@@ -9,8 +9,10 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/secretrbac"
 	"github.com/holos-run/holos-console/console/secrets"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -169,6 +171,120 @@ func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, descri
 		return nil, err
 	}
 	return c.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+}
+
+// EnsureProjectSecretRBAC materializes the project-scoped Secret Roles and the
+// RoleBindings implied by the project's resolved share grants. This runs as the
+// console service account per ADR 036 Decision 5 because it reconciles RBAC for
+// humans rather than acting as the requesting human.
+func (c *K8sClient) EnsureProjectSecretRBAC(ctx context.Context, project string, shareUsers, shareRoles []secrets.AnnotationGrant) error {
+	ns, err := c.GetProject(ctx, project)
+	if err != nil {
+		return err
+	}
+	return c.EnsureProjectSecretRBACForNamespace(ctx, ns.Name, namespaceOwnerRefs(ns), shareUsers, shareRoles)
+}
+
+func (c *K8sClient) EnsureProjectSecretRBACForNamespace(ctx context.Context, namespace string, ownerRefs []metav1.OwnerReference, shareUsers, shareRoles []secrets.AnnotationGrant) error {
+	roleOwners := make(map[string][]metav1.OwnerReference)
+	for _, role := range secretrbac.ProjectSecretRoles(namespace, ownerRefs) {
+		if err := c.applyRole(ctx, role); err != nil {
+			return fmt.Errorf("applying project secret role %q: %w", role.Name, err)
+		}
+		roleOwners[role.Name] = []metav1.OwnerReference{{
+			APIVersion: rbacv1.SchemeGroupVersion.String(),
+			Kind:       "Role",
+			Name:       role.Name,
+			UID:        role.UID,
+		}}
+	}
+	for _, grant := range secrets.DeduplicateGrants(shareUsers) {
+		if grant.Principal == "" {
+			continue
+		}
+		binding := secretrbac.RoleBinding(namespace, secretrbac.ShareTargetUser, grant.Principal, grant.Role, roleOwners[secretrbac.RoleName(grant.Role)])
+		if err := c.applyRoleBinding(ctx, binding); err != nil {
+			return fmt.Errorf("applying project secret user binding %q: %w", binding.Name, err)
+		}
+	}
+	for _, grant := range secrets.DeduplicateGrants(shareRoles) {
+		if grant.Principal == "" {
+			continue
+		}
+		binding := secretrbac.RoleBinding(namespace, secretrbac.ShareTargetGroup, grant.Principal, grant.Role, roleOwners[secretrbac.RoleName(grant.Role)])
+		if err := c.applyRoleBinding(ctx, binding); err != nil {
+			return fmt.Errorf("applying project secret group binding %q: %w", binding.Name, err)
+		}
+	}
+	return nil
+}
+
+func namespaceOwnerRefs(ns *corev1.Namespace) []metav1.OwnerReference {
+	if ns == nil {
+		return nil
+	}
+	return []metav1.OwnerReference{{
+		APIVersion: "v1",
+		Kind:       "Namespace",
+		Name:       ns.Name,
+		UID:        ns.UID,
+	}}
+}
+
+func (c *K8sClient) applyRole(ctx context.Context, role *rbacv1.Role) error {
+	created, err := c.client.RbacV1().Roles(role.Namespace).Create(ctx, role, metav1.CreateOptions{})
+	if err == nil {
+		*role = *created
+		return nil
+	}
+	if !k8serrors.IsAlreadyExists(err) {
+		return err
+	}
+	existing, err := c.client.RbacV1().Roles(role.Namespace).Get(ctx, role.Name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	existing.Labels = role.Labels
+	existing.OwnerReferences = role.OwnerReferences
+	existing.Rules = role.Rules
+	updated, err := c.client.RbacV1().Roles(role.Namespace).Update(ctx, existing, metav1.UpdateOptions{})
+	if err == nil {
+		*role = *updated
+	}
+	return err
+}
+
+func (c *K8sClient) applyRoleBinding(ctx context.Context, binding *rbacv1.RoleBinding) error {
+	created, err := c.client.RbacV1().RoleBindings(binding.Namespace).Create(ctx, binding, metav1.CreateOptions{})
+	if err == nil {
+		*binding = *created
+		return nil
+	}
+	if !k8serrors.IsAlreadyExists(err) {
+		return err
+	}
+	existing, err := c.client.RbacV1().RoleBindings(binding.Namespace).Get(ctx, binding.Name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if existing.RoleRef != binding.RoleRef {
+		if err := c.client.RbacV1().RoleBindings(binding.Namespace).Delete(ctx, binding.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+			return err
+		}
+		created, err := c.client.RbacV1().RoleBindings(binding.Namespace).Create(ctx, binding, metav1.CreateOptions{})
+		if err == nil {
+			*binding = *created
+		}
+		return err
+	}
+	existing.Labels = binding.Labels
+	existing.OwnerReferences = binding.OwnerReferences
+	existing.Subjects = binding.Subjects
+	updated, err := c.client.RbacV1().RoleBindings(binding.Namespace).Update(ctx, existing, metav1.UpdateOptions{})
+	if err == nil {
+		*binding = *updated
+	}
+	return err
 }
 
 // UpdateProject updates the description and display name annotations on a managed namespace.

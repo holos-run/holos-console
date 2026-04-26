@@ -326,8 +326,13 @@ func (h *Handler) CreateProject(
 		}
 	}
 
-	// Ensure creator is included as owner
+	// Keep the legacy project metadata grant email-shaped for UI display, but
+	// bind the RBAC owner to the stable OIDC subject per ADR 036.
 	shareUsers = ensureCreatorOwner(shareUsers, claims.Email)
+	rbacShareUsers := removeGrantPrincipal(shareUsers, claims.Email)
+	if claims.Sub != "" {
+		rbacShareUsers = ensureCreatorOwner(rbacShareUsers, claims.Sub)
+	}
 
 	// Create the project namespace, retrying on AlreadyExists when the name was
 	// auto-generated (race between GenerateIdentifier check and K8s create).
@@ -337,7 +342,7 @@ func (h *Handler) CreateProject(
 	// single branch.
 	const maxCreateRetries = 3
 	for attempt := range maxCreateRetries + 1 {
-		err = h.createProjectOnce(ctx, name, req.Msg, parentNs, claims.Email, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
+		err = h.createProjectOnce(ctx, name, req.Msg, parentNs, claims.Email, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles, rbacShareUsers)
 		if err == nil {
 			break
 		}
@@ -390,6 +395,7 @@ func (h *Handler) createProjectOnce(
 	parentNs string,
 	creatorEmail string,
 	shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant,
+	rbacShareUsers []secrets.AnnotationGrant,
 ) error {
 	// Always build the base Namespace object up front — both paths need
 	// it (the typed Create call still uses it, and the pipeline needs
@@ -416,17 +422,23 @@ func (h *Handler) createProjectOnce(
 		}
 		if outcome == ProjectNamespacePipelineBindingsApplied {
 			// The applier already SSA'd the Namespace and every
-			// associated resource; there is nothing else to write.
+			// associated resource. The RBAC objects below are a
+			// console-owned elevation path from ADR 036 Decision 5,
+			// so they are reconciled explicitly after the namespace
+			// exists rather than rendered as the impersonated user.
 			// Note this path does not surface AlreadyExists (SSA is
 			// idempotent), so the auto-generated-name retry is a
 			// no-op when the pipeline handles the create.
-			return nil
+			return h.k8s.EnsureProjectSecretRBACForNamespace(ctx, baseNs.Name, namespaceOwnerRefs(baseNs), rbacShareUsers, shareRoles)
 		}
 	}
 
 	// Existing path: typed Create. Unchanged from pre-HOL-812 behavior.
 	_, err = h.k8s.client.CoreV1().Namespaces().Create(ctx, baseNs, metav1.CreateOptions{})
-	return err
+	if err != nil {
+		return err
+	}
+	return h.k8s.EnsureProjectSecretRBAC(ctx, name, rbacShareUsers, shareRoles)
 }
 
 // parentAncestorNamespace returns the namespace the ProjectNamespace
@@ -1175,15 +1187,33 @@ func protoRoleFromString(s string) consolev1.Role {
 	}
 }
 
-// ensureCreatorOwner ensures the creator email is in the share-users list as owner.
-func ensureCreatorOwner(shareUsers []secrets.AnnotationGrant, email string) []secrets.AnnotationGrant {
-	emailLower := strings.ToLower(email)
+// ensureCreatorOwner ensures the creator principal is in the share-users list as owner.
+func ensureCreatorOwner(shareUsers []secrets.AnnotationGrant, principal string) []secrets.AnnotationGrant {
+	if principal == "" {
+		return shareUsers
+	}
+	principalLower := strings.ToLower(principal)
 	for _, g := range shareUsers {
-		if strings.ToLower(g.Principal) == emailLower && strings.ToLower(g.Role) == "owner" {
+		if strings.ToLower(g.Principal) == principalLower && strings.ToLower(g.Role) == "owner" {
 			return shareUsers
 		}
 	}
-	return append(shareUsers, secrets.AnnotationGrant{Principal: email, Role: "owner"})
+	return append(shareUsers, secrets.AnnotationGrant{Principal: principal, Role: "owner"})
+}
+
+func removeGrantPrincipal(grants []secrets.AnnotationGrant, principal string) []secrets.AnnotationGrant {
+	if principal == "" {
+		return append([]secrets.AnnotationGrant(nil), grants...)
+	}
+	principalLower := strings.ToLower(principal)
+	filtered := make([]secrets.AnnotationGrant, 0, len(grants))
+	for _, grant := range grants {
+		if strings.ToLower(grant.Principal) == principalLower {
+			continue
+		}
+		filtered = append(filtered, grant)
+	}
+	return filtered
 }
 
 // mapK8sError converts Kubernetes API errors to ConnectRPC errors.

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -39,6 +40,8 @@ import (
 	secretsv1alpha1 "github.com/holos-run/holos-console/api/secrets/v1alpha1"
 	sicrypto "github.com/holos-run/holos-console/internal/secretinjector/crypto"
 )
+
+var controllerRuntimeLoggerMu sync.Mutex
 
 // Scheme is the controller-runtime scheme shared by the secret-injector
 // manager and any cache-backed client constructed from it. The scheme is
@@ -174,7 +177,9 @@ func NewManager(cfg *rest.Config, opts Options) (*Manager, error) {
 	// as the rest of the binary. Without this, controller-runtime prints a
 	// one-shot "log.SetLogger(...) was never called" stack trace on first
 	// use (HOL-765).
+	controllerRuntimeLoggerMu.Lock()
 	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
+	controllerRuntimeLoggerMu.Unlock()
 	cacheSyncTimeout := opts.CacheSyncTimeout
 	if cacheSyncTimeout == 0 {
 		// 90s matches the console manager so both binaries roll with the

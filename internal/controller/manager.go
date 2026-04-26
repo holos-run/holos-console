@@ -31,6 +31,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -50,6 +51,8 @@ import (
 	v1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	"github.com/holos-run/holos-console/console/deployments"
 )
+
+var controllerRuntimeLoggerMu sync.Mutex
 
 // Scheme is the controller-runtime scheme shared by the embedded manager and
 // by any cache-backed client constructed from the manager. Callers that need
@@ -171,7 +174,9 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 	// as the rest of the binary. Without this, controller-runtime prints a
 	// one-shot "log.SetLogger(...) was never called" stack trace on first
 	// use (HOL-765).
+	controllerRuntimeLoggerMu.Lock()
 	ctrl.SetLogger(logr.FromSlogHandler(logger.Handler()))
+	controllerRuntimeLoggerMu.Unlock()
 	cacheSyncTimeout := opts.CacheSyncTimeout
 	if cacheSyncTimeout == 0 {
 		// controller-runtime's default is 2 minutes. We ship a tighter
