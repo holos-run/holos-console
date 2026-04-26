@@ -8,6 +8,7 @@ import {
   useQueries,
   useMutation,
   useQueryClient,
+  type QueryClient,
 } from '@tanstack/react-query'
 import {
   TemplatePolicyBindingService,
@@ -29,6 +30,67 @@ import {
   type FanOutAggregate,
   type FanOutQueryState,
 } from '@/queries/templatePolicies'
+
+// WILDCARD is the sentinel value that matches any resource name or project
+// within a binding's scope (mirrors policyresolver.WildcardAny on the server).
+const WILDCARD = '*'
+
+/**
+ * invalidateDeploymentPreviews is called after a binding mutation to ensure
+ * that the deployment render-preview cache reflects the new policy state
+ * immediately, without requiring a manual refetch on the Deployment detail page.
+ *
+ * Invalidation strategy:
+ *   - If any targetRef contains a wildcard in `projectName` or `name`,
+ *     invalidate the full `['deployments', 'render-preview']` subtree so
+ *     every cached preview is refreshed (a wildcard binding may match any
+ *     deployment in any project).
+ *   - Otherwise, for each DEPLOYMENT-kind targetRef with a concrete
+ *     (projectName, name) pair, invalidate the specific preview key.
+ *   - PROJECT_TEMPLATE and PROJECT_NAMESPACE targetRef kinds also affect
+ *     deployment previews via the policy chain, so they trigger the broad
+ *     subtree invalidation when a wildcard is involved, or the per-project
+ *     subtree when no wildcard is present.
+ *
+ * This satisfies the AC in HOL-972: navigating to a matching deployment
+ * after creating or editing a binding shows policy-contributed resources
+ * without a manual refetch.
+ */
+export function invalidateDeploymentPreviews(
+  queryClient: QueryClient,
+  targetRefs: TemplatePolicyBindingTargetRef[],
+): void {
+  // Check for any wildcard — if present, blow away the whole preview subtree.
+  const hasWildcard = targetRefs.some(
+    (ref) => ref.projectName === WILDCARD || ref.name === WILDCARD,
+  )
+  if (hasWildcard || targetRefs.length === 0) {
+    // Invalidate all render-preview entries.
+    queryClient.invalidateQueries({
+      queryKey: ['deployments', 'render-preview'],
+    })
+    return
+  }
+
+  // Specific refs: invalidate each targeted deployment preview individually.
+  for (const ref of targetRefs) {
+    if (
+      ref.kind === TemplatePolicyBindingTargetKind.DEPLOYMENT &&
+      ref.projectName &&
+      ref.name
+    ) {
+      queryClient.invalidateQueries({
+        queryKey: keys.deployments.renderPreview(ref.projectName, ref.name),
+      })
+    } else if (ref.projectName) {
+      // PROJECT_TEMPLATE and PROJECT_NAMESPACE kinds affect all deployments
+      // in the project — invalidate the per-project render-preview subtree.
+      queryClient.invalidateQueries({
+        queryKey: ['deployments', 'render-preview', ref.projectName],
+      })
+    }
+  }
+}
 
 // Re-export generated types/enums used by UI consumers.
 export type { TemplatePolicyBinding, TemplatePolicyBindingTargetRef, LinkedTemplatePolicyRef }
@@ -181,8 +243,9 @@ export function useCreateTemplatePolicyBinding(namespace: string) {
         }),
       })
     },
-    onSuccess: () => {
+    onSuccess: (_, params) => {
       queryClient.invalidateQueries({ queryKey: keys.templatePolicyBindings.list(namespace) })
+      invalidateDeploymentPreviews(queryClient, params.targetRefs)
     },
   })
 }
@@ -217,9 +280,10 @@ export function useUpdateTemplatePolicyBinding(
         }),
       })
     },
-    onSuccess: () => {
+    onSuccess: (_, params) => {
       queryClient.invalidateQueries({ queryKey: keys.templatePolicyBindings.list(namespace) })
       queryClient.invalidateQueries({ queryKey: keys.templatePolicyBindings.get(namespace, name) })
+      invalidateDeploymentPreviews(queryClient, params.targetRefs)
     },
   })
 }
