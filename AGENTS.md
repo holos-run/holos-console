@@ -125,10 +125,23 @@ entry and WorkspaceMenu improvements. Key files:
 | `frontend/src/queries/templateDependencies.ts` (CRUD hooks) | HOL-1013 | TanStack Query CRUD hooks for TemplateDependency |
 | `frontend/src/queries/templateRequirements.ts` | HOL-1013 | TanStack Query hooks for TemplateRequirement |
 | `frontend/src/queries/templateGrants.ts` | HOL-1013 | TanStack Query hooks for TemplateGrant |
-| `frontend/src/routes/_authenticated/projects/$projectName/templates/dependencies/index.tsx` | HOL-1013 | Template Dependencies ResourceGrid page |
-| `frontend/src/routes/_authenticated/projects/$projectName/templates/requirements/index.tsx` | HOL-1013 | Template Requirements ResourceGrid page |
-| `frontend/src/routes/_authenticated/projects/$projectName/templates/grants/index.tsx` | HOL-1013 | Template Grants ResourceGrid page |
+| `frontend/src/routes/_authenticated/projects/$projectName/templates/dependencies/index.tsx` | HOL-1013, HOL-1023 | Template Dependencies ResourceGrid page; New action navigates to org-scoped create route |
+| `frontend/src/routes/_authenticated/projects/$projectName/templates/requirements/index.tsx` | HOL-1013, HOL-1023 | Template Requirements ResourceGrid page; New action navigates to org-scoped create route |
+| `frontend/src/routes/_authenticated/projects/$projectName/templates/grants/index.tsx` | HOL-1013, HOL-1023 | Template Grants ResourceGrid page; New action navigates to org-scoped create route |
 | `frontend/src/components/app-sidebar.tsx` (nested Templates nav) | HOL-1014 | Collapsible Templates sidebar with Policy / Dependencies / Grants sub-groups |
+| `frontend/src/components/scope-picker/ScopePicker.tsx` | HOL-1018 | Controlled dropdown for Organization / Project scope selection on "new resource" forms |
+| `frontend/src/routes/_authenticated/organizations/$orgName/template-dependencies/index.tsx` | HOL-1020 | Org-scoped TemplateDependency ResourceGrid page |
+| `frontend/src/routes/_authenticated/organizations/$orgName/template-dependencies/new.tsx` | HOL-1020 | Create TemplateDependency form with ScopePicker |
+| `frontend/src/routes/_authenticated/organizations/$orgName/template-dependencies/$dependencyName.tsx` | HOL-1020 | TemplateDependency detail / edit / delete page |
+| `frontend/src/components/template-dependencies/DependencyForm.tsx` | HOL-1020 | Reusable create/edit form for TemplateDependency |
+| `frontend/src/routes/_authenticated/organizations/$orgName/template-requirements/index.tsx` | HOL-1021 | Org-scoped TemplateRequirement ResourceGrid page |
+| `frontend/src/routes/_authenticated/organizations/$orgName/template-requirements/new.tsx` | HOL-1021 | Create TemplateRequirement form with ScopePicker |
+| `frontend/src/routes/_authenticated/organizations/$orgName/template-requirements/$requirementName.tsx` | HOL-1021 | TemplateRequirement detail / edit / delete page |
+| `frontend/src/components/template-requirements/RequirementForm.tsx` | HOL-1021 | Reusable create/edit form for TemplateRequirement |
+| `frontend/src/routes/_authenticated/organizations/$orgName/template-grants/index.tsx` | HOL-1022 | Org-scoped TemplateGrant ResourceGrid page |
+| `frontend/src/routes/_authenticated/organizations/$orgName/template-grants/new.tsx` | HOL-1022 | Create TemplateGrant form with ScopePicker |
+| `frontend/src/routes/_authenticated/organizations/$orgName/template-grants/$grantName.tsx` | HOL-1022 | TemplateGrant detail / edit / delete page |
+| `frontend/src/components/template-grants/GrantForm.tsx` | HOL-1022 | Reusable create/edit form for TemplateGrant |
 
 **Deleted (HOL-914)**: `frontend/src/components/resource-manager/` and
 `frontend/src/routes/_authenticated/resource-manager/` were removed when the

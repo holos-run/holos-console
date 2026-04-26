@@ -111,6 +111,39 @@ rather than mocking ConnectRPC clients directly. See
 [docs/agents/testing-patterns.md](testing-patterns.md) for the worked testing
 patterns.
 
+## ScopePicker (HOL-1018)
+
+All "new resource" forms for org-or-project-scoped resources use `ScopePicker`
+from `frontend/src/components/scope-picker/ScopePicker.tsx`. It renders a
+controlled dropdown (Organization / Project) that lets the user choose which
+namespace a resource is created in.
+
+```tsx
+import { ScopePicker } from '@/components/scope-picker/ScopePicker'
+import type { Scope } from '@/components/scope-picker/ScopePicker'
+
+const [scope, setScope] = useState<Scope>('organization')
+<ScopePicker value={scope} onChange={setScope} disabled={!canWrite} />
+```
+
+**Convention**: every new-resource form for `TemplatePolicy`,
+`TemplatePolicyBinding`, `TemplateDependency`, `TemplateRequirement`, and
+`TemplateGrant` must include a `ScopePicker` so the user can choose between org
+and project scope. The picker reads `useProject().selectedProject` to disable
+the Project option when no project is selected; it never writes to the
+selected-entity stores.
+
+The creation pages that use `ScopePicker`:
+
+| Route | Resource | Scope options |
+|-------|----------|---------------|
+| `/organizations/$orgName/template-policies/new` | TemplatePolicy | org / project |
+| `/organizations/$orgName/template-bindings/new` | TemplatePolicyBinding | org / project |
+| `/organizations/$orgName/template-dependencies/new` | TemplateDependency | project (org disabled per admission rules) |
+| `/organizations/$orgName/template-requirements/new` | TemplateRequirement | org |
+| `/organizations/$orgName/template-grants/new` | TemplateGrant | org |
+| `/projects/$projectName/templates/new` | Template | project (fixed, disabled) |
+
 ## Nested Templates Sidebar Nav (HOL-1014)
 
 The Templates sidebar entry is a collapsible group implemented in

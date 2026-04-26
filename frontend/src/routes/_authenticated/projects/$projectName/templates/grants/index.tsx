@@ -3,14 +3,11 @@
  *
  * TemplateGrants are org/folder-scoped, not project-scoped. The namespace is
  * derived from the selected organization via useOrg().selectedOrg. The project
- * name still appears in the URL so the Templates collapsible group can stay
- * open in a later sidebar phase (HOL-1014).
+ * name still appears in the URL so the Templates collapsible group stays open
+ * in the sidebar (HOL-1014).
  *
  * HOL-1023: added "New" header action gated on org OWNER/EDITOR role,
  * navigating to the org-scoped /template-grants/new route.
- *
- * Sidebar nesting is handled in HOL-1014; for now the route exists and is
- * reachable by URL.
  */
 
 import { useCallback, useMemo } from 'react'
@@ -68,7 +65,7 @@ export function TemplateGrantsIndexPage({
 
   // TemplateGrants are org/folder-scoped — namespace comes from the selected
   // org, not the project. The project param keeps Templates sidebar active
-  // in a later phase.
+  // in the sidebar (HOL-1014).
   const { selectedOrg } = useOrg()
   const namespace = namespaceForOrg(selectedOrg ?? '')
 
