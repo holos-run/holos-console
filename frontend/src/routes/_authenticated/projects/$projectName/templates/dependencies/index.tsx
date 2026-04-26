@@ -1,9 +1,12 @@
 /**
- * Project-scoped Templates / Dependencies index (HOL-1013).
+ * Project-scoped Templates / Dependencies index (HOL-1013, HOL-1023).
  *
  * TemplateDependencies are project-scoped. The namespace is derived from the
  * $projectName URL parameter via namespaceForProject(). The project name also
  * keeps the Templates collapsible group open in the sidebar (HOL-1014).
+ *
+ * HOL-1023: added "New" header action gated on project OWNER/EDITOR role,
+ * navigating to the org-scoped /template-dependencies/new route.
  *
  * Sidebar nesting is handled in HOL-1014; for now the route exists and is
  * reachable by URL.
@@ -11,7 +14,8 @@
 
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
+import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { StandardPageLayout } from '@/components/page-layout'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
@@ -19,6 +23,7 @@ import {
   useListTemplateDependencies,
   useDeleteTemplateDependency,
 } from '@/queries/templateDependencies'
+import { useGetProject } from '@/queries/projects'
 import { namespaceForProject } from '@/lib/scope-labels'
 import { useOrg } from '@/lib/org-context'
 
@@ -63,8 +68,13 @@ export function TemplateDependenciesIndexPage({
   // TemplateDependencies are project-scoped — namespace comes from projectName.
   const namespace = namespaceForProject(projectName)
 
-  // selectedOrg is used to build detailHref links to the org-scoped detail page.
+  // selectedOrg is used to build detailHref links and the New route URL.
   const { selectedOrg } = useOrg()
+
+  // Project role — used to gate the "New" button (OWNER or EDITOR can create).
+  const { data: project } = useGetProject(projectName)
+  const userRole = project?.userRole ?? Role.VIEWER
+  const canCreate = userRole === Role.OWNER || userRole === Role.EDITOR
 
   const {
     data: dependencies = [],
@@ -105,12 +115,14 @@ export function TemplateDependenciesIndexPage({
     () => [
       {
         id: 'TemplateDependency',
-        label: 'TemplateDependency',
-        // No create in this view — dependencies are managed programmatically.
-        canCreate: false,
+        label: 'Template Dependency',
+        newHref: selectedOrg
+          ? `/organizations/${selectedOrg}/template-dependencies/new`
+          : undefined,
+        canCreate: !!selectedOrg && canCreate,
       },
     ],
-    [],
+    [selectedOrg, canCreate],
   )
 
   // ---------------------------------------------------------------------------
@@ -134,15 +146,17 @@ export function TemplateDependenciesIndexPage({
   )
 
   return (
-    <ResourceGrid
-      title={`${projectName} / Templates / Dependencies`}
-      kinds={kinds}
-      rows={rows}
-      onDelete={handleDelete}
-      isLoading={isPending}
-      error={error}
-      search={search}
-      onSearchChange={handleSearchChange}
+    <StandardPageLayout
+      titleParts={[projectName, 'Templates', 'Dependencies']}
+      grid={{
+        kinds,
+        rows,
+        onDelete: handleDelete,
+        isLoading: isPending,
+        error,
+        search,
+        onSearchChange: handleSearchChange,
+      }}
     />
   )
 }
