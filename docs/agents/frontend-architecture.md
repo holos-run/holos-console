@@ -111,6 +111,28 @@ rather than mocking ConnectRPC clients directly. See
 [docs/agents/testing-patterns.md](testing-patterns.md) for the worked testing
 patterns.
 
+## Nested Templates Sidebar Nav (HOL-1014)
+
+The Templates sidebar entry is a collapsible group implemented in
+`frontend/src/components/app-sidebar.tsx`. When a project is selected it
+expands to show three sub-groups:
+
+| Sidebar group | Pages |
+|---|---|
+| **Policy** | Template Policies (`templates/policies/`), Policy Bindings (`templates/policy-bindings/`) |
+| **Dependencies** | Template Dependencies (`templates/dependencies/`), Requirements (`templates/requirements/`) |
+| **Grants** | Template Grants (`templates/grants/`) |
+
+Each sub-link is a `SidebarMenuSubButton` backed by a `Link` from TanStack
+Router. The group auto-expands (`open={isTemplatesActive}`) when any descendant
+route is active. The relevant route files are:
+
+- `frontend/src/routes/_authenticated/projects/$projectName/templates/policies/index.tsx` (HOL-1009)
+- `frontend/src/routes/_authenticated/projects/$projectName/templates/policy-bindings/index.tsx` (HOL-1009)
+- `frontend/src/routes/_authenticated/projects/$projectName/templates/dependencies/index.tsx` (HOL-1013)
+- `frontend/src/routes/_authenticated/projects/$projectName/templates/requirements/index.tsx` (HOL-1013)
+- `frontend/src/routes/_authenticated/projects/$projectName/templates/grants/index.tsx` (HOL-1013)
+
 ## Tables and Data Grids
 
 New flat resource list pages should use `ResourceGrid` when the page is a named
