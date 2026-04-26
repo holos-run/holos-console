@@ -48,6 +48,11 @@ test.describe('Secrets SPA Navigation (HOL-923 regression)', () => {
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/new`), { timeout: 5000 })
     await page.getByPlaceholder('my-secret').fill(secretName)
     await page.getByRole('button', { name: /create secret/i }).click()
+
+    // Create routes directly to the detail page (AC #3); navigate back to list so we can
+    // exercise the SPA row-click from the list.
+    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
+    await page.goto(`/projects/${projectName}/secrets`)
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
     await expect(page.getByRole('link', { name: secretName, exact: true }).first()).toBeVisible({ timeout: 10000 })
 

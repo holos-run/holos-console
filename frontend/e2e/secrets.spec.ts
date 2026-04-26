@@ -56,12 +56,7 @@ test.describe('Secrets Page', () => {
     await page.getByPlaceholder('value').fill('TEST_KEY=test_value')
     await page.getByRole('button', { name: /create secret/i }).click()
 
-    // Wait for redirect back to list and secret to appear
-    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
-    await expect(page.getByRole('link', { name: secretName, exact: true }).first()).toBeVisible({ timeout: 10000 })
-
-    // Navigate to the created secret
-    await page.getByRole('link', { name: secretName, exact: true }).first().click()
+    // Create routes directly to the detail page (AC #3)
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
 
     // Verify sharing panel is present
@@ -107,11 +102,8 @@ test.describe('Secrets Page', () => {
     await page.getByPlaceholder('key').fill('.env')
     await page.getByPlaceholder('value').fill('KEY=value')
     await page.getByRole('button', { name: /create secret/i }).click()
-    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
-    await expect(page.getByRole('link', { name: secretName, exact: true }).first()).toBeVisible({ timeout: 10000 })
 
-    // Navigate to the secret
-    await page.getByRole('link', { name: secretName, exact: true }).first().click()
+    // Create routes directly to the detail page (AC #3)
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
 
     // Verify sharing panel and edit button
@@ -167,6 +159,10 @@ test.describe('Secrets Page', () => {
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/new`), { timeout: 5000 })
     await page.getByPlaceholder('my-secret').fill(secretName)
     await page.getByRole('button', { name: /create secret/i }).click()
+
+    // Create routes directly to the detail page (AC #3); navigate back to list to verify
+    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
+    await page.goto(`/projects/${projectName}/secrets`)
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
 
     // Verify the secret shows in the list as a link
@@ -204,11 +200,8 @@ test.describe('Secrets Page', () => {
     await page.getByPlaceholder('my-secret').fill(secretName)
     // Do NOT fill key/value — create an empty secret
     await page.getByRole('button', { name: /create secret/i }).click()
-    await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/?$`), { timeout: 5000 })
-    await expect(page.getByRole('link', { name: secretName, exact: true }).first()).toBeVisible({ timeout: 10000 })
 
-    // Navigate to the detail page
-    await page.getByRole('link', { name: secretName, exact: true }).first().click()
+    // Create routes directly to the detail page (AC #3)
     await page.waitForURL(new RegExp(`/projects/${projectName}/secrets/${secretName}`), { timeout: 5000 })
 
     // Click Edit to enter edit mode — grid should show one empty row
