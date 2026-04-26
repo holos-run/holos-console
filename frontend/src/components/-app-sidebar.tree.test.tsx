@@ -31,10 +31,7 @@ vi.mock('@tanstack/react-router', () => ({
       </a>
     )
   },
-  useRouter: () => ({
-    state: { location: { pathname: '/' } },
-    navigate: vi.fn(),
-  }),
+  useLocation: () => ({ pathname: '/' }),
 }))
 
 vi.mock('@/components/workspace-menu', () => ({
