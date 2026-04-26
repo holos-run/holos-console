@@ -16,8 +16,6 @@ import type { Mock } from 'vitest'
 import {
   TemplatePolicyBindingTargetRefSchema,
   TemplatePolicyBindingTargetKind,
-} from '@/gen/holos/console/v1/template_policy_bindings_pb.js'
-import {
   LinkedTemplatePolicyRefSchema,
 } from '@/gen/holos/console/v1/template_policy_bindings_pb.js'
 import { keys } from '@/queries/keys'
