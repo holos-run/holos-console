@@ -18,8 +18,16 @@ import (
 	"connectrpc.com/connect"
 	"k8s.io/client-go/kubernetes/fake"
 
+	v1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
+
+// singletonNameFor binds the test's singleton key to the production helper so
+// a future format change to SingletonName fails this test rather than going
+// undetected.
+func singletonNameFor(name string) string {
+	return SingletonName(v1alpha1.LinkedTemplateRef{Name: name})
+}
 
 // stubDependencyEdgeProvider satisfies DependencyEdgeProvider for tests. The
 // listProject map is keyed by deployment name, mirroring the real
@@ -65,12 +73,13 @@ func edgeFixture() *consolev1.DeploymentDependency {
 // name. A non-singleton row receives no edges.
 func TestHandler_ListDeployments_PopulatesDependencies(t *testing.T) {
 	ns := projectNS("my-project")
-	cm := deploymentConfigMap("my-project", "waypoint-shared", "waypoint", "v1", "default", "Waypoint", "shared")
+	singleton := singletonNameFor("waypoint")
+	cm := deploymentConfigMap("my-project", singleton, "waypoint", "v1", "default", "Waypoint", "shared")
 	fakeClient := fake.NewClientset(ns, cm)
 	pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
 	provider := &stubDependencyEdgeProvider{
 		listProject: map[string][]*consolev1.DeploymentDependency{
-			"waypoint-shared": {edgeFixture()},
+			singleton: {edgeFixture()},
 		},
 	}
 	handler := defaultHandler(fakeClient, pr).WithDependencyEdgeProvider(provider)
@@ -118,22 +127,46 @@ func TestHandler_ListDeployments_DependencyProviderErrorIsNonFatal(t *testing.T)
 	}
 }
 
+// TestHandler_GetDeployment_DependencyProviderErrorIsNonFatal verifies that
+// GetDeployment returns the deployment payload even when the provider fails;
+// only the dependencies field is suppressed.
+func TestHandler_GetDeployment_DependencyProviderErrorIsNonFatal(t *testing.T) {
+	ns := projectNS("my-project")
+	singleton := singletonNameFor("waypoint")
+	cm := deploymentConfigMap("my-project", singleton, "waypoint", "v1", "default", "Waypoint", "shared")
+	fakeClient := fake.NewClientset(ns, cm)
+	pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
+	provider := &stubDependencyEdgeProvider{listOneErr: errors.New("boom")}
+	handler := defaultHandler(fakeClient, pr).WithDependencyEdgeProvider(provider)
+
+	ctx := authedCtx("alice@example.com", nil)
+	req := connect.NewRequest(&consolev1.GetDeploymentRequest{Project: "my-project", Name: singleton})
+	resp, err := handler.GetDeployment(ctx, req)
+	if err != nil {
+		t.Fatalf("GetDeployment must tolerate provider error, got %v", err)
+	}
+	if len(resp.Msg.Deployment.Dependencies) != 0 {
+		t.Errorf("expected no dependencies when provider errors, got %d", len(resp.Msg.Deployment.Dependencies))
+	}
+}
+
 // TestHandler_GetDeployment_PopulatesDependencies asserts that GetDeployment
 // attaches edges for the requested singleton via ListDependencyEdgesForDeployment.
 func TestHandler_GetDeployment_PopulatesDependencies(t *testing.T) {
 	ns := projectNS("my-project")
-	cm := deploymentConfigMap("my-project", "waypoint-shared", "waypoint", "v1", "default", "Waypoint", "shared")
+	singleton := singletonNameFor("waypoint")
+	cm := deploymentConfigMap("my-project", singleton, "waypoint", "v1", "default", "Waypoint", "shared")
 	fakeClient := fake.NewClientset(ns, cm)
 	pr := &stubProjectResolver{users: map[string]string{"alice@example.com": "viewer"}}
 	provider := &stubDependencyEdgeProvider{
 		listProject: map[string][]*consolev1.DeploymentDependency{
-			"waypoint-shared": {edgeFixture()},
+			singleton: {edgeFixture()},
 		},
 	}
 	handler := defaultHandler(fakeClient, pr).WithDependencyEdgeProvider(provider)
 
 	ctx := authedCtx("alice@example.com", nil)
-	req := connect.NewRequest(&consolev1.GetDeploymentRequest{Project: "my-project", Name: "waypoint-shared"})
+	req := connect.NewRequest(&consolev1.GetDeploymentRequest{Project: "my-project", Name: singleton})
 	resp, err := handler.GetDeployment(ctx, req)
 	if err != nil {
 		t.Fatalf("GetDeployment: %v", err)

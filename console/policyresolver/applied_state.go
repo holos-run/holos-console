@@ -412,6 +412,24 @@ func renderStateObjectName(kind TargetKind, project, target string) string {
 // shared-singleton rows so the UI can render a "shared dependency"
 // indicator that links back to the originating CRD object (HOL-963).
 //
+// # Information disclosure scope
+//
+// The returned `OriginatingObject` may reference a TemplateRequirement that
+// lives in a folder or organization namespace outside the caller's project
+// (TemplateRequirements are scoped to ancestor namespaces by design — see
+// HOL-960). Returning the (kind, namespace, name) tuple is intentional: the
+// UI must surface why a singleton exists, and the singleton itself is already
+// observable to anyone with deployments:read in the project. Callers that need
+// stricter per-edge filtering should layer it above this function.
+//
+// # Cost
+//
+// One List call per invocation, label-scoped to (RenderTargetKind=Deployment,
+// Project=<slug>). Called from the ListDeployments hot path; for projects with
+// many Deployments under a polling UI this is O(N) per request and is not
+// cached. Acceptable for HOL-963 phase 9; revisit if profiling shows it as a
+// bottleneck.
+//
 // A nil client returns nil without error so call sites that run in
 // test/dry-run modes without a Kubernetes client do not need conditional
 // logic. Returns an empty map when the project has no recorded

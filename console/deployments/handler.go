@@ -166,6 +166,12 @@ type Handler struct {
 // can stub it without depending on console/policyresolver. A nil provider
 // means the handler returns Deployment.dependencies as nil — non-fatal,
 // just no shared-dependency UI affordance.
+//
+// The dependency direction is one-way and deliberate: console/policyresolver
+// imports console/deployments (for `SingletonName`), and console/deployments
+// owns this consumer-side interface. The reverse import does not exist and is
+// not needed; keeping the interface here lets the handler unit tests stay free
+// of the controller-runtime fixtures the policyresolver tests require.
 type DependencyEdgeProvider interface {
 	// ListProjectDependencyEdges returns a map keyed by singleton-Deployment
 	// name listing the edges that materialised each singleton in the project.

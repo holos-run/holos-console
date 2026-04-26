@@ -84,6 +84,14 @@ import (
 //
 // The VersionConstraint is sanitised: forward slashes, spaces, angle brackets,
 // and equals signs are stripped so the result is a valid DNS label component.
+//
+// # Stability
+//
+// This function is part of this package's public API. The output format is
+// load-bearing: external callers (notably console/policyresolver) compute the
+// same key to map RenderState dependency edges back to singleton Deployment
+// rows. Changing the format is a breaking change — coordinate with all
+// consumers and migrate stored RenderState data before adjusting it.
 func SingletonName(requires v1alpha1.LinkedTemplateRef) string {
 	if requires.VersionConstraint == "" {
 		return requires.Name + "-shared"

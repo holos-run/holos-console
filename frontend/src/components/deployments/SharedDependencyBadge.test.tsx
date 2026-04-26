@@ -41,13 +41,21 @@ function depFixture(opts: { kind: string; ns: string; name: string }) {
 }
 
 describe('isSharedDependency', () => {
-  it('returns true for names ending in -shared', () => {
+  // The -shared suffix is the deterministic format produced by the Go-side
+  // SingletonName helper (console/deployments/dependency_reconciler.go). The
+  // test cases below mirror real outputs of that helper across the
+  // VersionConstraint sanitiser so a regression in the suffix matcher fails
+  // here rather than silently in production.
+  it('returns true for names ending in -shared, including sanitised version constraints', () => {
     expect(isSharedDependency('waypoint-shared')).toBe(true)
     expect(isSharedDependency('waypoint-v1-shared')).toBe(true)
+    expect(isSharedDependency('waypoint-v1-2-3-shared')).toBe(true)
+    expect(isSharedDependency('my-template--v1-2-3--shared')).toBe(true)
   })
 
   it('returns false for user-named deployments', () => {
     expect(isSharedDependency('my-api')).toBe(false)
+    expect(isSharedDependency('api')).toBe(false)
     expect(isSharedDependency('shared-something')).toBe(false)
     expect(isSharedDependency('')).toBe(false)
   })
