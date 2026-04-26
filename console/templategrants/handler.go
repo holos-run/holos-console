@@ -9,7 +9,6 @@ import (
 	"sort"
 
 	"connectrpc.com/connect"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -520,21 +519,9 @@ func crdToRefsToProto(refs []templatesv1alpha1.LinkedTemplateRef) []*consolev1.T
 	return out
 }
 
+// mapK8sError delegates to rpc.MapK8sError so the handler shares the
+// canonical apierrors -> connect.Code mapping with every other console
+// handler.
 func mapK8sError(err error) error {
-	if k8serrors.IsNotFound(err) {
-		return connect.NewError(connect.CodeNotFound, err)
-	}
-	if k8serrors.IsAlreadyExists(err) {
-		return connect.NewError(connect.CodeAlreadyExists, err)
-	}
-	if k8serrors.IsForbidden(err) {
-		return connect.NewError(connect.CodePermissionDenied, err)
-	}
-	if k8serrors.IsUnauthorized(err) {
-		return connect.NewError(connect.CodeUnauthenticated, err)
-	}
-	if k8serrors.IsBadRequest(err) || k8serrors.IsInvalid(err) {
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	return connect.NewError(connect.CodeInternal, err)
+	return rpc.MapK8sError(err)
 }

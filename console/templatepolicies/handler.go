@@ -46,7 +46,6 @@ import (
 	"sort"
 
 	"connectrpc.com/connect"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -665,31 +664,10 @@ func templatePolicyCRDToProto(p *templatesv1alpha1.TemplatePolicy) *consolev1.Te
 // ValidatingAdmissionPolicy shipped in HOL-618 rejects project-namespace
 // creates at admission time, so the handler only needs the generic
 // k8serrors taxonomy here (plus extractPolicyScope as defense-in-depth).
+// IsInvalid (CRD schema, OpenAPI, CEL ValidatingAdmissionPolicy
+// rejections from HOL-618) maps to CodeInvalidArgument inside
+// rpc.MapK8sError so the UI keeps presenting admission-denied as a
+// client error rather than a 500.
 func mapK8sError(err error) error {
-	if k8serrors.IsNotFound(err) {
-		return connect.NewError(connect.CodeNotFound, err)
-	}
-	if k8serrors.IsAlreadyExists(err) {
-		return connect.NewError(connect.CodeAlreadyExists, err)
-	}
-	if k8serrors.IsForbidden(err) {
-		return connect.NewError(connect.CodePermissionDenied, err)
-	}
-	if k8serrors.IsUnauthorized(err) {
-		return connect.NewError(connect.CodeUnauthenticated, err)
-	}
-	if k8serrors.IsBadRequest(err) {
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	// Invalid: the apiserver rejected the object as malformed or
-	// admission-denied. Examples: CRD schema validation (MinItems,
-	// Required), OpenAPI type checks, and CEL ValidatingAdmissionPolicy
-	// rejections (HOL-618). These are client errors from the caller's
-	// perspective, not server failures, so surface them as
-	// InvalidArgument so the UI can present a meaningful message
-	// instead of a generic 500.
-	if k8serrors.IsInvalid(err) {
-		return connect.NewError(connect.CodeInvalidArgument, err)
-	}
-	return connect.NewError(connect.CodeInternal, err)
+	return rpc.MapK8sError(err)
 }
