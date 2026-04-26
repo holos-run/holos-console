@@ -48,9 +48,9 @@ import (
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/settings"
 	"github.com/holos-run/holos-console/console/templatedependencies"
+	"github.com/holos-run/holos-console/console/templategrants"
 	"github.com/holos-run/holos-console/console/templatepolicies"
 	"github.com/holos-run/holos-console/console/templatepolicybindings"
-	"github.com/holos-run/holos-console/console/templategrants"
 	"github.com/holos-run/holos-console/console/templaterequirements"
 	"github.com/holos-run/holos-console/console/templates"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
@@ -256,6 +256,15 @@ func (s *Server) Serve(ctx context.Context) error {
 		rpc.LoggingInterceptor(),
 	)
 
+	// Resolve the base Kubernetes REST config once. Startup-scoped clients keep
+	// using service-account credentials in this phase, while the auth
+	// interceptor copies this config per request and fills rest.Config.Impersonate
+	// from the authenticated OIDC claims.
+	restConfig, err := secrets.NewRestConfig()
+	if err != nil {
+		return fmt.Errorf("failed to resolve kubernetes REST config: %w", err)
+	}
+
 	// Configure ConnectRPC interceptors for protected routes (auth required)
 	// Note: The auth interceptor uses lazy verifier initialization since Dex
 	// isn't running yet when we create the interceptor.
@@ -265,7 +274,13 @@ func (s *Server) Serve(ctx context.Context) error {
 		protectedInterceptors = connect.WithInterceptors(
 			rpc.MetricsInterceptor(),
 			rpc.LoggingInterceptor(),
-			rpc.LazyAuthInterceptor(s.cfg.Issuer, s.cfg.ClientID, s.cfg.RolesClaim, internalClient),
+			rpc.LazyAuthInterceptor(
+				s.cfg.Issuer,
+				s.cfg.ClientID,
+				s.cfg.RolesClaim,
+				internalClient,
+				rpc.WithImpersonationConfig(restConfig, controllermgr.Scheme),
+			),
 		)
 	} else {
 		// Fallback to public interceptors if auth not configured
@@ -285,11 +300,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	// Initialize Kubernetes client for secrets (may be nil if no cluster available).
 	// We share the resolved REST config with the controller-runtime manager
 	// below so there is a single loader for the cluster connection.
-	restConfig, err := secrets.NewRestConfig()
-	if err != nil {
-		return fmt.Errorf("failed to resolve kubernetes REST config: %w", err)
-	}
-	k8sClientset, err := secrets.NewClientset()
+	k8sClientset, err := secrets.NewClientsetForConfig(restConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create kubernetes client: %w", err)
 	}

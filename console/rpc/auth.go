@@ -2,13 +2,34 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
 
 	"connectrpc.com/connect"
 	"github.com/coreos/go-oidc/v3/oidc"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/rest"
 )
+
+type authInterceptorConfig struct {
+	impersonationBaseConfig *rest.Config
+	impersonationScheme     *runtime.Scheme
+}
+
+// AuthInterceptorOption configures LazyAuthInterceptor.
+type AuthInterceptorOption func(*authInterceptorConfig)
+
+// WithImpersonationConfig enables per-request Kubernetes impersonating clients
+// in the auth interceptor. The base config is copied for each request before
+// rest.Config.Impersonate is populated.
+func WithImpersonationConfig(base *rest.Config, scheme *runtime.Scheme) AuthInterceptorOption {
+	return func(cfg *authInterceptorConfig) {
+		cfg.impersonationBaseConfig = base
+		cfg.impersonationScheme = scheme
+	}
+}
 
 // LazyAuthInterceptor returns a ConnectRPC interceptor that lazily initializes
 // the OIDC verifier on first use. This is needed because the OIDC provider (Dex)
@@ -17,7 +38,12 @@ import (
 //
 // If OIDC discovery fails, the error is not cached. Subsequent requests retry
 // discovery until it succeeds, at which point the verifier is cached permanently.
-func LazyAuthInterceptor(issuer, clientID, rolesClaim string, client *http.Client) connect.UnaryInterceptorFunc {
+func LazyAuthInterceptor(issuer, clientID, rolesClaim string, client *http.Client, opts ...AuthInterceptorOption) connect.UnaryInterceptorFunc {
+	var cfg authInterceptorConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	var (
 		mu       sync.Mutex
 		verifier *oidc.IDTokenVerifier
@@ -54,6 +80,14 @@ func LazyAuthInterceptor(issuer, clientID, rolesClaim string, client *http.Clien
 			}
 
 			ctx = ContextWithClaims(ctx, claims)
+			impersonatedClients, err := NewImpersonatedClients(claims, cfg.impersonationBaseConfig, cfg.impersonationScheme)
+			if err != nil {
+				if errors.Is(err, ErrUnauthenticatedImpersonation) {
+					return nil, connect.NewError(connect.CodeUnauthenticated, err)
+				}
+				return nil, connect.NewError(connect.CodeInternal, err)
+			}
+			ctx = ContextWithImpersonatedClients(ctx, impersonatedClients)
 			return next(ctx, req)
 		}
 	}
