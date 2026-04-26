@@ -91,6 +91,8 @@ entry and WorkspaceMenu improvements. Key files:
 | `docs/ui/selected-entity-state.md` | HOL-931 | Selected-entity state contract; read-precedence rules; creation-page invariants |
 | `docs/agents/data-grid-conventions.md` | HOL-940 | Data grid conventions: clickable resource IDs and fully-clickable rows |
 | `docs/agents/frontend-audit-2026-04.md` | HOL-943 | Phase 2 audit baseline — current frontend architecture, gaps, and target conventions |
+| `frontend/src/queries/templateDependencies.ts` | HOL-986 | `useListTemplateDependents` / `useListDeploymentDependents` reverse-dep query hooks |
+| `frontend/src/components/templates/ReverseDependents.tsx` | HOL-987 | "Who depends on me" section with ADR-032 scope badges (instance / project / remote-project) |
 
 **Deleted (HOL-914)**: `frontend/src/components/resource-manager/` and
 `frontend/src/routes/_authenticated/resource-manager/` were removed when the

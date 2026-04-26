@@ -5,7 +5,6 @@ import { useTransport } from '@connectrpc/connect-query'
 import {
   keepPreviousData,
   useQuery,
-  useQueries,
   useMutation,
   useQueryClient,
 } from '@tanstack/react-query'
@@ -20,9 +19,6 @@ import type {
   LinkableTemplatePolicy,
 } from '@/gen/holos/console/v1/template_policies_pb.js'
 import { useAuth } from '@/lib/auth'
-import { useListFolders } from '@/queries/folders'
-import type { Folder } from '@/gen/holos/console/v1/folders_pb.js'
-import { namespaceForFolder, namespaceForOrg } from '@/lib/scope-labels'
 import { keys } from '@/queries/keys'
 
 // Re-export generated types/enums used by UI consumers. HOL-600 removed
@@ -133,90 +129,6 @@ export function aggregateFanOut<T>(
     if (q.data) data.push(...q.data)
   }
   return { data, isPending: false, error }
-}
-
-// Module-level sentinel so the `folders` useMemo fallback preserves reference
-// identity across renders when the folders list is still pending or empty.
-const EMPTY_FOLDERS: readonly Folder[] = []
-
-// useAllTemplatePoliciesForOrg fans a ListTemplatePolicies call across every
-// namespace reachable from an organization root — the org namespace plus one
-// namespace per folder visible to the caller — and flattens the results into
-// one array. HOL-608 AC requires the unified Template Policies index to show
-// org- and folder-scoped policies together, but TemplatePolicyService has no
-// SearchTemplatePolicies RPC (tracked in HOL-590 as the eventual server-side
-// consolidation). Until that lands this hook is the client-side fan-out.
-//
-// See aggregateFanOut for the exact pending / error semantics.
-export function useAllTemplatePoliciesForOrg(
-  orgName: string,
-): FanOutAggregate<TemplatePolicy> {
-  const { isAuthenticated } = useAuth()
-  const transport = useTransport()
-  const client = useMemo(
-    () => createClient(TemplatePolicyService, transport),
-    [transport],
-  )
-  const orgNamespace = namespaceForOrg(orgName)
-  const foldersQuery = useListFolders(orgName)
-  const folders = useMemo(
-    () => foldersQuery.data ?? EMPTY_FOLDERS,
-    [foldersQuery.data],
-  )
-
-  const folderQueries = useQueries({
-    queries: folders.map((folder) => ({
-      queryKey: keys.templatePolicies.list(namespaceForFolder(folder.name)),
-      queryFn: async (): Promise<TemplatePolicy[]> => {
-        const response = await client.listTemplatePolicies({
-          namespace: namespaceForFolder(folder.name),
-        })
-        return response.policies
-      },
-      enabled: isAuthenticated && !!folder.name,
-    })),
-  })
-
-  const orgQuery = useQuery({
-    queryKey: keys.templatePolicies.list(orgNamespace),
-    queryFn: async () => {
-      const response = await client.listTemplatePolicies({
-        namespace: orgNamespace,
-      })
-      return response.policies
-    },
-    enabled: isAuthenticated && !!orgNamespace,
-  })
-
-  // Model the folders-list query as one more input to aggregateFanOut.
-  // When folders are still loading we want the aggregate to report pending
-  // (nothing has materialized yet). When the folders-list errored we want
-  // the caller to see the error alongside any org-scoped policies that did
-  // resolve, rather than blanking the whole grid on a structural failure.
-  // Wrapping the folders query in a FanOutQueryState<TemplatePolicy[]>
-  // (with data always [] on success) gives us both behaviors for free.
-  const foldersAsQuery: FanOutQueryState<TemplatePolicy[]> = {
-    data: foldersQuery.data === undefined ? undefined : [],
-    error: foldersQuery.error,
-    isPending: foldersQuery.isPending,
-    fetchStatus: foldersQuery.fetchStatus,
-  }
-
-  return aggregateFanOut<TemplatePolicy>([
-    foldersAsQuery,
-    {
-      data: orgQuery.data,
-      error: orgQuery.error,
-      isPending: orgQuery.isPending,
-      fetchStatus: orgQuery.fetchStatus,
-    },
-    ...folderQueries.map((q) => ({
-      data: q.data,
-      error: q.error,
-      isPending: q.isPending,
-      fetchStatus: q.fetchStatus,
-    })),
-  ])
 }
 
 // useGetTemplatePolicy fetches a single policy by name within a namespace.
