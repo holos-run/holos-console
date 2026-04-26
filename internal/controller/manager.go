@@ -182,6 +182,10 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 		// cluster.
 		cacheSyncTimeout = 90 * time.Second
 	}
+	metricsBindAddress := opts.MetricsBindAddress
+	if metricsBindAddress == "" {
+		metricsBindAddress = "0"
+	}
 
 	// HOL-694 retired the ConfigMap cache scope: AppliedRenderStateClient
 	// is the last in-process consumer of the cache-backed client.Client
@@ -194,7 +198,7 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 	ctrlOpts := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
-			BindAddress: opts.MetricsBindAddress,
+			BindAddress: metricsBindAddress,
 		},
 		HealthProbeBindAddress: opts.HealthProbeBindAddress,
 		// Console is a singleton Deployment today; leader election is

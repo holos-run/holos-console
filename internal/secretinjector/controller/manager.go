@@ -181,11 +181,15 @@ func NewManager(cfg *rest.Config, opts Options) (*Manager, error) {
 		// same readiness window in production.
 		cacheSyncTimeout = 90 * time.Second
 	}
+	metricsBindAddress := opts.MetricsBindAddress
+	if metricsBindAddress == "" {
+		metricsBindAddress = "0"
+	}
 
 	ctrlOpts := ctrl.Options{
 		Scheme: Scheme,
 		Metrics: metricsserver.Options{
-			BindAddress: opts.MetricsBindAddress,
+			BindAddress: metricsBindAddress,
 		},
 		HealthProbeBindAddress: opts.HealthProbeBindAddress,
 		// Secret injector runs as a singleton today. Leader election is
