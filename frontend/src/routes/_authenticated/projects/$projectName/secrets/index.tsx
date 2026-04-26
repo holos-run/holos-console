@@ -35,12 +35,14 @@ export function SecretsListPage() {
   const userRole = project?.userRole ?? Role.VIEWER
   const canCreate = userRole === Role.OWNER || userRole === Role.EDITOR
 
-  // Map SecretRow → ResourceGrid Row
+  // Map SecretRow → ResourceGrid Row.
+  // HOL-990 AC1.1: Resource ID is the bare metadata.name, not a composite
+  // "<scope>/<name>" string. Scope is still rendered in the Parent column.
   const rows: Row[] = secretRows.map(({ secret, scope }) => ({
     kind: 'Secret',
     name: secret.name,
     namespace: scope,
-    id: `${scope}/${secret.name}`,
+    id: secret.name,
     parentId: scope,
     parentLabel: scope,
     displayName: secret.name,

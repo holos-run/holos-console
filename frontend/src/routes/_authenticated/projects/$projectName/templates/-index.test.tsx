@@ -226,8 +226,10 @@ describe('ProjectTemplatesIndexPage (ResourceGrid v1)', () => {
     })
     render(<ProjectTemplatesIndexPage projectName="test-project" />)
 
-    // Template row visible (kind=Template is the default kind filter)
-    expect(screen.getByText('web-template')).toBeInTheDocument()
+    // Template row visible (kind=Template is the default kind filter). The
+    // ID column and the display-name column both render 'web-template' (since
+    // makeTemplate sets displayName=name), so allow multiple matches.
+    expect(screen.getAllByText('web-template').length).toBeGreaterThan(0)
 
     // Policy and binding rows are present in the DOM but filtered out by the
     // kind filter default (kind=Template). They should not appear.

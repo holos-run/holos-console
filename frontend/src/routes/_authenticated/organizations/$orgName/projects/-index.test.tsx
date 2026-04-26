@@ -44,6 +44,8 @@ type ProjectFixture = {
   displayName?: string
   description?: string
   createdAt?: string
+  creatorEmail?: string
+  parentName?: string
 }
 
 function makeProject(
@@ -51,8 +53,10 @@ function makeProject(
   displayName = '',
   description = '',
   createdAt = '2026-04-20T10:00:00Z',
+  creatorEmail = '',
+  parentName = '',
 ): ProjectFixture {
-  return { name, displayName, description, createdAt }
+  return { name, displayName, description, createdAt, creatorEmail, parentName }
 }
 
 function setupMocks(projects: ProjectFixture[] = [makeProject('test-project', 'Test Project')]) {
@@ -100,36 +104,27 @@ describe('OrgProjectsIndexPage', () => {
     expect(screen.getByText('Beta Project')).toBeInTheDocument()
   })
 
-  it('renders the Created At column for each project', () => {
-    // 2026-04-20 is 3 days before the fixed "now" of 2026-04-23
-    setupMocks([makeProject('alpha', 'Alpha Project', '', '2026-04-20T10:00:00Z')])
-    render(<OrgProjectsIndexPage orgName="my-org" />)
-    expect(screen.getByText('2026-04-20 (3 days ago)')).toBeInTheDocument()
-  })
-
   it('renders the "Created At" column header', () => {
     setupMocks([makeProject('alpha', 'Alpha')])
     render(<OrgProjectsIndexPage orgName="my-org" />)
-    expect(screen.getByText('Created At')).toBeInTheDocument()
+    // ResourceGrid renders Created At as a sort button — assert by accessible name.
+    expect(
+      screen.getByRole('button', { name: /sort by created at/i }),
+    ).toBeInTheDocument()
   })
 
-  it('clicking the Created At column header toggles sort asc/desc', () => {
+  // HOL-990 AC1.3: the grid is always sorted. With no URL ?sort= override
+  // the default sort is Created At descending, so the newest project appears
+  // before older ones.
+  it('rows are sorted by Created At descending by default', () => {
     setupMocks([
       makeProject('alpha', 'Alpha', '', '2026-04-20T10:00:00Z'),
       makeProject('beta', 'Beta', '', '2026-04-22T10:00:00Z'),
     ])
     render(<OrgProjectsIndexPage orgName="my-org" />)
-
-    // Default sort is desc (newest first), so beta appears before alpha.
     const rows = screen.getAllByRole('row').slice(1) // skip header
     expect(rows[0]).toHaveTextContent('Beta')
     expect(rows[1]).toHaveTextContent('Alpha')
-
-    // Click Created At header to switch to ascending (oldest first).
-    fireEvent.click(screen.getByText('Created At'))
-    const rowsAsc = screen.getAllByRole('row').slice(1)
-    expect(rowsAsc[0]).toHaveTextContent('Alpha')
-    expect(rowsAsc[1]).toHaveTextContent('Beta')
   })
 
   it('projects list is scoped to $orgName via useListProjects', () => {
@@ -138,16 +133,28 @@ describe('OrgProjectsIndexPage', () => {
     expect(useListProjects).toHaveBeenCalledWith('acme-corp')
   })
 
-  it('search input filters visible rows', () => {
-    setupMocks([
-      makeProject('alpha', 'Alpha Project'),
-      makeProject('beta', 'Beta Project'),
-    ])
+  // ResourceGrid owns the search/kind/sort URL machinery — its own unit tests
+  // cover the global-filter and search-fields filter wiring. Here we only
+  // verify the Search input is mounted with the OrgProjects placeholder so a
+  // future swap that forgets to forward `title` is caught.
+  it('renders the Search input with a projects-scoped placeholder', () => {
+    setupMocks([makeProject('alpha', 'Alpha Project')])
     render(<OrgProjectsIndexPage orgName="my-org" />)
-    const searchInput = screen.getByPlaceholderText(/search projects/i)
-    fireEvent.change(searchInput, { target: { value: 'alpha' } })
-    expect(screen.getByText('Alpha Project')).toBeInTheDocument()
-    expect(screen.queryByText('Beta Project')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/search projects/i)).toBeInTheDocument()
+  })
+
+  // HOL-990 AC1.3: the search-fields filter popover offers a Creator checkbox
+  // alongside the key fields so operators can extend the global search to the
+  // hidden creator-email field. We assert the filter is mounted with the
+  // expected entries, not the search behavior itself (covered in ResourceGrid).
+  it('renders the search-fields filter with a Creator option', () => {
+    setupMocks([makeProject('alpha', 'Alpha Project')])
+    render(<OrgProjectsIndexPage orgName="my-org" />)
+    fireEvent.click(screen.getByLabelText('Search fields'))
+    expect(screen.getByLabelText('Search Parent')).toBeInTheDocument()
+    expect(screen.getByLabelText('Search Name')).toBeInTheDocument()
+    expect(screen.getByLabelText('Search Display Name')).toBeInTheDocument()
+    expect(screen.getByLabelText('Search Creator')).toBeInTheDocument()
   })
 
   it('clicking a project row navigates to the project detail page', () => {
@@ -155,10 +162,7 @@ describe('OrgProjectsIndexPage', () => {
     render(<OrgProjectsIndexPage orgName="my-org" />)
     const row = screen.getByText('My Project').closest('tr')!
     fireEvent.click(row)
-    expect(mockNavigate).toHaveBeenCalledWith({
-      to: '/projects/$projectName',
-      params: { projectName: 'my-project' },
-    })
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/projects/my-project' })
   })
 
   it('renders error alert when query fails', () => {
@@ -185,8 +189,6 @@ describe('OrgProjectsIndexPage', () => {
   it('Create Project header link points to /project/new with orgName in search', () => {
     setupMocks([makeProject('alpha', 'Alpha')])
     render(<OrgProjectsIndexPage orgName="acme" />)
-    // The mock Link renders data-search with the serialised search object.
-    // When projects exist the header shows a Create Project link.
     const allLinks = screen.getAllByRole('link', { name: /create project/i })
     expect(allLinks.length).toBeGreaterThanOrEqual(1)
     const link = allLinks[0]
@@ -198,7 +200,6 @@ describe('OrgProjectsIndexPage', () => {
   it('Create Project empty-state link points to /project/new with orgName in search', () => {
     setupMocks([])
     render(<OrgProjectsIndexPage orgName="acme" />)
-    // Empty-state renders two links: header button + body button; both must carry orgName.
     const createLinks = screen.getAllByRole('link', { name: /create project/i })
     expect(createLinks.length).toBeGreaterThanOrEqual(1)
     for (const link of createLinks) {

@@ -167,12 +167,16 @@ export function ProjectTemplatesIndexPage({
   const rows: Row[] = useMemo(() => {
     const result: Row[] = []
 
+    // HOL-990 AC1.1: Resource ID shown in the grid is the bare metadata.name.
+    // Cross-namespace uniqueness is preserved by parent + name + kind in
+    // detailHref; the ID column itself is short, scannable, and matches the
+    // resource's metadata.name exactly.
     for (const t of templates) {
       result.push({
         kind: 'Template',
         name: t.name,
         namespace: t.namespace,
-        id: `Template/${t.namespace}/${t.name}`,
+        id: t.name,
         parentId: t.namespace,
         parentLabel: parentLabelFromNamespace(t.namespace),
         displayName: t.displayName || t.name,
@@ -187,12 +191,13 @@ export function ProjectTemplatesIndexPage({
         kind: 'TemplatePolicy',
         name: p.name,
         namespace: p.namespace,
-        id: `TemplatePolicy/${p.namespace}/${p.name}`,
+        id: p.name,
         parentId: p.namespace,
         parentLabel: parentLabelFromNamespace(p.namespace),
         displayName: p.displayName || p.name,
         description: p.description ?? '',
         createdAt: timestampToISOString(p.createdAt),
+        extraSearch: { creator: p.creatorEmail ?? '' },
         detailHref: resolveTemplateRowHref('TemplatePolicy', p.namespace, p.name),
       })
     }
@@ -202,12 +207,13 @@ export function ProjectTemplatesIndexPage({
         kind: 'TemplatePolicyBinding',
         name: b.name,
         namespace: b.namespace,
-        id: `TemplatePolicyBinding/${b.namespace}/${b.name}`,
+        id: b.name,
         parentId: b.namespace,
         parentLabel: parentLabelFromNamespace(b.namespace),
         displayName: b.displayName || b.name,
         description: b.description ?? '',
         createdAt: timestampToISOString(b.createdAt),
+        extraSearch: { creator: b.creatorEmail ?? '' },
         detailHref: resolveTemplateRowHref('TemplatePolicyBinding', b.namespace, b.name),
       })
     }
@@ -253,6 +259,9 @@ export function ProjectTemplatesIndexPage({
     () => ({
       kind: search.kind ?? 'Template',
       search: search.search,
+      sort: search.sort,
+      sortDir: search.sortDir,
+      fields: search.fields,
     }),
     [search],
   )
@@ -352,6 +361,7 @@ export function ProjectTemplatesIndexPage({
         search={searchWithDefaults}
         onSearchChange={handleSearchChange}
         headerActions={helpButton}
+        extraSearchFields={[{ id: 'creator', label: 'Creator' }]}
       />
       <TemplatesHelpPane open={helpOpen} onOpenChange={handleHelpOpenChange} />
     </>
