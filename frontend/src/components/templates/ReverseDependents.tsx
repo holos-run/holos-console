@@ -5,7 +5,6 @@
 // reverse-dependency hook. Renders a table of dependents with scope badges
 // derived from the API response.
 
-import React from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'

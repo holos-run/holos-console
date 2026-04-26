@@ -247,7 +247,7 @@ export function ConsolidatedTemplateEditorPage({
           <h3 className="text-sm font-medium">Dependents</h3>
           <Separator />
           <p className="text-xs text-muted-foreground">
-            Who depends on this template (reverse-dependency view from HOL-986).
+            Other templates and deployments that depend on this template.
           </p>
           <ReverseDependents
             kind="Template"
