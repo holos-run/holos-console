@@ -12,6 +12,7 @@
  * introduced.
  */
 
+import { useCallback } from 'react'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 
 import { Button } from '@/components/ui/button'
@@ -89,17 +90,18 @@ export function OrgProjectsIndexPage({
     </Link>
   )
 
-  const handleSearchChange = (
-    updater: (prev: ResourceGridSearch) => ResourceGridSearch,
-  ) => {
-    navigate({
-      // The default useNavigate() returns a router-wide navigate whose
-      // search-updater signature cannot infer the route's search type.
-      // Cast through unknown so the typed updater above flows through.
-      search: ((prev: unknown) =>
-        updater(prev as ResourceGridSearch)) as never,
-    })
-  }
+  const handleSearchChange = useCallback(
+    (updater: (prev: ResourceGridSearch) => ResourceGridSearch) => {
+      navigate({
+        // The default useNavigate() returns a router-wide navigate whose
+        // search-updater signature cannot infer the route's search type.
+        // Cast through unknown so the typed updater above flows through.
+        search: ((prev: unknown) =>
+          updater(prev as ResourceGridSearch)) as never,
+      })
+    },
+    [navigate],
+  )
 
   // Project deletion is performed from the project detail page, not from this
   // index. Pass a noop here since `showDeleteAction={false}` suppresses the

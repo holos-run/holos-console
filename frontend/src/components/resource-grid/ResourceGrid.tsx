@@ -18,13 +18,11 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import {
   useReactTable,
   getCoreRowModel,
-  getFilteredRowModel,
   getSortedRowModel,
   flexRender,
   createColumnHelper,
   type VisibilityState,
   type SortingState,
-  type FilterFn,
 } from '@tanstack/react-table'
 import { ArrowUpDown, ArrowUp, ArrowDown, Trash2 } from 'lucide-react'
 
@@ -115,9 +113,9 @@ export interface ResourceGridProps {
   headerActions?: ReactNode
   /**
    * Optional set of column IDs that should be rendered with a sort toggle
-   * button. Defaults to ['displayName', 'createdAt'] when unset so the key
-   * fields and Created At are sortable. Pass an empty array to disable all
-   * sorting.
+   * button. Defaults to ['parentId', 'resourceId', 'displayName', 'createdAt']
+   * when unset so all visible key fields are sortable (HOL-990 AC1.3).
+   * Pass an empty array to disable all sorting.
    */
   sortableColumns?: string[]
   /**
@@ -283,18 +281,18 @@ export function ResourceGrid({
     return rows.filter((r) => kindSet.has(r.kind))
   }, [rows, selectedKindIds])
 
-  // --- Custom global filter that respects the search-field selection -----
-  // Defined here (not at module scope) so it closes over the current
-  // `selectedSearchFieldIds`. TanStack Table reruns the filter whenever the
-  // function identity changes.
+  // --- Pre-filter rows by global search + selected search fields ---------
+  // We perform the search-field-aware filter outside of TanStack Table.
+  // TanStack's `getFilteredRowModel` memoizes on
+  // `[preRowModel, columnFilters, globalFilter]` only, so toggling a
+  // search-field checkbox while text is in the search box would not
+  // invalidate the cached row model. By filtering here first and feeding
+  // TanStack pre-filtered data, every change to either input recomputes.
 
-  const globalFilterFn: FilterFn<Row> = useCallback(
-    (row, _columnId, filterValue) => {
-      if (typeof filterValue !== 'string' || filterValue.length === 0) {
-        return true
-      }
-      const needle = filterValue.toLowerCase()
-      const r = row.original
+  const filteredRows = useMemo(() => {
+    if (!globalFilter) return kindFilteredRows
+    const needle = globalFilter.toLowerCase()
+    return kindFilteredRows.filter((r) => {
       for (const fieldId of selectedSearchFieldIds) {
         let haystack = ''
         switch (fieldId) {
@@ -308,7 +306,6 @@ export function ResourceGrid({
             haystack = r.displayName || r.name
             break
           default:
-            // Any non-key field id resolves through the row's extraSearch bag.
             haystack = r.extraSearch?.[fieldId] ?? ''
         }
         if (haystack && haystack.toLowerCase().includes(needle)) {
@@ -316,9 +313,8 @@ export function ResourceGrid({
         }
       }
       return false
-    },
-    [selectedSearchFieldIds],
-  )
+    })
+  }, [kindFilteredRows, globalFilter, selectedSearchFieldIds])
 
   // --- Stable set of sortable column IDs --------------------------------
 
@@ -572,19 +568,16 @@ export function ResourceGrid({
   // --- TanStack Table instance -------------------------------------------
 
   const table = useReactTable({
-    data: kindFilteredRows,
+    data: filteredRows,
     columns,
-    state: { globalFilter, columnVisibility, sorting },
-    onGlobalFilterChange: setGlobalFilter,
+    state: { columnVisibility, sorting },
     onSortingChange: handleSortingChange,
-    globalFilterFn: globalFilterFn,
     // Stable, kind-aware row identity: HOL-990 changed the visible Resource
     // ID column to bare metadata.name, which is only unique within a
     // (kind, namespace) tuple. React keys and any future TanStack row
     // selection rely on this id, so keep all three fields in the key.
     getRowId: (row) => `${row.kind}/${row.parentId}/${row.name}`,
     getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
   })
 
