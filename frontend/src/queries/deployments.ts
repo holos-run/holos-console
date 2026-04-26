@@ -3,7 +3,7 @@ import { createClient } from '@connectrpc/connect'
 import { useTransport } from '@connectrpc/connect-query'
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { DeploymentService } from '@/gen/holos/console/v1/deployments_pb.js'
-import type { EnvVar } from '@/gen/holos/console/v1/deployments_pb.js'
+import type { EnvVar, PlannedDeployment } from '@/gen/holos/console/v1/deployments_pb.js'
 import { useAuth } from '@/lib/auth'
 import { keys } from '@/queries/keys'
 
@@ -199,5 +199,29 @@ export function useListNamespaceConfigMaps(project: string) {
       return response.configMaps
     },
     enabled: isAuthenticated && !!project,
+  })
+}
+
+// usePreflightCheck calls the PreflightCheck RPC to validate a set of planned
+// Deployments against the current project state before the user clicks Apply.
+//
+// The RPC is planning-time only — it MUST NOT be used to apply changes. Phase
+// 9 (HOL-963) wires this hook into the deployment form to surface collisions
+// and version-constraint conflicts before submission.
+//
+// The query is disabled when project is empty or plannedDeployments is empty,
+// since an empty planned set is not a meaningful request.
+export function usePreflightCheck(project: string, plannedDeployments: PlannedDeployment[]) {
+  const { isAuthenticated } = useAuth()
+  const transport = useTransport()
+  const client = useMemo(() => createClient(DeploymentService, transport), [transport])
+  const plannedNames = plannedDeployments.map((pd) => pd.name)
+  return useQuery({
+    queryKey: keys.deployments.preflightCheck(project, plannedNames),
+    queryFn: async () => {
+      const response = await client.preflightCheck({ project, plannedDeployments })
+      return response
+    },
+    enabled: isAuthenticated && !!project && plannedDeployments.length > 0,
   })
 }

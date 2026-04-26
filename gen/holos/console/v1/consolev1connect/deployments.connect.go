@@ -69,6 +69,9 @@ const (
 	// DeploymentServiceGetDeploymentPolicyStateProcedure is the fully-qualified name of the
 	// DeploymentService's GetDeploymentPolicyState RPC.
 	DeploymentServiceGetDeploymentPolicyStateProcedure = "/holos.console.v1.DeploymentService/GetDeploymentPolicyState"
+	// DeploymentServicePreflightCheckProcedure is the fully-qualified name of the DeploymentService's
+	// PreflightCheck RPC.
+	DeploymentServicePreflightCheckProcedure = "/holos.console.v1.DeploymentService/PreflightCheck"
 )
 
 // DeploymentServiceClient is a client for the holos.console.v1.DeploymentService service.
@@ -99,6 +102,24 @@ type DeploymentServiceClient interface {
 	// per-ref add/remove diff. Introduced in HOL-567 as the single source
 	// of truth for "is this deployment drifted from policy?".
 	GetDeploymentPolicyState(context.Context, *connect.Request[v1.GetDeploymentPolicyStateRequest]) (*connect.Response[v1.GetDeploymentPolicyStateResponse], error)
+	// PreflightCheck is a planning-time validation RPC that surfaces two
+	// classes of conflict before the user clicks Apply:
+	//
+	//	(a) Sibling-Deployment name collisions — a planned Deployment shares its
+	//	    computed singleton name with an existing user-named Deployment in the
+	//	    same project namespace.
+	//
+	//	(b) versionConstraint conflicts — two or more dependents in the same
+	//	    project namespace pin incompatible version constraints on the same
+	//	    shared dependency template.  The conflict is detected with
+	//	    Go-module-style minimum version selection (Decision 9 in ADR 035):
+	//	    the resolver attempts to find a single version that satisfies every
+	//	    constraint; when none exists it reports a VersionConflictDetail.
+	//
+	// The RPC is safe to call before Apply. It MUST NOT mutate any cluster
+	// state. Phase 9 (HOL-963) wires the deployment form to call it before
+	// the user submits.
+	PreflightCheck(context.Context, *connect.Request[v1.PreflightCheckRequest]) (*connect.Response[v1.PreflightCheckResponse], error)
 }
 
 // NewDeploymentServiceClient constructs a client for the holos.console.v1.DeploymentService
@@ -184,6 +205,12 @@ func NewDeploymentServiceClient(httpClient connect.HTTPClient, baseURL string, o
 			connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentPolicyState")),
 			connect.WithClientOptions(opts...),
 		),
+		preflightCheck: connect.NewClient[v1.PreflightCheckRequest, v1.PreflightCheckResponse](
+			httpClient,
+			baseURL+DeploymentServicePreflightCheckProcedure,
+			connect.WithSchema(deploymentServiceMethods.ByName("PreflightCheck")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -201,6 +228,7 @@ type deploymentServiceClient struct {
 	listNamespaceConfigMaps    *connect.Client[v1.ListNamespaceConfigMapsRequest, v1.ListNamespaceConfigMapsResponse]
 	getDeploymentRenderPreview *connect.Client[v1.GetDeploymentRenderPreviewRequest, v1.GetDeploymentRenderPreviewResponse]
 	getDeploymentPolicyState   *connect.Client[v1.GetDeploymentPolicyStateRequest, v1.GetDeploymentPolicyStateResponse]
+	preflightCheck             *connect.Client[v1.PreflightCheckRequest, v1.PreflightCheckResponse]
 }
 
 // ListDeployments calls holos.console.v1.DeploymentService.ListDeployments.
@@ -263,6 +291,11 @@ func (c *deploymentServiceClient) GetDeploymentPolicyState(ctx context.Context, 
 	return c.getDeploymentPolicyState.CallUnary(ctx, req)
 }
 
+// PreflightCheck calls holos.console.v1.DeploymentService.PreflightCheck.
+func (c *deploymentServiceClient) PreflightCheck(ctx context.Context, req *connect.Request[v1.PreflightCheckRequest]) (*connect.Response[v1.PreflightCheckResponse], error) {
+	return c.preflightCheck.CallUnary(ctx, req)
+}
+
 // DeploymentServiceHandler is an implementation of the holos.console.v1.DeploymentService service.
 type DeploymentServiceHandler interface {
 	ListDeployments(context.Context, *connect.Request[v1.ListDeploymentsRequest]) (*connect.Response[v1.ListDeploymentsResponse], error)
@@ -291,6 +324,24 @@ type DeploymentServiceHandler interface {
 	// per-ref add/remove diff. Introduced in HOL-567 as the single source
 	// of truth for "is this deployment drifted from policy?".
 	GetDeploymentPolicyState(context.Context, *connect.Request[v1.GetDeploymentPolicyStateRequest]) (*connect.Response[v1.GetDeploymentPolicyStateResponse], error)
+	// PreflightCheck is a planning-time validation RPC that surfaces two
+	// classes of conflict before the user clicks Apply:
+	//
+	//	(a) Sibling-Deployment name collisions — a planned Deployment shares its
+	//	    computed singleton name with an existing user-named Deployment in the
+	//	    same project namespace.
+	//
+	//	(b) versionConstraint conflicts — two or more dependents in the same
+	//	    project namespace pin incompatible version constraints on the same
+	//	    shared dependency template.  The conflict is detected with
+	//	    Go-module-style minimum version selection (Decision 9 in ADR 035):
+	//	    the resolver attempts to find a single version that satisfies every
+	//	    constraint; when none exists it reports a VersionConflictDetail.
+	//
+	// The RPC is safe to call before Apply. It MUST NOT mutate any cluster
+	// state. Phase 9 (HOL-963) wires the deployment form to call it before
+	// the user submits.
+	PreflightCheck(context.Context, *connect.Request[v1.PreflightCheckRequest]) (*connect.Response[v1.PreflightCheckResponse], error)
 }
 
 // NewDeploymentServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -372,6 +423,12 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 		connect.WithSchema(deploymentServiceMethods.ByName("GetDeploymentPolicyState")),
 		connect.WithHandlerOptions(opts...),
 	)
+	deploymentServicePreflightCheckHandler := connect.NewUnaryHandler(
+		DeploymentServicePreflightCheckProcedure,
+		svc.PreflightCheck,
+		connect.WithSchema(deploymentServiceMethods.ByName("PreflightCheck")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/holos.console.v1.DeploymentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DeploymentServiceListDeploymentsProcedure:
@@ -398,6 +455,8 @@ func NewDeploymentServiceHandler(svc DeploymentServiceHandler, opts ...connect.H
 			deploymentServiceGetDeploymentRenderPreviewHandler.ServeHTTP(w, r)
 		case DeploymentServiceGetDeploymentPolicyStateProcedure:
 			deploymentServiceGetDeploymentPolicyStateHandler.ServeHTTP(w, r)
+		case DeploymentServicePreflightCheckProcedure:
+			deploymentServicePreflightCheckHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -453,4 +512,8 @@ func (UnimplementedDeploymentServiceHandler) GetDeploymentRenderPreview(context.
 
 func (UnimplementedDeploymentServiceHandler) GetDeploymentPolicyState(context.Context, *connect.Request[v1.GetDeploymentPolicyStateRequest]) (*connect.Response[v1.GetDeploymentPolicyStateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.GetDeploymentPolicyState is not implemented"))
+}
+
+func (UnimplementedDeploymentServiceHandler) PreflightCheck(context.Context, *connect.Request[v1.PreflightCheckRequest]) (*connect.Response[v1.PreflightCheckResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("holos.console.v1.DeploymentService.PreflightCheck is not implemented"))
 }

@@ -31,6 +31,8 @@ export const keys = {
       ['deployments', 'namespace-secrets', project] as const,
     namespaceConfigMaps: (project: string) =>
       ['deployments', 'namespace-configmaps', project] as const,
+    preflightCheck: (project: string, plannedDeploymentNames: string[]) =>
+      ['deployments', 'preflight-check', project, ...plannedDeploymentNames] as const,
   },
   folders: {
     list: (organization: string, parentType?: number, parentName?: string) =>
