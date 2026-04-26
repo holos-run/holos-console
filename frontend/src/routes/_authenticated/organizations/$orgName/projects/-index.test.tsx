@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { vi, beforeEach, afterEach } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
@@ -175,11 +175,28 @@ describe('OrgProjectsIndexPage', () => {
     expect(screen.getByText(/failed to load projects/i)).toBeInTheDocument()
   })
 
-  it('renders breadcrumb linking back to /organizations', () => {
+  it('renders breadcrumb and Create Project button through layout slots', () => {
     setupMocks([])
     render(<OrgProjectsIndexPage orgName="my-org" />)
+    const breadcrumb = screen.getByRole('navigation', { name: /breadcrumb/i })
+    expect(within(breadcrumb).getByText('Organizations')).toBeInTheDocument()
+    expect(within(breadcrumb).getByText('my-org')).toBeInTheDocument()
+    expect(within(breadcrumb).getByText('Projects')).toBeInTheDocument()
+
     const orgLink = screen.getByRole('link', { name: 'Organizations' })
     expect(orgLink).toHaveAttribute('href', '/organizations')
+
+    const createLinks = screen.getAllByRole('link', { name: /create project/i })
+    expect(createLinks.length).toBeGreaterThanOrEqual(1)
+    expect(createLinks[0]).toHaveAttribute('href', '/project/new')
+  })
+
+  it('does not render row-level delete actions for project rows', () => {
+    setupMocks([makeProject('alpha', 'Alpha Project')])
+    render(<OrgProjectsIndexPage orgName="my-org" />)
+    expect(
+      screen.queryByRole('button', { name: /delete alpha project/i }),
+    ).not.toBeInTheDocument()
   })
 
   // ── Create Project link regression (HOL-929) ────────────────────────────────
