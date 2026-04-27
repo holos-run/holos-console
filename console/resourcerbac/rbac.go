@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
@@ -56,6 +57,7 @@ type KindConfig struct {
 	ObjectName      func(metav1.Object) string
 	RBACNamespace   func(metav1.Object) string
 	Matches         func(metav1.Object) bool
+	ClusterScoped   bool
 }
 
 var (
@@ -130,6 +132,7 @@ var (
 		OwnerKind:       "Namespace",
 		ObjectName:      namespaceObjectName,
 		RBACNamespace:   namespaceRBACNamespace,
+		ClusterScoped:   true,
 		Matches: func(obj metav1.Object) bool {
 			// TODO(HOL-1061 cleanup): delete this generic Resource surface
 			// when console/resources is retired; until then it mirrors the
@@ -152,6 +155,7 @@ func namespaceKindConfig(kind, rolePurpose, controllerName, resourceType string)
 		OwnerKind:       "Namespace",
 		ObjectName:      namespaceObjectName,
 		RBACNamespace:   namespaceRBACNamespace,
+		ClusterScoped:   true,
 		Matches: func(obj metav1.Object) bool {
 			return isManagedNamespace(obj) && obj.GetLabels()[v1alpha2.LabelResourceType] == resourceType
 		},
@@ -201,12 +205,15 @@ func EnsureResourceRBAC(ctx context.Context, client kubernetes.Interface, obj me
 		return fmt.Errorf("resource namespace and name are required")
 	}
 	ownerRefs := OwnerReferences(obj, cfg)
+	if cfg.ClusterScoped {
+		return ensureClusterResourceRBAC(ctx, client, obj, cfg, name, ownerRefs, time.Now())
+	}
 	for _, role := range ResourceRoles(namespace, name, cfg, ownerRefs) {
 		if err := applyRole(ctx, client, role); err != nil {
 			return fmt.Errorf("applying %s role %q: %w", cfg.Kind, role.Name, err)
 		}
 	}
-	return reconcileRoleBindings(ctx, client, obj, cfg, namespace, name, ownerRefs)
+	return reconcileRoleBindings(ctx, client, obj, cfg, namespace, name, ownerRefs, time.Now())
 }
 
 func creatorSubject(obj metav1.Object) string {
@@ -219,13 +226,53 @@ func creatorSubject(obj metav1.Object) string {
 
 func ResourceRoles(namespace, name string, cfg KindConfig, ownerRefs []metav1.OwnerReference) []*rbacv1.Role {
 	return []*rbacv1.Role{
-		resourceRole(namespace, name, cfg, RoleViewer, viewerVerbs(), nil, ownerRefs),
-		resourceRole(namespace, name, cfg, RoleEditor, editorVerbs(), nil, ownerRefs),
-		resourceRole(namespace, name, cfg, RoleOwner, ownerVerbs(), ownerRules(name, cfg), ownerRefs),
+		resourceRole(namespace, name, cfg, RoleViewer, ownerRefs),
+		resourceRole(namespace, name, cfg, RoleEditor, ownerRefs),
+		resourceRole(namespace, name, cfg, RoleOwner, ownerRefs),
 	}
 }
 
-func resourceRole(namespace, name string, cfg KindConfig, role string, verbs []string, extraRules []rbacv1.PolicyRule, ownerRefs []metav1.OwnerReference) *rbacv1.Role {
+func resourceRole(namespace, name string, cfg KindConfig, role string, ownerRefs []metav1.OwnerReference) *rbacv1.Role {
+	return &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            RoleName(name, cfg, role),
+			Namespace:       namespace,
+			Labels:          RoleLabels(name, cfg, role),
+			OwnerReferences: ownerRefs,
+		},
+		Rules: resourceRules(name, cfg, role),
+	}
+}
+
+func ClusterResourceRoles(name string, cfg KindConfig, ownerRefs []metav1.OwnerReference) []*rbacv1.ClusterRole {
+	return []*rbacv1.ClusterRole{
+		clusterResourceRole(name, cfg, RoleViewer, ownerRefs),
+		clusterResourceRole(name, cfg, RoleEditor, ownerRefs),
+		clusterResourceRole(name, cfg, RoleOwner, ownerRefs),
+	}
+}
+
+func clusterResourceRole(name string, cfg KindConfig, role string, ownerRefs []metav1.OwnerReference) *rbacv1.ClusterRole {
+	return &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            RoleName(name, cfg, role),
+			Labels:          RoleLabels(name, cfg, role),
+			OwnerReferences: ownerRefs,
+		},
+		Rules: resourceRules(name, cfg, role),
+	}
+}
+
+func resourceRules(name string, cfg KindConfig, role string) []rbacv1.PolicyRule {
+	verbs := viewerVerbs()
+	var extraRules []rbacv1.PolicyRule
+	switch NormalizeRole(role) {
+	case RoleEditor:
+		verbs = editorVerbs()
+	case RoleOwner:
+		verbs = ownerVerbs()
+		extraRules = ownerRules(name, cfg)
+	}
 	apiGroup := cfg.APIGroup
 	if cfg.APIGroup == "" && cfg.OwnerAPIVersion == "" {
 		apiGroup = TemplatesAPIGroup
@@ -236,16 +283,7 @@ func resourceRole(namespace, name string, cfg KindConfig, role string, verbs []s
 		ResourceNames: []string{name},
 		Verbs:         verbs,
 	}}
-	rules = append(rules, extraRules...)
-	return &rbacv1.Role{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            RoleName(name, cfg, role),
-			Namespace:       namespace,
-			Labels:          RoleLabels(name, cfg, role),
-			OwnerReferences: ownerRefs,
-		},
-		Rules: rules,
-	}
+	return append(rules, extraRules...)
 }
 
 func viewerVerbs() []string {
@@ -261,6 +299,21 @@ func ownerVerbs() []string {
 }
 
 func ownerRules(name string, cfg KindConfig) []rbacv1.PolicyRule {
+	if cfg.ClusterScoped {
+		return []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{rbacv1.GroupName},
+				Resources: []string{"clusterrolebindings"},
+				Verbs:     []string{"get", "list", "watch", "create", "update", "patch", "delete"},
+			},
+			{
+				APIGroups:     []string{rbacv1.GroupName},
+				Resources:     []string{"clusterroles"},
+				ResourceNames: []string{RoleName(name, cfg, RoleViewer), RoleName(name, cfg, RoleEditor), RoleName(name, cfg, RoleOwner)},
+				Verbs:         []string{"get", "list", "watch", "bind"},
+			},
+		}
+	}
 	return []rbacv1.PolicyRule{
 		{
 			APIGroups: []string{rbacv1.GroupName},
@@ -320,6 +373,33 @@ func RoleBinding(namespace, name string, cfg KindConfig, target, principal, role
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: rbacv1.GroupName,
 			Kind:     "Role",
+			Name:     RoleName(name, cfg, role),
+		},
+	}
+}
+
+func ClusterRoleBinding(name string, cfg KindConfig, target, principal, role string, ownerRefs []metav1.OwnerReference) *rbacv1.ClusterRoleBinding {
+	target = NormalizeTarget(target)
+	role = NormalizeRole(role)
+	subjectKind := rbacv1.UserKind
+	if target == ShareTargetGroup {
+		subjectKind = rbacv1.GroupKind
+	}
+	return &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            RoleBindingName(name, cfg, role, target, principal),
+			Labels:          RoleBindingLabels(name, cfg, target, principal, role),
+			Annotations:     map[string]string{AnnotationShareTargetName: OIDCPrincipal(principal)},
+			OwnerReferences: ownerRefs,
+		},
+		Subjects: []rbacv1.Subject{{
+			Kind:     subjectKind,
+			APIGroup: rbacv1.GroupName,
+			Name:     OIDCPrincipal(principal),
+		}},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
 			Name:     RoleName(name, cfg, role),
 		},
 	}
@@ -422,7 +502,7 @@ func RoleFromLabels(labels map[string]string) string {
 	return RoleViewer
 }
 
-func reconcileRoleBindings(ctx context.Context, client kubernetes.Interface, obj metav1.Object, cfg KindConfig, namespace, name string, ownerRefs []metav1.OwnerReference) error {
+func reconcileRoleBindings(ctx context.Context, client kubernetes.Interface, obj metav1.Object, cfg KindConfig, namespace, name string, ownerRefs []metav1.OwnerReference, now time.Time) error {
 	desired := make(map[string]*rbacv1.RoleBinding)
 	addDesired := func(target string, grant secrets.AnnotationGrant) {
 		if strings.TrimSpace(grant.Principal) == "" {
@@ -438,14 +518,14 @@ func reconcileRoleBindings(ctx context.Context, client kubernetes.Interface, obj
 	if err != nil {
 		return err
 	}
-	for _, grant := range secrets.DeduplicateGrants(users) {
+	for _, grant := range activeGrants(users, now) {
 		addDesired(ShareTargetUser, grant)
 	}
 	groups, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareRoles)
 	if err != nil {
 		return err
 	}
-	for _, grant := range secrets.DeduplicateGrants(groups) {
+	for _, grant := range activeGrants(groups, now) {
 		addDesired(ShareTargetGroup, grant)
 	}
 
@@ -472,6 +552,106 @@ func reconcileRoleBindings(ctx context.Context, client kubernetes.Interface, obj
 		}
 	}
 	return nil
+}
+
+func ensureClusterResourceRBAC(ctx context.Context, client kubernetes.Interface, obj metav1.Object, cfg KindConfig, name string, ownerRefs []metav1.OwnerReference, now time.Time) error {
+	for _, role := range ClusterResourceRoles(name, cfg, ownerRefs) {
+		if err := applyClusterRole(ctx, client, role); err != nil {
+			return fmt.Errorf("applying %s cluster role %q: %w", cfg.Kind, role.Name, err)
+		}
+	}
+	return reconcileClusterRoleBindings(ctx, client, obj, cfg, name, ownerRefs, now)
+}
+
+func reconcileClusterRoleBindings(ctx context.Context, client kubernetes.Interface, obj metav1.Object, cfg KindConfig, name string, ownerRefs []metav1.OwnerReference, now time.Time) error {
+	desired := make(map[string]*rbacv1.ClusterRoleBinding)
+	addDesired := func(target string, grant secrets.AnnotationGrant) {
+		if strings.TrimSpace(grant.Principal) == "" {
+			return
+		}
+		binding := ClusterRoleBinding(name, cfg, target, grant.Principal, grant.Role, ownerRefs)
+		desired[binding.Name] = binding
+	}
+	if creatorSub := creatorSubject(obj); creatorSub != "" {
+		addDesired(ShareTargetUser, secrets.AnnotationGrant{Principal: creatorSub, Role: RoleOwner})
+	}
+	users, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareUsers)
+	if err != nil {
+		return err
+	}
+	for _, grant := range activeGrants(users, now) {
+		addDesired(ShareTargetUser, grant)
+	}
+	groups, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareRoles)
+	if err != nil {
+		return err
+	}
+	for _, grant := range activeGrants(groups, now) {
+		addDesired(ShareTargetGroup, grant)
+	}
+
+	selector := labels.SelectorFromSet(labels.Set{
+		LabelRolePurpose:  cfg.RolePurpose,
+		LabelResourceName: name,
+	}).String()
+	current, err := client.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return fmt.Errorf("listing %s cluster role bindings: %w", cfg.Kind, err)
+	}
+	for i := range current.Items {
+		existing := current.Items[i]
+		if _, ok := desired[existing.Name]; ok {
+			continue
+		}
+		if err := client.RbacV1().ClusterRoleBindings().Delete(ctx, existing.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("deleting stale %s cluster role binding %q: %w", cfg.Kind, existing.Name, err)
+		}
+	}
+	for _, binding := range desired {
+		if err := applyClusterRoleBinding(ctx, client, binding); err != nil {
+			return fmt.Errorf("applying %s annotated cluster role binding %q: %w", cfg.Kind, binding.Name, err)
+		}
+	}
+	return nil
+}
+
+func activeGrants(grants []secrets.AnnotationGrant, now time.Time) []secrets.AnnotationGrant {
+	nowUnix := now.Unix()
+	filtered := make([]secrets.AnnotationGrant, 0, len(grants))
+	for _, grant := range grants {
+		if grant.Nbf != nil && *grant.Nbf > nowUnix {
+			continue
+		}
+		if grant.Exp != nil && *grant.Exp <= nowUnix {
+			continue
+		}
+		filtered = append(filtered, grant)
+	}
+	return secrets.DeduplicateGrants(filtered)
+}
+
+// NextGrantRequeueAfter returns the delay until the next share annotation
+// validity boundary. Reconcilers use it to remove expired RoleBindings and
+// add not-yet-active grants without waiting for another object update.
+func NextGrantRequeueAfter(obj metav1.Object, now time.Time) time.Duration {
+	users, _ := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareUsers)
+	groups, _ := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareRoles)
+	nowUnix := now.Unix()
+	var next int64
+	for _, grant := range append(users, groups...) {
+		for _, boundary := range [](*int64){grant.Nbf, grant.Exp} {
+			if boundary == nil || *boundary <= nowUnix {
+				continue
+			}
+			if next == 0 || *boundary < next {
+				next = *boundary
+			}
+		}
+	}
+	if next == 0 {
+		return 0
+	}
+	return time.Duration(next-nowUnix) * time.Second
 }
 
 func parseShareGrants(annotations map[string]string, key string) ([]secrets.AnnotationGrant, error) {
@@ -509,6 +689,30 @@ func applyRole(ctx context.Context, client kubernetes.Interface, role *rbacv1.Ro
 	return nil
 }
 
+func applyClusterRole(ctx context.Context, client kubernetes.Interface, role *rbacv1.ClusterRole) error {
+	created, err := client.RbacV1().ClusterRoles().Create(ctx, role, metav1.CreateOptions{})
+	if err == nil {
+		*role = *created
+		return nil
+	}
+	if !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	existing, err := client.RbacV1().ClusterRoles().Get(ctx, role.Name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	existing.Labels = role.Labels
+	existing.Rules = role.Rules
+	existing.OwnerReferences = role.OwnerReferences
+	updated, err := client.RbacV1().ClusterRoles().Update(ctx, existing, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+	*role = *updated
+	return nil
+}
+
 func applyRoleBinding(ctx context.Context, client kubernetes.Interface, binding *rbacv1.RoleBinding) error {
 	created, err := client.RbacV1().RoleBindings(binding.Namespace).Create(ctx, binding, metav1.CreateOptions{})
 	if err == nil {
@@ -537,6 +741,41 @@ func applyRoleBinding(ctx context.Context, client kubernetes.Interface, binding 
 	existing.Subjects = binding.Subjects
 	existing.OwnerReferences = binding.OwnerReferences
 	updated, err := client.RbacV1().RoleBindings(binding.Namespace).Update(ctx, existing, metav1.UpdateOptions{})
+	if err != nil {
+		return err
+	}
+	*binding = *updated
+	return nil
+}
+
+func applyClusterRoleBinding(ctx context.Context, client kubernetes.Interface, binding *rbacv1.ClusterRoleBinding) error {
+	created, err := client.RbacV1().ClusterRoleBindings().Create(ctx, binding, metav1.CreateOptions{})
+	if err == nil {
+		*binding = *created
+		return nil
+	}
+	if !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	existing, err := client.RbacV1().ClusterRoleBindings().Get(ctx, binding.Name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if existing.RoleRef != binding.RoleRef {
+		if err := client.RbacV1().ClusterRoleBindings().Delete(ctx, binding.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+		recreated, err := client.RbacV1().ClusterRoleBindings().Create(ctx, binding, metav1.CreateOptions{})
+		if err == nil {
+			*binding = *recreated
+		}
+		return err
+	}
+	existing.Labels = binding.Labels
+	existing.Annotations = binding.Annotations
+	existing.Subjects = binding.Subjects
+	existing.OwnerReferences = binding.OwnerReferences
+	updated, err := client.RbacV1().ClusterRoleBindings().Update(ctx, existing, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
