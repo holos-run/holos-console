@@ -186,7 +186,7 @@ Every test in this spec creates real Kubernetes namespaces (folder-backed orgs),
 
 ### `folder-rbac.spec.ts` — Keep (all 3, require K8s RBAC cascade)
 
-Folder RBAC metadata is written to real Kubernetes namespace annotations. The cascade is already unit-tested in `console/rbac/`, but the end-to-end wiring (HTTP → handler → K8s annotations → UI delete button visibility) only exists here.
+Folder RBAC is enforced by Kubernetes RBAC per ADR 036. These tests exercise the end-to-end wiring (HTTP → handler → K8s RBAC → UI delete button visibility) which only exists in E2E.
 
 | Test | Verdict | Notes |
 | --- | --- | --- |

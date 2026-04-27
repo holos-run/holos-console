@@ -1,6 +1,11 @@
 // Package legacy provides shared parsers for the pre-RBAC sharing
 // annotations stored on v1.Secret and v1.Namespace objects.
 //
+// Deprecated: This package exists solely for the one-time migration tool in
+// `cmd/holos-console-migrate-rbac`. New code must not import it. Once all
+// clusters have been migrated (annotations stripped and RoleBindings
+// reconciled), this package and the migration tool will be deleted.
+//
 // Before ADR 036 moved authorization to native Kubernetes RBAC with OIDC
 // impersonation, holos-console encoded sharing grants as JSON arrays in the
 // `console.holos.run/share-users`, `console.holos.run/share-roles`,

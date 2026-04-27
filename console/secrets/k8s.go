@@ -2,7 +2,6 @@ package secrets
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -311,20 +310,6 @@ func roleBindingsToTargetGrants(bindings []rbacv1.RoleBinding, kind string) []An
 	return DeduplicateGrants(grants)
 }
 
-// GetShareUsers parses the console.holos.run/share-users annotation from a secret.
-// Returns an empty slice if the annotation is missing.
-// Returns an error if the annotation contains invalid JSON.
-func GetShareUsers(secret *corev1.Secret) ([]AnnotationGrant, error) {
-	return parseGrantAnnotation(secret, v1alpha2.AnnotationShareUsers)
-}
-
-// GetShareRoles parses the console.holos.run/share-roles annotation from a secret.
-// Returns nil if the annotation is absent.
-// Returns an error if the annotation contains invalid JSON.
-func GetShareRoles(secret *corev1.Secret) ([]AnnotationGrant, error) {
-	return parseGrantAnnotation(secret, v1alpha2.AnnotationShareRoles)
-}
-
 // GetDescription returns the description annotation value from a secret.
 // Returns an empty string if the annotation is absent.
 func GetDescription(secret *corev1.Secret) string {
@@ -341,22 +326,6 @@ func GetURL(secret *corev1.Secret) string {
 		return ""
 	}
 	return secret.Annotations[v1alpha2.AnnotationURL]
-}
-
-// parseGrantAnnotation parses a JSON annotation value into a slice of AnnotationGrant.
-func parseGrantAnnotation(secret *corev1.Secret, key string) ([]AnnotationGrant, error) {
-	if secret.Annotations == nil {
-		return nil, nil
-	}
-	value, ok := secret.Annotations[key]
-	if !ok {
-		return nil, nil
-	}
-	var grants []AnnotationGrant
-	if err := json.Unmarshal([]byte(value), &grants); err != nil {
-		return nil, fmt.Errorf("invalid %s annotation: %w", key, err)
-	}
-	return grants, nil
 }
 
 // ActiveGrantsMap filters grants by time window and returns a map of principal → role

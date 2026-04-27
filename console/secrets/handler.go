@@ -562,16 +562,3 @@ func logAuditAllowed(ctx context.Context, claims *rpc.Claims, secret, project st
 		slog.Any("roles", claims.Roles),
 	)
 }
-
-// logAuditDenied logs a denied secret access.
-func logAuditDenied(ctx context.Context, claims *rpc.Claims, secret, project string) {
-	slog.WarnContext(ctx, "secret access denied",
-		slog.String("action", "secret_access_denied"),
-		slog.String("resource_type", auditResourceType),
-		slog.String("secret", secret),
-		slog.String("project", project),
-		slog.String("sub", claims.Sub),
-		slog.String("email", claims.Email),
-		slog.Any("roles", claims.Roles),
-	)
-}
