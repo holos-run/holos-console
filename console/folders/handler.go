@@ -240,7 +240,7 @@ func (h *Handler) CreateFolder(
 	const maxCreateRetries = 3
 	for attempt := range maxCreateRetries + 1 {
 		_, err = h.k8s.CreateFolder(ctx, name, req.Msg.DisplayName, req.Msg.Description,
-			req.Msg.Organization, parentNs, claims.Email, shareUsers, shareRoles, nil, nil)
+			req.Msg.Organization, parentNs, claims.Email, claims.Sub, shareUsers, shareRoles, nil, nil)
 		if err == nil {
 			break
 		}
@@ -642,7 +642,17 @@ func (h *Handler) UpdateFolderSharing(
 	newShareUsers := shareGrantsToAnnotations(req.Msg.UserGrants)
 	newShareRoles := shareGrantsToAnnotations(req.Msg.RoleGrants)
 
-	updated, err := h.k8s.UpdateFolderSharing(ctx, req.Msg.Name, newShareUsers, newShareRoles)
+	storedCreator := secrets.UserIdentity{
+		Email:   ns.Annotations[v1alpha2.AnnotationCreatorEmail],
+		Subject: ns.Annotations[v1alpha2.AnnotationCreatorSubject],
+	}
+	rbacShareUsers := secrets.RBACUserGrantsForSubjects(
+		newShareUsers,
+		storedCreator,
+		secrets.UserIdentity{Email: claims.Email, Subject: claims.Sub},
+	)
+
+	updated, err := h.k8s.UpdateFolderSharing(ctx, req.Msg.Name, newShareUsers, newShareRoles, rbacShareUsers)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}

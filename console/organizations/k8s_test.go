@@ -188,7 +188,7 @@ func TestCreateOrganization_CreatesNamespaceWithPrefixAndLabels(t *testing.T) {
 	k8s := NewK8sClient(fakeClient, testResolver())
 
 	shareUsers := []secrets.AnnotationGrant{{Principal: "alice@example.com", Role: "owner"}}
-	result, err := k8s.CreateOrganization(context.Background(), "acme", "ACME Corp", "Test org", "", shareUsers, nil)
+	result, err := k8s.CreateOrganization(context.Background(), "acme", "ACME Corp", "Test org", "", "", shareUsers, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -217,7 +217,7 @@ func TestCreateOrganization_SetsOrganizationLabel(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateOrganization(context.Background(), "acme", "", "", "", nil, nil)
+	result, err := k8s.CreateOrganization(context.Background(), "acme", "", "", "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -239,7 +239,7 @@ func TestCreateOrganization_ReturnsAlreadyExists(t *testing.T) {
 	fakeClient := fake.NewClientset(existing)
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	_, err := k8s.CreateOrganization(context.Background(), "acme", "", "", "", nil, nil)
+	_, err := k8s.CreateOrganization(context.Background(), "acme", "", "", "", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -512,7 +512,7 @@ func TestUpdateOrgSharing_UpdatesAnnotations(t *testing.T) {
 	newGroups := []secrets.AnnotationGrant{
 		{Principal: "engineering", Role: "viewer"},
 	}
-	result, err := k8s.UpdateOrganizationSharing(context.Background(), "acme", newUsers, newGroups)
+	result, err := k8s.UpdateOrganizationSharing(context.Background(), "acme", newUsers, newGroups, newUsers)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -753,7 +753,7 @@ func TestUpdateOrgSharing_RejectsNonOrg(t *testing.T) {
 	fakeClient := fake.NewClientset(ns)
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	_, err := k8s.UpdateOrganizationSharing(context.Background(), "fake", nil, nil)
+	_, err := k8s.UpdateOrganizationSharing(context.Background(), "fake", nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -763,7 +763,7 @@ func TestCreateOrganization_StoresCreatorEmailAnnotation(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateOrganization(context.Background(), "acme", "", "", "creator@example.com", nil, nil)
+	result, err := k8s.CreateOrganization(context.Background(), "acme", "", "", "creator@example.com", "", nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -776,7 +776,7 @@ func TestCreateOrganization_EmptyCreatorEmail_NoAnnotation(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateOrganization(context.Background(), "acme", "", "", "", nil, nil)
+	result, err := k8s.CreateOrganization(context.Background(), "acme", "", "", "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

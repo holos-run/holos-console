@@ -4,6 +4,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+- namespace-share-annotations-console-only.yaml
 - renderstate-folder-or-org-only.yaml
 - templatedependency-project-only.yaml
 - templategrant-namespace-allowed.yaml

@@ -48,11 +48,13 @@
 #ResourceTypeTemplateGrant: "template-grant"
 
 // Annotations.
-#AnnotationDisplayName:  "console.holos.run/display-name"
-#AnnotationDescription:  "console.holos.run/description"
-#AnnotationCreatorEmail: "console.holos.run/creator-email"
-#AnnotationShareUsers:   "console.holos.run/share-users"
-#AnnotationShareRoles:   "console.holos.run/share-roles"
+#AnnotationDisplayName:    "console.holos.run/display-name"
+#AnnotationDescription:    "console.holos.run/description"
+#AnnotationCreatorEmail:   "console.holos.run/creator-email"
+#AnnotationCreatorSubject: "console.holos.run/creator-sub"
+#AnnotationShareUsers:     "console.holos.run/share-users"
+#AnnotationShareRoles:     "console.holos.run/share-roles"
+#AnnotationRBACShareUsers: "console.holos.run/rbac-share-users"
 
 // AnnotationDefaultShareUsers specifies the default share users annotation.
 // This annotation appears on org, folder, and project namespaces and drives

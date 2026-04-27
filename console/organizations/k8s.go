@@ -82,7 +82,7 @@ func (c *K8sClient) GetOrganization(ctx context.Context, name string) (*corev1.N
 }
 
 // CreateOrganization creates a new namespace with organization labels and annotations.
-func (c *K8sClient) CreateOrganization(ctx context.Context, name, displayName, description, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (c *K8sClient) CreateOrganization(ctx context.Context, name, displayName, description, creatorEmail, creatorSubject string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	nsName := c.resolver.OrgNamespace(name)
 	slog.DebugContext(ctx, "creating organization in kubernetes",
 		slog.String("name", name),
@@ -108,6 +108,17 @@ func (c *K8sClient) CreateOrganization(ctx context.Context, name, displayName, d
 	}
 	if creatorEmail != "" {
 		annotations[v1alpha2.AnnotationCreatorEmail] = creatorEmail
+	}
+	if creatorSubject != "" {
+		annotations[v1alpha2.AnnotationCreatorSubject] = creatorSubject
+	}
+	rbacShareUsers := secrets.RBACUserGrantsForSubjects(shareUsers, secrets.UserIdentity{Email: creatorEmail, Subject: creatorSubject})
+	if len(rbacShareUsers) > 0 {
+		rbacUsersJSON, err := json.Marshal(rbacShareUsers)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling rbac-share-users: %w", err)
+		}
+		annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
 	}
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -227,7 +238,7 @@ func (c *K8sClient) SetGatewayNamespace(ctx context.Context, name, value string)
 }
 
 // UpdateOrganizationSharing updates the sharing annotations on an organization namespace.
-func (c *K8sClient) UpdateOrganizationSharing(ctx context.Context, name string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (c *K8sClient) UpdateOrganizationSharing(ctx context.Context, name string, shareUsers, shareRoles, rbacShareUsers []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	slog.DebugContext(ctx, "updating organization sharing in kubernetes",
 		slog.String("name", name),
 	)
@@ -246,8 +257,13 @@ func (c *K8sClient) UpdateOrganizationSharing(ctx context.Context, name string, 
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
+	rbacUsersJSON, err := json.Marshal(rbacShareUsers)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling rbac-share-users: %w", err)
+	}
 	ns.Annotations[v1alpha2.AnnotationShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
+	ns.Annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 

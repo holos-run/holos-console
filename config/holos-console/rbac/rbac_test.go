@@ -72,6 +72,24 @@ func TestRoleGrantsImpersonationAndRBACReconciliation(t *testing.T) {
 	if !hasRule(role.Rules, wantRoleBindings) {
 		t.Fatalf("ClusterRole missing RoleBinding reconciliation rule %+v in rules: %+v", wantRoleBindings, role.Rules)
 	}
+
+	wantClusterRoles := rbacv1.PolicyRule{
+		APIGroups: []string{"rbac.authorization.k8s.io"},
+		Resources: []string{"clusterroles"},
+		Verbs:     []string{"bind", "create", "delete", "escalate", "get", "list", "patch", "update", "watch"},
+	}
+	if !hasRule(role.Rules, wantClusterRoles) {
+		t.Fatalf("ClusterRole missing ClusterRole reconciliation rule %+v in rules: %+v", wantClusterRoles, role.Rules)
+	}
+
+	wantClusterRoleBindings := rbacv1.PolicyRule{
+		APIGroups: []string{"rbac.authorization.k8s.io"},
+		Resources: []string{"clusterrolebindings"},
+		Verbs:     []string{"create", "delete", "get", "list", "patch", "update", "watch"},
+	}
+	if !hasRule(role.Rules, wantClusterRoleBindings) {
+		t.Fatalf("ClusterRole missing ClusterRoleBinding reconciliation rule %+v in rules: %+v", wantClusterRoleBindings, role.Rules)
+	}
 }
 
 func TestClusterRoleBindingTargetsConsoleServiceAccount(t *testing.T) {
@@ -122,13 +140,26 @@ func mustReadYAML(t *testing.T, path string, out any) {
 func hasRule(rules []rbacv1.PolicyRule, want rbacv1.PolicyRule) bool {
 	for _, rule := range rules {
 		if reflect.DeepEqual(rule.APIGroups, want.APIGroups) &&
-			reflect.DeepEqual(rule.Resources, want.Resources) &&
+			containsAll(rule.Resources, want.Resources) &&
 			reflect.DeepEqual(rule.ResourceNames, want.ResourceNames) &&
 			reflect.DeepEqual(rule.Verbs, want.Verbs) {
 			return true
 		}
 	}
 	return false
+}
+
+func containsAll(got, want []string) bool {
+	seen := make(map[string]struct{}, len(got))
+	for _, value := range got {
+		seen[value] = struct{}{}
+	}
+	for _, value := range want {
+		if _, ok := seen[value]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func hasResource(rules []rbacv1.PolicyRule, apiGroup, resource string) bool {

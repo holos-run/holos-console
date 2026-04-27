@@ -61,6 +61,7 @@ rules:
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
+  - clusterrolebindings
   - rolebindings
   verbs:
   - create
@@ -73,6 +74,7 @@ rules:
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
+  - clusterroles
   - roles
   verbs:
   - bind

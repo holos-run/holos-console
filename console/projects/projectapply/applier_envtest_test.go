@@ -51,6 +51,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	crdmgrtesting "github.com/holos-run/holos-console/console/crdmgr/testing"
@@ -95,11 +96,51 @@ func newEnvtestApplier(t *testing.T) (*Applier, dynamic.Interface, *crdmgrtestin
 		// StartManager already issued t.Skip.
 		return nil, nil, nil
 	}
-	dyn, err := dynamic.NewForConfig(env.Cfg)
+	ensureConsoleServiceAccountRBAC(t, env)
+	cfg := rest.CopyConfig(env.Cfg)
+	cfg.Impersonate.UserName = "system:serviceaccount:holos-system:holos-console"
+	cfg.Impersonate.Groups = []string{
+		"system:serviceaccounts",
+		"system:serviceaccounts:holos-system",
+		"system:authenticated",
+	}
+	dyn, err := dynamic.NewForConfig(cfg)
 	if err != nil {
 		t.Fatalf("constructing dynamic client: %v", err)
 	}
 	return NewApplier(dyn, DefaultGVRResolver{}), dyn, env
+}
+
+func ensureConsoleServiceAccountRBAC(t *testing.T, env *crdmgrtesting.Env) {
+	t.Helper()
+	ctx := context.Background()
+	role := &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{Name: "holos-console-projectapply-envtest"},
+		Rules: []rbacv1.PolicyRule{{
+			APIGroups: []string{"*"},
+			Resources: []string{"*"},
+			Verbs:     []string{"*"},
+		}},
+	}
+	if err := env.Direct.Create(ctx, role); err != nil && !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("creating envtest ClusterRole: %v", err)
+	}
+	binding := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "holos-console-projectapply-envtest"},
+		Subjects: []rbacv1.Subject{{
+			Kind:      rbacv1.ServiceAccountKind,
+			Name:      "holos-console",
+			Namespace: "holos-system",
+		}},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
+			Name:     role.Name,
+		},
+	}
+	if err := env.Direct.Create(ctx, binding); err != nil && !apierrors.IsAlreadyExists(err) {
+		t.Fatalf("creating envtest ClusterRoleBinding: %v", err)
+	}
 }
 
 // namespaceUnstructured constructs the unstructured Namespace the

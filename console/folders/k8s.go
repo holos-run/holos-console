@@ -123,7 +123,7 @@ func (c *K8sClient) NamespaceExists(ctx context.Context, nsName string) (bool, e
 // populate_defaults=true.
 func (c *K8sClient) CreateFolder(
 	ctx context.Context,
-	name, displayName, description, org, parentNs, creatorEmail string,
+	name, displayName, description, org, parentNs, creatorEmail, creatorSubject string,
 	shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant,
 ) (*corev1.Namespace, error) {
 	nsName := c.Resolver.FolderNamespace(name)
@@ -167,6 +167,17 @@ func (c *K8sClient) CreateFolder(
 	}
 	if creatorEmail != "" {
 		annotations[v1alpha2.AnnotationCreatorEmail] = creatorEmail
+	}
+	if creatorSubject != "" {
+		annotations[v1alpha2.AnnotationCreatorSubject] = creatorSubject
+	}
+	rbacShareUsers := secrets.RBACUserGrantsForSubjects(shareUsers, secrets.UserIdentity{Email: creatorEmail, Subject: creatorSubject})
+	if len(rbacShareUsers) > 0 {
+		rbacUsersJSON, err := json.Marshal(rbacShareUsers)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling rbac-share-users: %w", err)
+		}
+		annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
 	}
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -243,7 +254,7 @@ func (c *K8sClient) DeleteFolder(ctx context.Context, name string) error {
 }
 
 // UpdateFolderSharing updates the sharing annotations on a folder.
-func (c *K8sClient) UpdateFolderSharing(ctx context.Context, name string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (c *K8sClient) UpdateFolderSharing(ctx context.Context, name string, shareUsers, shareRoles, rbacShareUsers []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	slog.DebugContext(ctx, "updating folder sharing in kubernetes",
 		slog.String("name", name),
 	)
@@ -262,8 +273,13 @@ func (c *K8sClient) UpdateFolderSharing(ctx context.Context, name string, shareU
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
+	rbacUsersJSON, err := json.Marshal(rbacShareUsers)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling rbac-share-users: %w", err)
+	}
 	ns.Annotations[v1alpha2.AnnotationShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
+	ns.Annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
@@ -371,8 +387,8 @@ type FolderCreatorAdapter struct {
 // share grants so that the seeded default folder inherits the org's default
 // role grants and propagates them as its own default-share cascade (matching
 // the ancestor-default-share merge done by folders.Handler.CreateFolder).
-func (a *FolderCreatorAdapter) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
-	return a.K8s.CreateFolder(ctx, name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
+func (a *FolderCreatorAdapter) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+	return a.K8s.CreateFolder(ctx, name, displayName, description, org, parentNs, creatorEmail, creatorSubject, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 }
 
 // DeleteFolder delegates to the K8sClient.

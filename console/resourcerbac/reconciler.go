@@ -3,6 +3,7 @@ package resourcerbac
 import (
 	"context"
 	"fmt"
+	"time"
 
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -33,6 +34,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err := EnsureResourceRBAC(ctx, r.Kube, obj, r.Config); err != nil {
 		return ctrl.Result{}, err
 	}
+	if requeueAfter := NextGrantRequeueAfter(obj, time.Now()); requeueAfter > 0 {
+		return ctrl.Result{RequeueAfter: requeueAfter}, nil
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -46,6 +50,8 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(obj).
 		Owns(&rbacv1.Role{}).
 		Owns(&rbacv1.RoleBinding{}).
+		Owns(&rbacv1.ClusterRole{}).
+		Owns(&rbacv1.ClusterRoleBinding{}).
 		Complete(r)
 }
 
