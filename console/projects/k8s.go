@@ -11,6 +11,7 @@ import (
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/secretrbac"
 	"github.com/holos-run/holos-console/console/secrets"
+	"github.com/holos-run/holos-console/console/sharing/legacy"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -528,16 +529,5 @@ func (a *ProjectCreatorAdapter) NamespaceExists(ctx context.Context, nsName stri
 }
 
 func parseGrantAnnotation(ns *corev1.Namespace, key string) ([]secrets.AnnotationGrant, error) {
-	if ns.Annotations == nil {
-		return nil, nil
-	}
-	value, ok := ns.Annotations[key]
-	if !ok {
-		return nil, nil
-	}
-	var grants []secrets.AnnotationGrant
-	if err := json.Unmarshal([]byte(value), &grants); err != nil {
-		return nil, fmt.Errorf("invalid %s annotation: %w", key, err)
-	}
-	return grants, nil
+	return legacy.ParseGrants(ns.Annotations, key)
 }

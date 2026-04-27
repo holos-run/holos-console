@@ -10,6 +10,7 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/secrets"
+	"github.com/holos-run/holos-console/console/sharing/legacy"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -322,16 +323,5 @@ func (c *K8sClient) UpdateOrganizationDefaultSharing(ctx context.Context, name s
 }
 
 func parseGrantAnnotation(ns *corev1.Namespace, key string) ([]secrets.AnnotationGrant, error) {
-	if ns.Annotations == nil {
-		return nil, nil
-	}
-	value, ok := ns.Annotations[key]
-	if !ok {
-		return nil, nil
-	}
-	var grants []secrets.AnnotationGrant
-	if err := json.Unmarshal([]byte(value), &grants); err != nil {
-		return nil, fmt.Errorf("invalid %s annotation: %w", key, err)
-	}
-	return grants, nil
+	return legacy.ParseGrants(ns.Annotations, key)
 }
