@@ -14,14 +14,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import {
   useGetTemplatePolicy,
   useUpdateTemplatePolicy,
   useDeleteTemplatePolicy,
 } from '@/queries/templatePolicies'
+import { useResourcePermissions } from '@/queries/permissions'
 import { namespaceForOrg } from '@/lib/scope-labels'
-import { useGetOrganization } from '@/queries/organizations'
 import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
 import {
   PolicyForm,
@@ -29,6 +28,13 @@ import {
 } from '@/components/template-policies/PolicyForm'
 import { ruleProtoToDraft } from '@/components/template-policies/rule-draft'
 import { PolicyBindingsSection } from '@/components/template-policies/PolicyBindingsSection'
+import { connectErrorMessage } from '@/lib/connect-toast'
+import {
+  deleteTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+  updateTemplateResourcePermission,
+} from '@/lib/resource-permissions'
 
 export const Route = createFileRoute(
   '/_authenticated/organizations/$orgName/template-policies/$policyName',
@@ -62,13 +68,25 @@ export function OrgTemplatePolicyDetailPage({
 
   const navigate = useNavigate()
   const namespace = namespaceForOrg(orgName)
-  const { data: org } = useGetOrganization(orgName)
-  const userRole = org?.userRole ?? Role.VIEWER
-  // PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors too.
-  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
-  // PERMISSION_TEMPLATE_POLICIES_DELETE is OWNER-only in the RBAC cascade
-  // table, so editors must not see the destructive control.
-  const canDelete = userRole === Role.OWNER
+  const updatePermission = useMemo(
+    () => updateTemplateResourcePermission(
+      templateResources.templatePolicies,
+      namespace,
+      policyName,
+    ),
+    [namespace, policyName],
+  )
+  const deletePermission = useMemo(
+    () => deleteTemplateResourcePermission(
+      templateResources.templatePolicies,
+      namespace,
+      policyName,
+    ),
+    [namespace, policyName],
+  )
+  const permissionsQuery = useResourcePermissions([updatePermission, deletePermission])
+  const canWrite = hasPermission(permissionsQuery.data, updatePermission)
+  const canDelete = hasPermission(permissionsQuery.data, deletePermission)
 
   const scopeType: PolicyScope = forcedScopeType ?? 'organization'
 
@@ -166,8 +184,12 @@ export function OrgTemplatePolicyDetailPage({
             pendingLabel="Saving..."
             isPending={updateMutation.isPending}
             onSubmit={async (values) => {
-              await updateMutation.mutateAsync(values)
-              toast.success('Policy saved')
+              try {
+                await updateMutation.mutateAsync(values)
+                toast.success('Policy saved')
+              } catch (err) {
+                toast.error(connectErrorMessage(err))
+              }
             }}
             onCancel={() => {
               void navigate({
@@ -214,7 +236,7 @@ export function OrgTemplatePolicyDetailPage({
                   })
                   toast.success('Policy deleted')
                 } catch (err) {
-                  toast.error(err instanceof Error ? err.message : String(err))
+                  toast.error(connectErrorMessage(err))
                 }
               }}
             >

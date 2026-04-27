@@ -75,6 +75,7 @@ import {
 import { useListTemplatePolicyBindings } from '@/queries/templatePolicyBindings'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 import { OrgTemplatePolicyDetailPage } from './$policyName'
 
 function makeMockPolicy() {
@@ -109,6 +110,7 @@ function setupMocks(
     targetRefs?: Array<{ kind?: number; name: string; projectName?: string }>
   }> = [],
 ) {
+  mockResourcePermissionsForRole(userRole)
   ;(useGetTemplatePolicy as Mock).mockReturnValue({
     data: policy,
     isPending: false,

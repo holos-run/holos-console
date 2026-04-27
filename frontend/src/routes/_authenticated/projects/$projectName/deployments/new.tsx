@@ -21,6 +21,7 @@ import {
 import { namespaceForProject } from '@/lib/scope-labels'
 import { PreflightConflicts, hasConflicts } from '@/components/deployments/PreflightConflicts'
 import { CascadeDeleteToggle } from '@/components/deployments/CascadeDeleteToggle'
+import { connectErrorMessage } from '@/lib/connect-toast'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/deployments/new')({
   component: CreateDeploymentRoute,
@@ -335,7 +336,7 @@ export function CreateDeploymentPage({ projectName: propProjectName }: { project
         search: { tab: 'status' },
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(connectErrorMessage(err))
     }
   }
 

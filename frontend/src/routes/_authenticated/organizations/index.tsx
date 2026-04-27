@@ -13,7 +13,7 @@
  * needed here.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,11 @@ import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
 import { useListOrganizations } from '@/queries/organizations'
+import { useResourcePermissions } from '@/queries/permissions'
+import {
+  createNamespacePermission,
+  hasPermission,
+} from '@/lib/resource-permissions'
 
 export const Route = createFileRoute('/_authenticated/organizations/')({
   validateSearch: parseGridSearch,
@@ -45,6 +50,9 @@ export function OrganizationsIndexPage() {
   const navigate = useNavigate()
   const { data, isLoading, error } = useListOrganizations()
   const organizations = data?.organizations ?? []
+  const createPermission = useMemo(() => createNamespacePermission(), [])
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canCreate = hasPermission(permissionsQuery.data, createPermission)
 
   const rows: Row[] = organizations.map((org) => ({
     kind: 'Organization',
@@ -69,9 +77,11 @@ export function OrganizationsIndexPage() {
   ]
 
   const createOrgButton = (
-    <Link to="/organization/new" search={{ returnTo: '/organizations' }}>
-      <Button size="sm">Create Organization</Button>
-    </Link>
+    canCreate ? (
+      <Link to="/organization/new" search={{ returnTo: '/organizations' }}>
+        <Button size="sm">Create Organization</Button>
+      </Link>
+    ) : null
   )
 
   const handleSearchChange = useCallback(
@@ -89,9 +99,11 @@ export function OrganizationsIndexPage() {
   const emptyState = (
     <div className="flex flex-col items-center gap-3 py-8 text-center">
       <p className="text-muted-foreground">No organizations yet. Create one.</p>
-      <Link to="/organization/new" search={{ returnTo: '/organizations' }}>
-        <Button size="sm">Create Organization</Button>
-      </Link>
+      {canCreate && (
+        <Link to="/organization/new" search={{ returnTo: '/organizations' }}>
+          <Button size="sm">Create Organization</Button>
+        </Link>
+      )}
     </div>
   )
 

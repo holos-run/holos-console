@@ -1,10 +1,15 @@
+import { useMemo } from 'react'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useCreateTemplate } from '@/queries/templates'
+import { useResourcePermissions } from '@/queries/permissions'
 import { namespaceForOrg } from '@/lib/scope-labels'
-import { useGetOrganization } from '@/queries/organizations'
 import { TemplateCreateForm } from '@/components/templates/TemplateCreateForm'
+import {
+  createTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+} from '@/lib/resource-permissions'
 
 export const Route = createFileRoute('/_authenticated/organizations/$orgName/templates/new')({
   component: CreateOrgTemplateRoute,
@@ -28,10 +33,13 @@ export function CreateOrgTemplatePage({ orgName: propOrgName }: { orgName?: stri
   const navigate = useNavigate()
   const namespace = namespaceForOrg(orgName)
   const createMutation = useCreateTemplate(namespace)
-  const { data: org } = useGetOrganization(orgName)
 
-  const userRole = org?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER
+  const createPermission = useMemo(
+    () => createTemplateResourcePermission(templateResources.templates, namespace),
+    [namespace],
+  )
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canWrite = hasPermission(permissionsQuery.data, createPermission)
 
   return (
     <Card>

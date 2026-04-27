@@ -97,6 +97,7 @@ import {
 } from '@/queries/templatePolicyBindings'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 import { OrgTemplateBindingDetailPage } from './$bindingName'
 
 function makeBinding() {
@@ -123,6 +124,7 @@ function setupMocks(
   userRole: Role = Role.OWNER,
   binding: ReturnType<typeof makeBinding> | undefined = makeBinding(),
 ) {
+  mockResourcePermissionsForRole(userRole)
   ;(useGetTemplatePolicyBinding as Mock).mockReturnValue({
     data: binding,
     isPending: false,

@@ -25,6 +25,7 @@ import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 import { toSlug } from '@/lib/slug'
 import { resolveReturnTo } from '@/lib/return-to'
 import { useOrg } from '@/lib/org-context'
+import { connectErrorMessage } from '@/lib/connect-toast'
 
 export const Route = createFileRoute('/_authenticated/project/new')({
   validateSearch: (
@@ -116,7 +117,7 @@ export function ProjectNewPage({ orgName, folderName, returnTo }: ProjectNewPage
       const target = resolveReturnTo(returnTo, fallback)
       navigate({ to: target })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create project')
+      setError(connectErrorMessage(err))
     }
   }
 

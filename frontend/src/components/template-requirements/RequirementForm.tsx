@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import type { LinkedTemplateRef } from '@/queries/templateRequirements'
+import { connectErrorMessage } from '@/lib/connect-toast'
 
 /**
  * RequirementFormValues are the shape of data emitted by RequirementForm on submit.
@@ -39,8 +40,6 @@ export type RequirementFormProps = {
  * editable. In edit mode the name is locked.
  */
 export function RequirementForm({
-  mode: _mode,
-  namespace: _namespace,
   canWrite,
   initialValues,
   submitLabel,
@@ -82,7 +81,7 @@ export function RequirementForm({
         cascadeDelete,
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(connectErrorMessage(err))
     }
   }
 

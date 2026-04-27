@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/select'
 import { Trash2 } from 'lucide-react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { connectErrorMessage } from '@/lib/connect-toast'
 
 export interface Grant {
   principal: string
@@ -106,7 +107,7 @@ export function SharingPanel({ userGrants, roleGrants, isOwner, onSave, isSaving
       await onSave(users, roles)
       setEditing(false)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err))
+      setSaveError(connectErrorMessage(err))
     }
   }
 

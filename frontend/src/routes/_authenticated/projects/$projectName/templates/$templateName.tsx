@@ -13,7 +13,7 @@
  * rules.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { ArrowLeft } from 'lucide-react'
@@ -38,8 +38,16 @@ import {
   useDeleteTemplate,
   useGetTemplateDefaults,
 } from '@/queries/templates'
+import { useResourcePermissions } from '@/queries/permissions'
 import type { TemplateDefaults, TemplateExample } from '@/queries/templates'
 import { namespaceForProject } from '@/lib/scope-labels'
+import { connectErrorMessage } from '@/lib/connect-toast'
+import {
+  deleteTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+  updateTemplateResourcePermission,
+} from '@/lib/resource-permissions'
 
 // ---------------------------------------------------------------------------
 // Utility: TemplateDefaults → CUE project-input snippet
@@ -97,6 +105,17 @@ export function ProjectTemplateDetailPage({
   const { data: templateDefaults } = useGetTemplateDefaults({ namespace, name: templateName })
   const updateMutation = useUpdateTemplate(namespace, templateName)
   const deleteMutation = useDeleteTemplate(namespace)
+  const updatePermission = useMemo(
+    () => updateTemplateResourcePermission(templateResources.templates, namespace, templateName),
+    [namespace, templateName],
+  )
+  const deletePermission = useMemo(
+    () => deleteTemplateResourcePermission(templateResources.templates, namespace, templateName),
+    [namespace, templateName],
+  )
+  const permissionsQuery = useResourcePermissions([updatePermission, deletePermission])
+  const canWrite = hasPermission(permissionsQuery.data, updatePermission)
+  const canDelete = hasPermission(permissionsQuery.data, deletePermission)
 
   const [cueTemplate, setCueTemplate] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -131,7 +150,7 @@ export function ProjectTemplateDetailPage({
       })
       toast.success('Saved')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      toast.error(connectErrorMessage(err))
     }
   }
 
@@ -144,8 +163,8 @@ export function ProjectTemplateDetailPage({
         to: '/projects/$projectName/templates',
         params: { projectName },
       })
-    } catch {
-      /* error surfaced via deleteMutation.error inside the dialog */
+    } catch (err) {
+      toast.error(connectErrorMessage(err))
     }
   }
 
@@ -195,13 +214,15 @@ export function ProjectTemplateDetailPage({
               <h2 className="text-xl font-semibold">{displayName}</h2>
             </div>
           </div>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setDeleteOpen(true)}
-          >
-            Delete
-          </Button>
+          {canDelete && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setDeleteOpen(true)}
+            >
+              Delete
+            </Button>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -233,6 +254,7 @@ export function ProjectTemplateDetailPage({
             onChange={setCueTemplate}
             onSave={handleSave}
             isSaving={updateMutation.isPending}
+            readOnly={!canWrite}
             defaultProjectInput={templateDefaultsToCueInput(templateDefaults)}
             namespace={namespace}
           />
@@ -250,7 +272,7 @@ export function ProjectTemplateDetailPage({
           </DialogHeader>
           {deleteMutation.error && (
             <Alert variant="destructive">
-              <AlertDescription>{deleteMutation.error.message}</AlertDescription>
+              <AlertDescription>{connectErrorMessage(deleteMutation.error)}</AlertDescription>
             </Alert>
           )}
           <DialogFooter>

@@ -108,6 +108,7 @@ import {
   namespaceForFolder,
   namespaceForProject,
 } from '@/lib/scope-labels'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 import { OrgTemplatesIndexPage } from './index'
 
 type TemplateFixture = {
@@ -140,6 +141,7 @@ function setup(
   policies: PolicyFixture[] = [],
   bindings: BindingFixture[] = [],
 ) {
+  mockResourcePermissionsForRole(userRole)
   ;(useAllTemplatesForOrg as Mock).mockReturnValue({
     data: overrides.isPending ? undefined : templates,
     isPending: overrides.isPending ?? false,

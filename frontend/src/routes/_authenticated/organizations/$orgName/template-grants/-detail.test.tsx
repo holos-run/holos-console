@@ -70,6 +70,7 @@ import {
 } from '@/queries/templateGrants'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 import { OrgTemplateGrantDetailPage } from './$grantName'
 
 function makeMockGrant() {
@@ -99,6 +100,7 @@ function setupMocks(
   userRole: Role = Role.OWNER,
   grant: ReturnType<typeof makeMockGrant> | undefined = makeMockGrant(),
 ) {
+  mockResourcePermissionsForRole(userRole)
   ;(useGetTemplateGrant as Mock).mockReturnValue({
     data: grant,
     isPending: false,

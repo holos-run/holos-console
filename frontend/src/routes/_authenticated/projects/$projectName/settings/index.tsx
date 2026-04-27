@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
@@ -34,11 +34,18 @@ import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { RawView } from '@/components/raw-view'
 import { ParentType } from '@/gen/holos/console/v1/folders_pb'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useGetProject, useUpdateProject, useUpdateProjectSharing, useUpdateProjectDefaultSharing, useDeleteProject } from '@/queries/projects'
 import { useGetProjectSettings, useGetProjectSettingsRaw, useUpdateProjectSettings } from '@/queries/project-settings'
 import { useGetOrganization } from '@/queries/organizations'
 import { useListFolders } from '@/queries/folders'
+import { useResourcePermissions } from '@/queries/permissions'
+import { connectErrorMessage } from '@/lib/connect-toast'
+import {
+  deleteNamespacePermission,
+  hasPermission,
+  updateNamespacePermission,
+} from '@/lib/resource-permissions'
+import { namespaceForOrg, namespaceForProject } from '@/lib/scope-labels'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/settings/')({
   component: ProjectSettingsRoute,
@@ -69,9 +76,30 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
   const { data: projectSettings } = useGetProjectSettings(projectName)
   const updateProjectSettings = useUpdateProjectSettings(projectName)
 
-  // Fetch org data to check if user is org-level OWNER
+  // Fetch org data for display and parent picker context.
   const { data: org } = useGetOrganization(project?.organization ?? '')
-  const isOrgOwner = org?.userRole === Role.OWNER
+  const projectNamespace = namespaceForProject(projectName)
+  const orgNamespace = project?.organization ? namespaceForOrg(project.organization) : ''
+  const updateProjectPermission = useMemo(
+    () => updateNamespacePermission(projectNamespace),
+    [projectNamespace],
+  )
+  const deleteProjectPermission = useMemo(
+    () => deleteNamespacePermission(projectNamespace),
+    [projectNamespace],
+  )
+  const updateOrgPermission = useMemo(
+    () => updateNamespacePermission(orgNamespace),
+    [orgNamespace],
+  )
+  const permissionsQuery = useResourcePermissions([
+    updateProjectPermission,
+    deleteProjectPermission,
+    updateOrgPermission,
+  ])
+  const canWrite = hasPermission(permissionsQuery.data, updateProjectPermission)
+  const canDelete = hasPermission(permissionsQuery.data, deleteProjectPermission)
+  const canUpdateProjectSettings = hasPermission(permissionsQuery.data, updateOrgPermission)
 
   // Fetch all folders in the org for the parent picker
   const { data: allFolders } = useListFolders(project?.organization ?? '')
@@ -148,7 +176,7 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
       setPendingParent(null)
       toast.success('Parent changed')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      toast.error(connectErrorMessage(err))
     }
   }
 
@@ -158,7 +186,7 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
       setEditingDisplayName(false)
       toast.success('Saved')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      toast.error(connectErrorMessage(err))
     }
   }
 
@@ -168,7 +196,7 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
       setEditingDescription(false)
       toast.success('Saved')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      toast.error(connectErrorMessage(err))
     }
   }
 
@@ -185,10 +213,12 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
       await deleteProject.mutateAsync({ name: projectName })
       setDeleteOpen(false)
       navigate({ to: '/' })
-    } catch { /* error shown via mutation */ }
+    } catch (err) {
+      toast.error(connectErrorMessage(err))
+    }
   }
 
-  const isOwner = project?.userRole === Role.OWNER
+  const isOwner = canDelete
 
   if (isPending) {
     return (
@@ -292,14 +322,16 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
                 ) : (
                   <>
                     <span className="flex-1 text-sm">{displayName || <span className="text-muted-foreground">No display name</span>}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="edit display name"
-                      onClick={() => { setDraftDisplayName(displayName); setEditingDisplayName(true) }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+                    {canWrite && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="edit display name"
+                        onClick={() => { setDraftDisplayName(displayName); setEditingDisplayName(true) }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
@@ -334,7 +366,7 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
                 ) : (
                   <>
                     <span className="flex-1 text-sm">{currentParentDisplay}</span>
-                    {isOwner && (
+                    {canWrite && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -403,14 +435,16 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
                     <span className={`flex-1 text-sm ${description ? '' : 'text-muted-foreground'}`}>
                       {description || 'No description'}
                     </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="edit description"
-                      onClick={() => { setDraftDescription(description); setEditingDescription(true) }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+                    {canWrite && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="edit description"
+                        onClick={() => { setDraftDescription(description); setEditingDescription(true) }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
@@ -429,13 +463,13 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
                   id="deployments-toggle"
                   aria-label="Deployments"
                   checked={projectSettings?.deploymentsEnabled ?? false}
-                  disabled={!isOrgOwner || updateProjectSettings.isPending}
+                  disabled={!canUpdateProjectSettings || updateProjectSettings.isPending}
                   onCheckedChange={async (checked) => {
                     try {
                       await updateProjectSettings.mutateAsync({ deploymentsEnabled: checked })
                       toast.success('Saved')
                     } catch (err) {
-                      toast.error(err instanceof Error ? err.message : String(err))
+                      toast.error(connectErrorMessage(err))
                     }
                   }}
                 />
@@ -489,7 +523,7 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
           </DialogHeader>
           {deleteProject.error && (
             <Alert variant="destructive">
-              <AlertDescription>{deleteProject.error.message}</AlertDescription>
+              <AlertDescription>{connectErrorMessage(deleteProject.error)}</AlertDescription>
             </Alert>
           )}
           <DialogFooter>

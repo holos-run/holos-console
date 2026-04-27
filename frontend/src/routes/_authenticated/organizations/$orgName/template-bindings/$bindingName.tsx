@@ -14,19 +14,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import {
   useGetTemplatePolicyBinding,
   useUpdateTemplatePolicyBinding,
   useDeleteTemplatePolicyBinding,
 } from '@/queries/templatePolicyBindings'
+import { useResourcePermissions } from '@/queries/permissions'
 import { namespaceForOrg } from '@/lib/scope-labels'
-import { useGetOrganization } from '@/queries/organizations'
 import {
   BindingForm,
   type BindingScope,
 } from '@/components/template-policy-bindings/BindingForm'
 import { bindingProtoToDraft } from '@/components/template-policy-bindings/binding-draft'
+import { connectErrorMessage } from '@/lib/connect-toast'
+import {
+  deleteTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+  updateTemplateResourcePermission,
+} from '@/lib/resource-permissions'
 
 export const Route = createFileRoute(
   '/_authenticated/organizations/$orgName/template-bindings/$bindingName',
@@ -65,13 +71,25 @@ export function OrgTemplateBindingDetailPage({
 
   const navigate = useNavigate()
   const namespace = namespaceForOrg(orgName)
-  const { data: org } = useGetOrganization(orgName)
-  const userRole = org?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
-  // PERMISSION_TEMPLATE_POLICIES_DELETE is OWNER-only in the RBAC cascade;
-  // bindings reuse the policy permission family so the same constraint
-  // applies.
-  const canDelete = userRole === Role.OWNER
+  const updatePermission = useMemo(
+    () => updateTemplateResourcePermission(
+      templateResources.templatePolicyBindings,
+      namespace,
+      bindingName,
+    ),
+    [namespace, bindingName],
+  )
+  const deletePermission = useMemo(
+    () => deleteTemplateResourcePermission(
+      templateResources.templatePolicyBindings,
+      namespace,
+      bindingName,
+    ),
+    [namespace, bindingName],
+  )
+  const permissionsQuery = useResourcePermissions([updatePermission, deletePermission])
+  const canWrite = hasPermission(permissionsQuery.data, updatePermission)
+  const canDelete = hasPermission(permissionsQuery.data, deletePermission)
 
   const scopeType: BindingScope = forcedScopeType ?? 'organization'
 
@@ -167,8 +185,12 @@ export function OrgTemplateBindingDetailPage({
             pendingLabel="Saving..."
             isPending={updateMutation.isPending}
             onSubmit={async (values) => {
-              await updateMutation.mutateAsync(values)
-              toast.success('Binding saved')
+              try {
+                await updateMutation.mutateAsync(values)
+                toast.success('Binding saved')
+              } catch (err) {
+                toast.error(connectErrorMessage(err))
+              }
             }}
             onCancel={() => {
               void navigate({
@@ -206,7 +228,7 @@ export function OrgTemplateBindingDetailPage({
                   })
                   toast.success('Binding deleted')
                 } catch (err) {
-                  toast.error(err instanceof Error ? err.message : String(err))
+                  toast.error(connectErrorMessage(err))
                 }
               }}
             >

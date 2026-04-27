@@ -10,7 +10,6 @@
 
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { StandardPageLayout } from '@/components/page-layout'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
@@ -19,8 +18,13 @@ import {
   useListTemplateRequirements,
   useDeleteTemplateRequirement,
 } from '@/queries/templateRequirements'
-import { useGetOrganization } from '@/queries/organizations'
+import { useResourcePermissions } from '@/queries/permissions'
 import { namespaceForOrg } from '@/lib/scope-labels'
+import {
+  createTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+} from '@/lib/resource-permissions'
 
 // ---------------------------------------------------------------------------
 // Route
@@ -66,13 +70,14 @@ export function OrgTemplateRequirementsIndexPage({
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
 
-  const { data: org } = useGetOrganization(orgName)
-
-  const userRole = org?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
-
   // TemplateRequirements are org-scoped.
   const namespace = namespaceForOrg(orgName)
+  const createPermission = useMemo(
+    () => createTemplateResourcePermission(templateResources.templateRequirements, namespace),
+    [namespace],
+  )
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canCreate = hasPermission(permissionsQuery.data, createPermission)
 
   const {
     data: requirements = [],
@@ -113,10 +118,10 @@ export function OrgTemplateRequirementsIndexPage({
         id: 'TemplateRequirement',
         label: 'Template Requirement',
         newHref: `/organizations/${orgName}/template-requirements/new`,
-        canCreate: canWrite,
+        canCreate,
       },
     ],
-    [orgName, canWrite],
+    [orgName, canCreate],
   )
 
   // ---------------------------------------------------------------------------

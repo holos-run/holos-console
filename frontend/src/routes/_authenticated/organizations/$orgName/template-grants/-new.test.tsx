@@ -76,12 +76,14 @@ vi.mock('@/components/scope-picker/ScopePicker', async () => {
 import { useCreateTemplateGrant } from '@/queries/templateGrants'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 import { CreateOrgTemplateGrantPage } from './new'
 
 function setupMocks(
   mutateAsync = vi.fn().mockResolvedValue({}),
   userRole: Role = Role.OWNER,
 ) {
+  mockResourcePermissionsForRole(userRole)
   ;(useCreateTemplateGrant as Mock).mockReturnValue({
     mutateAsync,
     isPending: false,

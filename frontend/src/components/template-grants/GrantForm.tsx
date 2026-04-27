@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import type { TemplateGrantFromRef, TemplateGrantToRef } from '@/queries/templateGrants'
+import { connectErrorMessage } from '@/lib/connect-toast'
 
 /**
  * GrantFormValues are the shape of data emitted by GrantForm on submit.
@@ -43,8 +44,6 @@ export type GrantFormProps = {
  * namespace, optionally narrowed to specific templates (to).
  */
 export function GrantForm({
-  mode: _mode,
-  namespace: _namespace,
   canWrite,
   initialValues,
   submitLabel,
@@ -95,7 +94,7 @@ export function GrantForm({
         to: toRefs,
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(connectErrorMessage(err))
     }
   }
 

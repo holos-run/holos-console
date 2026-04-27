@@ -1,14 +1,18 @@
+import { useMemo, useState } from 'react'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useCreateTemplateDependency } from '@/queries/templateDependencies'
+import { useResourcePermissions } from '@/queries/permissions'
 import { namespaceForProject } from '@/lib/scope-labels'
-import { useGetOrganization } from '@/queries/organizations'
 import { useProject } from '@/lib/project-context'
 import { ScopePicker } from '@/components/scope-picker/ScopePicker'
 import type { Scope } from '@/components/scope-picker/ScopePicker'
 import { DependencyForm } from '@/components/template-dependencies/DependencyForm'
-import { useState } from 'react'
+import {
+  createTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+} from '@/lib/resource-permissions'
 
 export const Route = createFileRoute(
   '/_authenticated/organizations/$orgName/template-dependencies/new',
@@ -36,11 +40,7 @@ export function CreateOrgTemplateDependencyPage({
   const orgName = propOrgName ?? routeOrgName ?? ''
 
   const navigate = useNavigate()
-  const { data: org } = useGetOrganization(orgName)
   const { selectedProject } = useProject()
-
-  const userRole = org?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
   // ScopePicker controls which namespace the dependency is created in.
   // Defaults to 'project' if a project is selected, else 'organization'.
@@ -52,6 +52,12 @@ export function CreateOrgTemplateDependencyPage({
       : ''
 
   const createMutation = useCreateTemplateDependency(namespace)
+  const createPermission = useMemo(
+    () => createTemplateResourcePermission(templateResources.templateDependencies, namespace),
+    [namespace],
+  )
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canWrite = hasPermission(permissionsQuery.data, createPermission)
 
   return (
     <Card>

@@ -10,6 +10,7 @@ import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 
 // ---------------------------------------------------------------------------
 // Router mock — Route.useParams / useSearch / useNavigate
@@ -93,6 +94,7 @@ function setupMocks({
   error?: Error | null
   userRole?: number
 } = {}) {
+  mockResourcePermissionsForRole(userRole)
   ;(useAllSecretsForProject as Mock).mockReturnValue({ data: rows, isPending, error })
   ;(useDeleteSecret as Mock).mockReturnValue({
     mutateAsync: vi.fn().mockResolvedValue(undefined),

@@ -22,6 +22,7 @@ import { Info } from 'lucide-react'
 import { useCreateOrganization } from '@/queries/organizations'
 import { toSlug } from '@/lib/slug'
 import { resolveReturnTo } from '@/lib/return-to'
+import { connectErrorMessage } from '@/lib/connect-toast'
 
 // No orgName search param: organizations have no parent entity, so callers
 // pass only returnTo. This is an intentional omission — see HOL-934 audit.
@@ -84,7 +85,7 @@ export function OrganizationNewPage({ returnTo }: { returnTo?: string }) {
       const target = resolveReturnTo(returnTo, fallback)
       navigate({ to: target })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create organization')
+      setError(connectErrorMessage(err))
     }
   }
 

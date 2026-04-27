@@ -68,14 +68,14 @@ export type PermissionsMap = Record<string, ResourcePermission>
 // is authenticated and the attributes list is non-empty.
 export function useResourcePermissions(attributes: ResourcePermissionInput[]) {
   const { isAuthenticated } = useAuth()
+  const permissionKeys = useMemo(
+    () => attributes.map(permissionKey),
+    [attributes],
+  )
   const transport = useTransport()
   const client = useMemo(
     () => createClient(PermissionsService, transport),
     [transport],
-  )
-  const permissionKeys = useMemo(
-    () => attributes.map(permissionKey),
-    [attributes],
   )
   return useQuery({
     queryKey: keys.permissions.list(permissionKeys),

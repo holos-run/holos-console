@@ -20,6 +20,7 @@ import { useAuth } from '@/lib/auth'
 import { useCreateSecret } from '@/queries/secrets'
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { connectErrorMessage } from '@/lib/connect-toast'
 
 interface CreateGrant {
   principal: string
@@ -101,7 +102,7 @@ export function SecretCreatePage({ projectName }: { projectName: string }) {
         params: { projectName, name: name.trim() },
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(connectErrorMessage(err))
     }
   }
 

@@ -22,6 +22,7 @@ import { isSafeUrl } from '@/lib/utils'
 import { useGetSecret, useGetSecretMetadata, useGetSecretRaw, useUpdateSecret, useUpdateSecretSharing, useDeleteSecret } from '@/queries/secrets'
 import type { ShareGrant } from '@/gen/holos/console/v1/secrets_pb.js'
 import { isOwner as computeIsOwner } from '@/lib/isOwner'
+import { connectErrorMessage } from '@/lib/connect-toast'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/secrets/$name')({
   component: SecretPage,
@@ -156,7 +157,7 @@ export function SecretPage() {
       // next Raw view switch will fetch fresh data.
       setRawEnabled(false)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err))
+      setSaveError(connectErrorMessage(err))
     }
   }
 
@@ -174,7 +175,9 @@ export function SecretPage() {
       await deleteMutation.mutateAsync(name)
       setDeleteOpen(false)
       navigate({ to: '/projects/$projectName/secrets', params: { projectName } })
-    } catch { /* error via mutation */ }
+    } catch (err) {
+      setSaveError(connectErrorMessage(err))
+    }
   }
 
   const isLoading = dataLoading || metaLoading
@@ -352,7 +355,9 @@ export function SecretPage() {
             </DialogDescription>
           </DialogHeader>
           {deleteMutation.error && (
-            <Alert variant="destructive"><AlertDescription>{deleteMutation.error.message}</AlertDescription></Alert>
+            <Alert variant="destructive">
+              <AlertDescription>{connectErrorMessage(deleteMutation.error)}</AlertDescription>
+            </Alert>
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleteOpen(false)}>Cancel</Button>
