@@ -9,8 +9,10 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/sharing/legacy"
+	authv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,6 +30,34 @@ func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient 
 	return &K8sClient{client: client, Resolver: r}
 }
 
+func (c *K8sClient) clientset(ctx context.Context) kubernetes.Interface {
+	if rpc.HasImpersonatedClients(ctx) {
+		return rpc.ImpersonatedClientsetFromContext(ctx)
+	}
+	return c.client
+}
+
+func (c *K8sClient) canVerbNamespace(ctx context.Context, verb, name string) (bool, error) {
+	if !rpc.HasImpersonatedClients(ctx) {
+		return true, nil
+	}
+	review := &authv1.SelfSubjectAccessReview{
+		Spec: authv1.SelfSubjectAccessReviewSpec{
+			ResourceAttributes: &authv1.ResourceAttributes{
+				Verb:     verb,
+				Group:    "",
+				Resource: "namespaces",
+				Name:     name,
+			},
+		},
+	}
+	got, err := rpc.ImpersonatedClientsetFromContext(ctx).AuthorizationV1().SelfSubjectAccessReviews().Create(ctx, review, metav1.CreateOptions{})
+	if err != nil {
+		return false, err
+	}
+	return got.Status.Allowed, nil
+}
+
 // ListFolders returns all folder namespaces. When org is non-empty, filters by
 // organization label. When parentNs is non-empty, filters to direct children of
 // that parent namespace.
@@ -40,6 +70,10 @@ func (c *K8sClient) ListFolders(ctx context.Context, org, parentNs string) ([]*c
 	slog.DebugContext(ctx, "listing folders from kubernetes",
 		slog.String("labelSelector", labelSelector),
 	)
+	// ADR 036 keeps Kubernetes as the authorizer. The service-account list is
+	// only a candidate index; each row returned to the caller is re-read below
+	// through the impersonated request client so per-resource get RBAC filters
+	// the response without granting broad namespace list.
 	list, err := c.client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{
 		LabelSelector: labelSelector,
 	})
@@ -70,7 +104,26 @@ func (c *K8sClient) ListFolders(ctx context.Context, org, parentNs string) ([]*c
 		}
 		result = append(result, ns)
 	}
-	return result, nil
+	if !rpc.HasImpersonatedClients(ctx) {
+		return result, nil
+	}
+	authorized := make([]*corev1.Namespace, 0, len(result))
+	for _, ns := range result {
+		name, err := c.Resolver.FolderFromNamespace(ns.Name)
+		if err != nil {
+			return nil, err
+		}
+		got, err := c.GetFolder(ctx, name)
+		if err == nil {
+			authorized = append(authorized, got)
+			continue
+		}
+		if k8serrors.IsForbidden(err) || k8serrors.IsNotFound(err) {
+			continue
+		}
+		return nil, err
+	}
+	return authorized, nil
 }
 
 // GetFolder retrieves a managed folder namespace by name.
@@ -81,7 +134,7 @@ func (c *K8sClient) GetFolder(ctx context.Context, name string) (*corev1.Namespa
 		slog.String("name", name),
 		slog.String("namespace", nsName),
 	)
-	ns, err := c.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
+	ns, err := c.clientset(ctx).CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +150,7 @@ func (c *K8sClient) GetFolder(ctx context.Context, name string) (*corev1.Namespa
 // GetNamespace retrieves any namespace by its full Kubernetes name.
 // Used for walking the parent chain during depth enforcement.
 func (c *K8sClient) GetNamespace(ctx context.Context, nsName string) (*corev1.Namespace, error) {
-	return c.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
+	return c.clientset(ctx).CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
 }
 
 // NamespaceExists returns true if a namespace with the given name exists.
@@ -221,7 +274,7 @@ func (c *K8sClient) UpdateFolder(ctx context.Context, name string, displayName, 
 			ns.Annotations[v1alpha2.AnnotationDescription] = *description
 		}
 	}
-	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // UpdateParentLabel updates the parent label on a folder namespace.
@@ -238,7 +291,7 @@ func (c *K8sClient) UpdateParentLabel(ctx context.Context, name, newParentNs str
 		ns.Labels = make(map[string]string)
 	}
 	ns.Labels[v1alpha2.AnnotationParent] = newParentNs
-	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // DeleteFolder deletes a managed folder namespace.
@@ -250,7 +303,7 @@ func (c *K8sClient) DeleteFolder(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	return c.client.CoreV1().Namespaces().Delete(ctx, ns.Name, metav1.DeleteOptions{})
+	return c.clientset(ctx).CoreV1().Namespaces().Delete(ctx, ns.Name, metav1.DeleteOptions{})
 }
 
 // UpdateFolderSharing updates the sharing annotations on a folder.
@@ -280,7 +333,7 @@ func (c *K8sClient) UpdateFolderSharing(ctx context.Context, name string, shareU
 	ns.Annotations[v1alpha2.AnnotationShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
 	ns.Annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
-	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // UpdateFolderDefaultSharing updates the default sharing annotations on a folder.
@@ -305,7 +358,7 @@ func (c *K8sClient) UpdateFolderDefaultSharing(ctx context.Context, name string,
 	}
 	ns.Annotations[v1alpha2.AnnotationDefaultShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationDefaultShareRoles] = string(rolesJSON)
-	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // ListChildFolders returns all folder namespaces whose parent label equals the given namespace.

@@ -44,33 +44,52 @@ func TestEnsureTopResourceRBACProvisioningForEveryKind(t *testing.T) {
 				t.Fatalf("roles = %d, want 3", len(roles.Items))
 			}
 			gotVerbs := make(map[string][]string)
-			var ownerRules []rbacv1.PolicyRule
 			for _, role := range roles.Items {
 				if len(role.OwnerReferences) != 1 {
 					t.Fatalf("Role %q ownerRefs = %d, want 1", role.Name, len(role.OwnerReferences))
 				}
 				assertNamespaceOwnerRef(t, role.OwnerReferences[0], tc.namespace, types.UID("uid-"+tc.namespace))
-				if len(role.Rules) != 2 {
-					t.Fatalf("Role %q rules = %d, want resource rule plus list rule", role.Name, len(role.Rules))
+				if len(role.Rules) != 1 {
+					t.Fatalf("Role %q rules = %d, want resource rule", role.Name, len(role.Rules))
 				}
 				rule := role.Rules[0]
 				assertStringSlice(t, rule.APIGroups, []string{""})
 				assertStringSlice(t, rule.Resources, []string{"namespaces"})
 				assertStringSlice(t, rule.ResourceNames, []string{tc.namespace})
-				listRule := role.Rules[1]
-				assertStringSlice(t, listRule.APIGroups, []string{""})
-				assertStringSlice(t, listRule.Resources, []string{"namespaces"})
-				assertStringSlice(t, listRule.ResourceNames, nil)
-				assertStringSlice(t, listRule.Verbs, []string{"list"})
 				gotVerbs[RoleFromLabels(role.Labels)] = append([]string(nil), rule.Verbs...)
-				if RoleFromLabels(role.Labels) == RoleOwner {
-					ownerRules = role.Rules
-				}
 			}
 			assertStringSlice(t, gotVerbs[RoleViewer], []string{"get"})
 			assertStringSlice(t, gotVerbs[RoleEditor], []string{"get", "update", "patch"})
 			assertStringSlice(t, gotVerbs[RoleOwner], []string{"get", "update", "patch", "delete"})
-			assertNoClusterOwnerDelegationRules(t, ownerRules)
+
+			childRoles, err := client.RbacV1().Roles(tc.namespace).List(context.Background(), metav1.ListOptions{})
+			if err != nil {
+				t.Fatalf("list child roles: %v", err)
+			}
+			if len(childRoles.Items) != 3 {
+				t.Fatalf("child roles = %d, want 3", len(childRoles.Items))
+			}
+			gotChildVerbs := make(map[string][]string)
+			for _, role := range childRoles.Items {
+				if len(role.Rules) != 1 {
+					t.Fatalf("child role %q rules = %d, want 1", role.Name, len(role.Rules))
+				}
+				rule := role.Rules[0]
+				assertStringSlice(t, rule.APIGroups, []string{TemplatesAPIGroup})
+				assertStringSlice(t, rule.Resources, []string{
+					"templatedependencies",
+					"templategrants",
+					"templatepolicies",
+					"templatepolicybindings",
+					"templatereleases",
+					"templaterequirements",
+					"templates",
+				})
+				gotChildVerbs[RoleFromLabels(role.Labels)] = append([]string(nil), rule.Verbs...)
+			}
+			assertStringSlice(t, gotChildVerbs[RoleViewer], []string{"get"})
+			assertStringSlice(t, gotChildVerbs[RoleEditor], []string{"get", "create", "update", "patch"})
+			assertStringSlice(t, gotChildVerbs[RoleOwner], []string{"get", "create", "update", "patch", "delete"})
 		})
 	}
 }
@@ -104,6 +123,17 @@ func TestEnsureTopResourceRBACDevPersonaBindings(t *testing.T) {
 	assertClusterBinding(t, bindings.Items, "oidc:owner", rbacv1.GroupKind, RoleName("holos-prj-demo", Projects, RoleOwner))
 	assertClusterBinding(t, bindings.Items, "oidc:editor", rbacv1.GroupKind, RoleName("holos-prj-demo", Projects, RoleEditor))
 	assertClusterBinding(t, bindings.Items, "oidc:viewer", rbacv1.GroupKind, RoleName("holos-prj-demo", Projects, RoleViewer))
+
+	childBindings, err := client.RbacV1().RoleBindings("holos-prj-demo").List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("list child rolebindings: %v", err)
+	}
+	assertBinding(t, childBindings.Items, "oidc:platform-sub", rbacv1.UserKind, topResourceChildRoleName(Projects, RoleOwner))
+	assertBinding(t, childBindings.Items, "oidc:product-sub", rbacv1.UserKind, topResourceChildRoleName(Projects, RoleEditor))
+	assertBinding(t, childBindings.Items, "oidc:sre-sub", rbacv1.UserKind, topResourceChildRoleName(Projects, RoleViewer))
+	assertBinding(t, childBindings.Items, "oidc:owner", rbacv1.GroupKind, topResourceChildRoleName(Projects, RoleOwner))
+	assertBinding(t, childBindings.Items, "oidc:editor", rbacv1.GroupKind, topResourceChildRoleName(Projects, RoleEditor))
+	assertBinding(t, childBindings.Items, "oidc:viewer", rbacv1.GroupKind, topResourceChildRoleName(Projects, RoleViewer))
 }
 
 func TestEnsureTopResourceRBACUsesRBACShareUsersAnnotation(t *testing.T) {
@@ -136,6 +166,14 @@ func TestEnsureTopResourceRBACUsesRBACShareUsersAnnotation(t *testing.T) {
 	assertClusterBinding(t, bindings.Items, "oidc:alice-sub", rbacv1.UserKind, RoleName("holos-prj-demo", Projects, RoleEditor))
 	assertNoClusterBinding(t, bindings.Items, "oidc:creator-sub")
 	assertNoClusterBinding(t, bindings.Items, "oidc:alice@example.com")
+
+	childBindings, err := client.RbacV1().RoleBindings("holos-prj-demo").List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("list child rolebindings: %v", err)
+	}
+	assertBinding(t, childBindings.Items, "oidc:alice-sub", rbacv1.UserKind, topResourceChildRoleName(Projects, RoleEditor))
+	assertNoBinding(t, childBindings.Items, "oidc:creator-sub")
+	assertNoBinding(t, childBindings.Items, "oidc:alice@example.com")
 }
 
 func TestEnsureTopResourceRBACFiltersInactiveGrants(t *testing.T) {
@@ -250,6 +288,20 @@ func assertClusterBinding(t *testing.T, bindings []rbacv1.ClusterRoleBinding, su
 	t.Fatalf("missing binding subject=%s kind=%s roleRef=%s in %#v", subjectName, subjectKind, roleRef, bindings)
 }
 
+func assertBinding(t *testing.T, bindings []rbacv1.RoleBinding, subjectName, subjectKind, roleRef string) {
+	t.Helper()
+	for _, binding := range bindings {
+		if binding.RoleRef.Name != roleRef || len(binding.Subjects) != 1 {
+			continue
+		}
+		subject := binding.Subjects[0]
+		if subject.Name == subjectName && subject.Kind == subjectKind {
+			return
+		}
+	}
+	t.Fatalf("missing binding subject=%s kind=%s roleRef=%s in %#v", subjectName, subjectKind, roleRef, bindings)
+}
+
 func assertNoClusterBinding(t *testing.T, bindings []rbacv1.ClusterRoleBinding, subjectName string) {
 	t.Helper()
 	for _, binding := range bindings {
@@ -259,13 +311,11 @@ func assertNoClusterBinding(t *testing.T, bindings []rbacv1.ClusterRoleBinding, 
 	}
 }
 
-func assertNoClusterOwnerDelegationRules(t *testing.T, rules []rbacv1.PolicyRule) {
+func assertNoBinding(t *testing.T, bindings []rbacv1.RoleBinding, subjectName string) {
 	t.Helper()
-	for _, rule := range rules {
-		for _, resource := range rule.Resources {
-			if resource == "clusterroles" || resource == "clusterrolebindings" {
-				t.Fatalf("owner rules grant cluster-scoped RBAC mutation: %#v", rules)
-			}
+	for _, binding := range bindings {
+		if len(binding.Subjects) == 1 && binding.Subjects[0].Name == subjectName {
+			t.Fatalf("unexpected binding for subject=%s: %#v", subjectName, binding)
 		}
 	}
 }

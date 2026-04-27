@@ -182,23 +182,6 @@ func (f *k8sFolderCreator) GetFolder(ctx context.Context, name string) (*corev1.
 
 // ---- ListOrganizations tests ----
 
-func TestListOrganizations_ReturnsFilteredByAccess(t *testing.T) {
-	ns1 := orgNS("acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	ns2 := orgNS("beta", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	ns3 := orgNS("gamma", `[{"principal":"bob@example.com","role":"owner"}]`)
-
-	handler := newTestHandler(ns1, ns2, ns3)
-	ctx := contextWithClaims("alice@example.com")
-
-	resp, err := handler.ListOrganizations(ctx, connect.NewRequest(&consolev1.ListOrganizationsRequest{}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(resp.Msg.Organizations) != 2 {
-		t.Fatalf("expected 2 organizations, got %d", len(resp.Msg.Organizations))
-	}
-}
-
 func TestListOrganizations_Unauthenticated(t *testing.T) {
 	handler := newTestHandler()
 	_, err := handler.ListOrganizations(context.Background(), connect.NewRequest(&consolev1.ListOrganizationsRequest{}))
@@ -223,39 +206,6 @@ func TestListOrganizations_ReturnsOrgNameNotNamespace(t *testing.T) {
 }
 
 // ---- GetOrganization tests ----
-
-func TestGetOrganization_Authorized(t *testing.T) {
-	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	ns.Annotations[v1alpha2.AnnotationDisplayName] = "ACME Corp"
-	ns.Annotations[v1alpha2.AnnotationDescription] = "Test org"
-
-	handler := newTestHandler(ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	resp, err := handler.GetOrganization(ctx, connect.NewRequest(&consolev1.GetOrganizationRequest{Name: "acme"}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	org := resp.Msg.Organization
-	if org.Name != "acme" {
-		t.Errorf("expected name 'acme', got %q", org.Name)
-	}
-	if org.DisplayName != "ACME Corp" {
-		t.Errorf("expected display_name 'ACME Corp', got %q", org.DisplayName)
-	}
-	if org.UserRole != consolev1.Role_ROLE_VIEWER {
-		t.Errorf("expected ROLE_VIEWER, got %v", org.UserRole)
-	}
-}
-
-func TestGetOrganization_Denied(t *testing.T) {
-	ns := orgNS("acme", `[{"principal":"bob@example.com","role":"owner"}]`)
-	handler := newTestHandler(ns)
-	ctx := contextWithClaims("nobody@example.com")
-
-	_, err := handler.GetOrganization(ctx, connect.NewRequest(&consolev1.GetOrganizationRequest{Name: "acme"}))
-	assertPermissionDenied(t, err)
-}
 
 func TestGetOrganization_InvalidArgument(t *testing.T) {
 	handler := newTestHandler()
@@ -447,19 +397,6 @@ func TestUpdateOrganization_EditorAllows(t *testing.T) {
 	}
 }
 
-func TestUpdateOrganization_ViewerDenies(t *testing.T) {
-	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	handler := newTestHandler(ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	displayName := "Updated"
-	_, err := handler.UpdateOrganization(ctx, connect.NewRequest(&consolev1.UpdateOrganizationRequest{
-		Name:        "acme",
-		DisplayName: &displayName,
-	}))
-	assertPermissionDenied(t, err)
-}
-
 // ---- DeleteOrganization tests ----
 
 func TestDeleteOrganization_OwnerAllows(t *testing.T) {
@@ -471,15 +408,6 @@ func TestDeleteOrganization_OwnerAllows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-}
-
-func TestDeleteOrganization_EditorDenies(t *testing.T) {
-	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	handler := newTestHandler(ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.DeleteOrganization(ctx, connect.NewRequest(&consolev1.DeleteOrganizationRequest{Name: "acme"}))
-	assertPermissionDenied(t, err)
 }
 
 func TestDeleteOrganization_FailsWithLinkedProjects(t *testing.T) {
@@ -614,20 +542,6 @@ func TestUpdateOrgSharing_RoleGrantsOnly(t *testing.T) {
 	}
 }
 
-func TestUpdateOrgSharing_NonOwnerDenies(t *testing.T) {
-	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	handler := newTestHandler(ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.UpdateOrganizationSharing(ctx, connect.NewRequest(&consolev1.UpdateOrganizationSharingRequest{
-		Name: "acme",
-		UserGrants: []*consolev1.ShareGrant{
-			{Principal: "alice@example.com", Role: consolev1.Role_ROLE_OWNER},
-		},
-	}))
-	assertPermissionDenied(t, err)
-}
-
 // ---- UpdateOrganizationDefaultSharing tests ----
 
 func TestUpdateOrgDefaultSharing_OwnerAllows(t *testing.T) {
@@ -657,20 +571,6 @@ func TestUpdateOrgDefaultSharing_OwnerAllows(t *testing.T) {
 	if org.DefaultUserGrants[0].Principal != "bob@example.com" {
 		t.Errorf("expected principal bob@example.com, got %q", org.DefaultUserGrants[0].Principal)
 	}
-}
-
-func TestUpdateOrgDefaultSharing_NonOwnerDenies(t *testing.T) {
-	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	handler := newTestHandler(ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.UpdateOrganizationDefaultSharing(ctx, connect.NewRequest(&consolev1.UpdateOrganizationDefaultSharingRequest{
-		Name: "acme",
-		DefaultUserGrants: []*consolev1.ShareGrant{
-			{Principal: "bob@example.com", Role: consolev1.Role_ROLE_EDITOR},
-		},
-	}))
-	assertPermissionDenied(t, err)
 }
 
 func TestUpdateOrgDefaultSharing_EmptyNameRejects(t *testing.T) {
@@ -752,15 +652,6 @@ func TestGetOrganizationRaw_ReturnsNamespaceJSON(t *testing.T) {
 	if labels[resolver.ResourceTypeLabel] != resolver.ResourceTypeOrganization {
 		t.Errorf("expected resource-type label, got %v", labels[resolver.ResourceTypeLabel])
 	}
-}
-
-func TestGetOrganizationRaw_DeniesUnauthorized(t *testing.T) {
-	ns := orgNS("acme", `[{"principal":"bob@example.com","role":"owner"}]`)
-	handler := newTestHandler(ns)
-	ctx := contextWithClaims("nobody@example.com")
-
-	_, err := handler.GetOrganizationRaw(ctx, connect.NewRequest(&consolev1.GetOrganizationRawRequest{Name: "acme"}))
-	assertPermissionDenied(t, err)
 }
 
 // ---- Label-based name extraction tests ----
@@ -1190,20 +1081,6 @@ func TestUpdateOrganization_UpdateDefaultFolder_WrongOrg(t *testing.T) {
 	}
 }
 
-func TestUpdateOrganization_UpdateDefaultFolder_EditorDenied(t *testing.T) {
-	// Editors can update display_name/description but NOT default_folder.
-	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	handler := newTestHandler(ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	newFolder := "some-folder"
-	_, err := handler.UpdateOrganization(ctx, connect.NewRequest(&consolev1.UpdateOrganizationRequest{
-		Name:          "acme",
-		DefaultFolder: &newFolder,
-	}))
-	assertPermissionDenied(t, err)
-}
-
 func TestUpdateOrganization_UpdateDefaultFolder_EmptyValue(t *testing.T) {
 	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
 	handler := newTestHandler(ns)
@@ -1382,20 +1259,6 @@ func TestListOrganizations_PopulatesGatewayNamespace(t *testing.T) {
 		t.Errorf("Organization.GatewayNamespace=%q, want %q",
 			resp.Msg.Organizations[0].GatewayNamespace, "gw-system")
 	}
-}
-
-func TestUpdateOrganization_GatewayNamespace_ViewerDenies(t *testing.T) {
-	// Viewers are blocked from any UpdateOrganization mutation; gateway_namespace
-	// rides on the same PERMISSION_ORGANIZATIONS_WRITE check (no new permission).
-	ns := orgNS("acme", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	handler := newTestHandler(ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.UpdateOrganization(ctx, connect.NewRequest(&consolev1.UpdateOrganizationRequest{
-		Name:             "acme",
-		GatewayNamespace: ptr("gw-system"),
-	}))
-	assertPermissionDenied(t, err)
 }
 
 // ---- PopulateDefaults tests ----

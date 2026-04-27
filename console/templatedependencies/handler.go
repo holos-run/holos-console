@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"connectrpc.com/connect"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -17,7 +18,6 @@ import (
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
-	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -42,17 +42,40 @@ func NewK8sClient(client ctrlclient.Client) *K8sClient {
 	return &K8sClient{client: client}
 }
 
+func (k *K8sClient) requestClient(ctx context.Context) ctrlclient.Client {
+	if cl := rpc.ImpersonatedCtrlClientFromContext(ctx); cl != nil && rpc.HasImpersonatedClients(ctx) {
+		return cl
+	}
+	return k.client
+}
+
 func (k *K8sClient) ListDependencies(ctx context.Context, namespace string) ([]templatesv1alpha1.TemplateDependency, error) {
 	var list templatesv1alpha1.TemplateDependencyList
 	if err := k.client.List(ctx, &list, ctrlclient.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("listing template dependencies in %q: %w", namespace, err)
 	}
-	return list.Items, nil
+	if !rpc.HasImpersonatedClients(ctx) {
+		return list.Items, nil
+	}
+	out := make([]templatesv1alpha1.TemplateDependency, 0, len(list.Items))
+	client := k.requestClient(ctx)
+	for i := range list.Items {
+		var got templatesv1alpha1.TemplateDependency
+		key := types.NamespacedName{Namespace: list.Items[i].Namespace, Name: list.Items[i].Name}
+		if err := client.Get(ctx, key, &got); err != nil {
+			if k8serrors.IsForbidden(err) || k8serrors.IsNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		out = append(out, got)
+	}
+	return out, nil
 }
 
 func (k *K8sClient) GetDependency(ctx context.Context, namespace, name string) (*templatesv1alpha1.TemplateDependency, error) {
 	var d templatesv1alpha1.TemplateDependency
-	if err := k.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &d); err != nil {
+	if err := k.requestClient(ctx).Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &d); err != nil {
 		return nil, err
 	}
 	return &d, nil
@@ -76,7 +99,7 @@ func (k *K8sClient) CreateDependency(ctx context.Context, dep *consolev1.Templat
 			CascadeDelete: dep.CascadeDelete,
 		},
 	}
-	if err := k.client.Create(ctx, d); err != nil {
+	if err := k.requestClient(ctx).Create(ctx, d); err != nil {
 		return nil, err
 	}
 	return d, nil
@@ -92,14 +115,14 @@ func (k *K8sClient) UpdateDependency(ctx context.Context, namespace string, dep 
 	if dep.CascadeDelete != nil {
 		d.Spec.CascadeDelete = dep.CascadeDelete
 	}
-	if err := k.client.Update(ctx, d); err != nil {
+	if err := k.requestClient(ctx).Update(ctx, d); err != nil {
 		return nil, err
 	}
 	return d, nil
 }
 
 func (k *K8sClient) DeleteDependency(ctx context.Context, namespace, name string) error {
-	return k.client.Delete(ctx, &templatesv1alpha1.TemplateDependency{
+	return k.requestClient(ctx).Delete(ctx, &templatesv1alpha1.TemplateDependency{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
 	})
 }
@@ -129,7 +152,10 @@ func (h *Handler) ListTemplateDependencies(
 	if err != nil {
 		return nil, err
 	}
-	claims, err := h.claimsAndAccess(ctx, project, rbac.PermissionTemplatesList)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +195,10 @@ func (h *Handler) GetTemplateDependency(
 	if name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
 	}
-	claims, err := h.claimsAndAccess(ctx, project, rbac.PermissionTemplatesRead)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +237,10 @@ func (h *Handler) CreateTemplateDependency(
 	if err := validateDependency(req.Msg.GetNamespace(), dep); err != nil {
 		return nil, err
 	}
-	claims, err := h.claimsAndAccess(ctx, project, rbac.PermissionTemplatesWrite)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +277,10 @@ func (h *Handler) UpdateTemplateDependency(
 	if err := validateDependency(req.Msg.GetNamespace(), dep); err != nil {
 		return nil, err
 	}
-	claims, err := h.claimsAndAccess(ctx, project, rbac.PermissionTemplatesWrite)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +313,10 @@ func (h *Handler) DeleteTemplateDependency(
 	if name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
 	}
-	claims, err := h.claimsAndAccess(ctx, project, rbac.PermissionTemplatesDelete)
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -318,25 +356,6 @@ func (h *Handler) extractDependencyScope(namespace string) (string, error) {
 		return "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("project name is required"))
 	}
 	return name, nil
-}
-
-func (h *Handler) claimsAndAccess(ctx context.Context, project string, perm rbac.Permission) (*rpc.Claims, error) {
-	claims := rpc.ClaimsFromContext(ctx)
-	if claims == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-	if h.projectGrantResolver == nil {
-		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
-	}
-	users, roles, err := h.projectGrantResolver.GetProjectGrants(ctx, project)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to resolve project grants", slog.String("project", project), slog.Any("error", err))
-		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
-	}
-	if err := rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplateCascadePerms); err != nil {
-		return nil, err
-	}
-	return claims, nil
 }
 
 func validateDependency(reqNamespace string, dep *consolev1.TemplateDependency) error {

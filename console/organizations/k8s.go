@@ -9,9 +9,12 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/sharing/legacy"
+	authv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -27,6 +30,34 @@ func NewK8sClient(client kubernetes.Interface, r *resolver.Resolver) *K8sClient 
 	return &K8sClient{client: client, resolver: r}
 }
 
+func (c *K8sClient) clientset(ctx context.Context) kubernetes.Interface {
+	if rpc.HasImpersonatedClients(ctx) {
+		return rpc.ImpersonatedClientsetFromContext(ctx)
+	}
+	return c.client
+}
+
+func (c *K8sClient) canVerbNamespace(ctx context.Context, verb, name string) (bool, error) {
+	if !rpc.HasImpersonatedClients(ctx) {
+		return true, nil
+	}
+	review := &authv1.SelfSubjectAccessReview{
+		Spec: authv1.SelfSubjectAccessReviewSpec{
+			ResourceAttributes: &authv1.ResourceAttributes{
+				Verb:     verb,
+				Group:    "",
+				Resource: "namespaces",
+				Name:     name,
+			},
+		},
+	}
+	got, err := rpc.ImpersonatedClientsetFromContext(ctx).AuthorizationV1().SelfSubjectAccessReviews().Create(ctx, review, metav1.CreateOptions{})
+	if err != nil {
+		return false, err
+	}
+	return got.Status.Allowed, nil
+}
+
 // ListOrganizations returns all namespaces with the organization resource-type label.
 func (c *K8sClient) ListOrganizations(ctx context.Context) ([]*corev1.Namespace, error) {
 	labelSelector := v1alpha2.LabelManagedBy + "=" + v1alpha2.ManagedByValue + "," +
@@ -34,6 +65,10 @@ func (c *K8sClient) ListOrganizations(ctx context.Context) ([]*corev1.Namespace,
 	slog.DebugContext(ctx, "listing organizations from kubernetes",
 		slog.String("labelSelector", labelSelector),
 	)
+	// ADR 036 keeps Kubernetes as the authorizer. The service-account list is
+	// only a candidate index; each row returned to the caller is re-read below
+	// through the impersonated request client so per-resource get RBAC filters
+	// the response without granting broad namespace list.
 	list, err := c.client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{
 		LabelSelector: labelSelector,
 	})
@@ -57,7 +92,26 @@ func (c *K8sClient) ListOrganizations(ctx context.Context) ([]*corev1.Namespace,
 		}
 		result = append(result, &list.Items[i])
 	}
-	return result, nil
+	if !rpc.HasImpersonatedClients(ctx) {
+		return result, nil
+	}
+	authorized := make([]*corev1.Namespace, 0, len(result))
+	for _, ns := range result {
+		name, err := c.resolver.OrgFromNamespace(ns.Name)
+		if err != nil {
+			return nil, err
+		}
+		got, err := c.GetOrganization(ctx, name)
+		if err == nil {
+			authorized = append(authorized, got)
+			continue
+		}
+		if k8serrors.IsForbidden(err) || k8serrors.IsNotFound(err) {
+			continue
+		}
+		return nil, err
+	}
+	return authorized, nil
 }
 
 // GetOrganization retrieves a managed organization namespace by name.
@@ -68,7 +122,7 @@ func (c *K8sClient) GetOrganization(ctx context.Context, name string) (*corev1.N
 		slog.String("name", name),
 		slog.String("namespace", nsName),
 	)
-	ns, err := c.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
+	ns, err := c.clientset(ctx).CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +223,7 @@ func (c *K8sClient) UpdateOrganization(ctx context.Context, name string, display
 			ns.Annotations[v1alpha2.AnnotationGatewayNamespace] = *gatewayNamespace
 		}
 	}
-	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // DeleteOrganization deletes a managed organization namespace.
@@ -183,7 +237,7 @@ func (c *K8sClient) DeleteOrganization(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	return c.client.CoreV1().Namespaces().Delete(ctx, ns.Name, metav1.DeleteOptions{})
+	return c.clientset(ctx).CoreV1().Namespaces().Delete(ctx, ns.Name, metav1.DeleteOptions{})
 }
 
 // SetDefaultFolder sets the default-folder annotation on the org namespace.
@@ -196,7 +250,7 @@ func (c *K8sClient) SetDefaultFolder(ctx context.Context, name, folderName strin
 		ns.Annotations = make(map[string]string)
 	}
 	ns.Annotations[v1alpha2.AnnotationDefaultFolder] = folderName
-	_, err = c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	_, err = c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 	return err
 }
 
@@ -233,7 +287,7 @@ func (c *K8sClient) SetGatewayNamespace(ctx context.Context, name, value string)
 	} else {
 		ns.Annotations[v1alpha2.AnnotationGatewayNamespace] = value
 	}
-	_, err = c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	_, err = c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 	return err
 }
 
@@ -264,7 +318,7 @@ func (c *K8sClient) UpdateOrganizationSharing(ctx context.Context, name string, 
 	ns.Annotations[v1alpha2.AnnotationShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
 	ns.Annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
-	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // GetShareUsers parses the share-users annotation from a namespace.
@@ -310,7 +364,7 @@ func (c *K8sClient) UpdateOrganizationDefaultRoleGrants(ctx context.Context, nam
 		return nil, fmt.Errorf("marshaling default-share-roles: %w", err)
 	}
 	ns.Annotations[v1alpha2.AnnotationDefaultShareRoles] = string(rolesJSON)
-	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // UpdateOrganizationDefaultSharing updates the default sharing annotations on an organization namespace.
@@ -335,7 +389,7 @@ func (c *K8sClient) UpdateOrganizationDefaultSharing(ctx context.Context, name s
 	}
 	ns.Annotations[v1alpha2.AnnotationDefaultShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationDefaultShareRoles] = string(rolesJSON)
-	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 func parseGrantAnnotation(ns *corev1.Namespace, key string) ([]secrets.AnnotationGrant, error) {

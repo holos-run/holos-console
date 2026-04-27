@@ -29,6 +29,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -37,6 +38,7 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -68,6 +70,13 @@ func NewK8sClient(cl ctrlclient.Client, r *resolver.Resolver) *K8sClient {
 	return &K8sClient{client: cl, Resolver: r}
 }
 
+func (k *K8sClient) requestClient(ctx context.Context) ctrlclient.Client {
+	if cl := rpc.ImpersonatedCtrlClientFromContext(ctx); cl != nil && rpc.HasImpersonatedClients(ctx) {
+		return cl
+	}
+	return k.client
+}
+
 // ListTemplates returns every Template in the given namespace.
 //
 // Reads hit the controller-runtime cache — the informer keeps one watch
@@ -83,7 +92,7 @@ func (k *K8sClient) ListTemplates(ctx context.Context, namespace string) ([]temp
 	if err := k.client.List(ctx, &list, ctrlclient.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("listing templates in namespace %q: %w", namespace, err)
 	}
-	return list.Items, nil
+	return k.authorizedTemplates(ctx, list.Items)
 }
 
 // ListAllTemplates returns every Template across every namespace the
@@ -104,7 +113,27 @@ func (k *K8sClient) ListAllTemplates(ctx context.Context) ([]templatesv1alpha1.T
 	if err := k.client.List(ctx, &list, selector); err != nil {
 		return nil, fmt.Errorf("listing templates across all namespaces: %w", err)
 	}
-	return list.Items, nil
+	return k.authorizedTemplates(ctx, list.Items)
+}
+
+func (k *K8sClient) authorizedTemplates(ctx context.Context, items []templatesv1alpha1.Template) ([]templatesv1alpha1.Template, error) {
+	if !rpc.HasImpersonatedClients(ctx) {
+		return items, nil
+	}
+	out := make([]templatesv1alpha1.Template, 0, len(items))
+	client := k.requestClient(ctx)
+	for i := range items {
+		var got templatesv1alpha1.Template
+		key := types.NamespacedName{Namespace: items[i].Namespace, Name: items[i].Name}
+		if err := client.Get(ctx, key, &got); err != nil {
+			if k8serrors.IsForbidden(err) || k8serrors.IsNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		out = append(out, got)
+	}
+	return out, nil
 }
 
 // GetNamespaceOrg returns the v1alpha2.LabelOrganization value on the given
@@ -116,7 +145,7 @@ func (k *K8sClient) ListAllTemplates(ctx context.Context) ([]templatesv1alpha1.T
 // a Walker round-trip per namespace.
 func (k *K8sClient) GetNamespaceOrg(ctx context.Context, ns string) (string, error) {
 	var got corev1.Namespace
-	if err := k.client.Get(ctx, types.NamespacedName{Name: ns}, &got); err != nil {
+	if err := k.requestClient(ctx).Get(ctx, types.NamespacedName{Name: ns}, &got); err != nil {
 		return "", err
 	}
 	if got.Labels == nil {
@@ -132,7 +161,7 @@ func (k *K8sClient) GetTemplate(ctx context.Context, namespace, name string) (*t
 		slog.String("name", name),
 	)
 	var tmpl templatesv1alpha1.Template
-	if err := k.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &tmpl); err != nil {
+	if err := k.requestClient(ctx).Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &tmpl); err != nil {
 		return nil, err
 	}
 	return &tmpl, nil
@@ -165,7 +194,7 @@ func (k *K8sClient) CreateTemplate(
 			Enabled:     enabled,
 		},
 	}
-	if err := k.client.Create(ctx, tmpl); err != nil {
+	if err := k.requestClient(ctx).Create(ctx, tmpl); err != nil {
 		return nil, err
 	}
 	return tmpl, nil
@@ -208,7 +237,7 @@ func (k *K8sClient) UpdateTemplate(
 	} else if defaults != nil {
 		tmpl.Spec.Defaults = protoDefaultsToCRD(defaults)
 	}
-	if err := k.client.Update(ctx, tmpl); err != nil {
+	if err := k.requestClient(ctx).Update(ctx, tmpl); err != nil {
 		return nil, err
 	}
 	return tmpl, nil
@@ -223,7 +252,7 @@ func (k *K8sClient) DeleteTemplate(ctx context.Context, namespace, name string) 
 	tmpl := &templatesv1alpha1.Template{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
 	}
-	return k.client.Delete(ctx, tmpl)
+	return k.requestClient(ctx).Delete(ctx, tmpl)
 }
 
 // CloneTemplate copies an existing Template into a new name within the same
@@ -536,7 +565,7 @@ func (k *K8sClient) CreateRelease(ctx context.Context, namespace, templateName s
 			UpgradeAdvice: upgradeAdvice,
 		},
 	}
-	if err := k.client.Create(ctx, rel); err != nil {
+	if err := k.requestClient(ctx).Create(ctx, rel); err != nil {
 		return nil, err
 	}
 	return rel, nil
@@ -565,7 +594,19 @@ func (k *K8sClient) ListReleases(ctx context.Context, namespace, templateName st
 	items := list.Items[:0]
 	for _, rel := range list.Items {
 		if rel.Spec.TemplateName == templateName {
-			items = append(items, rel)
+			if !rpc.HasImpersonatedClients(ctx) {
+				items = append(items, rel)
+				continue
+			}
+			var got templatesv1alpha1.TemplateRelease
+			key := types.NamespacedName{Namespace: rel.Namespace, Name: rel.Name}
+			if err := k.requestClient(ctx).Get(ctx, key, &got); err != nil {
+				if k8serrors.IsForbidden(err) || k8serrors.IsNotFound(err) {
+					continue
+				}
+				return nil, err
+			}
+			items = append(items, got)
 		}
 	}
 	sortReleasesDesc(items)
@@ -583,7 +624,7 @@ func (k *K8sClient) GetRelease(ctx context.Context, namespace, templateName stri
 		slog.String("name", name),
 	)
 	var rel templatesv1alpha1.TemplateRelease
-	if err := k.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &rel); err != nil {
+	if err := k.requestClient(ctx).Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &rel); err != nil {
 		return nil, err
 	}
 	return &rel, nil

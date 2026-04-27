@@ -4,18 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
-	"github.com/holos-run/holos-console/console/folders"
-	"github.com/holos-run/holos-console/console/projects"
-	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
-	"github.com/holos-run/holos-console/console/secrets"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 )
@@ -84,7 +79,6 @@ func (h *Handler) ListResources(
 
 	cachedWalker := h.walker.CachedWalker()
 	orgDisplayCache := make(map[string]string)
-	now := time.Now()
 
 	var resources []*consolev1.Resource
 
@@ -94,9 +88,6 @@ func (h *Handler) ListResources(
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("listing folders: %w", err))
 		}
 		for _, ns := range folderNamespaces {
-			if !h.callerCanListFolder(claims, ns, now) {
-				continue
-			}
 			res := h.buildResource(ctx, ns, consolev1.ResourceType_RESOURCE_TYPE_FOLDER, cachedWalker, orgDisplayCache)
 			resources = append(resources, res)
 		}
@@ -108,9 +99,6 @@ func (h *Handler) ListResources(
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("listing projects: %w", err))
 		}
 		for _, ns := range projectNamespaces {
-			if !h.callerCanListProject(claims, ns, now) {
-				continue
-			}
 			res := h.buildResource(ctx, ns, consolev1.ResourceType_RESOURCE_TYPE_PROJECT, cachedWalker, orgDisplayCache)
 			resources = append(resources, res)
 		}
@@ -153,28 +141,6 @@ func normalizeTypes(types []consolev1.ResourceType) (includeFolders, includeProj
 		return true, true
 	}
 	return includeFolders, includeProjects
-}
-
-// callerCanListFolder reports whether the caller has list permission on
-// the folder's own grants. Mirrors folders.CheckFolderListAccess so the
-// cross-kind RPC and the per-kind ListFolders return the same set.
-func (h *Handler) callerCanListFolder(claims *rpc.Claims, ns *corev1.Namespace, now time.Time) bool {
-	shareUsers, _ := folders.GetShareUsers(ns)
-	shareRoles, _ := folders.GetShareRoles(ns)
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-	return rbac.CheckAccessGrants(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionFoldersList) == nil
-}
-
-// callerCanListProject reports whether the caller has list permission on
-// the project's own grants. Project list intentionally does NOT cascade
-// from the parent organization (ADR 007).
-func (h *Handler) callerCanListProject(claims *rpc.Claims, ns *corev1.Namespace, now time.Time) bool {
-	shareUsers, _ := projects.GetShareUsers(ns)
-	shareRoles, _ := projects.GetShareRoles(ns)
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-	return rbac.CheckAccessGrants(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionProjectsList) == nil
 }
 
 // buildResource assembles a single Resource entry. The ancestor path is

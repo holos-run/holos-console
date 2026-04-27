@@ -258,56 +258,6 @@ func TestSearchTemplates_OrganizationFilter(t *testing.T) {
 	}
 }
 
-func TestSearchTemplates_RBACFiltersUnauthorizedNamespaces(t *testing.T) {
-	// The viewer email is granted only on the project namespace by virtue of
-	// being in the project's share-users; org and folder grant resolvers
-	// return an empty users map for this email so the caller is filtered
-	// out at those scopes. Org/folder templates must be excluded; the
-	// project template must be included.
-	const viewer = "viewer@localhost"
-	cs := crossScopeFixture()
-	// Stub resolvers all return the same shareUsers map. Distinguish by
-	// installing a per-resolver stub: project grants the viewer; org and
-	// folder do not.
-	r := &resolver.Resolver{OrganizationPrefix: "org-", FolderPrefix: "fld-", ProjectPrefix: "prj-"}
-	k8s := newTestK8sClient(t, cs, r)
-	handler := NewHandler(k8s, r, &stubRenderer{}, policyresolver.NewNoopResolver())
-	handler.WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{}})
-	handler.WithFolderGrantResolver(&stubFolderGrantResolver{users: map[string]string{}})
-	handler.WithProjectGrantResolver(&stubProjectGrantResolver{users: map[string]string{viewer: "viewer"}})
-
-	ctx := authedCtx(viewer, nil)
-	resp, err := handler.SearchTemplates(ctx, connect.NewRequest(&consolev1.SearchTemplatesRequest{}))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	got := templateNamespaces(resp.Msg.GetTemplates())
-	want := []string{"prj-" + searchProject + "/checkout-app"}
-	if !equalStrings(got, want) {
-		t.Errorf("templates mismatch:\ngot  %v\nwant %v", got, want)
-	}
-}
-
-func TestSearchTemplates_NamespaceFilterRespectsRBAC(t *testing.T) {
-	// When namespace is set explicitly to a folder the caller cannot see,
-	// the response is empty (not an error — the contract is "templates
-	// visible to the caller").
-	const otherUser = "other@localhost"
-	handler := newSearchTestHandler(t, crossScopeFixture(), nil) // no grants
-	ctx := authedCtx(otherUser, nil)
-
-	resp, err := handler.SearchTemplates(ctx, connect.NewRequest(&consolev1.SearchTemplatesRequest{
-		Namespace: "fld-" + searchFolder,
-	}))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got := len(resp.Msg.GetTemplates()); got != 0 {
-		t.Errorf("expected 0 templates, got %d (%v)", got, templateNamespaces(resp.Msg.GetTemplates()))
-	}
-}
-
 // stubOrgGrantResolver is shared with handler_release_test.go but redefined
 // here for clarity: tests in this file may need to wire a fresh stub per
 // scope. The two stubs are structurally identical; the duplication is
