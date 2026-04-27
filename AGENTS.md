@@ -21,6 +21,10 @@ All testing guidance lives in this repo. Read the entries below in order the fir
 
 **Make targets**: `make test-go` (Go tests), `make test-ui` (Vitest unit tests), `make test-e2e` (Playwright, needs `make certs` and a k3d cluster), `make test` (all three). Run `make generate` before committing if proto or generated code is affected.
 
+## Access Control
+
+Authorization is enforced by Kubernetes RBAC with OIDC impersonation per [ADR 036](docs/adrs/036-rbac-and-oidc-impersonation.md). Every ConnectRPC handler that calls Kubernetes routes the request through an impersonated clientset so the API server — not in-process Go code — is the single arbiter of access. The legacy `console/rbac` package (in-process role checks) is being incrementally removed; see [ADR 036](docs/adrs/036-rbac-and-oidc-impersonation.md) and the migration runbook in `cmd/holos-console-migrate-rbac/` for context. New handlers must use `rpc.ImpersonatedClientsetFromContext(ctx)` and must not call `rbac.CheckAccessGrants` or `rbac.CheckCascadeAccess`.
+
 ## Frontend stack and constraints
 
 The frontend under `frontend/` is a Vite single-page React app. Treat these as

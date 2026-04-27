@@ -1,4 +1,11 @@
 // Package rbac provides role-based access control for the console.
+//
+// Deprecated: This package implements in-process RBAC that is superseded by
+// Kubernetes RBAC with OIDC impersonation per ADR 036
+// (docs/adrs/036-rbac-and-oidc-impersonation.md). It is being removed
+// incrementally as each handler is migrated to use the impersonated
+// client (rpc.ImpersonatedClientsetFromContext). New code must not import
+// this package; use the Kubernetes API server as the single arbiter of access.
 package rbac
 
 import (

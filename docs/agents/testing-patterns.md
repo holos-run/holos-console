@@ -69,6 +69,8 @@ Playwright in `frontend/e2e/`. `make test-e2e` orchestrates the full stack (buil
 
 `frontend/e2e/helpers.ts` exports `loginAsPersona()` and `apiGrantOrgAccess()` for tests that verify RBAC behavior across different roles. `loginAsPersona()` uses the dev token endpoint (`POST /api/dev/token`) to obtain a signed ID token and inject it into sessionStorage. See `docs/e2e-testing.md` for usage patterns.
 
+**Important**: Personas are backed by real Kubernetes RoleBindings per [ADR 036](../../docs/adrs/036-rbac-and-oidc-impersonation.md), not by in-process role claims. Do not write Go handler tests that inject `Claims.Roles` and expect them to gate access — add a `fake.PrependReactor("*", "*", forbiddenReactor)` to simulate Kubernetes 403 responses instead. The `console/rbac` package and its `CheckAccessGrants`/`CheckCascadeAccess` functions are being removed; new tests must not reference them.
+
 ## Related
 
 - [Test Strategy](test-strategy.md) — When to use unit tests vs E2E
