@@ -57,13 +57,14 @@ func TestEnsureTopResourceRBACProvisioningForEveryKind(t *testing.T) {
 				assertStringSlice(t, rule.APIGroups, []string{""})
 				assertStringSlice(t, rule.Resources, []string{"namespaces"})
 				assertStringSlice(t, rule.ResourceNames, []string{tc.namespace})
+				assertClusterListRule(t, role.Rules)
 				gotVerbs[RoleFromLabels(role.Labels)] = append([]string(nil), rule.Verbs...)
 				if RoleFromLabels(role.Labels) == RoleOwner {
 					ownerRules = role.Rules
 				}
 			}
 			assertStringSlice(t, gotVerbs[RoleViewer], []string{"get"})
-			assertStringSlice(t, gotVerbs[RoleEditor], []string{"get"})
+			assertStringSlice(t, gotVerbs[RoleEditor], []string{"get", "update", "patch"})
 			assertStringSlice(t, gotVerbs[RoleOwner], []string{"get", "update", "patch", "delete"})
 			assertNoClusterOwnerDelegationRules(t, ownerRules)
 		})
@@ -72,7 +73,11 @@ func TestEnsureTopResourceRBACProvisioningForEveryKind(t *testing.T) {
 
 func TestEnsureTopResourceRBACDevPersonaBindings(t *testing.T) {
 	obj := managedNamespace(t, "holos-prj-demo", v1alpha2.ResourceTypeProject,
-		nil,
+		[]secrets.AnnotationGrant{
+			{Principal: "platform@localhost", Role: RoleOwner},
+			{Principal: "product@localhost", Role: RoleEditor},
+			{Principal: "sre@localhost", Role: RoleViewer},
+		},
 		[]secrets.AnnotationGrant{
 			{Principal: "owner", Role: RoleOwner},
 			{Principal: "editor", Role: RoleEditor},
@@ -89,6 +94,9 @@ func TestEnsureTopResourceRBACDevPersonaBindings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list rolebindings: %v", err)
 	}
+	assertClusterBinding(t, bindings.Items, "oidc:platform@localhost", rbacv1.UserKind, RoleName("holos-prj-demo", Projects, RoleOwner))
+	assertClusterBinding(t, bindings.Items, "oidc:product@localhost", rbacv1.UserKind, RoleName("holos-prj-demo", Projects, RoleEditor))
+	assertClusterBinding(t, bindings.Items, "oidc:sre@localhost", rbacv1.UserKind, RoleName("holos-prj-demo", Projects, RoleViewer))
 	assertClusterBinding(t, bindings.Items, "oidc:owner", rbacv1.GroupKind, RoleName("holos-prj-demo", Projects, RoleOwner))
 	assertClusterBinding(t, bindings.Items, "oidc:editor", rbacv1.GroupKind, RoleName("holos-prj-demo", Projects, RoleEditor))
 	assertClusterBinding(t, bindings.Items, "oidc:viewer", rbacv1.GroupKind, RoleName("holos-prj-demo", Projects, RoleViewer))
@@ -100,9 +108,9 @@ func TestEnsureTopResourceRBACFiltersInactiveGrants(t *testing.T) {
 	future := now + 60
 	obj := managedNamespace(t, "holos-prj-demo", v1alpha2.ResourceTypeProject,
 		[]secrets.AnnotationGrant{
-			{Principal: "active-subject", Role: RoleOwner},
-			{Principal: "expired-subject", Role: RoleOwner, Exp: &expired},
-			{Principal: "future-subject", Role: RoleOwner, Nbf: &future},
+			{Principal: "active@localhost", Role: RoleOwner},
+			{Principal: "expired@localhost", Role: RoleOwner, Exp: &expired},
+			{Principal: "future@localhost", Role: RoleOwner, Nbf: &future},
 		},
 		nil,
 	)
@@ -116,34 +124,12 @@ func TestEnsureTopResourceRBACFiltersInactiveGrants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list clusterrolebindings: %v", err)
 	}
-	assertClusterBinding(t, bindings.Items, "oidc:active-subject", rbacv1.UserKind, RoleName("holos-prj-demo", Projects, RoleOwner))
-	assertNoClusterBinding(t, bindings.Items, "oidc:expired-subject")
-	assertNoClusterBinding(t, bindings.Items, "oidc:future-subject")
+	assertClusterBinding(t, bindings.Items, "oidc:active@localhost", rbacv1.UserKind, RoleName("holos-prj-demo", Projects, RoleOwner))
+	assertNoClusterBinding(t, bindings.Items, "oidc:expired@localhost")
+	assertNoClusterBinding(t, bindings.Items, "oidc:future@localhost")
 	if got := NextGrantRequeueAfter(obj, time.Unix(now, 0)); got <= 0 {
 		t.Fatalf("NextGrantRequeueAfter = %v, want positive duration for future grant", got)
 	}
-}
-
-func TestEnsureTopResourceRBACSkipsEmailShapedUserGrants(t *testing.T) {
-	obj := managedNamespace(t, "holos-prj-demo", v1alpha2.ResourceTypeProject,
-		[]secrets.AnnotationGrant{
-			{Principal: "product@localhost", Role: RoleOwner},
-			{Principal: "subject-123", Role: RoleEditor},
-		},
-		nil,
-	)
-	client := fake.NewClientset()
-
-	if err := EnsureResourceRBAC(context.Background(), client, obj, Projects); err != nil {
-		t.Fatalf("EnsureResourceRBAC: %v", err)
-	}
-
-	bindings, err := client.RbacV1().ClusterRoleBindings().List(context.Background(), metav1.ListOptions{})
-	if err != nil {
-		t.Fatalf("list clusterrolebindings: %v", err)
-	}
-	assertNoClusterBinding(t, bindings.Items, "oidc:product@localhost")
-	assertClusterBinding(t, bindings.Items, "oidc:subject-123", rbacv1.UserKind, RoleName("holos-prj-demo", Projects, RoleEditor))
 }
 
 func TestEnsureTopResourceRBACSkipsMismatchedNamespace(t *testing.T) {
@@ -235,6 +221,20 @@ func assertNoClusterBinding(t *testing.T, bindings []rbacv1.ClusterRoleBinding, 
 			t.Fatalf("unexpected binding for subject=%s: %#v", subjectName, binding)
 		}
 	}
+}
+
+func assertClusterListRule(t *testing.T, rules []rbacv1.PolicyRule) {
+	t.Helper()
+	for _, rule := range rules {
+		if len(rule.ResourceNames) != 0 {
+			continue
+		}
+		if len(rule.APIGroups) == 1 && rule.APIGroups[0] == "" && len(rule.Resources) == 1 && rule.Resources[0] == "namespaces" {
+			assertStringSlice(t, rule.Verbs, []string{"list", "watch"})
+			return
+		}
+	}
+	t.Fatalf("missing cluster-scoped list/watch rule: %#v", rules)
 }
 
 func assertNoClusterOwnerDelegationRules(t *testing.T, rules []rbacv1.PolicyRule) {

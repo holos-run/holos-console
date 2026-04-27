@@ -269,9 +269,6 @@ func resourceRules(name string, cfg KindConfig, role string) []rbacv1.PolicyRule
 	switch NormalizeRole(role) {
 	case RoleEditor:
 		verbs = editorVerbs()
-		if cfg.ClusterScoped {
-			verbs = viewerVerbs()
-		}
 	case RoleOwner:
 		verbs = ownerVerbs()
 		extraRules = ownerRules(name, cfg)
@@ -286,6 +283,13 @@ func resourceRules(name string, cfg KindConfig, role string) []rbacv1.PolicyRule
 		ResourceNames: []string{name},
 		Verbs:         verbs,
 	}}
+	if cfg.ClusterScoped {
+		rules = append(rules, rbacv1.PolicyRule{
+			APIGroups: []string{apiGroup},
+			Resources: []string{cfg.Resource},
+			Verbs:     []string{"list", "watch"},
+		})
+	}
 	return append(rules, extraRules...)
 }
 
@@ -514,9 +518,7 @@ func reconcileRoleBindings(ctx context.Context, client kubernetes.Interface, obj
 			return err
 		}
 		for _, grant := range activeGrants(users, now) {
-			if isSubjectPrincipal(grant.Principal) {
-				addDesired(ShareTargetUser, grant)
-			}
+			addDesired(ShareTargetUser, grant)
 		}
 		groups, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareRoles)
 		if err != nil {
@@ -578,9 +580,7 @@ func reconcileClusterRoleBindings(ctx context.Context, client kubernetes.Interfa
 		return err
 	}
 	for _, grant := range activeGrants(users, now) {
-		if isSubjectPrincipal(grant.Principal) {
-			addDesired(ShareTargetUser, grant)
-		}
+		addDesired(ShareTargetUser, grant)
 	}
 	groups, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareRoles)
 	if err != nil {
@@ -628,11 +628,6 @@ func activeGrants(grants []secrets.AnnotationGrant, now time.Time) []secrets.Ann
 		filtered = append(filtered, grant)
 	}
 	return secrets.DeduplicateGrants(filtered)
-}
-
-func isSubjectPrincipal(principal string) bool {
-	principal = strings.TrimSpace(principal)
-	return principal != "" && !strings.Contains(principal, "@")
 }
 
 // NextGrantRequeueAfter returns the delay until the next share annotation

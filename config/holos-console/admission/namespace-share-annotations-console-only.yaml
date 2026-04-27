@@ -1,0 +1,77 @@
+# Namespace share annotations drive generated Kubernetes RBAC. Direct
+# namespace patch rights must not let a principal grant itself a stronger
+# RoleBinding, so share mutations go through holos-console's checked RPC path.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: namespace-share-annotations-console-only
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["UPDATE"]
+      resources: ["namespaces"]
+  matchConditions:
+  - name: console-managed-namespace
+    expression: >-
+      (
+        has(oldObject.metadata.labels)
+        && "app.kubernetes.io/managed-by" in oldObject.metadata.labels
+        && oldObject.metadata.labels["app.kubernetes.io/managed-by"] == "console.holos.run"
+      )
+      || (
+        has(object.metadata.labels)
+        && "app.kubernetes.io/managed-by" in object.metadata.labels
+        && object.metadata.labels["app.kubernetes.io/managed-by"] == "console.holos.run"
+      )
+  - name: excluded-holos-console
+    expression: >-
+      request.userInfo.username != "system:serviceaccount:holos-system:holos-console"
+  variables:
+  - name: oldShareUsers
+    expression: >-
+      has(oldObject.metadata.annotations)
+      && "console.holos.run/share-users" in oldObject.metadata.annotations
+      ? oldObject.metadata.annotations["console.holos.run/share-users"]
+      : ""
+  - name: newShareUsers
+    expression: >-
+      has(object.metadata.annotations)
+      && "console.holos.run/share-users" in object.metadata.annotations
+      ? object.metadata.annotations["console.holos.run/share-users"]
+      : ""
+  - name: oldShareRoles
+    expression: >-
+      has(oldObject.metadata.annotations)
+      && "console.holos.run/share-roles" in oldObject.metadata.annotations
+      ? oldObject.metadata.annotations["console.holos.run/share-roles"]
+      : ""
+  - name: newShareRoles
+    expression: >-
+      has(object.metadata.annotations)
+      && "console.holos.run/share-roles" in object.metadata.annotations
+      ? object.metadata.annotations["console.holos.run/share-roles"]
+      : ""
+  validations:
+  - expression: >-
+      variables.oldShareUsers == variables.newShareUsers
+      && variables.oldShareRoles == variables.newShareRoles
+    message: "Namespace share annotations can only be changed through the holos-console service account."
+    reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: namespace-share-annotations-console-only
+spec:
+  policyName: namespace-share-annotations-console-only
+  validationActions:
+  - Deny
+  matchResources:
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["UPDATE"]
+      resources: ["namespaces"]
