@@ -193,8 +193,14 @@ func (c *K8sClient) CreateOrganization(ctx context.Context, name, displayName, d
 	// Synchronously bootstrap per-resource RBAC for the creator before any
 	// subsequent impersonated read/update/delete in the bootstrap path. This
 	// avoids racing the async resourcerbac reconciler. See HOL-1064 REV2 AC2.
-	if err := resourcerbac.BootstrapResourceRBACAndWait(ctx, c.client, c.impersonatedOrNil(ctx), created, resourcerbac.Organizations); err != nil {
-		return nil, err
+	if bsErr := resourcerbac.BootstrapResourceRBACAndWait(ctx, c.client, c.impersonatedOrNil(ctx), created, resourcerbac.Organizations); bsErr != nil {
+		if delErr := c.client.CoreV1().Namespaces().Delete(ctx, created.Name, metav1.DeleteOptions{}); delErr != nil && !k8serrors.IsNotFound(delErr) {
+			slog.ErrorContext(ctx, "rollback: deleting organization namespace after RBAC bootstrap failure",
+				slog.String("namespace", created.Name),
+				slog.Any("error", delErr),
+			)
+		}
+		return nil, bsErr
 	}
 	return created, nil
 }

@@ -249,8 +249,14 @@ func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, descri
 	// Synchronously bootstrap per-resource RBAC for the creator before any
 	// subsequent impersonated read/update/delete in the bootstrap path. See
 	// HOL-1064 REV2 AC2.
-	if err := resourcerbac.BootstrapResourceRBACAndWait(ctx, c.client, c.impersonatedOrNil(ctx), created, resourcerbac.Projects); err != nil {
-		return nil, err
+	if bsErr := resourcerbac.BootstrapResourceRBACAndWait(ctx, c.client, c.impersonatedOrNil(ctx), created, resourcerbac.Projects); bsErr != nil {
+		if delErr := c.client.CoreV1().Namespaces().Delete(ctx, created.Name, metav1.DeleteOptions{}); delErr != nil && !k8serrors.IsNotFound(delErr) {
+			slog.ErrorContext(ctx, "rollback: deleting project namespace after RBAC bootstrap failure",
+				slog.String("namespace", created.Name),
+				slog.String("error", delErr.Error()),
+			)
+		}
+		return nil, bsErr
 	}
 	return created, nil
 }

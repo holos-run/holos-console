@@ -11,8 +11,10 @@ import (
 )
 
 // BootstrapTimeout bounds the wait for RBAC propagation to be observable to
-// the impersonated caller after a fresh resource create.
-const BootstrapTimeout = 10 * time.Second
+// the impersonated caller after a fresh resource create. Declared as a var so
+// tests may override the deadline to exercise the timeout branch without
+// stalling for the full production window.
+var BootstrapTimeout = 10 * time.Second
 
 // BootstrapResourceRBACAndWait synchronously applies per-resource RBAC for obj
 // using the privileged client, then — when an impersonated client is supplied

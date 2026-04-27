@@ -16,6 +16,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rbac"
+	"github.com/holos-run/holos-console/console/resourcerbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -407,13 +408,33 @@ func (h *Handler) createProjectOnce(
 			// Note this path does not surface AlreadyExists (SSA is
 			// idempotent), so the auto-generated-name retry is a
 			// no-op when the pipeline handles the create.
+			//
+			// Pass baseNs directly: the SSA applier owns the
+			// authoritative namespace in the cluster, and bootstrap
+			// only needs name/namespace metadata to provision Roles
+			// and poll SSAR. There is no cluster Get on the SSA
+			// path because tests inject a fake applier that does
+			// not write the namespace into the fake clientset.
+			if err := resourcerbac.BootstrapResourceRBACAndWait(ctx, h.k8s.client, h.k8s.impersonatedOrNil(ctx), baseNs, resourcerbac.Projects); err != nil {
+				return err
+			}
 			return h.k8s.EnsureProjectSecretRBACForNamespace(ctx, baseNs.Name, namespaceOwnerRefs(baseNs), rbacShareUsers, shareRoles)
 		}
 	}
 
 	// Existing path: typed Create. Unchanged from pre-HOL-812 behavior.
-	_, err = h.k8s.client.CoreV1().Namespaces().Create(ctx, baseNs, metav1.CreateOptions{})
+	created, err := h.k8s.client.CoreV1().Namespaces().Create(ctx, baseNs, metav1.CreateOptions{})
 	if err != nil {
+		return err
+	}
+	if err := resourcerbac.BootstrapResourceRBACAndWait(ctx, h.k8s.client, h.k8s.impersonatedOrNil(ctx), created, resourcerbac.Projects); err != nil {
+		// Roll back the just-created namespace so we do not orphan it.
+		if delErr := h.k8s.client.CoreV1().Namespaces().Delete(ctx, created.Name, metav1.DeleteOptions{}); delErr != nil && !errors.IsNotFound(delErr) {
+			slog.ErrorContext(ctx, "rollback: deleting project namespace after RBAC bootstrap failure",
+				slog.String("namespace", created.Name),
+				slog.Any("error", delErr),
+			)
+		}
 		return err
 	}
 	return h.k8s.EnsureProjectSecretRBAC(ctx, name, rbacShareUsers, shareRoles)

@@ -3,6 +3,7 @@ package resourcerbac
 import (
 	"context"
 	"testing"
+	"time"
 
 	authv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -56,10 +57,14 @@ func TestBootstrapResourceRBACAndWait_TimesOutWhenSSARDenied(t *testing.T) {
 	ns := managedNamespace(t, "holos-org-platform", "organization", nil, nil)
 	privileged := fake.NewClientset()
 	impersonated := fake.NewClientset()
-	// Default behavior on fake is Allowed=false; nudge timeout via a tight ctx.
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := BootstrapResourceRBACAndWait(ctx, privileged, impersonated, ns, Organizations); err == nil {
+	// Default fake behavior leaves Allowed=false so the SSAR poll never
+	// succeeds. Override BootstrapTimeout to a short window so the
+	// post-deadline error branch in waitForUpdateAccess is exercised
+	// (rather than the ctx-cancellation branch).
+	prev := BootstrapTimeout
+	BootstrapTimeout = 100 * time.Millisecond
+	defer func() { BootstrapTimeout = prev }()
+	if err := BootstrapResourceRBACAndWait(context.Background(), privileged, impersonated, ns, Organizations); err == nil {
 		t.Fatal("expected error when impersonated caller has no access")
 	}
 }
