@@ -300,19 +300,7 @@ func ownerVerbs() []string {
 
 func ownerRules(name string, cfg KindConfig) []rbacv1.PolicyRule {
 	if cfg.ClusterScoped {
-		return []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{rbacv1.GroupName},
-				Resources: []string{"clusterrolebindings"},
-				Verbs:     []string{"get", "list", "watch", "create", "update", "patch", "delete"},
-			},
-			{
-				APIGroups:     []string{rbacv1.GroupName},
-				Resources:     []string{"clusterroles"},
-				ResourceNames: []string{RoleName(name, cfg, RoleViewer), RoleName(name, cfg, RoleEditor), RoleName(name, cfg, RoleOwner)},
-				Verbs:         []string{"get", "list", "watch", "bind"},
-			},
-		}
+		return nil
 	}
 	return []rbacv1.PolicyRule{
 		{
@@ -413,6 +401,9 @@ func RoleBindingName(name string, cfg KindConfig, role, target, principal string
 func OwnerReferences(obj metav1.Object, cfg KindConfig) []metav1.OwnerReference {
 	controller := true
 	blockOwnerDeletion := true
+	if cfg.ClusterScoped {
+		blockOwnerDeletion = false
+	}
 	apiVersion := cfg.OwnerAPIVersion
 	if apiVersion == "" {
 		apiVersion = templatesv1alpha1.GroupVersion.String()

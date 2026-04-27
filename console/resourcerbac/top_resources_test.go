@@ -65,7 +65,7 @@ func TestEnsureTopResourceRBACProvisioningForEveryKind(t *testing.T) {
 			assertStringSlice(t, gotVerbs[RoleViewer], []string{"get"})
 			assertStringSlice(t, gotVerbs[RoleEditor], []string{"get", "update", "patch"})
 			assertStringSlice(t, gotVerbs[RoleOwner], []string{"get", "update", "patch", "delete"})
-			assertClusterOwnerDelegationRules(t, ownerRules)
+			assertNoClusterOwnerDelegationRules(t, ownerRules)
 		})
 	}
 }
@@ -194,8 +194,8 @@ func assertNamespaceOwnerRef(t *testing.T, got metav1.OwnerReference, name strin
 	if got.Controller == nil || !*got.Controller {
 		t.Fatalf("owner controller = %v, want true", got.Controller)
 	}
-	if got.BlockOwnerDeletion == nil || !*got.BlockOwnerDeletion {
-		t.Fatalf("owner blockOwnerDeletion = %v, want true", got.BlockOwnerDeletion)
+	if got.BlockOwnerDeletion == nil || *got.BlockOwnerDeletion {
+		t.Fatalf("owner blockOwnerDeletion = %v, want false", got.BlockOwnerDeletion)
 	}
 }
 
@@ -222,20 +222,13 @@ func assertNoClusterBinding(t *testing.T, bindings []rbacv1.ClusterRoleBinding, 
 	}
 }
 
-func assertClusterOwnerDelegationRules(t *testing.T, rules []rbacv1.PolicyRule) {
+func assertNoClusterOwnerDelegationRules(t *testing.T, rules []rbacv1.PolicyRule) {
 	t.Helper()
-	var hasClusterRoles, hasClusterRoleBindings bool
 	for _, rule := range rules {
 		for _, resource := range rule.Resources {
-			if resource == "clusterroles" {
-				hasClusterRoles = true
-			}
-			if resource == "clusterrolebindings" {
-				hasClusterRoleBindings = true
+			if resource == "clusterroles" || resource == "clusterrolebindings" {
+				t.Fatalf("owner rules grant cluster-scoped RBAC mutation: %#v", rules)
 			}
 		}
-	}
-	if !hasClusterRoles || !hasClusterRoleBindings {
-		t.Fatalf("owner rules missing cluster-scoped sharing delegation: %#v", rules)
 	}
 }
