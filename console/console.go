@@ -279,8 +279,8 @@ func (s *Server) Serve(ctx context.Context) error {
 				s.cfg.ClientID,
 				s.cfg.RolesClaim,
 				internalClient,
-				rpc.WithImpersonationConfig(restConfig, controllermgr.Scheme),
 			),
+			rpc.ImpersonationInterceptor(restConfig, controllermgr.Scheme),
 		)
 	} else {
 		// Fallback to public interceptors if auth not configured
