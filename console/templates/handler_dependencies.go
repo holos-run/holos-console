@@ -37,12 +37,13 @@ import (
 	"sort"
 
 	"connectrpc.com/connect"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	deploymentsv1alpha1 "github.com/holos-run/holos-console/api/deployments/v1alpha1"
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
-	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
@@ -74,15 +75,12 @@ func (h *Handler) ListTemplateDependents(
 	}
 
 	// Classify the requested namespace so RBAC can be checked.
-	scope, scopeName, err := h.extractScope(reqNs)
+	_, _, err := h.extractScope(reqNs)
 	if err != nil {
 		return nil, err
 	}
 
 	// Authorization: the caller must be able to read templates in the queried namespace.
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
-		return nil, err
-	}
 
 	var records []*consolev1.TemplateDependentRecord
 
@@ -137,6 +135,17 @@ func (h *Handler) listTemplateDependencyDependents(
 		if td.Spec.Requires.Namespace != reqNs || td.Spec.Requires.Name != reqName {
 			continue
 		}
+		if rpc.HasImpersonatedClients(ctx) {
+			var got templatesv1alpha1.TemplateDependency
+			key := types.NamespacedName{Namespace: td.Namespace, Name: td.Name}
+			if err := h.k8s.requestClient(ctx).Get(ctx, key, &got); err != nil {
+				if k8serrors.IsForbidden(err) || k8serrors.IsNotFound(err) {
+					continue
+				}
+				return nil, err
+			}
+			td = &got
+		}
 
 		// RBAC: the caller must be able to see the dependent's namespace.
 		if !h.canAccessNamespace(ctx, claims, td.Namespace) {
@@ -179,6 +188,17 @@ func (h *Handler) listTemplateRequirementDependents(
 		tr := &list.Items[i]
 		if tr.Spec.Requires.Namespace != reqNs || tr.Spec.Requires.Name != reqName {
 			continue
+		}
+		if rpc.HasImpersonatedClients(ctx) {
+			var got templatesv1alpha1.TemplateRequirement
+			key := types.NamespacedName{Namespace: tr.Namespace, Name: tr.Name}
+			if err := h.k8s.requestClient(ctx).Get(ctx, key, &got); err != nil {
+				if k8serrors.IsForbidden(err) || k8serrors.IsNotFound(err) {
+					continue
+				}
+				return nil, err
+			}
+			tr = &got
 		}
 
 		// TemplateRequirement must live in an org or folder namespace per ADR 032
@@ -233,7 +253,7 @@ func (h *Handler) ListDeploymentDependents(
 	}
 
 	// Classify the requested namespace so RBAC can be checked.
-	scope, scopeName, err := h.extractScope(reqNs)
+	_, _, err := h.extractScope(reqNs)
 	if err != nil {
 		return nil, err
 	}
@@ -242,13 +262,10 @@ func (h *Handler) ListDeploymentDependents(
 	// ListDeploymentDependents is part of TemplateService and requires template
 	// read access (not deployment read access) because it queries template
 	// dependency metadata, not deployment runtime state.
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
-		return nil, err
-	}
 
 	// Fetch the singleton Deployment.
 	var singleton deploymentsv1alpha1.Deployment
-	if err := h.k8s.client.Get(ctx, ctrlclient.ObjectKey{Namespace: reqNs, Name: reqName}, &singleton); err != nil {
+	if err := h.k8s.requestClient(ctx).Get(ctx, ctrlclient.ObjectKey{Namespace: reqNs, Name: reqName}, &singleton); err != nil {
 		return nil, mapK8sError(err)
 	}
 
@@ -295,15 +312,9 @@ func isNonControllerBlockingOwner(ref metav1.OwnerReference) bool {
 // given namespace. It silently returns false on any RBAC failure so callers
 // can filter dependent entries without surfacing authorization errors to the
 // user. This mirrors the RBAC fan-out pattern in SearchTemplates.
-func (h *Handler) canAccessNamespace(ctx context.Context, claims *rpc.Claims, ns string) bool {
-	scope, scopeName, err := h.extractScopeLenient(ns)
-	if err != nil {
-		return false
-	}
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
-		return false
-	}
-	return true
+func (h *Handler) canAccessNamespace(ctx context.Context, _ *rpc.Claims, ns string) bool {
+	_, _, err := h.extractScopeLenient(ns)
+	return err == nil
 }
 
 // extractScopeLenient is like extractScope but returns a plain error instead of

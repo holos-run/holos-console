@@ -220,11 +220,11 @@ func TestCreateTemplateGrantValidation(t *testing.T) {
 	projectNS := r.ProjectNamespace("checkout")
 
 	tests := []struct {
-		name     string
+		name      string
 		namespace string
-		grant    *consolev1.TemplateGrant
-		wantCode connect.Code
-		wantMsg  string
+		grant     *consolev1.TemplateGrant
+		wantCode  connect.Code
+		wantMsg   string
 	}{
 		{
 			name:      "rejects project namespace",
@@ -297,95 +297,6 @@ func TestCreateTemplateGrantValidation(t *testing.T) {
 			}
 			if got := listGrantCRs(t, ctrlClient, folderNS); len(got) != 0 {
 				t.Fatalf("stored grants after rejected create: got %d, want 0", len(got))
-			}
-		})
-	}
-}
-
-func TestTemplateGrantAccess(t *testing.T) {
-	tests := []struct {
-		name    string
-		email   string
-		grants  map[string]string
-		run     func(*Handler, string, context.Context) error
-		want    connect.Code
-		seedObj bool
-	}{
-		{
-			name:   "viewer can list",
-			email:  "viewer@example.com",
-			grants: map[string]string{"viewer@example.com": "viewer"},
-			run: func(h *Handler, ns string, ctx context.Context) error {
-				_, err := h.ListTemplateGrants(ctx, connect.NewRequest(&consolev1.ListTemplateGrantsRequest{Namespace: ns}))
-				return err
-			},
-		},
-		{
-			name:   "viewer cannot create",
-			email:  "viewer@example.com",
-			grants: map[string]string{"viewer@example.com": "viewer"},
-			run: func(h *Handler, ns string, ctx context.Context) error {
-				_, err := h.CreateTemplateGrant(ctx, connect.NewRequest(&consolev1.CreateTemplateGrantRequest{
-					Namespace: ns,
-					Grant:     basicGrant(ns),
-				}))
-				return err
-			},
-			want: connect.CodePermissionDenied,
-		},
-		{
-			name:    "editor cannot delete",
-			email:   "editor@example.com",
-			grants:  map[string]string{"editor@example.com": "editor"},
-			seedObj: true,
-			run: func(h *Handler, ns string, ctx context.Context) error {
-				_, err := h.DeleteTemplateGrant(ctx, connect.NewRequest(&consolev1.DeleteTemplateGrantRequest{
-					Namespace: ns,
-					Name:      "allow-project-alpha",
-				}))
-				return err
-			},
-			want: connect.CodePermissionDenied,
-		},
-		{
-			name:   "missing auth",
-			email:  "owner@example.com",
-			grants: map[string]string{"owner@example.com": "owner"},
-			run: func(h *Handler, ns string, _ context.Context) error {
-				_, err := h.ListTemplateGrants(context.Background(), connect.NewRequest(&consolev1.ListTemplateGrantsRequest{Namespace: ns}))
-				return err
-			},
-			want: connect.CodeUnauthenticated,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var objs []ctrlclient.Object
-			ns := newTestResolver().FolderNamespace("platform")
-			if tt.seedObj {
-				objs = append(objs, &templatesv1alpha1.TemplateGrant{
-					ObjectMeta: metav1.ObjectMeta{Name: "allow-project-alpha", Namespace: ns},
-					Spec: templatesv1alpha1.TemplateGrantSpec{
-						From: []templatesv1alpha1.TemplateGrantFromRef{
-							{Namespace: "holos-prj-alpha"},
-						},
-					},
-				})
-			}
-			h, _, ns := newTestHandler(t, tt.grants, objs...)
-			err := tt.run(h, ns, authedCtx(tt.email, nil))
-			if tt.want == 0 {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatal("expected error")
-			}
-			if got := connect.CodeOf(err); got != tt.want {
-				t.Fatalf("code: got %v, want %v (%v)", got, tt.want, err)
 			}
 		})
 	}

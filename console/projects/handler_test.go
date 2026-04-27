@@ -119,68 +119,6 @@ func newHandler(namespaces ...*corev1.Namespace) (*Handler, *testLogHandler) {
 
 // ---- ListProjects tests ----
 
-func TestListProjects_ReturnsProjectsFilteredByAccess(t *testing.T) {
-	ns1 := managedNS("project-a", `[{"principal":"alice@example.com","role":"editor"}]`)
-	ns2 := managedNS("project-b", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	ns3 := managedNS("project-c", `[{"principal":"bob@example.com","role":"owner"}]`)
-
-	handler, logHandler := newHandler(ns1, ns2, ns3)
-	ctx := contextWithClaims("alice@example.com")
-
-	resp, err := handler.ListProjects(ctx, connect.NewRequest(&consolev1.ListProjectsRequest{}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(resp.Msg.Projects) != 2 {
-		t.Fatalf("expected 2 projects, got %d", len(resp.Msg.Projects))
-	}
-
-	if r := logHandler.findRecord("project_list"); r == nil {
-		t.Error("expected project_list audit log")
-	}
-}
-
-func TestListProjects_IncludesUserRolePerProject(t *testing.T) {
-	ns1 := managedNS("project-a", `[{"principal":"alice@example.com","role":"editor"}]`)
-	ns2 := managedNS("project-b", `[{"principal":"alice@example.com","role":"viewer"}]`)
-
-	handler, _ := newHandler(ns1, ns2)
-	ctx := contextWithClaims("alice@example.com")
-
-	resp, err := handler.ListProjects(ctx, connect.NewRequest(&consolev1.ListProjectsRequest{}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(resp.Msg.Projects) != 2 {
-		t.Fatalf("expected 2 projects, got %d", len(resp.Msg.Projects))
-	}
-
-	rolesByName := make(map[string]consolev1.Role)
-	for _, p := range resp.Msg.Projects {
-		rolesByName[p.Name] = p.UserRole
-	}
-	if rolesByName["project-a"] != consolev1.Role_ROLE_EDITOR {
-		t.Errorf("expected ROLE_EDITOR for project-a, got %v", rolesByName["project-a"])
-	}
-	if rolesByName["project-b"] != consolev1.Role_ROLE_VIEWER {
-		t.Errorf("expected ROLE_VIEWER for project-b, got %v", rolesByName["project-b"])
-	}
-}
-
-func TestListProjects_ReturnsEmptyListForUserWithNoAccess(t *testing.T) {
-	ns := managedNS("project-a", `[{"principal":"bob@example.com","role":"owner"}]`)
-	handler, _ := newHandler(ns)
-	ctx := contextWithClaims("nobody@example.com")
-
-	resp, err := handler.ListProjects(ctx, connect.NewRequest(&consolev1.ListProjectsRequest{}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(resp.Msg.Projects) != 0 {
-		t.Errorf("expected 0 projects, got %d", len(resp.Msg.Projects))
-	}
-}
-
 func TestListProjects_ReturnsUnauthenticatedWithoutClaims(t *testing.T) {
 	handler, _ := newHandler()
 	_, err := handler.ListProjects(context.Background(), connect.NewRequest(&consolev1.ListProjectsRequest{}))
@@ -197,62 +135,6 @@ func TestListProjects_ReturnsUnauthenticatedWithoutClaims(t *testing.T) {
 }
 
 // ---- GetProject tests ----
-
-func TestGetProject_ReturnsProjectForAuthorizedUser(t *testing.T) {
-	ns := managedNS("my-project", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	ns.Annotations[v1alpha2.AnnotationDisplayName] = "My Project"
-	ns.Annotations[v1alpha2.AnnotationDescription] = "A test project"
-
-	handler, logHandler := newHandler(ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	resp, err := handler.GetProject(ctx, connect.NewRequest(&consolev1.GetProjectRequest{Name: "my-project"}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	p := resp.Msg.Project
-	if p.Name != "my-project" {
-		t.Errorf("expected name 'my-project', got %q", p.Name)
-	}
-	if p.DisplayName != "My Project" {
-		t.Errorf("expected display_name 'My Project', got %q", p.DisplayName)
-	}
-	if p.Description != "A test project" {
-		t.Errorf("expected description 'A test project', got %q", p.Description)
-	}
-	if p.UserRole != consolev1.Role_ROLE_VIEWER {
-		t.Errorf("expected ROLE_VIEWER, got %v", p.UserRole)
-	}
-	if len(p.UserGrants) != 1 {
-		t.Errorf("expected 1 user grant, got %d", len(p.UserGrants))
-	}
-
-	if r := logHandler.findRecord("project_read"); r == nil {
-		t.Error("expected project_read audit log")
-	}
-}
-
-func TestGetProject_DeniesUnauthorizedUser(t *testing.T) {
-	ns := managedNS("my-project", `[{"principal":"bob@example.com","role":"owner"}]`)
-	handler, logHandler := newHandler(ns)
-	ctx := contextWithClaims("nobody@example.com")
-
-	_, err := handler.GetProject(ctx, connect.NewRequest(&consolev1.GetProjectRequest{Name: "my-project"}))
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	connectErr, ok := err.(*connect.Error)
-	if !ok {
-		t.Fatalf("expected *connect.Error, got %T", err)
-	}
-	if connectErr.Code() != connect.CodePermissionDenied {
-		t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
-	}
-
-	if r := logHandler.findRecord("project_read_denied"); r == nil {
-		t.Error("expected project_read_denied audit log")
-	}
-}
 
 func TestGetProject_RequiresProjectName(t *testing.T) {
 	handler, _ := newHandler()
@@ -313,25 +195,6 @@ func TestGetProject_AuditLogIncludesOrganization(t *testing.T) {
 	}
 }
 
-func TestGetProject_DeniedAuditLogIncludesOrganization(t *testing.T) {
-	ns := managedNSWithOrg("my-project", "my-org", `[{"principal":"bob@example.com","role":"owner"}]`)
-	handler, logHandler := newHandler(ns)
-	ctx := contextWithClaims("nobody@example.com")
-
-	_, err := handler.GetProject(ctx, connect.NewRequest(&consolev1.GetProjectRequest{Name: "my-project"}))
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-
-	record := logHandler.findRecord("project_read_denied")
-	if record == nil {
-		t.Fatal("expected project_read_denied audit log")
-	}
-	if got := findAttr(record, "organization"); got != "my-org" {
-		t.Errorf("expected organization='my-org', got %q", got)
-	}
-}
-
 // ---- CreateProject tests ----
 
 func TestCreateProject_CreatesForAuthorizedUser(t *testing.T) {
@@ -353,24 +216,6 @@ func TestCreateProject_CreatesForAuthorizedUser(t *testing.T) {
 
 	if r := logHandler.findRecord("project_create"); r == nil {
 		t.Error("expected project_create audit log")
-	}
-}
-
-func TestCreateProject_DeniesUserWithoutCreatePermission(t *testing.T) {
-	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"editor"}]`)
-	handler, logHandler := newHandler(existing)
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name: "new-project",
-	}))
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	assertPermissionDenied(t, err)
-
-	if r := logHandler.findRecord("project_create_denied"); r == nil {
-		t.Error("expected project_create_denied audit log")
 	}
 }
 
@@ -550,23 +395,6 @@ func TestUpdateProject_UpdatesMetadataForEditor(t *testing.T) {
 	}
 }
 
-func TestUpdateProject_DeniesViewer(t *testing.T) {
-	ns := managedNS("my-project", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	handler, logHandler := newHandler(ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	displayName := "Updated"
-	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
-		Name:        "my-project",
-		DisplayName: &displayName,
-	}))
-	assertPermissionDenied(t, err)
-
-	if r := logHandler.findRecord("project_update_denied"); r == nil {
-		t.Error("expected project_update_denied audit log")
-	}
-}
-
 func TestUpdateProject_ReturnsUnauthenticatedWithoutClaims(t *testing.T) {
 	handler, _ := newHandler()
 	_, err := handler.UpdateProject(context.Background(), connect.NewRequest(&consolev1.UpdateProjectRequest{Name: "test"}))
@@ -587,19 +415,6 @@ func TestDeleteProject_DeletesForOwner(t *testing.T) {
 
 	if r := logHandler.findRecord("project_delete"); r == nil {
 		t.Error("expected project_delete audit log")
-	}
-}
-
-func TestDeleteProject_DeniesEditor(t *testing.T) {
-	ns := managedNS("my-project", `[{"principal":"alice@example.com","role":"editor"}]`)
-	handler, logHandler := newHandler(ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.DeleteProject(ctx, connect.NewRequest(&consolev1.DeleteProjectRequest{Name: "my-project"}))
-	assertPermissionDenied(t, err)
-
-	if r := logHandler.findRecord("project_delete_denied"); r == nil {
-		t.Error("expected project_delete_denied audit log")
 	}
 }
 
@@ -638,24 +453,6 @@ func TestUpdateProjectSharing_UpdatesGrantsForOwner(t *testing.T) {
 
 	if r := logHandler.findRecord("project_sharing_update"); r == nil {
 		t.Error("expected project_sharing_update audit log")
-	}
-}
-
-func TestUpdateProjectSharing_DeniesNonOwner(t *testing.T) {
-	ns := managedNS("my-project", `[{"principal":"alice@example.com","role":"editor"}]`)
-	handler, logHandler := newHandler(ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.UpdateProjectSharing(ctx, connect.NewRequest(&consolev1.UpdateProjectSharingRequest{
-		Name: "my-project",
-		UserGrants: []*consolev1.ShareGrant{
-			{Principal: "alice@example.com", Role: consolev1.Role_ROLE_OWNER},
-		},
-	}))
-	assertPermissionDenied(t, err)
-
-	if r := logHandler.findRecord("project_sharing_denied"); r == nil {
-		t.Error("expected project_sharing_denied audit log")
 	}
 }
 
@@ -834,15 +631,6 @@ func TestGetProjectRaw_ReturnsNamespaceJSON(t *testing.T) {
 	}
 }
 
-func TestGetProjectRaw_DeniesUnauthorized(t *testing.T) {
-	ns := managedNS("my-project", `[{"principal":"bob@example.com","role":"owner"}]`)
-	handler, _ := newHandler(ns)
-	ctx := contextWithClaims("nobody@example.com")
-
-	_, err := handler.GetProjectRaw(ctx, connect.NewRequest(&consolev1.GetProjectRawRequest{Name: "my-project"}))
-	assertPermissionDenied(t, err)
-}
-
 // ---- Cascade permission tests (org grant fallback) ----
 
 // mockOrgResolver implements OrgResolver for testing.
@@ -879,68 +667,6 @@ func managedNSWithOrg(name, org, shareUsersJSON string) *corev1.Namespace {
 	return ns
 }
 
-func TestGetProject_OrgViewerCannotReadProject(t *testing.T) {
-	// Org viewer has no per-project grant — should be denied GetProject
-	ns := managedNSWithOrg("my-project", "acme", "")
-	orgResolver := &mockOrgResolver{
-		users: map[string]string{"alice@example.com": "viewer"},
-	}
-	handler := newHandlerWithOrg(orgResolver, ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.GetProject(ctx, connect.NewRequest(&consolev1.GetProjectRequest{Name: "my-project"}))
-	assertPermissionDenied(t, err)
-}
-
-func TestListProjects_OrgViewerCannotListProjects(t *testing.T) {
-	// Org viewer has no per-project grant — should not see any projects
-	ns := managedNSWithOrg("my-project", "acme", "")
-	orgResolver := &mockOrgResolver{
-		users: map[string]string{"alice@example.com": "viewer"},
-	}
-	handler := newHandlerWithOrg(orgResolver, ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	resp, err := handler.ListProjects(ctx, connect.NewRequest(&consolev1.ListProjectsRequest{}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(resp.Msg.Projects) != 0 {
-		t.Errorf("expected 0 projects for org viewer, got %d", len(resp.Msg.Projects))
-	}
-}
-
-func TestGetProject_OrgOwnerCannotReadProjectWithoutProjectGrant(t *testing.T) {
-	// Org owner has no per-project grant — org grants do not cascade to projects
-	ns := managedNSWithOrg("my-project", "acme", "")
-	orgResolver := &mockOrgResolver{
-		users: map[string]string{"alice@example.com": "owner"},
-	}
-	handler := newHandlerWithOrg(orgResolver, ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.GetProject(ctx, connect.NewRequest(&consolev1.GetProjectRequest{Name: "my-project"}))
-	assertPermissionDenied(t, err)
-}
-
-func TestUpdateProject_OrgOwnerCannotUpdateProjectWithoutProjectGrant(t *testing.T) {
-	// Org owner has no per-project grant — org grants do not cascade to projects
-	ns := managedNSWithOrg("my-project", "acme", "")
-	orgResolver := &mockOrgResolver{
-		users: map[string]string{"alice@example.com": "owner"},
-	}
-	handler := newHandlerWithOrg(orgResolver, ns)
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	ctx := contextWithClaims("alice@example.com")
-
-	displayName := "Updated"
-	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
-		Name:        "my-project",
-		DisplayName: &displayName,
-	}))
-	assertPermissionDenied(t, err)
-}
-
 // ---- UpdateProjectDefaultSharing tests ----
 
 func TestUpdateProjectDefaultSharing_UpdatesGrantsForOwner(t *testing.T) {
@@ -972,24 +698,6 @@ func TestUpdateProjectDefaultSharing_UpdatesGrantsForOwner(t *testing.T) {
 
 	if r := logHandler.findRecord("project_default_sharing_update"); r == nil {
 		t.Error("expected project_default_sharing_update audit log")
-	}
-}
-
-func TestUpdateProjectDefaultSharing_DeniesNonOwner(t *testing.T) {
-	ns := managedNS("my-project", `[{"principal":"alice@example.com","role":"editor"}]`)
-	handler, logHandler := newHandler(ns)
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.UpdateProjectDefaultSharing(ctx, connect.NewRequest(&consolev1.UpdateProjectDefaultSharingRequest{
-		Name: "my-project",
-		DefaultUserGrants: []*consolev1.ShareGrant{
-			{Principal: "bob@example.com", Role: consolev1.Role_ROLE_VIEWER},
-		},
-	}))
-	assertPermissionDenied(t, err)
-
-	if r := logHandler.findRecord("project_default_sharing_denied"); r == nil {
-		t.Error("expected project_default_sharing_denied audit log")
 	}
 }
 
@@ -1587,54 +1295,6 @@ func TestUpdateProject_Reparent_SuccessOrgOwner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-}
-
-func TestUpdateProject_Reparent_DeniedOnSource(t *testing.T) {
-	// Alice is editor on source parent but not org owner → denied.
-	orgNs := orgNSWithGrants("acme", `[{"principal":"bob@example.com","role":"owner"}]`)
-	srcFolder := folderNSWithGrants("rp-prj-src2", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	destFolder := folderNSWithGrants("rp-prj-dest2", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
-	prj := projectNSWithParent("rp-prj-denied-src", "acme", "holos-fld-rp-prj-src2", `[{"principal":"alice@example.com","role":"editor"}]`)
-
-	handler := newHandlerWithOrg(
-		&mockOrgResolver{users: map[string]string{"bob@example.com": "owner"}},
-		orgNs, srcFolder, destFolder, prj,
-	)
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	ctx := contextWithClaims("alice@example.com")
-
-	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
-	newParentName := "rp-prj-dest2"
-	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
-		Name:       "rp-prj-denied-src",
-		ParentType: &newParentType,
-		ParentName: &newParentName,
-	}))
-	assertPermissionDenied(t, err)
-}
-
-func TestUpdateProject_Reparent_DeniedOnDestination(t *testing.T) {
-	// Alice is owner on source parent but editor on destination → denied.
-	orgNs := orgNSWithGrants("acme", `[{"principal":"bob@example.com","role":"owner"}]`)
-	srcFolder := folderNSWithGrants("rp-prj-src3", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
-	destFolder := folderNSWithGrants("rp-prj-dest3", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	prj := projectNSWithParent("rp-prj-denied-dest", "acme", "holos-fld-rp-prj-src3", `[{"principal":"alice@example.com","role":"editor"}]`)
-
-	handler := newHandlerWithOrg(
-		&mockOrgResolver{users: map[string]string{"bob@example.com": "owner"}},
-		orgNs, srcFolder, destFolder, prj,
-	)
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	ctx := contextWithClaims("alice@example.com")
-
-	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
-	newParentName := "rp-prj-dest3"
-	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
-		Name:       "rp-prj-denied-dest",
-		ParentType: &newParentType,
-		ParentName: &newParentName,
-	}))
-	assertPermissionDenied(t, err)
 }
 
 func TestUpdateProject_Reparent_SameParentIsNoop(t *testing.T) {

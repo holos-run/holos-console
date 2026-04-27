@@ -13,7 +13,6 @@ import (
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/policyresolver"
-	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -192,10 +191,6 @@ func (h *Handler) ListTemplatePolicyBindings(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesList); err != nil {
-		return nil, err
-	}
-
 	items, err := h.k8s.ListBindings(ctx, req.Msg.GetNamespace())
 	if err != nil {
 		return nil, mapK8sError(err)
@@ -236,10 +231,6 @@ func (h *Handler) GetTemplatePolicyBinding(
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesRead); err != nil {
-		return nil, err
 	}
 
 	b, err := h.k8s.GetBinding(ctx, req.Msg.GetNamespace(), name)
@@ -291,10 +282,6 @@ func (h *Handler) CreateTemplatePolicyBinding(
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesWrite); err != nil {
-		return nil, err
 	}
 
 	// HOL-595: a binding's policy_ref MUST point at a policy that exists
@@ -384,10 +371,6 @@ func (h *Handler) UpdateTemplatePolicyBinding(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesWrite); err != nil {
-		return nil, err
-	}
-
 	// Fetch the existing binding so we can surface NotFound before we
 	// attempt the Update (the K8s API would otherwise return a less
 	// informative error) and also preserve unset immutable fields. The
@@ -471,10 +454,6 @@ func (h *Handler) DeleteTemplatePolicyBinding(
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesDelete); err != nil {
-		return nil, err
 	}
 
 	if err := h.k8s.DeleteBinding(ctx, req.Msg.GetNamespace(), name); err != nil {

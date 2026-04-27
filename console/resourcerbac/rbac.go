@@ -283,14 +283,49 @@ func resourceRules(name string, cfg KindConfig, role string) []rbacv1.PolicyRule
 		ResourceNames: []string{name},
 		Verbs:         verbs,
 	}}
-	if cfg.ClusterScoped {
-		rules = append(rules, rbacv1.PolicyRule{
-			APIGroups: []string{apiGroup},
-			Resources: []string{cfg.Resource},
-			Verbs:     []string{"list"},
-		})
-	}
 	return append(rules, extraRules...)
+}
+
+func topResourceChildRole(namespace string, cfg KindConfig, role string, ownerRefs []metav1.OwnerReference) *rbacv1.Role {
+	role = NormalizeRole(role)
+	labels := RoleLabels(namespace, cfg, role)
+	labels[LabelRolePurpose] = cfg.RolePurpose + "-children"
+	return &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            topResourceChildRoleName(cfg, role),
+			Namespace:       namespace,
+			Labels:          labels,
+			OwnerReferences: ownerRefs,
+		},
+		Rules: []rbacv1.PolicyRule{{
+			APIGroups: []string{TemplatesAPIGroup},
+			Resources: []string{
+				"templatedependencies",
+				"templategrants",
+				"templatepolicies",
+				"templatepolicybindings",
+				"templatereleases",
+				"templaterequirements",
+				"templates",
+			},
+			Verbs: topResourceChildVerbs(role),
+		}},
+	}
+}
+
+func topResourceChildRoleName(cfg KindConfig, role string) string {
+	return "holos-" + cfg.RolePurpose + "-children-" + NormalizeRole(role)
+}
+
+func topResourceChildVerbs(role string) []string {
+	switch NormalizeRole(role) {
+	case RoleEditor:
+		return []string{"get", "create", "update", "patch"}
+	case RoleOwner:
+		return []string{"get", "create", "update", "patch", "delete"}
+	default:
+		return []string{"get"}
+	}
 }
 
 func viewerVerbs() []string {
@@ -566,7 +601,16 @@ func ensureClusterResourceRBAC(ctx context.Context, client kubernetes.Interface,
 			return fmt.Errorf("applying %s cluster role %q: %w", cfg.Kind, role.Name, err)
 		}
 	}
-	return reconcileClusterRoleBindings(ctx, client, obj, cfg, name, ownerRefs, now)
+	for _, role := range []string{RoleViewer, RoleEditor, RoleOwner} {
+		childRole := topResourceChildRole(name, cfg, role, ownerRefs)
+		if err := applyRole(ctx, client, childRole); err != nil {
+			return fmt.Errorf("applying %s child role %q: %w", cfg.Kind, childRole.Name, err)
+		}
+	}
+	if err := reconcileClusterRoleBindings(ctx, client, obj, cfg, name, ownerRefs, now); err != nil {
+		return err
+	}
+	return reconcileTopResourceChildRoleBindings(ctx, client, obj, cfg, name, ownerRefs, now)
 }
 
 func reconcileClusterRoleBindings(ctx context.Context, client kubernetes.Interface, obj metav1.Object, cfg KindConfig, name string, ownerRefs []metav1.OwnerReference, now time.Time) error {
@@ -615,6 +659,81 @@ func reconcileClusterRoleBindings(ctx context.Context, client kubernetes.Interfa
 	for _, binding := range desired {
 		if err := applyClusterRoleBinding(ctx, client, binding); err != nil {
 			return fmt.Errorf("applying %s annotated cluster role binding %q: %w", cfg.Kind, binding.Name, err)
+		}
+	}
+	return nil
+}
+
+func reconcileTopResourceChildRoleBindings(ctx context.Context, client kubernetes.Interface, obj metav1.Object, cfg KindConfig, namespace string, ownerRefs []metav1.OwnerReference, now time.Time) error {
+	desired := make(map[string]*rbacv1.RoleBinding)
+	addDesired := func(target string, grant secrets.AnnotationGrant) {
+		if strings.TrimSpace(grant.Principal) == "" {
+			return
+		}
+		target = NormalizeTarget(target)
+		role := NormalizeRole(grant.Role)
+		subjectKind := rbacv1.UserKind
+		if target == ShareTargetGroup {
+			subjectKind = rbacv1.GroupKind
+		}
+		labels := RoleBindingLabels(namespace, cfg, target, grant.Principal, role)
+		labels[LabelRolePurpose] = cfg.RolePurpose + "-children"
+		binding := &rbacv1.RoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:            RoleBindingName(namespace+"-children", cfg, role, target, grant.Principal),
+				Namespace:       namespace,
+				Labels:          labels,
+				Annotations:     map[string]string{AnnotationShareTargetName: OIDCPrincipal(grant.Principal)},
+				OwnerReferences: ownerRefs,
+			},
+			Subjects: []rbacv1.Subject{{
+				Kind:     subjectKind,
+				APIGroup: rbacv1.GroupName,
+				Name:     OIDCPrincipal(grant.Principal),
+			}},
+			RoleRef: rbacv1.RoleRef{
+				APIGroup: rbacv1.GroupName,
+				Kind:     "Role",
+				Name:     topResourceChildRoleName(cfg, role),
+			},
+		}
+		desired[binding.Name] = binding
+	}
+	users, err := parseUserShareGrants(obj.GetAnnotations())
+	if err != nil {
+		return err
+	}
+	for _, grant := range activeGrants(users, now) {
+		addDesired(ShareTargetUser, grant)
+	}
+	groups, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareRoles)
+	if err != nil {
+		return err
+	}
+	for _, grant := range activeGrants(groups, now) {
+		addDesired(ShareTargetGroup, grant)
+	}
+
+	selector := labels.SelectorFromSet(labels.Set{
+		LabelRolePurpose:  cfg.RolePurpose + "-children",
+		LabelResourceName: namespace,
+	}).String()
+	current, err := client.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return fmt.Errorf("listing %s child role bindings: %w", cfg.Kind, err)
+	}
+	for i := range current.Items {
+		existing := current.Items[i]
+		if _, ok := desired[existing.Name]; ok {
+			continue
+		}
+		if err := client.RbacV1().RoleBindings(namespace).Delete(ctx, existing.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("deleting stale %s child role binding %q: %w", cfg.Kind, existing.Name, err)
+		}
+	}
+	for _, binding := range desired {
+		if err := applyRoleBinding(ctx, client, binding); err != nil {
+			return fmt.Errorf("applying %s child role binding %q: %w", cfg.Kind, binding.Name, err)
 		}
 	}
 	return nil

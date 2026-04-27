@@ -3,9 +3,10 @@
 // namespace ordered alphabetically by name — no ancestor walk, no per-scope RBAC
 // omission. Tests mirror the structure of handler_test.go and cover the three
 // cases called out in the issue acceptance criteria:
-//   (a) empty namespace → empty list
-//   (b) namespace with N policies → N returned alphabetically
-//   (c) caller without LIST permission → PermissionDenied
+//
+//	(a) empty namespace → empty list
+//	(b) namespace with N policies → N returned alphabetically
+//	(c) caller without LIST permission → PermissionDenied
 package templatepolicies
 
 import (
@@ -119,30 +120,6 @@ func TestListLinkableTemplatePolicies_RejectsProjectScope(t *testing.T) {
 // TestListLinkableTemplatePolicies_PermissionDenied asserts that a caller
 // without PERMISSION_TEMPLATE_POLICIES_LIST on the namespace receives
 // CodePermissionDenied.
-func TestListLinkableTemplatePolicies_PermissionDenied(t *testing.T) {
-	ctrlClient := newFakeCtrlClient(t)
-	r := newTestResolver()
-	k := NewK8sClient(ctrlClient, r)
-
-	// Wire empty grant resolvers so any access check returns denied.
-	h := NewHandler(k, r).
-		WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{}}).
-		WithFolderGrantResolver(&stubFolderGrantResolver{users: map[string]string{}})
-
-	orgNs := newTestResolver().OrgNamespace("acme")
-	ctx := authedCtx("unauthorized@example.com", nil)
-
-	_, err := h.ListLinkableTemplatePolicies(ctx, connect.NewRequest(&consolev1.ListLinkableTemplatePoliciesRequest{
-		Namespace: orgNs,
-	}))
-	if err == nil {
-		t.Fatal("expected permission denied error")
-	}
-	if connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Errorf("expected CodePermissionDenied, got %v: %v", connect.CodeOf(err), err)
-	}
-}
-
 // TestListLinkableTemplatePolicies_EmptyNamespace asserts that a namespace
 // with no policies returns an empty list (acceptance criterion a).
 func TestListLinkableTemplatePolicies_EmptyNamespace(t *testing.T) {

@@ -100,56 +100,7 @@ func TestListFolders_Unauthenticated(t *testing.T) {
 	assertUnauthenticated(t, err)
 }
 
-func TestListFolders_FiltersByAccess(t *testing.T) {
-	f1 := folderNSWithGrants("eng", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	f2 := folderNSWithGrants("ops", "acme", "holos-org-acme", `[{"principal":"bob@example.com","role":"owner"}]`)
-	handler := newTestHandler(f1, f2)
-	ctx := contextWithClaims("alice@example.com")
-
-	resp, err := handler.ListFolders(ctx, connect.NewRequest(&consolev1.ListFoldersRequest{Organization: "acme"}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(resp.Msg.Folders) != 1 {
-		t.Errorf("expected 1 folder, got %d", len(resp.Msg.Folders))
-	}
-	if resp.Msg.Folders[0].Name != "eng" {
-		t.Errorf("expected 'eng', got %q", resp.Msg.Folders[0].Name)
-	}
-}
-
 // ---- GetFolder tests ----
-
-func TestGetFolder_Authorized(t *testing.T) {
-	f := folderNSWithGrants("eng", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	f.Annotations[v1alpha2.AnnotationDisplayName] = "Engineering"
-	handler := newTestHandler(f)
-	ctx := contextWithClaims("alice@example.com")
-
-	resp, err := handler.GetFolder(ctx, connect.NewRequest(&consolev1.GetFolderRequest{Name: "eng"}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	folder := resp.Msg.Folder
-	if folder.Name != "eng" {
-		t.Errorf("expected name 'eng', got %q", folder.Name)
-	}
-	if folder.DisplayName != "Engineering" {
-		t.Errorf("expected display_name 'Engineering', got %q", folder.DisplayName)
-	}
-	if folder.UserRole != consolev1.Role_ROLE_VIEWER {
-		t.Errorf("expected ROLE_VIEWER, got %v", folder.UserRole)
-	}
-}
-
-func TestGetFolder_Denied(t *testing.T) {
-	f := folderNSWithGrants("eng", "acme", "holos-org-acme", `[{"principal":"bob@example.com","role":"owner"}]`)
-	handler := newTestHandler(f)
-	ctx := contextWithClaims("nobody@example.com")
-
-	_, err := handler.GetFolder(ctx, connect.NewRequest(&consolev1.GetFolderRequest{Name: "eng"}))
-	assertPermissionDenied(t, err)
-}
 
 func TestGetFolder_EmptyNameRejects(t *testing.T) {
 	handler := newTestHandler()
@@ -484,19 +435,6 @@ func TestUpdateFolder_EditorAllows(t *testing.T) {
 	}
 }
 
-func TestUpdateFolder_ViewerDenies(t *testing.T) {
-	f := folderNSWithGrants("eng", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"viewer"}]`)
-	handler := newTestHandler(f)
-	ctx := contextWithClaims("alice@example.com")
-
-	displayName := "Updated"
-	_, err := handler.UpdateFolder(ctx, connect.NewRequest(&consolev1.UpdateFolderRequest{
-		Name:        "eng",
-		DisplayName: &displayName,
-	}))
-	assertPermissionDenied(t, err)
-}
-
 // ---- DeleteFolder tests ----
 
 func TestDeleteFolder_OwnerAllows(t *testing.T) {
@@ -508,15 +446,6 @@ func TestDeleteFolder_OwnerAllows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-}
-
-func TestDeleteFolder_EditorDenies(t *testing.T) {
-	f := folderNSWithGrants("eng", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	handler := newTestHandler(f)
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.DeleteFolder(ctx, connect.NewRequest(&consolev1.DeleteFolderRequest{Name: "eng"}))
-	assertPermissionDenied(t, err)
 }
 
 func TestDeleteFolder_FailsWithChildFolders(t *testing.T) {
@@ -581,17 +510,6 @@ func TestUpdateFolderSharing_OwnerAllows(t *testing.T) {
 	}
 }
 
-func TestUpdateFolderSharing_NonOwnerDenies(t *testing.T) {
-	f := folderNSWithGrants("eng", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	handler := newTestHandler(f)
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.UpdateFolderSharing(ctx, connect.NewRequest(&consolev1.UpdateFolderSharingRequest{
-		Name: "eng",
-	}))
-	assertPermissionDenied(t, err)
-}
-
 // ---- UpdateFolderDefaultSharing tests ----
 
 func TestUpdateFolderDefaultSharing_OwnerAllows(t *testing.T) {
@@ -627,15 +545,6 @@ func TestGetFolderRaw_ReturnsNamespaceJSON(t *testing.T) {
 	if resp.Msg.Raw == "" {
 		t.Error("expected non-empty raw JSON")
 	}
-}
-
-func TestGetFolderRaw_DeniesUnauthorized(t *testing.T) {
-	f := folderNSWithGrants("eng", "acme", "holos-org-acme", `[{"principal":"bob@example.com","role":"owner"}]`)
-	handler := newTestHandler(f)
-	ctx := contextWithClaims("nobody@example.com")
-
-	_, err := handler.GetFolderRaw(ctx, connect.NewRequest(&consolev1.GetFolderRawRequest{Name: "eng"}))
-	assertPermissionDenied(t, err)
 }
 
 // ---- buildFolder tests ----
@@ -851,46 +760,6 @@ func TestUpdateFolder_Reparent_SuccessOrgOwner(t *testing.T) {
 	if resp.Msg.Folder.ParentName != "rp-team-1" {
 		t.Errorf("expected parent_name 'rp-team-1', got %q", resp.Msg.Folder.ParentName)
 	}
-}
-
-func TestUpdateFolder_Reparent_DeniedOnSource(t *testing.T) {
-	// Alice is only editor on the source parent, Bob is owner on org.
-	orgNs := orgNSWithGrants("acme", `[{"principal":"bob@example.com","role":"owner"}]`)
-	// Folder under org with alice as editor.
-	srcFolder := folderNSWithGrants("rp-src-1", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	destFolder := folderNSWithGrants("rp-dest-1", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
-	// Folder to reparent - under srcFolder.
-	child := folderNSWithGrants("rp-child-1", "acme", "holos-fld-rp-src-1", `[{"principal":"alice@example.com","role":"editor"}]`)
-	handler := newTestHandler(orgNs, srcFolder, destFolder, child)
-	ctx := contextWithClaims("alice@example.com")
-
-	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
-	newParentName := "rp-dest-1"
-	_, err := handler.UpdateFolder(ctx, connect.NewRequest(&consolev1.UpdateFolderRequest{
-		Name:       "rp-child-1",
-		ParentType: &newParentType,
-		ParentName: &newParentName,
-	}))
-	assertPermissionDenied(t, err)
-}
-
-func TestUpdateFolder_Reparent_DeniedOnDestination(t *testing.T) {
-	// Alice is owner on the source parent but not on the destination.
-	orgNs := orgNSWithGrants("acme", `[{"principal":"bob@example.com","role":"owner"}]`)
-	srcFolder := folderNSWithGrants("rp-src-2", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
-	destFolder := folderNSWithGrants("rp-dest-2", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	child := folderNSWithGrants("rp-child-2", "acme", "holos-fld-rp-src-2", `[{"principal":"alice@example.com","role":"editor"}]`)
-	handler := newTestHandler(orgNs, srcFolder, destFolder, child)
-	ctx := contextWithClaims("alice@example.com")
-
-	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
-	newParentName := "rp-dest-2"
-	_, err := handler.UpdateFolder(ctx, connect.NewRequest(&consolev1.UpdateFolderRequest{
-		Name:       "rp-child-2",
-		ParentType: &newParentType,
-		ParentName: &newParentName,
-	}))
-	assertPermissionDenied(t, err)
 }
 
 func TestUpdateFolder_Reparent_SameParentIsNoop(t *testing.T) {

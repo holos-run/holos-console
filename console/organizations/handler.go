@@ -121,19 +121,12 @@ func (h *Handler) ListOrganizations(
 		return nil, mapK8sError(err)
 	}
 
-	now := time.Now()
 	var result []*consolev1.Organization
 	for _, ns := range allOrgs {
 		shareUsers, _ := GetShareUsers(ns)
 		shareRoles, _ := GetShareRoles(ns)
-		activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-		activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-		if err := CheckOrgListAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-			continue
-		}
-
-		userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, activeUsers, activeRoles)
+		userRole := h.effectiveRoleForNamespace(ctx, claims, ns, shareUsers, shareRoles)
 		result = append(result, buildOrganization(h.k8s, ns, shareUsers, shareRoles, userRole))
 	}
 
@@ -171,22 +164,8 @@ func (h *Handler) GetOrganization(
 
 	shareUsers, _ := GetShareUsers(ns)
 	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-	if err := CheckOrgReadAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-		slog.WarnContext(ctx, "organization access denied",
-			slog.String("action", "organization_read_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("organization", req.Msg.Name),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return nil, err
-	}
-
-	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, activeUsers, activeRoles)
+	userRole := h.effectiveRoleForNamespace(ctx, claims, ns, shareUsers, shareRoles)
 
 	slog.InfoContext(ctx, "organization accessed",
 		slog.String("action", "organization_read"),
@@ -521,40 +500,8 @@ func (h *Handler) UpdateOrganization(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	ns, err := h.k8s.GetOrganization(ctx, req.Msg.Name)
-	if err != nil {
+	if _, err := h.k8s.GetOrganization(ctx, req.Msg.Name); err != nil {
 		return nil, mapK8sError(err)
-	}
-
-	shareUsers, _ := GetShareUsers(ns)
-	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	// Changing default_folder requires ADMIN (OWNER) permission.
-	if req.Msg.DefaultFolder != nil {
-		if err := CheckOrgAdminAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-			slog.WarnContext(ctx, "organization update default folder denied",
-				slog.String("action", "organization_update_denied"),
-				slog.String("resource_type", auditResourceType),
-				slog.String("organization", req.Msg.Name),
-				slog.String("sub", claims.Sub),
-				slog.String("email", claims.Email),
-			)
-			return nil, err
-		}
-	} else {
-		if err := CheckOrgWriteAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-			slog.WarnContext(ctx, "organization update denied",
-				slog.String("action", "organization_update_denied"),
-				slog.String("resource_type", auditResourceType),
-				slog.String("organization", req.Msg.Name),
-				slog.String("sub", claims.Sub),
-				slog.String("email", claims.Email),
-			)
-			return nil, err
-		}
 	}
 
 	// Validate and update default folder if requested.
@@ -635,26 +582,8 @@ func (h *Handler) DeleteOrganization(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	ns, err := h.k8s.GetOrganization(ctx, req.Msg.Name)
-	if err != nil {
+	if _, err := h.k8s.GetOrganization(ctx, req.Msg.Name); err != nil {
 		return nil, mapK8sError(err)
-	}
-
-	shareUsers, _ := GetShareUsers(ns)
-	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	if err := CheckOrgDeleteAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-		slog.WarnContext(ctx, "organization delete denied",
-			slog.String("action", "organization_delete_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("organization", req.Msg.Name),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return nil, err
 	}
 
 	if h.projectLister != nil {
@@ -701,21 +630,9 @@ func (h *Handler) UpdateOrganizationSharing(
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
-
 	shareUsers, _ := GetShareUsers(ns)
 	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	if err := CheckOrgAdminAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-		slog.WarnContext(ctx, "organization sharing update denied",
-			slog.String("action", "organization_sharing_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("organization", req.Msg.Name),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
+	if err := h.requireNamespaceOwner(ctx, claims, ns, shareUsers, shareRoles, "organization sharing update"); err != nil {
 		return nil, err
 	}
 
@@ -747,9 +664,7 @@ func (h *Handler) UpdateOrganizationSharing(
 
 	updatedUsers, _ := GetShareUsers(updated)
 	updatedRoles, _ := GetShareRoles(updated)
-	updatedActiveUsers := secrets.ActiveGrantsMap(updatedUsers, now)
-	updatedActiveGroups := secrets.ActiveGrantsMap(updatedRoles, now)
-	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, updatedActiveUsers, updatedActiveGroups)
+	userRole := h.effectiveRoleForNamespace(ctx, claims, updated, updatedUsers, updatedRoles)
 
 	return connect.NewResponse(&consolev1.UpdateOrganizationSharingResponse{
 		Organization: buildOrganization(h.k8s, updated, updatedUsers, updatedRoles, userRole),
@@ -774,21 +689,9 @@ func (h *Handler) UpdateOrganizationDefaultSharing(
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
-
 	shareUsers, _ := GetShareUsers(ns)
 	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	if err := CheckOrgAdminAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-		slog.WarnContext(ctx, "organization default sharing update denied",
-			slog.String("action", "organization_default_sharing_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("organization", req.Msg.Name),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
+	if err := h.requireNamespaceOwner(ctx, claims, ns, shareUsers, shareRoles, "organization default sharing update"); err != nil {
 		return nil, err
 	}
 
@@ -810,9 +713,7 @@ func (h *Handler) UpdateOrganizationDefaultSharing(
 
 	updatedShareUsers, _ := GetShareUsers(updated)
 	updatedShareRoles, _ := GetShareRoles(updated)
-	updatedActiveUsers := secrets.ActiveGrantsMap(updatedShareUsers, now)
-	updatedActiveRoles := secrets.ActiveGrantsMap(updatedShareRoles, now)
-	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, updatedActiveUsers, updatedActiveRoles)
+	userRole := h.effectiveRoleForNamespace(ctx, claims, updated, updatedShareUsers, updatedShareRoles)
 
 	return connect.NewResponse(&consolev1.UpdateOrganizationDefaultSharingResponse{
 		Organization: buildOrganization(h.k8s, updated, updatedShareUsers, updatedShareRoles, userRole),
@@ -836,23 +737,6 @@ func (h *Handler) GetOrganizationRaw(
 	ns, err := h.k8s.GetOrganization(ctx, req.Msg.Name)
 	if err != nil {
 		return nil, mapK8sError(err)
-	}
-
-	shareUsers, _ := GetShareUsers(ns)
-	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	if err := CheckOrgReadAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-		slog.WarnContext(ctx, "organization raw access denied",
-			slog.String("action", "organization_raw_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("organization", req.Msg.Name),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return nil, err
 	}
 
 	slog.InfoContext(ctx, "organization raw accessed",
@@ -895,6 +779,44 @@ func (h *Handler) isOrgCreator(email string, roles []string) bool {
 		}
 	}
 	return false
+}
+
+func (h *Handler) effectiveRoleForNamespace(ctx context.Context, claims *rpc.Claims, ns interface{ GetName() string }, shareUsers, shareRoles []secrets.AnnotationGrant) rbac.Role {
+	if rpc.HasImpersonatedClients(ctx) {
+		if ok, err := h.k8s.canVerbNamespace(ctx, "delete", ns.GetName()); err == nil && ok {
+			return rbac.RoleOwner
+		}
+		if ok, err := h.k8s.canVerbNamespace(ctx, "update", ns.GetName()); err == nil && ok {
+			return rbac.RoleEditor
+		}
+		if ok, err := h.k8s.canVerbNamespace(ctx, "get", ns.GetName()); err == nil && ok {
+			return rbac.RoleViewer
+		}
+		return rbac.RoleUnspecified
+	}
+	return rbac.BestRoleFromGrants(
+		claims.Email,
+		claims.Roles,
+		secrets.ActiveGrantsMap(shareUsers, time.Now()),
+		secrets.ActiveGrantsMap(shareRoles, time.Now()),
+	)
+}
+
+func (h *Handler) requireNamespaceOwner(ctx context.Context, claims *rpc.Claims, ns interface{ GetName() string }, shareUsers, shareRoles []secrets.AnnotationGrant, action string) error {
+	if rpc.HasImpersonatedClients(ctx) {
+		ok, err := h.k8s.canVerbNamespace(ctx, "delete", ns.GetName())
+		if err != nil {
+			return mapK8sError(err)
+		}
+		if ok {
+			return nil
+		}
+		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: not authorized to %s", action))
+	}
+	if h.effectiveRoleForNamespace(ctx, claims, ns, shareUsers, shareRoles) == rbac.RoleOwner {
+		return nil
+	}
+	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: not authorized to %s", action))
 }
 
 // buildOrganization creates an Organization proto message from a namespace.

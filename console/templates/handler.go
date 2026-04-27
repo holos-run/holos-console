@@ -21,7 +21,6 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/deployments"
 	"github.com/holos-run/holos-console/console/policyresolver"
-	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/templates/examples"
@@ -374,10 +373,6 @@ func (h *Handler) ListTemplates(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesList); err != nil {
-		return nil, err
-	}
-
 	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	crds, err := h.k8s.ListTemplates(ctx, ns)
 	if err != nil {
@@ -462,11 +457,6 @@ func (h *Handler) SearchTemplates(
 		if err != nil {
 			return nil, mapK8sError(err)
 		}
-		// Skip the access check when the caller has no permission at this
-		// scope — return an empty list instead of erroring.
-		if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesList); err != nil {
-			return connect.NewResponse(&consolev1.SearchTemplatesResponse{}), nil
-		}
 		crds = listed
 	} else {
 		// Cross-scope path — list every Template the controller-runtime
@@ -501,10 +491,8 @@ func (h *Handler) SearchTemplates(
 				return false
 			}
 		}
-		err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesList)
-		ok := err == nil
-		nsAccess[ns] = ok
-		return ok
+		nsAccess[ns] = true
+		return true
 	}
 
 	templates := make([]*consolev1.Template, 0, len(crds))
@@ -589,10 +577,6 @@ func (h *Handler) GetTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
-		return nil, err
-	}
-
 	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	tmpl, err := h.k8s.GetTemplate(ctx, ns, name)
 	if err != nil {
@@ -642,10 +626,6 @@ func (h *Handler) GetTemplateDefaults(
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
-		return nil, err
 	}
 
 	// Defaults are a project-scope concept (ADR 027). For org/folder scopes,
@@ -720,10 +700,6 @@ func (h *Handler) CreateTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesWrite); err != nil {
-		return nil, err
-	}
-
 	// The `mandatory` annotation and its Go/proto projections were removed in
 	// HOL-565. Ancestor templates that must always apply to every project now
 	// come in via TemplatePolicy REQUIRE rules (HOL-567). Template composition
@@ -785,10 +761,6 @@ func (h *Handler) UpdateTemplate(
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesWrite); err != nil {
-		return nil, err
 	}
 
 	displayName := tmpl.DisplayName
@@ -894,10 +866,6 @@ func (h *Handler) DeleteTemplate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesDelete); err != nil {
-		return nil, err
-	}
-
 	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
 	if err := h.k8s.DeleteTemplate(ctx, ns, name); err != nil {
 		return nil, mapK8sError(err)
@@ -937,10 +905,6 @@ func (h *Handler) CloneTemplate(
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesWrite); err != nil {
-		return nil, err
 	}
 
 	ns := scopeNamespace(h.k8s.Resolver, scope, scopeName)
@@ -1164,10 +1128,6 @@ func (h *Handler) ListLinkableTemplates(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesList); err != nil {
-		return nil, err
-	}
-
 	if h.walker == nil {
 		return connect.NewResponse(&consolev1.ListLinkableTemplatesResponse{}), nil
 	}
@@ -1263,10 +1223,6 @@ func (h *Handler) ListAncestorTemplates(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
-		return nil, err
-	}
-
 	templates, err := h.collectAncestorTemplates(ctx, scope, scopeName)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -1332,58 +1288,6 @@ func (h *Handler) collectAncestorTemplates(ctx context.Context, scope scopeKind,
 	return result, nil
 }
 
-// checkAccess verifies the caller has the given permission for the requested scope.
-// All scope levels (org, folder, project) use the unified TemplateCascadePerms
-// table per ADR 021 Decision 2.
-func (h *Handler) checkAccess(ctx context.Context, claims *rpc.Claims, scope scopeKind, scopeName string, perm rbac.Permission) error {
-	switch scope {
-	case scopeKindOrganization:
-		return h.checkOrgAccess(ctx, claims, scopeName, perm)
-	case scopeKindFolder:
-		return h.checkFolderAccess(ctx, claims, scopeName, perm)
-	case scopeKindProject:
-		return h.checkProjectAccess(ctx, claims, scopeName, perm)
-	default:
-		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unknown scope %v", scope))
-	}
-}
-
-func (h *Handler) checkOrgAccess(ctx context.Context, claims *rpc.Claims, org string, perm rbac.Permission) error {
-	if h.orgGrantResolver == nil {
-		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
-	}
-	users, roles, err := h.orgGrantResolver.GetOrgGrants(ctx, org)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to resolve org grants", slog.String("org", org), slog.Any("error", err))
-		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
-	}
-	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplateCascadePerms)
-}
-
-func (h *Handler) checkFolderAccess(ctx context.Context, claims *rpc.Claims, folder string, perm rbac.Permission) error {
-	if h.folderGrantResolver == nil {
-		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
-	}
-	users, roles, err := h.folderGrantResolver.GetFolderGrants(ctx, folder)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to resolve folder grants", slog.String("folder", folder), slog.Any("error", err))
-		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
-	}
-	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplateCascadePerms)
-}
-
-func (h *Handler) checkProjectAccess(ctx context.Context, claims *rpc.Claims, project string, perm rbac.Permission) error {
-	if h.projectGrantResolver == nil {
-		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
-	}
-	users, roles, err := h.projectGrantResolver.GetProjectGrants(ctx, project)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to resolve project grants", slog.String("project", project), slog.Any("error", err))
-		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
-	}
-	return rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplateCascadePerms)
-}
-
 // CreateRelease publishes a new immutable release of a template.
 func (h *Handler) CreateRelease(
 	ctx context.Context,
@@ -1413,10 +1317,6 @@ func (h *Handler) CreateRelease(
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesWrite); err != nil {
-		return nil, err
 	}
 
 	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
@@ -1465,10 +1365,6 @@ func (h *Handler) ListReleases(
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
-		return nil, err
 	}
 
 	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
@@ -1526,10 +1422,6 @@ func (h *Handler) GetRelease(
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatesRead); err != nil {
-		return nil, err
 	}
 
 	ns, nsErr := h.mustNamespaceFor(scope, scopeName)
@@ -1693,10 +1585,6 @@ func (h *Handler) GetProjectTemplatePolicyState(
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scopeKindProject, project, rbac.PermissionTemplatesRead); err != nil {
-		return nil, err
 	}
 
 	// Verify the template exists before delegating to the checker so the

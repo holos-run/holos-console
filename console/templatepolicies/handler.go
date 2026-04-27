@@ -51,7 +51,6 @@ import (
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
-	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -172,10 +171,6 @@ func (h *Handler) ListTemplatePolicies(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesList); err != nil {
-		return nil, err
-	}
-
 	items, err := h.k8s.ListPolicies(ctx, req.Msg.GetNamespace())
 	if err != nil {
 		return nil, mapK8sError(err)
@@ -219,10 +214,6 @@ func (h *Handler) GetTemplatePolicy(
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesRead); err != nil {
-		return nil, err
 	}
 
 	p, err := h.k8s.GetPolicy(ctx, req.Msg.GetNamespace(), name)
@@ -271,10 +262,6 @@ func (h *Handler) CreateTemplatePolicy(
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesWrite); err != nil {
-		return nil, err
 	}
 
 	// Best-effort template-existence probe. Log but do not block on transient
@@ -336,10 +323,6 @@ func (h *Handler) UpdateTemplatePolicy(
 	claims := rpc.ClaimsFromContext(ctx)
 	if claims == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesWrite); err != nil {
-		return nil, err
 	}
 
 	// Fetch the existing policy so we can distinguish "unset" from "set to
@@ -411,10 +394,6 @@ func (h *Handler) DeleteTemplatePolicy(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesDelete); err != nil {
-		return nil, err
-	}
-
 	if err := h.k8s.DeletePolicy(ctx, req.Msg.GetNamespace(), name); err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -457,10 +436,6 @@ func (h *Handler) ListLinkableTemplatePolicies(
 
 	scope, scopeName, err := h.extractPolicyScope(namespace)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := h.checkAccess(ctx, claims, scope, scopeName, rbac.PermissionTemplatePoliciesList); err != nil {
 		return nil, err
 	}
 

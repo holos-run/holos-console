@@ -61,19 +61,12 @@ func (h *Handler) ListFolders(
 		return nil, mapK8sError(err)
 	}
 
-	now := time.Now()
 	var result []*consolev1.Folder
 	for _, ns := range allFolders {
 		shareUsers, _ := GetShareUsers(ns)
 		shareRoles, _ := GetShareRoles(ns)
-		activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-		activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-		if err := CheckFolderListAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-			continue
-		}
-
-		userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, activeUsers, activeRoles)
+		userRole := h.effectiveRoleForNamespace(ctx, claims, ns, shareUsers, shareRoles)
 		result = append(result, buildFolder(h.k8s, ns, shareUsers, shareRoles, userRole))
 	}
 
@@ -111,22 +104,8 @@ func (h *Handler) GetFolder(
 
 	shareUsers, _ := GetShareUsers(ns)
 	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-	if err := CheckFolderReadAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-		slog.WarnContext(ctx, "folder access denied",
-			slog.String("action", "folder_read_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("folder", req.Msg.Name),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return nil, err
-	}
-
-	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, activeUsers, activeRoles)
+	userRole := h.effectiveRoleForNamespace(ctx, claims, ns, shareUsers, shareRoles)
 
 	slog.InfoContext(ctx, "folder accessed",
 		slog.String("action", "folder_read"),
@@ -187,28 +166,13 @@ func (h *Handler) CreateFolder(
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	// Fetch parent namespace to verify it exists and check access.
 	parentNamespace, err := h.k8s.GetNamespace(ctx, parentNs)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
-
-	// Check create access on the parent.
 	parentShareUsers, _ := GetShareUsers(parentNamespace)
 	parentShareRoles, _ := GetShareRoles(parentNamespace)
-	now := time.Now()
-	parentActiveUsers := secrets.ActiveGrantsMap(parentShareUsers, now)
-	parentActiveRoles := secrets.ActiveGrantsMap(parentShareRoles, now)
-
-	if err := CheckFolderCreateAccess(claims.Email, claims.Roles, parentActiveUsers, parentActiveRoles); err != nil {
-		slog.WarnContext(ctx, "folder create denied",
-			slog.String("action", "folder_create_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("folder", name),
-			slog.String("parent", parentNs),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
+	if err := h.requireNamespaceOwner(ctx, claims, parentNamespace, parentShareUsers, parentShareRoles, "create folders"); err != nil {
 		return nil, err
 	}
 
@@ -291,23 +255,6 @@ func (h *Handler) UpdateFolder(
 		return nil, mapK8sError(err)
 	}
 
-	shareUsers, _ := GetShareUsers(ns)
-	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	if err := CheckFolderWriteAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-		slog.WarnContext(ctx, "folder update denied",
-			slog.String("action", "folder_update_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("folder", req.Msg.Name),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return nil, err
-	}
-
 	// Handle reparenting if parent_type and parent_name are set.
 	if req.Msg.ParentType != nil && req.Msg.ParentName != nil {
 		if err := h.reparentFolder(ctx, ns, claims, *req.Msg.ParentType, *req.Msg.ParentName); err != nil {
@@ -364,40 +311,12 @@ func (h *Handler) reparentFolder(
 		return nil
 	}
 
-	// Verify new parent namespace exists.
-	newParentNamespace, err := h.k8s.GetNamespace(ctx, newParentNs)
-	if err != nil {
+	if _, err := h.k8s.GetNamespace(ctx, newParentNs); err != nil {
 		return mapK8sError(err)
 	}
 
-	// Check PERMISSION_REPARENT on the current (source) parent.
-	sourceNs, err := h.k8s.GetNamespace(ctx, currentParentNs)
-	if err != nil {
+	if _, err := h.k8s.GetNamespace(ctx, currentParentNs); err != nil {
 		return mapK8sError(err)
-	}
-	if err := h.checkReparentAccess(ctx, claims, sourceNs, "source"); err != nil {
-		slog.WarnContext(ctx, "folder reparent denied on source",
-			slog.String("action", "folder_reparent_denied_source"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("folder", folderName),
-			slog.String("source_parent", currentParentNs),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return err
-	}
-
-	// Check PERMISSION_REPARENT on the new (destination) parent.
-	if err := h.checkReparentAccess(ctx, claims, newParentNamespace, "destination"); err != nil {
-		slog.WarnContext(ctx, "folder reparent denied on destination",
-			slog.String("action", "folder_reparent_denied_destination"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("folder", folderName),
-			slog.String("dest_parent", newParentNs),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return err
 	}
 
 	// Cycle detection: walk new parent's ancestors; if the folder being moved
@@ -442,43 +361,6 @@ func (h *Handler) reparentFolder(
 	)
 
 	return nil
-}
-
-// checkReparentAccess verifies that the user has PERMISSION_REPARENT on the given
-// parent namespace. Uses direct grants on the parent plus org-level cascade via
-// ReparentCascadePerms.
-func (h *Handler) checkReparentAccess(ctx context.Context, claims *rpc.Claims, parentNs *corev1.Namespace, direction string) error {
-	shareUsers, _ := GetShareUsers(parentNs)
-	shareRoles, _ := GetShareRoles(parentNs)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	// Check direct grants on the parent resource.
-	if err := rbac.CheckAccessGrants(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionReparent); err == nil {
-		return nil
-	}
-
-	// Check org-level cascade: org OWNERs get REPARENT on all children via ReparentCascadePerms.
-	org := ""
-	if parentNs.Labels != nil {
-		org = parentNs.Labels[v1alpha2.LabelOrganization]
-	}
-	if org != "" {
-		orgNsName := h.k8s.Resolver.OrgNamespace(org)
-		orgNs, err := h.k8s.GetNamespace(ctx, orgNsName)
-		if err == nil {
-			orgShareUsers, _ := GetShareUsers(orgNs)
-			orgShareRoles, _ := GetShareRoles(orgNs)
-			orgActiveUsers := secrets.ActiveGrantsMap(orgShareUsers, now)
-			orgActiveRoles := secrets.ActiveGrantsMap(orgShareRoles, now)
-			if err := rbac.CheckCascadeAccess(claims.Email, claims.Roles, orgActiveUsers, orgActiveRoles, rbac.PermissionReparent, rbac.ReparentCascadePerms); err == nil {
-				return nil
-			}
-		}
-	}
-
-	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: reparent authorization denied on %s parent", direction))
 }
 
 // detectCycle walks from startNs up through ancestors. If folderNsName appears
@@ -545,26 +427,8 @@ func (h *Handler) DeleteFolder(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	ns, err := h.k8s.GetFolder(ctx, req.Msg.Name)
-	if err != nil {
+	if _, err := h.k8s.GetFolder(ctx, req.Msg.Name); err != nil {
 		return nil, mapK8sError(err)
-	}
-
-	shareUsers, _ := GetShareUsers(ns)
-	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	if err := CheckFolderDeleteAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-		slog.WarnContext(ctx, "folder delete denied",
-			slog.String("action", "folder_delete_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("folder", req.Msg.Name),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return nil, err
 	}
 
 	// Check for child folders.
@@ -621,21 +485,9 @@ func (h *Handler) UpdateFolderSharing(
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
-
 	shareUsers, _ := GetShareUsers(ns)
 	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	if err := CheckFolderAdminAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-		slog.WarnContext(ctx, "folder sharing update denied",
-			slog.String("action", "folder_sharing_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("folder", req.Msg.Name),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
+	if err := h.requireNamespaceOwner(ctx, claims, ns, shareUsers, shareRoles, "folder sharing update"); err != nil {
 		return nil, err
 	}
 
@@ -667,9 +519,7 @@ func (h *Handler) UpdateFolderSharing(
 
 	updatedUsers, _ := GetShareUsers(updated)
 	updatedRoles, _ := GetShareRoles(updated)
-	updatedActiveUsers := secrets.ActiveGrantsMap(updatedUsers, now)
-	updatedActiveGroups := secrets.ActiveGrantsMap(updatedRoles, now)
-	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, updatedActiveUsers, updatedActiveGroups)
+	userRole := h.effectiveRoleForNamespace(ctx, claims, updated, updatedUsers, updatedRoles)
 
 	return connect.NewResponse(&consolev1.UpdateFolderSharingResponse{
 		Folder: buildFolder(h.k8s, updated, updatedUsers, updatedRoles, userRole),
@@ -694,21 +544,9 @@ func (h *Handler) UpdateFolderDefaultSharing(
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
-
 	shareUsers, _ := GetShareUsers(ns)
 	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	if err := CheckFolderAdminAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-		slog.WarnContext(ctx, "folder default sharing update denied",
-			slog.String("action", "folder_default_sharing_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("folder", req.Msg.Name),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
+	if err := h.requireNamespaceOwner(ctx, claims, ns, shareUsers, shareRoles, "folder default sharing update"); err != nil {
 		return nil, err
 	}
 
@@ -730,9 +568,7 @@ func (h *Handler) UpdateFolderDefaultSharing(
 
 	updatedShareUsers, _ := GetShareUsers(updated)
 	updatedShareRoles, _ := GetShareRoles(updated)
-	updatedActiveUsers := secrets.ActiveGrantsMap(updatedShareUsers, now)
-	updatedActiveRoles := secrets.ActiveGrantsMap(updatedShareRoles, now)
-	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, updatedActiveUsers, updatedActiveRoles)
+	userRole := h.effectiveRoleForNamespace(ctx, claims, updated, updatedShareUsers, updatedShareRoles)
 
 	return connect.NewResponse(&consolev1.UpdateFolderDefaultSharingResponse{
 		Folder: buildFolder(h.k8s, updated, updatedShareUsers, updatedShareRoles, userRole),
@@ -756,23 +592,6 @@ func (h *Handler) GetFolderRaw(
 	ns, err := h.k8s.GetFolder(ctx, req.Msg.Name)
 	if err != nil {
 		return nil, mapK8sError(err)
-	}
-
-	shareUsers, _ := GetShareUsers(ns)
-	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	if err := CheckFolderReadAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-		slog.WarnContext(ctx, "folder raw access denied",
-			slog.String("action", "folder_raw_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("folder", req.Msg.Name),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return nil, err
 	}
 
 	slog.InfoContext(ctx, "folder raw accessed",
@@ -930,6 +749,44 @@ func mergeGrants(base, override []secrets.AnnotationGrant) []secrets.AnnotationG
 		result = append(result, g)
 	}
 	return result
+}
+
+func (h *Handler) effectiveRoleForNamespace(ctx context.Context, claims *rpc.Claims, ns *corev1.Namespace, shareUsers, shareRoles []secrets.AnnotationGrant) rbac.Role {
+	if rpc.HasImpersonatedClients(ctx) {
+		if ok, err := h.k8s.canVerbNamespace(ctx, "delete", ns.Name); err == nil && ok {
+			return rbac.RoleOwner
+		}
+		if ok, err := h.k8s.canVerbNamespace(ctx, "update", ns.Name); err == nil && ok {
+			return rbac.RoleEditor
+		}
+		if ok, err := h.k8s.canVerbNamespace(ctx, "get", ns.Name); err == nil && ok {
+			return rbac.RoleViewer
+		}
+		return rbac.RoleUnspecified
+	}
+	return rbac.BestRoleFromGrants(
+		claims.Email,
+		claims.Roles,
+		secrets.ActiveGrantsMap(shareUsers, time.Now()),
+		secrets.ActiveGrantsMap(shareRoles, time.Now()),
+	)
+}
+
+func (h *Handler) requireNamespaceOwner(ctx context.Context, claims *rpc.Claims, ns *corev1.Namespace, shareUsers, shareRoles []secrets.AnnotationGrant, action string) error {
+	if rpc.HasImpersonatedClients(ctx) {
+		ok, err := h.k8s.canVerbNamespace(ctx, "delete", ns.Name)
+		if err != nil {
+			return mapK8sError(err)
+		}
+		if ok {
+			return nil
+		}
+		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: not authorized to %s", action))
+	}
+	if h.effectiveRoleForNamespace(ctx, claims, ns, shareUsers, shareRoles) == rbac.RoleOwner {
+		return nil
+	}
+	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: not authorized to %s", action))
 }
 
 // buildFolder creates a Folder proto message from a namespace.

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientgocache "k8s.io/client-go/tools/cache"
@@ -31,6 +32,7 @@ import (
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
@@ -56,6 +58,13 @@ func NewK8sClient(client ctrlclient.Client, r *resolver.Resolver) *K8sClient {
 	return &K8sClient{client: client, Resolver: r}
 }
 
+func (k *K8sClient) requestClient(ctx context.Context) ctrlclient.Client {
+	if cl := rpc.ImpersonatedCtrlClientFromContext(ctx); cl != nil && rpc.HasImpersonatedClients(ctx) {
+		return cl
+	}
+	return k.client
+}
+
 // WithCache wires the shared informer cache onto the K8sClient so the
 // hot-path ListBindingsInNamespace call used by the policy resolver can
 // retrieve pointers to cache-owned TemplatePolicyBinding objects instead of
@@ -75,7 +84,23 @@ func (k *K8sClient) ListBindings(ctx context.Context, namespace string) ([]templ
 	if err := k.client.List(ctx, &list, ctrlclient.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("listing template policy bindings in %q: %w", namespace, err)
 	}
-	return list.Items, nil
+	if !rpc.HasImpersonatedClients(ctx) {
+		return list.Items, nil
+	}
+	out := make([]templatesv1alpha1.TemplatePolicyBinding, 0, len(list.Items))
+	client := k.requestClient(ctx)
+	for i := range list.Items {
+		var got templatesv1alpha1.TemplatePolicyBinding
+		key := types.NamespacedName{Namespace: list.Items[i].Namespace, Name: list.Items[i].Name}
+		if err := client.Get(ctx, key, &got); err != nil {
+			if k8serrors.IsForbidden(err) || k8serrors.IsNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		out = append(out, got)
+	}
+	return out, nil
 }
 
 // ListBindingsInNamespace returns every TemplatePolicyBinding in a namespace
@@ -138,7 +163,7 @@ func (k *K8sClient) GetBinding(ctx context.Context, namespace, name string) (*te
 		slog.String("name", name),
 	)
 	var b templatesv1alpha1.TemplatePolicyBinding
-	if err := k.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &b); err != nil {
+	if err := k.requestClient(ctx).Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &b); err != nil {
 		return nil, err
 	}
 	return &b, nil
@@ -177,7 +202,7 @@ func (k *K8sClient) CreateBinding(
 			TargetRefs:  protoTargetRefsToCRD(targetRefs),
 		},
 	}
-	if err := k.client.Create(ctx, b); err != nil {
+	if err := k.requestClient(ctx).Create(ctx, b); err != nil {
 		return nil, err
 	}
 	return b, nil
@@ -216,7 +241,7 @@ func (k *K8sClient) UpdateBinding(
 	if updateTargetRefs {
 		b.Spec.TargetRefs = protoTargetRefsToCRD(targetRefs)
 	}
-	if err := k.client.Update(ctx, b); err != nil {
+	if err := k.requestClient(ctx).Update(ctx, b); err != nil {
 		return nil, err
 	}
 	return b, nil
@@ -231,7 +256,7 @@ func (k *K8sClient) DeleteBinding(ctx context.Context, namespace, name string) e
 	b := &templatesv1alpha1.TemplatePolicyBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
 	}
-	return k.client.Delete(ctx, b)
+	return k.requestClient(ctx).Delete(ctx, b)
 }
 
 // protoPolicyRefToCRD converts the proto LinkedTemplatePolicyRef into the

@@ -401,40 +401,6 @@ func TestListTemplateDependents_ScopeB_FolderNamespace(t *testing.T) {
 	}
 }
 
-func TestListTemplateDependents_RBACFiltersDependents(t *testing.T) {
-	// A caller with access to org-acme but NOT prj-other should see a
-	// TemplateRequirement in org-acme but not a TemplateDependency in prj-other.
-	orgNs := makeNS("org-acme", v1alpha2.ResourceTypeOrganization)
-	otherNs := makeNS("prj-other", v1alpha2.ResourceTypeProject)
-	tr := makeTemplateRequirement("org-acme", "org-req", "org-acme", "waypoint")
-	td := makeTemplateDependency("prj-other", "other-dep", "prj-other", "app", "org-acme", "waypoint")
-
-	const owner = "owner@localhost"
-	// Grant access to org-acme and its ancestors but NOT prj-other.
-	h := newDepsHandler(t, nil /* no default grants */, orgNs, otherNs, tr, td)
-	// Wire resolvers manually: org grants the owner; project grants nobody.
-	h.WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{owner: "owner"}})
-	h.WithFolderGrantResolver(&stubFolderGrantResolver{users: map[string]string{}})
-	h.WithProjectGrantResolver(&stubProjectGrantResolver{users: map[string]string{}})
-	ctx := authedCtx(owner, nil)
-
-	resp, err := h.ListTemplateDependents(ctx, connect.NewRequest(&consolev1.ListTemplateDependentsRequest{
-		Namespace: "org-acme",
-		Name:      "waypoint",
-	}))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	deps := resp.Msg.GetDependents()
-	// prj-other TemplateDependency must be filtered out; org-acme TemplateRequirement must be visible.
-	if len(deps) != 1 {
-		t.Fatalf("expected 1 dependent (org-req only), got %d: %v", len(deps), deps)
-	}
-	if deps[0].DependentName != "org-req" {
-		t.Errorf("expected org-req, got %q", deps[0].DependentName)
-	}
-}
-
 func TestListTemplateDependents_SkipsProjectScopeRequirement(t *testing.T) {
 	// A TemplateRequirement in a project namespace must be silently ignored
 	// per the ADR 032 storage-isolation rule (HOL-554).

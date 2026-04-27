@@ -16,6 +16,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rbac"
+	"github.com/holos-run/holos-console/console/resourcerbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -143,22 +144,12 @@ func (h *Handler) ListProjects(
 		return nil, mapK8sError(err)
 	}
 
-	now := time.Now()
 	var result []*consolev1.Project
 	for _, ns := range allProjects {
 		shareUsers, _ := GetShareUsers(ns)
 		shareRoles, _ := GetShareRoles(ns)
-		activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-		activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
-		// Check project-level grants
-		if err := CheckProjectListAccess(claims.Email, claims.Roles, activeUsers, activeRoles); err != nil {
-			if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionProjectsList); err != nil {
-				continue
-			}
-		}
-
-		userRole := h.bestRoleWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, ns)
+		userRole := h.effectiveRoleForNamespace(ctx, claims, ns, shareUsers, shareRoles)
 		result = append(result, h.buildProject(ns, shareUsers, shareRoles, userRole))
 	}
 
@@ -197,24 +188,10 @@ func (h *Handler) GetProject(
 
 	shareUsers, _ := GetShareUsers(ns)
 	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
 
 	org := GetOrganization(ns)
-	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionProjectsRead); err != nil {
-		slog.WarnContext(ctx, "project access denied",
-			slog.String("action", "project_read_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("project", req.Msg.Name),
-			slog.String("organization", org),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return nil, err
-	}
 
-	userRole := h.bestRoleWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, ns)
+	userRole := h.effectiveRoleForNamespace(ctx, claims, ns, shareUsers, shareRoles)
 
 	slog.InfoContext(ctx, "project accessed",
 		slog.String("action", "project_read"),
@@ -275,25 +252,14 @@ func (h *Handler) CreateProject(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("resolving parent: %w", err))
 	}
-
-	// Check create access: user must be owner on at least one existing project
-	// or have owner grant on the organization
-	allProjects, err := h.k8s.ListProjects(ctx, "", "")
-	if err != nil {
-		return nil, mapK8sError(err)
-	}
-	if err := CheckProjectCreateAccess(claims.Email, claims.Roles, allProjects); err != nil {
-		// Fall back to org-level grants for create permission
-		orgUsers, orgRoles := h.resolveOrgGrants(ctx, req.Msg.Organization)
-		if err := rbac.CheckAccessGrants(claims.Email, claims.Roles, orgUsers, orgRoles, rbac.PermissionProjectsCreate); err != nil {
-			slog.WarnContext(ctx, "project create denied",
-				slog.String("action", "project_create_denied"),
-				slog.String("resource_type", auditResourceType),
-				slog.String("project", name),
-				slog.String("organization", req.Msg.Organization),
-				slog.String("sub", claims.Sub),
-				slog.String("email", claims.Email),
-			)
+	if rpc.HasImpersonatedClients(ctx) {
+		parentNamespace, err := h.k8s.GetNamespace(ctx, parentNs)
+		if err != nil {
+			return nil, mapK8sError(err)
+		}
+		parentShareUsers, _ := GetShareUsers(parentNamespace)
+		parentShareRoles, _ := GetShareRoles(parentNamespace)
+		if err := h.requireNamespaceOwner(ctx, claims, parentNamespace, parentShareUsers, parentShareRoles, "create projects"); err != nil {
 			return nil, err
 		}
 	}
@@ -442,13 +408,33 @@ func (h *Handler) createProjectOnce(
 			// Note this path does not surface AlreadyExists (SSA is
 			// idempotent), so the auto-generated-name retry is a
 			// no-op when the pipeline handles the create.
+			//
+			// Pass baseNs directly: the SSA applier owns the
+			// authoritative namespace in the cluster, and bootstrap
+			// only needs name/namespace metadata to provision Roles
+			// and poll SSAR. There is no cluster Get on the SSA
+			// path because tests inject a fake applier that does
+			// not write the namespace into the fake clientset.
+			if err := resourcerbac.BootstrapResourceRBACAndWait(ctx, h.k8s.client, h.k8s.impersonatedOrNil(ctx), baseNs, resourcerbac.Projects); err != nil {
+				return err
+			}
 			return h.k8s.EnsureProjectSecretRBACForNamespace(ctx, baseNs.Name, namespaceOwnerRefs(baseNs), rbacShareUsers, shareRoles)
 		}
 	}
 
 	// Existing path: typed Create. Unchanged from pre-HOL-812 behavior.
-	_, err = h.k8s.client.CoreV1().Namespaces().Create(ctx, baseNs, metav1.CreateOptions{})
+	created, err := h.k8s.client.CoreV1().Namespaces().Create(ctx, baseNs, metav1.CreateOptions{})
 	if err != nil {
+		return err
+	}
+	if err := resourcerbac.BootstrapResourceRBACAndWait(ctx, h.k8s.client, h.k8s.impersonatedOrNil(ctx), created, resourcerbac.Projects); err != nil {
+		// Roll back the just-created namespace so we do not orphan it.
+		if delErr := h.k8s.client.CoreV1().Namespaces().Delete(ctx, created.Name, metav1.DeleteOptions{}); delErr != nil && !errors.IsNotFound(delErr) {
+			slog.ErrorContext(ctx, "rollback: deleting project namespace after RBAC bootstrap failure",
+				slog.String("namespace", created.Name),
+				slog.Any("error", delErr),
+			)
+		}
 		return err
 	}
 	return h.k8s.EnsureProjectSecretRBAC(ctx, name, rbacShareUsers, shareRoles)
@@ -531,24 +517,7 @@ func (h *Handler) UpdateProject(
 		return nil, mapK8sError(err)
 	}
 
-	shareUsers, _ := GetShareUsers(ns)
-	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
 	org := GetOrganization(ns)
-	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionProjectsWrite); err != nil {
-		slog.WarnContext(ctx, "project update denied",
-			slog.String("action", "project_update_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("project", req.Msg.Name),
-			slog.String("organization", org),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return nil, err
-	}
 
 	// Handle reparenting if parent_type and parent_name are set.
 	if req.Msg.ParentType != nil && req.Msg.ParentName != nil {
@@ -588,7 +557,6 @@ func (h *Handler) reparentProject(
 	newParentName string,
 ) error {
 	projectName := ns.Labels[v1alpha2.LabelProject]
-	org := GetOrganization(ns)
 
 	// Resolve new parent namespace.
 	newParentNs, err := h.resolveParentNS(newParentType, newParentName)
@@ -608,41 +576,12 @@ func (h *Handler) reparentProject(
 	}
 
 	// Verify new parent namespace exists.
-	newParentNamespace, err := h.k8s.GetNamespace(ctx, newParentNs)
-	if err != nil {
+	if _, err := h.k8s.GetNamespace(ctx, newParentNs); err != nil {
 		return mapK8sError(err)
 	}
 
-	// Check PERMISSION_REPARENT on the current (source) parent.
-	sourceNs, err := h.k8s.GetNamespace(ctx, currentParentNs)
-	if err != nil {
+	if _, err := h.k8s.GetNamespace(ctx, currentParentNs); err != nil {
 		return mapK8sError(err)
-	}
-	if err := h.checkReparentAccess(ctx, claims, sourceNs, org, "source"); err != nil {
-		slog.WarnContext(ctx, "project reparent denied on source",
-			slog.String("action", "project_reparent_denied_source"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("project", projectName),
-			slog.String("source_parent", currentParentNs),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return err
-	}
-
-	// Check PERMISSION_REPARENT on the new (destination) parent.
-	// Use the destination parent's org for cascade, not the source org.
-	destOrg := newParentNamespace.Labels[v1alpha2.LabelOrganization]
-	if err := h.checkReparentAccess(ctx, claims, newParentNamespace, destOrg, "destination"); err != nil {
-		slog.WarnContext(ctx, "project reparent denied on destination",
-			slog.String("action", "project_reparent_denied_destination"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("project", projectName),
-			slog.String("dest_parent", newParentNs),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return err
 	}
 
 	// Execute the reparent: update the parent label.
@@ -661,32 +600,6 @@ func (h *Handler) reparentProject(
 	)
 
 	return nil
-}
-
-// checkReparentAccess verifies that the user has PERMISSION_REPARENT on the given
-// parent namespace. Uses direct grants on the parent plus org-level cascade via
-// ReparentCascadePerms.
-func (h *Handler) checkReparentAccess(ctx context.Context, claims *rpc.Claims, parentNs *corev1.Namespace, org, direction string) error {
-	shareUsers, _ := GetShareUsers(parentNs)
-	shareRoles, _ := GetShareRoles(parentNs)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	// Check direct grants on the parent resource.
-	if err := rbac.CheckAccessGrants(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionReparent); err == nil {
-		return nil
-	}
-
-	// Check org-level cascade: org OWNERs get REPARENT on all children via ReparentCascadePerms.
-	if org != "" {
-		orgUsers, orgRoles := h.resolveOrgGrants(ctx, org)
-		if err := rbac.CheckCascadeAccess(claims.Email, claims.Roles, orgUsers, orgRoles, rbac.PermissionReparent, rbac.ReparentCascadePerms); err == nil {
-			return nil
-		}
-	}
-
-	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: reparent authorization denied on %s parent", direction))
 }
 
 // DeleteProject deletes a managed namespace.
@@ -708,24 +621,7 @@ func (h *Handler) DeleteProject(
 		return nil, mapK8sError(err)
 	}
 
-	shareUsers, _ := GetShareUsers(ns)
-	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
 	org := GetOrganization(ns)
-	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionProjectsDelete); err != nil {
-		slog.WarnContext(ctx, "project delete denied",
-			slog.String("action", "project_delete_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("project", req.Msg.Name),
-			slog.String("organization", org),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return nil, err
-	}
 
 	if err := h.k8s.DeleteProject(ctx, req.Msg.Name); err != nil {
 		return nil, mapK8sError(err)
@@ -761,25 +657,13 @@ func (h *Handler) UpdateProjectSharing(
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
-
 	shareUsers, _ := GetShareUsers(ns)
 	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	org := GetOrganization(ns)
-	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionProjectsAdmin); err != nil {
-		slog.WarnContext(ctx, "project sharing update denied",
-			slog.String("action", "project_sharing_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("project", req.Msg.Name),
-			slog.String("organization", org),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
+	if err := h.requireNamespaceOwner(ctx, claims, ns, shareUsers, shareRoles, "project sharing update"); err != nil {
 		return nil, err
 	}
+
+	org := GetOrganization(ns)
 
 	newShareUsers := shareGrantsToAnnotations(req.Msg.UserGrants)
 	newShareRoles := shareGrantsToAnnotations(req.Msg.RoleGrants)
@@ -810,9 +694,7 @@ func (h *Handler) UpdateProjectSharing(
 
 	updatedUsers, _ := GetShareUsers(updated)
 	updatedRoles, _ := GetShareRoles(updated)
-	updatedActiveUsers := secrets.ActiveGrantsMap(updatedUsers, now)
-	updatedActiveGroups := secrets.ActiveGrantsMap(updatedRoles, now)
-	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, updatedActiveUsers, updatedActiveGroups)
+	userRole := h.effectiveRoleForNamespace(ctx, claims, updated, updatedUsers, updatedRoles)
 
 	return connect.NewResponse(&consolev1.UpdateProjectSharingResponse{
 		Project: h.buildProject(updated, updatedUsers, updatedRoles, userRole),
@@ -837,25 +719,13 @@ func (h *Handler) UpdateProjectDefaultSharing(
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
-
 	shareUsers, _ := GetShareUsers(ns)
 	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
-	org := GetOrganization(ns)
-	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionProjectsAdmin); err != nil {
-		slog.WarnContext(ctx, "project default sharing update denied",
-			slog.String("action", "project_default_sharing_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("project", req.Msg.Name),
-			slog.String("organization", org),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
+	if err := h.requireNamespaceOwner(ctx, claims, ns, shareUsers, shareRoles, "project default sharing update"); err != nil {
 		return nil, err
 	}
+
+	org := GetOrganization(ns)
 
 	newDefaultUsers := shareGrantsToAnnotations(req.Msg.DefaultUserGrants)
 	newDefaultRoles := shareGrantsToAnnotations(req.Msg.DefaultRoleGrants)
@@ -876,9 +746,7 @@ func (h *Handler) UpdateProjectDefaultSharing(
 
 	updatedShareUsers, _ := GetShareUsers(updated)
 	updatedShareRoles, _ := GetShareRoles(updated)
-	updatedActiveUsers := secrets.ActiveGrantsMap(updatedShareUsers, now)
-	updatedActiveRoles := secrets.ActiveGrantsMap(updatedShareRoles, now)
-	userRole := rbac.BestRoleFromGrants(claims.Email, claims.Roles, updatedActiveUsers, updatedActiveRoles)
+	userRole := h.effectiveRoleForNamespace(ctx, claims, updated, updatedShareUsers, updatedShareRoles)
 
 	return connect.NewResponse(&consolev1.UpdateProjectDefaultSharingResponse{
 		Project: h.buildProject(updated, updatedShareUsers, updatedShareRoles, userRole),
@@ -904,24 +772,7 @@ func (h *Handler) GetProjectRaw(
 		return nil, mapK8sError(err)
 	}
 
-	shareUsers, _ := GetShareUsers(ns)
-	shareRoles, _ := GetShareRoles(ns)
-	now := time.Now()
-	activeUsers := secrets.ActiveGrantsMap(shareUsers, now)
-	activeRoles := secrets.ActiveGrantsMap(shareRoles, now)
-
 	org := GetOrganization(ns)
-	if err := h.checkAccessWithOrg(claims.Email, claims.Roles, activeUsers, activeRoles, rbac.PermissionProjectsRead); err != nil {
-		slog.WarnContext(ctx, "project raw access denied",
-			slog.String("action", "project_raw_denied"),
-			slog.String("resource_type", auditResourceType),
-			slog.String("project", req.Msg.Name),
-			slog.String("organization", org),
-			slog.String("sub", claims.Sub),
-			slog.String("email", claims.Email),
-		)
-		return nil, err
-	}
 
 	slog.InfoContext(ctx, "project raw accessed",
 		slog.String("action", "project_raw"),
@@ -984,6 +835,44 @@ func (h *Handler) CheckProjectIdentifier(
 		Available:           result.Available,
 		SuggestedIdentifier: result.SuggestedIdentifier,
 	}), nil
+}
+
+func (h *Handler) effectiveRoleForNamespace(ctx context.Context, claims *rpc.Claims, ns *corev1.Namespace, shareUsers, shareRoles []secrets.AnnotationGrant) rbac.Role {
+	if rpc.HasImpersonatedClients(ctx) {
+		if ok, err := h.k8s.canVerbNamespace(ctx, "delete", ns.Name); err == nil && ok {
+			return rbac.RoleOwner
+		}
+		if ok, err := h.k8s.canVerbNamespace(ctx, "update", ns.Name); err == nil && ok {
+			return rbac.RoleEditor
+		}
+		if ok, err := h.k8s.canVerbNamespace(ctx, "get", ns.Name); err == nil && ok {
+			return rbac.RoleViewer
+		}
+		return rbac.RoleUnspecified
+	}
+	return rbac.BestRoleFromGrants(
+		claims.Email,
+		claims.Roles,
+		secrets.ActiveGrantsMap(shareUsers, time.Now()),
+		secrets.ActiveGrantsMap(shareRoles, time.Now()),
+	)
+}
+
+func (h *Handler) requireNamespaceOwner(ctx context.Context, claims *rpc.Claims, ns *corev1.Namespace, shareUsers, shareRoles []secrets.AnnotationGrant, action string) error {
+	if rpc.HasImpersonatedClients(ctx) {
+		ok, err := h.k8s.canVerbNamespace(ctx, "delete", ns.Name)
+		if err != nil {
+			return mapK8sError(err)
+		}
+		if ok {
+			return nil
+		}
+		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: not authorized to %s", action))
+	}
+	if h.effectiveRoleForNamespace(ctx, claims, ns, shareUsers, shareRoles) == rbac.RoleOwner {
+		return nil
+	}
+	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: not authorized to %s", action))
 }
 
 // buildProject creates a Project proto message from a namespace.
@@ -1109,48 +998,6 @@ func (h *Handler) resolveParentNS(parentType consolev1.ParentType, parentName st
 	default:
 		return "", fmt.Errorf("unknown parent_type %v", parentType)
 	}
-}
-
-// resolveOrgGrants returns the active grant maps for the given organization.
-// Returns nil maps if no org resolver is configured or org is empty.
-func (h *Handler) resolveOrgGrants(ctx context.Context, org string) (map[string]string, map[string]string) {
-	if h.orgResolver == nil || org == "" {
-		return nil, nil
-	}
-	users, roles, err := h.orgResolver.GetOrgGrants(ctx, org)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to resolve org grants",
-			slog.String("organization", org),
-			slog.Any("error", err),
-		)
-		return nil, nil
-	}
-	return users, roles
-}
-
-// checkAccessWithOrg checks project-level grants. Organization grants do not
-// cascade to project operations (see docs/adrs/007-org-grants-no-cascade.md).
-func (h *Handler) checkAccessWithOrg(
-	email string,
-	roles []string,
-	projUsers, projRoles map[string]string,
-	permission rbac.Permission,
-) error {
-	if err := rbac.CheckAccessGrants(email, roles, projUsers, projRoles, permission); err == nil {
-		return nil
-	}
-	return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
-}
-
-// bestRoleWithOrg returns the best role from project grants and org grants.
-func (h *Handler) bestRoleWithOrg(email string, roles []string, projUsers, projRoles map[string]string, ns *corev1.Namespace) rbac.Role {
-	projRole := rbac.BestRoleFromGrants(email, roles, projUsers, projRoles)
-	orgUsers, orgRoles := h.resolveOrgGrants(context.Background(), GetOrganization(ns))
-	orgRole := rbac.BestRoleFromGrants(email, roles, orgUsers, orgRoles)
-	if rbac.RoleLevel(orgRole) > rbac.RoleLevel(projRole) {
-		return orgRole
-	}
-	return projRole
 }
 
 // shareGrantsToAnnotations converts proto ShareGrant slices to annotation grants.

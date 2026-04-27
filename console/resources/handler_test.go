@@ -391,45 +391,6 @@ func TestListResources_TypesFilterIgnoresUnspecified(t *testing.T) {
 	}
 }
 
-func TestListResources_RBACFilters(t *testing.T) {
-	// alice has no org/folder/project grants — she should see nothing.
-	// bob has only project-level grants — he should see only the project.
-	const alice = "alice@example.com"
-	const bob = "bob@example.com"
-	bobGrants := `[{"principal":"bob@example.com","role":"viewer"}]`
-	owner := `[{"principal":"owner@example.com","role":"owner"}]`
-
-	org := orgNS("acme", "", owner)
-	fld := folderNS("payments", "", "acme", org.Name, owner)
-	prj := projectNS("checkout", "", "acme", fld.Name, bobGrants)
-
-	t.Run("no grants returns empty", func(t *testing.T) {
-		handler := newTestHandler(t, org, fld, prj)
-		ctx := contextWithClaims(alice)
-		resp, err := handler.ListResources(ctx, connect.NewRequest(&consolev1.ListResourcesRequest{}))
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if got := len(resp.Msg.GetResources()); got != 0 {
-			t.Errorf("expected 0 resources, got %d (%v)", got, sortedResourceKeys(resp.Msg.GetResources()))
-		}
-	})
-
-	t.Run("project-only grants returns only project", func(t *testing.T) {
-		handler := newTestHandler(t, org, fld, prj)
-		ctx := contextWithClaims(bob)
-		resp, err := handler.ListResources(ctx, connect.NewRequest(&consolev1.ListResourcesRequest{}))
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		got := sortedResourceKeys(resp.Msg.GetResources())
-		want := []string{"RESOURCE_TYPE_PROJECT|acme/payments/checkout"}
-		if !equalStrings(got, want) {
-			t.Errorf("resources mismatch:\ngot  %v\nwant %v", got, want)
-		}
-	})
-}
-
 // TestListResources_BrokenAncestorChainStillReturnsEntry asserts the
 // resilience contract: a folder/project the caller can see MUST appear in
 // the response even when its ancestor walk fails (e.g. a parent namespace

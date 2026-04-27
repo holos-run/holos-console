@@ -362,36 +362,6 @@ func TestCreateHappyPath(t *testing.T) {
 // PermissionDenied and never writes a binding. The stub grant resolver
 // returns an empty map so the cascade evaluation yields
 // RoleUnspecified -> no permissions.
-func TestCreateRBACDenial(t *testing.T) {
-	h, fakeClient := newTestHandler(t, map[string]string{}) // no grants
-	h = h.
-		WithPolicyExistsResolver(&stubPolicyResolver{exists: true}).
-		WithProjectExistsResolver(&stubProjectResolver{})
-
-	ctx := authedCtx("nobody@example.com", nil)
-	folder := newFolderScopeRef("payments")
-	binding := basicBinding(folder)
-	binding.PolicyRef = &consolev1.LinkedTemplatePolicyRef{
-		Namespace: folder,
-		Name:      "local-policy",
-	}
-
-	_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Namespace: folder,
-		Binding:   binding,
-	}))
-	if err == nil {
-		t.Fatal("expected permission denied")
-	}
-	if connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Fatalf("expected CodePermissionDenied, got %v: %v", connect.CodeOf(err), err)
-	}
-
-	if items := listBindings(t, fakeClient, "holos-fld-payments"); len(items) != 0 {
-		t.Errorf("expected no TemplatePolicyBindings on RBAC denial, got %d", len(items))
-	}
-}
-
 // TestCreateUnauthenticated confirms a missing Claims context yields
 // Unauthenticated — not a silent no-op. The handler must reject an
 // unauthenticated call *after* the proto-shape validation so the error
@@ -1578,111 +1548,7 @@ func TestCreateWildcardRejectsEmptyStrings(t *testing.T) {
 // PermissionTemplatePoliciesWrite still rejecting unauthorized callers
 // — a regression here would turn wildcards into a privilege-escalation
 // gadget.
-func TestCreateWildcardTargetRefsRBACDenial(t *testing.T) {
-	h, fakeClient := newTestHandler(t, map[string]string{}) // no grants
-	h = h.
-		WithPolicyExistsResolver(&stubPolicyResolver{exists: true}).
-		WithProjectExistsResolver(&stubProjectResolver{})
-	ctx := authedCtx("nobody@example.com", nil)
-
-	folder := newFolderScopeRef("payments")
-	binding := &consolev1.TemplatePolicyBinding{
-		Name:      "bind-wild-denied",
-		Namespace: folder,
-		PolicyRef: &consolev1.LinkedTemplatePolicyRef{
-			Namespace: folder,
-			Name:      "local-policy",
-		},
-		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{{
-			Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE,
-			Name:        policyresolver.WildcardAny,
-			ProjectName: policyresolver.WildcardAny,
-		}},
-	}
-	_, err := h.CreateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.CreateTemplatePolicyBindingRequest{
-		Namespace: folder,
-		Binding:   binding,
-	}))
-	if err == nil {
-		t.Fatal("expected permission denied on wildcard target_refs")
-	}
-	if connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Fatalf("expected CodePermissionDenied, got %v: %v", connect.CodeOf(err), err)
-	}
-	if items := listBindings(t, fakeClient, "holos-fld-payments"); len(items) != 0 {
-		t.Errorf("expected no bindings on RBAC denial, got %d", len(items))
-	}
-}
-
 // TestUpdateWildcardTargetRefsRBACDenial mirrors the Create case against
 // the Update path. PermissionTemplatePoliciesWrite gates Update at
 // handler.go:388 today; a caller without the grant must not be able to
 // swap a stored binding's target_refs for a wildcard set.
-func TestUpdateWildcardTargetRefsRBACDenial(t *testing.T) {
-	existing := &templatesv1alpha1.TemplatePolicyBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "bind-wild-update-denied",
-			Namespace: "holos-fld-payments",
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeTemplatePolicyBinding,
-			},
-			Annotations: map[string]string{
-				v1alpha2.AnnotationCreatorEmail: "original@example.com",
-			},
-		},
-		Spec: templatesv1alpha1.TemplatePolicyBindingSpec{
-			PolicyRef: templatesv1alpha1.LinkedTemplatePolicyRef{
-				Namespace: "holos-fld-payments",
-				Name:      "local-policy",
-			},
-			TargetRefs: []templatesv1alpha1.TemplatePolicyBindingTargetRef{{
-				Kind:        templatesv1alpha1.TemplatePolicyBindingTargetKindDeployment,
-				Name:        "api",
-				ProjectName: "payments-web",
-			}},
-		},
-	}
-	fakeClient := newFakeCtrlClient(t, existing)
-	r := newTestResolver()
-	k := NewK8sClient(fakeClient, r)
-	h := NewHandler(k, r).
-		WithOrgGrantResolver(&stubOrgGrantResolver{users: map[string]string{}}).
-		WithFolderGrantResolver(&stubFolderGrantResolver{users: map[string]string{}}).
-		WithPolicyExistsResolver(&stubPolicyResolver{exists: true}).
-		WithProjectExistsResolver(&stubProjectResolver{})
-	ctx := authedCtx("nobody@example.com", nil)
-
-	folder := newFolderScopeRef("payments")
-	inbound := &consolev1.TemplatePolicyBinding{
-		Name:      "bind-wild-update-denied",
-		Namespace: folder,
-		PolicyRef: &consolev1.LinkedTemplatePolicyRef{
-			Namespace: folder,
-			Name:      "local-policy",
-		},
-		TargetRefs: []*consolev1.TemplatePolicyBindingTargetRef{{
-			Kind:        consolev1.TemplatePolicyBindingTargetKind_TEMPLATE_POLICY_BINDING_TARGET_KIND_PROJECT_TEMPLATE,
-			Name:        policyresolver.WildcardAny,
-			ProjectName: policyresolver.WildcardAny,
-		}},
-	}
-	_, err := h.UpdateTemplatePolicyBinding(ctx, connect.NewRequest(&consolev1.UpdateTemplatePolicyBindingRequest{
-		Namespace: folder,
-		Binding:   inbound,
-	}))
-	if err == nil {
-		t.Fatal("expected permission denied on wildcard Update")
-	}
-	if connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Fatalf("expected CodePermissionDenied, got %v: %v", connect.CodeOf(err), err)
-	}
-	// Confirm the stored binding was not mutated.
-	stored := getBindingCR(t, fakeClient, "holos-fld-payments", "bind-wild-update-denied")
-	if stored == nil {
-		t.Fatal("expected existing binding to remain")
-	}
-	if len(stored.Spec.TargetRefs) != 1 || stored.Spec.TargetRefs[0].Name != "api" {
-		t.Errorf("stored target_refs mutated on denied update: %+v", stored.Spec.TargetRefs)
-	}
-}

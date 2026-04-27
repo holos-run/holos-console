@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"connectrpc.com/connect"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -17,7 +18,6 @@ import (
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
-	"github.com/holos-run/holos-console/console/rbac"
 	"github.com/holos-run/holos-console/console/resolver"
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
@@ -47,17 +47,40 @@ func NewK8sClient(client ctrlclient.Client) *K8sClient {
 	return &K8sClient{client: client}
 }
 
+func (k *K8sClient) requestClient(ctx context.Context) ctrlclient.Client {
+	if cl := rpc.ImpersonatedCtrlClientFromContext(ctx); cl != nil && rpc.HasImpersonatedClients(ctx) {
+		return cl
+	}
+	return k.client
+}
+
 func (k *K8sClient) ListGrants(ctx context.Context, namespace string) ([]templatesv1alpha1.TemplateGrant, error) {
 	var list templatesv1alpha1.TemplateGrantList
 	if err := k.client.List(ctx, &list, ctrlclient.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("listing template grants in %q: %w", namespace, err)
 	}
-	return list.Items, nil
+	if !rpc.HasImpersonatedClients(ctx) {
+		return list.Items, nil
+	}
+	out := make([]templatesv1alpha1.TemplateGrant, 0, len(list.Items))
+	client := k.requestClient(ctx)
+	for i := range list.Items {
+		var got templatesv1alpha1.TemplateGrant
+		key := types.NamespacedName{Namespace: list.Items[i].Namespace, Name: list.Items[i].Name}
+		if err := client.Get(ctx, key, &got); err != nil {
+			if k8serrors.IsForbidden(err) || k8serrors.IsNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		out = append(out, got)
+	}
+	return out, nil
 }
 
 func (k *K8sClient) GetGrant(ctx context.Context, namespace, name string) (*templatesv1alpha1.TemplateGrant, error) {
 	var g templatesv1alpha1.TemplateGrant
-	if err := k.client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &g); err != nil {
+	if err := k.requestClient(ctx).Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &g); err != nil {
 		return nil, err
 	}
 	return &g, nil
@@ -81,7 +104,7 @@ func (k *K8sClient) CreateGrant(ctx context.Context, grant *consolev1.TemplateGr
 			To:   protoToRefsToCRD(grant.GetTo()),
 		},
 	}
-	if err := k.client.Create(ctx, obj); err != nil {
+	if err := k.requestClient(ctx).Create(ctx, obj); err != nil {
 		return nil, err
 	}
 	return obj, nil
@@ -94,14 +117,14 @@ func (k *K8sClient) UpdateGrant(ctx context.Context, namespace string, grant *co
 	}
 	obj.Spec.From = protoFromRefsToCRD(grant.GetFrom())
 	obj.Spec.To = protoToRefsToCRD(grant.GetTo())
-	if err := k.client.Update(ctx, obj); err != nil {
+	if err := k.requestClient(ctx).Update(ctx, obj); err != nil {
 		return nil, err
 	}
 	return obj, nil
 }
 
 func (k *K8sClient) DeleteGrant(ctx context.Context, namespace, name string) error {
-	return k.client.Delete(ctx, &templatesv1alpha1.TemplateGrant{
+	return k.requestClient(ctx).Delete(ctx, &templatesv1alpha1.TemplateGrant{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
 	})
 }
@@ -137,9 +160,9 @@ func (h *Handler) ListTemplateGrants(
 	if err != nil {
 		return nil, err
 	}
-	claims, err := h.claimsAndAccess(ctx, scope, scopeName, rbac.PermissionTemplatePoliciesList)
-	if err != nil {
-		return nil, err
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
 	items, err := h.k8s.ListGrants(ctx, req.Msg.GetNamespace())
@@ -178,9 +201,9 @@ func (h *Handler) GetTemplateGrant(
 	if name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
 	}
-	claims, err := h.claimsAndAccess(ctx, scope, scopeName, rbac.PermissionTemplatePoliciesRead)
-	if err != nil {
-		return nil, err
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
 	grantObj, err := h.k8s.GetGrant(ctx, req.Msg.GetNamespace(), name)
@@ -218,9 +241,9 @@ func (h *Handler) CreateTemplateGrant(
 	if err := validateGrant(req.Msg.GetNamespace(), grant); err != nil {
 		return nil, err
 	}
-	claims, err := h.claimsAndAccess(ctx, scope, scopeName, rbac.PermissionTemplatePoliciesWrite)
-	if err != nil {
-		return nil, err
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
 	_, err = h.k8s.CreateGrant(ctx, grant, claims.Email)
@@ -256,9 +279,9 @@ func (h *Handler) UpdateTemplateGrant(
 	if err := validateGrant(req.Msg.GetNamespace(), grant); err != nil {
 		return nil, err
 	}
-	claims, err := h.claimsAndAccess(ctx, scope, scopeName, rbac.PermissionTemplatePoliciesWrite)
-	if err != nil {
-		return nil, err
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
 	if _, err := h.k8s.UpdateGrant(ctx, req.Msg.GetNamespace(), grant); err != nil {
@@ -290,9 +313,9 @@ func (h *Handler) DeleteTemplateGrant(
 	if name == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("name is required"))
 	}
-	claims, err := h.claimsAndAccess(ctx, scope, scopeName, rbac.PermissionTemplatePoliciesDelete)
-	if err != nil {
-		return nil, err
+	claims := rpc.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
 	if err := h.k8s.DeleteGrant(ctx, req.Msg.GetNamespace(), name); err != nil {
@@ -335,42 +358,6 @@ func (h *Handler) extractGrantScope(namespace string) (string, string, error) {
 		return "", "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("scope name is required"))
 	}
 	return kind, name, nil
-}
-
-func (h *Handler) claimsAndAccess(ctx context.Context, scope, scopeName string, perm rbac.Permission) (*rpc.Claims, error) {
-	claims := rpc.ClaimsFromContext(ctx)
-	if claims == nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
-	}
-	switch scope {
-	case v1alpha2.ResourceTypeOrganization:
-		if h.orgGrantResolver == nil {
-			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
-		}
-		users, roles, err := h.orgGrantResolver.GetOrgGrants(ctx, scopeName)
-		if err != nil {
-			slog.WarnContext(ctx, "failed to resolve org grants", slog.String("org", scopeName), slog.Any("error", err))
-			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
-		}
-		if err := rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplatePolicyBindingPerms); err != nil {
-			return nil, err
-		}
-	case v1alpha2.ResourceTypeFolder:
-		if h.folderGrantResolver == nil {
-			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
-		}
-		users, roles, err := h.folderGrantResolver.GetFolderGrants(ctx, scopeName)
-		if err != nil {
-			slog.WarnContext(ctx, "failed to resolve folder grants", slog.String("folder", scopeName), slog.Any("error", err))
-			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("RBAC: authorization denied"))
-		}
-		if err := rbac.CheckCascadeAccess(claims.Email, claims.Roles, users, roles, perm, rbac.TemplatePolicyBindingPerms); err != nil {
-			return nil, err
-		}
-	default:
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unknown scope %q", scope))
-	}
-	return claims, nil
 }
 
 func validateGrant(reqNamespace string, grant *consolev1.TemplateGrant) error {
