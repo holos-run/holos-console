@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"text/tabwriter"
 
@@ -29,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/secretrbac"
@@ -69,11 +67,7 @@ func parseFlags(args []string, errOut io.Writer) (*options, error) {
 	}
 	opts := &options{}
 	fs.BoolVar(&opts.apply, "apply", false, "Perform writes. Without --apply the tool only reports planned changes.")
-	defaultKubeconfig := ""
-	if home := homedir.HomeDir(); home != "" {
-		defaultKubeconfig = filepath.Join(home, ".kube", "config")
-	}
-	fs.StringVar(&opts.kubeconfig, "kubeconfig", defaultKubeconfig, "Path to kubeconfig (defaults to in-cluster config when empty)")
+	fs.StringVar(&opts.kubeconfig, "kubeconfig", "", "Path to kubeconfig (defaults to KUBECONFIG env, then ~/.kube/config, then in-cluster config)")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -97,9 +91,24 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return PrintReport(stdout, report, opts.apply)
 }
 
+// buildClient resolves a kubernetes client config in the following
+// precedence order, mirroring kubectl behaviour:
+//
+//  1. --kubeconfig flag (when non-empty);
+//  2. KUBECONFIG environment variable;
+//  3. ~/.kube/config (when present);
+//  4. in-cluster service-account config.
+//
+// Setting ExplicitPath to a non-existent file is fatal under
+// clientcmd, so when no explicit path is provided we use the default
+// loading rules which silently fall through to the in-cluster path.
 func buildClient(kubeconfig string) (kubernetes.Interface, error) {
+	rules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if kubeconfig != "" {
+		rules.ExplicitPath = kubeconfig
+	}
 	loader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig},
+		rules,
 		&clientcmd.ConfigOverrides{},
 	)
 	cfg, err := loader.ClientConfig()
@@ -388,7 +397,7 @@ func parseAnnotation(annotations map[string]string, key, kind, qualifiedName str
 // that decision visibly so an operator can see exactly which grants
 // would have to be re-issued in a future release.
 func filterTimeBounded(grants []secrets.AnnotationGrant, kind, qualifiedName string) ([]secrets.AnnotationGrant, []string) {
-	out := grants[:0:0]
+	out := make([]secrets.AnnotationGrant, 0, len(grants))
 	var warnings []string
 	for _, g := range grants {
 		if g.Nbf != nil || g.Exp != nil {
