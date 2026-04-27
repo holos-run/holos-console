@@ -38,6 +38,7 @@ import (
 	"github.com/holos-run/holos-console/console/folders"
 	"github.com/holos-run/holos-console/console/oidc"
 	"github.com/holos-run/holos-console/console/organizations"
+	"github.com/holos-run/holos-console/console/permissions"
 	"github.com/holos-run/holos-console/console/policyresolver"
 	"github.com/holos-run/holos-console/console/projects"
 	"github.com/holos-run/holos-console/console/projects/projectapply"
@@ -517,6 +518,14 @@ func (s *Server) Serve(ctx context.Context) error {
 		resourcesPath, resourcesHTTPHandler := consolev1connect.NewResourceServiceHandler(resourcesHandler, protectedInterceptors)
 		mux.Handle(resourcesPath, resourcesHTTPHandler)
 
+		// PermissionsService — bulk SelfSubjectAccessReview fan-out for the
+		// frontend's UI gating contract (ADR 036). Handler is stateless;
+		// every call resolves its impersonating client from the request
+		// context.
+		permissionsHandler := permissions.NewHandler()
+		permissionsPath, permissionsHTTPHandler := consolev1connect.NewPermissionsServiceHandler(permissionsHandler, protectedInterceptors)
+		mux.Handle(permissionsPath, permissionsHTTPHandler)
+
 		// Secrets service with project grant fallback and ancestor default-share cascade.
 		secretsK8s := secrets.NewK8sClient(k8sClientset, nsResolver)
 		projectResolver := projects.NewProjectGrantResolver(projectsK8s).WithWalker(nsWalker)
@@ -710,6 +719,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		consolev1connect.TemplatePolicyBindingServiceName,
 		consolev1connect.FolderServiceName,
 		consolev1connect.DeploymentServiceName,
+		consolev1connect.PermissionsServiceName,
 	)
 	reflectPath, reflectHandler := grpcreflect.NewHandlerV1(reflector)
 	mux.Handle(reflectPath, reflectHandler)
