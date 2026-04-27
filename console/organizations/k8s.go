@@ -9,6 +9,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/resourcerbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/sharing/legacy"
@@ -185,7 +186,24 @@ func (c *K8sClient) CreateOrganization(ctx context.Context, name, displayName, d
 			Annotations: annotations,
 		},
 	}
-	return c.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+	created, err := c.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	// Synchronously bootstrap per-resource RBAC for the creator before any
+	// subsequent impersonated read/update/delete in the bootstrap path. This
+	// avoids racing the async resourcerbac reconciler. See HOL-1064 REV2 AC2.
+	if err := resourcerbac.BootstrapResourceRBACAndWait(ctx, c.client, c.impersonatedOrNil(ctx), created, resourcerbac.Organizations); err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+func (c *K8sClient) impersonatedOrNil(ctx context.Context) kubernetes.Interface {
+	if rpc.HasImpersonatedClients(ctx) {
+		return rpc.ImpersonatedClientsetFromContext(ctx)
+	}
+	return nil
 }
 
 // UpdateOrganization updates the description, display name, and gateway

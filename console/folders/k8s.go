@@ -9,6 +9,7 @@ import (
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/resolver"
+	"github.com/holos-run/holos-console/console/resourcerbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/sharing/legacy"
@@ -245,7 +246,24 @@ func (c *K8sClient) CreateFolder(
 			Annotations: annotations,
 		},
 	}
-	return c.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+	created, err := c.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	// Synchronously bootstrap per-resource RBAC for the creator before any
+	// subsequent impersonated read/update/delete in the bootstrap path. See
+	// HOL-1064 REV2 AC2.
+	if err := resourcerbac.BootstrapResourceRBACAndWait(ctx, c.client, c.impersonatedOrNil(ctx), created, resourcerbac.Folders); err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+func (c *K8sClient) impersonatedOrNil(ctx context.Context) kubernetes.Interface {
+	if rpc.HasImpersonatedClients(ctx) {
+		return rpc.ImpersonatedClientsetFromContext(ctx)
+	}
+	return nil
 }
 
 // UpdateFolder updates display name and description annotations on a folder.
