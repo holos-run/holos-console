@@ -198,6 +198,22 @@ func encodeSubject(userID, connID string) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
+// TestUserSubjectForEmail returns the OIDC sub claim minted by the embedded
+// Dex dev-token endpoint for a static test user email.
+func TestUserSubjectForEmail(email string) (string, bool) {
+	for i := range TestUsers {
+		if TestUsers[i].Email != email {
+			continue
+		}
+		subject, err := encodeSubject(TestUsers[i].UserID, "holos")
+		if err != nil {
+			return "", false
+		}
+		return subject, true
+	}
+	return "", false
+}
+
 // signatureAlgorithm determines the JWS algorithm for the given key.
 // This mirrors Dex's signatureAlgorithm function.
 func signatureAlgorithm(jwk *jose.JSONWebKey) (jose.SignatureAlgorithm, error) {

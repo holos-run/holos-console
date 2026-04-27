@@ -329,10 +329,8 @@ func (h *Handler) CreateProject(
 	// Keep the legacy project metadata grant email-shaped for UI display, but
 	// bind the RBAC owner to the stable OIDC subject per ADR 036.
 	shareUsers = ensureCreatorOwner(shareUsers, claims.Email)
-	rbacShareUsers := removeGrantPrincipal(shareUsers, claims.Email)
-	if claims.Sub != "" {
-		rbacShareUsers = ensureCreatorOwner(rbacShareUsers, claims.Sub)
-	}
+	rbacShareUsers := secrets.RBACUserGrantsForSubjects(shareUsers, secrets.UserIdentity{Email: claims.Email, Subject: claims.Sub})
+	topResourceRBACUsers := rbacShareUsers
 
 	// Create the project namespace, retrying on AlreadyExists when the name was
 	// auto-generated (race between GenerateIdentifier check and K8s create).
@@ -342,7 +340,7 @@ func (h *Handler) CreateProject(
 	// single branch.
 	const maxCreateRetries = 3
 	for attempt := range maxCreateRetries + 1 {
-		err = h.createProjectOnce(ctx, name, req.Msg, parentNs, claims.Email, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles, rbacShareUsers)
+		err = h.createProjectOnce(ctx, name, req.Msg, parentNs, claims.Email, claims.Sub, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles, rbacShareUsers, topResourceRBACUsers)
 		if err == nil {
 			break
 		}
@@ -394,8 +392,10 @@ func (h *Handler) createProjectOnce(
 	msg *consolev1.CreateProjectRequest,
 	parentNs string,
 	creatorEmail string,
+	creatorSubject string,
 	shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant,
 	rbacShareUsers []secrets.AnnotationGrant,
+	topResourceRBACUsers []secrets.AnnotationGrant,
 ) error {
 	// Always build the base Namespace object up front — both paths need
 	// it (the typed Create call still uses it, and the pipeline needs
@@ -403,6 +403,19 @@ func (h *Handler) createProjectOnce(
 	baseNs, err := h.k8s.BuildProjectNamespace(name, msg.DisplayName, msg.Description, msg.Organization, parentNs, creatorEmail, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 	if err != nil {
 		return err
+	}
+	if baseNs.Annotations == nil {
+		baseNs.Annotations = make(map[string]string)
+	}
+	if len(topResourceRBACUsers) > 0 {
+		raw, err := json.Marshal(topResourceRBACUsers)
+		if err != nil {
+			return fmt.Errorf("marshaling rbac-share-users: %w", err)
+		}
+		baseNs.Annotations[v1alpha2.AnnotationRBACShareUsers] = string(raw)
+	}
+	if creatorSubject != "" {
+		baseNs.Annotations[v1alpha2.AnnotationCreatorSubject] = creatorSubject
 	}
 
 	// Pipeline (HOL-812): resolve ProjectNamespace bindings; if any
@@ -771,7 +784,17 @@ func (h *Handler) UpdateProjectSharing(
 	newShareUsers := shareGrantsToAnnotations(req.Msg.UserGrants)
 	newShareRoles := shareGrantsToAnnotations(req.Msg.RoleGrants)
 
-	updated, err := h.k8s.UpdateProjectSharing(ctx, req.Msg.Name, newShareUsers, newShareRoles)
+	storedCreator := secrets.UserIdentity{
+		Email:   ns.Annotations[v1alpha2.AnnotationCreatorEmail],
+		Subject: ns.Annotations[v1alpha2.AnnotationCreatorSubject],
+	}
+	rbacShareUsers := secrets.RBACUserGrantsForSubjects(
+		newShareUsers,
+		storedCreator,
+		secrets.UserIdentity{Email: claims.Email, Subject: claims.Sub},
+	)
+
+	updated, err := h.k8s.UpdateProjectSharing(ctx, req.Msg.Name, newShareUsers, newShareRoles, rbacShareUsers)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -1199,21 +1222,6 @@ func ensureCreatorOwner(shareUsers []secrets.AnnotationGrant, principal string) 
 		}
 	}
 	return append(shareUsers, secrets.AnnotationGrant{Principal: principal, Role: "owner"})
-}
-
-func removeGrantPrincipal(grants []secrets.AnnotationGrant, principal string) []secrets.AnnotationGrant {
-	if principal == "" {
-		return append([]secrets.AnnotationGrant(nil), grants...)
-	}
-	principalLower := strings.ToLower(principal)
-	filtered := make([]secrets.AnnotationGrant, 0, len(grants))
-	for _, grant := range grants {
-		if strings.ToLower(grant.Principal) == principalLower {
-			continue
-		}
-		filtered = append(filtered, grant)
-	}
-	return filtered
 }
 
 // mapK8sError converts Kubernetes API errors to ConnectRPC errors. The

@@ -31,7 +31,7 @@ const (
 	LabelShareTargetName = "console.holos.run/share-target-name"
 	LabelResourceRole    = "holos.run/role"
 
-	AnnotationCreatorSubject  = "console.holos.run/creator-sub"
+	AnnotationCreatorSubject  = v1alpha2.AnnotationCreatorSubject
 	AnnotationShareTargetName = LabelShareTargetName
 
 	RoleViewer = "viewer"
@@ -287,7 +287,7 @@ func resourceRules(name string, cfg KindConfig, role string) []rbacv1.PolicyRule
 		rules = append(rules, rbacv1.PolicyRule{
 			APIGroups: []string{apiGroup},
 			Resources: []string{cfg.Resource},
-			Verbs:     []string{"list", "watch"},
+			Verbs:     []string{"list"},
 		})
 	}
 	return append(rules, extraRules...)
@@ -509,17 +509,23 @@ func reconcileRoleBindings(ctx context.Context, client kubernetes.Interface, obj
 		binding := RoleBinding(namespace, name, cfg, target, grant.Principal, grant.Role, ownerRefs)
 		desired[binding.Name] = binding
 	}
-	if creatorSub := creatorSubject(obj); creatorSub != "" {
-		addDesired(ShareTargetUser, secrets.AnnotationGrant{Principal: creatorSub, Role: RoleOwner})
+	users := []secrets.AnnotationGrant{}
+	if !cfg.ClusterScoped {
+		if creatorSub := creatorSubject(obj); creatorSub != "" {
+			users = append(users, secrets.AnnotationGrant{Principal: creatorSub, Role: RoleOwner})
+		}
 	}
 	if cfg.ClusterScoped {
-		users, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareUsers)
+		annotatedUsers, err := parseUserShareGrants(obj.GetAnnotations())
 		if err != nil {
 			return err
 		}
-		for _, grant := range activeGrants(users, now) {
-			addDesired(ShareTargetUser, grant)
-		}
+		users = append(users, annotatedUsers...)
+	}
+	for _, grant := range activeGrants(users, now) {
+		addDesired(ShareTargetUser, grant)
+	}
+	if cfg.ClusterScoped {
 		groups, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareRoles)
 		if err != nil {
 			return err
@@ -572,13 +578,12 @@ func reconcileClusterRoleBindings(ctx context.Context, client kubernetes.Interfa
 		binding := ClusterRoleBinding(name, cfg, target, grant.Principal, grant.Role, ownerRefs)
 		desired[binding.Name] = binding
 	}
-	if creatorSub := creatorSubject(obj); creatorSub != "" {
-		addDesired(ShareTargetUser, secrets.AnnotationGrant{Principal: creatorSub, Role: RoleOwner})
-	}
-	users, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareUsers)
+	users := []secrets.AnnotationGrant{}
+	annotatedUsers, err := parseUserShareGrants(obj.GetAnnotations())
 	if err != nil {
 		return err
 	}
+	users = append(users, annotatedUsers...)
 	for _, grant := range activeGrants(users, now) {
 		addDesired(ShareTargetUser, grant)
 	}
@@ -634,7 +639,7 @@ func activeGrants(grants []secrets.AnnotationGrant, now time.Time) []secrets.Ann
 // validity boundary. Reconcilers use it to remove expired RoleBindings and
 // add not-yet-active grants without waiting for another object update.
 func NextGrantRequeueAfter(obj metav1.Object, now time.Time) time.Duration {
-	users, _ := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareUsers)
+	users, _ := parseUserShareGrants(obj.GetAnnotations())
 	groups, _ := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareRoles)
 	nowUnix := now.Unix()
 	var next int64
@@ -652,6 +657,10 @@ func NextGrantRequeueAfter(obj metav1.Object, now time.Time) time.Duration {
 		return 0
 	}
 	return time.Duration(next-nowUnix) * time.Second
+}
+
+func parseUserShareGrants(annotations map[string]string) ([]secrets.AnnotationGrant, error) {
+	return parseShareGrants(annotations, v1alpha2.AnnotationRBACShareUsers)
 }
 
 func parseShareGrants(annotations map[string]string, key string) ([]secrets.AnnotationGrant, error) {

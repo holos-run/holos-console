@@ -106,12 +106,12 @@ func newTestHandlerWithOpts(opts testHandlerOpts, namespaces ...*corev1.Namespac
 type k8sFolderCreator struct {
 	client   *fake.Clientset
 	resolver *resolver.Resolver
-	createFn func(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error)
+	createFn func(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error)
 }
 
-func (f *k8sFolderCreator) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (f *k8sFolderCreator) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	if f.createFn != nil {
-		return f.createFn(ctx, name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
+		return f.createFn(ctx, name, displayName, description, org, parentNs, creatorEmail, creatorSubject, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 	}
 	usersJSON, _ := json.Marshal(shareUsers)
 	rolesJSON, _ := json.Marshal(shareRoles)
@@ -132,6 +132,9 @@ func (f *k8sFolderCreator) CreateFolder(ctx context.Context, name, displayName, 
 	}
 	if creatorEmail != "" {
 		annotations[v1alpha2.AnnotationCreatorEmail] = creatorEmail
+	}
+	if creatorSubject != "" {
+		annotations[v1alpha2.AnnotationCreatorSubject] = creatorSubject
 	}
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1026,7 +1029,7 @@ func TestCreateOrganization_RollbackOnFolderFailure(t *testing.T) {
 	failFC := &k8sFolderCreator{
 		client:   fakeClient,
 		resolver: r,
-		createFn: func(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+		createFn: func(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 			return nil, fmt.Errorf("simulated folder creation failure")
 		},
 	}
@@ -1431,7 +1434,7 @@ type k8sProjectCreator struct {
 	createErr error
 }
 
-func (p *k8sProjectCreator) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) error {
+func (p *k8sProjectCreator) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) error {
 	if p.createErr != nil {
 		return p.createErr
 	}
@@ -1454,6 +1457,9 @@ func (p *k8sProjectCreator) CreateProject(ctx context.Context, name, displayName
 	}
 	if creatorEmail != "" {
 		annotations[v1alpha2.AnnotationCreatorEmail] = creatorEmail
+	}
+	if creatorSubject != "" {
+		annotations[v1alpha2.AnnotationCreatorSubject] = creatorSubject
 	}
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1527,6 +1533,9 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 		projectNs, err := pc.client.CoreV1().Namespaces().Get(context.Background(), projectNsName, metav1.GetOptions{})
 		if err != nil {
 			t.Fatalf("expected default project namespace %q to exist, got %v", projectNsName, err)
+		}
+		if got, want := projectNs.Annotations[v1alpha2.AnnotationCreatorSubject], "sub-alice@example.com"; got != want {
+			t.Fatalf("expected default project creator-sub annotation %q, got %q", want, got)
 		}
 
 		// Verify the seeded project inherited the org's default role grants
@@ -2041,14 +2050,14 @@ type orderingFolderCreator struct {
 	seenDefaultRolesAnnotation bool
 }
 
-func (o *orderingFolderCreator) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (o *orderingFolderCreator) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	ns, err := o.k8s.GetOrganization(ctx, org)
 	if err == nil && ns.Annotations != nil {
 		if _, ok := ns.Annotations[v1alpha2.AnnotationDefaultShareRoles]; ok {
 			o.seenDefaultRolesAnnotation = true
 		}
 	}
-	return o.inner.CreateFolder(ctx, name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
+	return o.inner.CreateFolder(ctx, name, displayName, description, org, parentNs, creatorEmail, creatorSubject, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 }
 
 func (o *orderingFolderCreator) DeleteFolder(ctx context.Context, name string) error {

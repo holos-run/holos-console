@@ -37,7 +37,7 @@ type ProjectLister interface {
 // inherits the org's default role grants via the same merge logic
 // folders.Handler.CreateFolder applies to user-initiated folder creates.
 type FolderCreator interface {
-	CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error)
+	CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error)
 	DeleteFolder(ctx context.Context, name string) error
 	NamespaceExists(ctx context.Context, nsName string) (bool, error)
 }
@@ -59,7 +59,7 @@ type TemplateSeeder interface {
 // pattern as FolderCreator. DeleteProject is needed for rollback when later
 // seeding steps fail.
 type ProjectCreator interface {
-	CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) error
+	CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) error
 	DeleteProject(ctx context.Context, name string) error
 	NamespaceExists(ctx context.Context, nsName string) (bool, error)
 }
@@ -235,7 +235,7 @@ func (h *Handler) CreateOrganization(
 	// Ensure creator is included as owner
 	shareUsers = ensureCreatorOwner(shareUsers, claims.Email)
 
-	if _, err := h.k8s.CreateOrganization(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, claims.Email, shareUsers, shareRoles); err != nil {
+	if _, err := h.k8s.CreateOrganization(ctx, req.Msg.Name, req.Msg.DisplayName, req.Msg.Description, claims.Email, claims.Sub, shareUsers, shareRoles); err != nil {
 		return nil, mapK8sError(err)
 	}
 
@@ -271,7 +271,7 @@ func (h *Handler) CreateOrganization(
 		}
 
 		var err error
-		folderName, err = h.createDefaultFolder(ctx, req.Msg.Name, folderDisplayName, claims.Email, shareUsers, shareRoles)
+		folderName, err = h.createDefaultFolder(ctx, req.Msg.Name, folderDisplayName, claims.Email, claims.Sub, shareUsers, shareRoles)
 		if err != nil {
 			// Rollback: delete the org namespace on default folder failure.
 			// The folder namespace does not exist yet (creation failed), so
@@ -311,7 +311,7 @@ func (h *Handler) CreateOrganization(
 
 	// Seed example resources when populate_defaults is requested.
 	if req.Msg.GetPopulateDefaults() {
-		if err := h.seedDefaults(ctx, req.Msg.Name, claims.Email, shareUsers, shareRoles); err != nil {
+		if err := h.seedDefaults(ctx, req.Msg.Name, claims.Email, claims.Sub, shareUsers, shareRoles); err != nil {
 			slog.ErrorContext(ctx, "populate defaults failed, rolling back org",
 				slog.String("organization", req.Msg.Name),
 				slog.Any("error", err),
@@ -356,7 +356,7 @@ func (h *Handler) CreateOrganization(
 // projects.ProjectGrantResolver.GetDefaultGrants. Persisting a snapshot on the
 // folder itself would cause later changes to org default sharing to be
 // shadowed by stale folder defaults.
-func (h *Handler) createDefaultFolder(ctx context.Context, orgName, displayName, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) (string, error) {
+func (h *Handler) createDefaultFolder(ctx context.Context, orgName, displayName, creatorEmail, creatorSubject string, shareUsers, shareRoles []secrets.AnnotationGrant) (string, error) {
 	exists := func(ctx context.Context, nsName string) (bool, error) {
 		return h.folderCreator.NamespaceExists(ctx, nsName)
 	}
@@ -383,7 +383,7 @@ func (h *Handler) createDefaultFolder(ctx context.Context, orgName, displayName,
 	// Pass nil for the folder's own default-share grants. Descendants resolve
 	// the org defaults dynamically via the ancestor walk, so persisting a copy
 	// here would cause stale defaults to shadow future org changes.
-	if _, err := h.folderCreator.CreateFolder(ctx, folderName, displayName, "", orgName, orgNsName, creatorEmail, folderShareUsers, folderShareRoles, nil, nil); err != nil {
+	if _, err := h.folderCreator.CreateFolder(ctx, folderName, displayName, "", orgName, orgNsName, creatorEmail, creatorSubject, folderShareUsers, folderShareRoles, nil, nil); err != nil {
 		return "", fmt.Errorf("creating folder namespace: %w", err)
 	}
 	return folderName, nil
@@ -442,7 +442,7 @@ func roleAnnotationString(r rbac.Role) string {
 //
 // Each step performs incremental rollback of resources it created on failure.
 // The caller is responsible for rolling back the org and folder namespaces.
-func (h *Handler) seedDefaults(ctx context.Context, orgName, creatorEmail string, shareUsers, shareRoles []secrets.AnnotationGrant) error {
+func (h *Handler) seedDefaults(ctx context.Context, orgName, creatorEmail, creatorSubject string, shareUsers, shareRoles []secrets.AnnotationGrant) error {
 	if h.templateSeeder == nil || h.projectCreator == nil {
 		return fmt.Errorf("defaults seeder not configured")
 	}
@@ -484,7 +484,7 @@ func (h *Handler) seedDefaults(ctx context.Context, orgName, creatorEmail string
 	projectShareUsers := secrets.DeduplicateGrants(append(append([]secrets.AnnotationGrant{}, shareUsers...), orgDefaultUsers...))
 	projectShareRoles := secrets.DeduplicateGrants(append(append([]secrets.AnnotationGrant{}, shareRoles...), orgDefaultRoles...))
 
-	if err := h.projectCreator.CreateProject(ctx, projectName, projectDisplayName, "", orgName, parentNs, creatorEmail, projectShareUsers, projectShareRoles, orgDefaultUsers, orgDefaultRoles); err != nil {
+	if err := h.projectCreator.CreateProject(ctx, projectName, projectDisplayName, "", orgName, parentNs, creatorEmail, creatorSubject, projectShareUsers, projectShareRoles, orgDefaultUsers, orgDefaultRoles); err != nil {
 		return fmt.Errorf("creating default project: %w", err)
 	}
 
@@ -722,7 +722,17 @@ func (h *Handler) UpdateOrganizationSharing(
 	newShareUsers := shareGrantsToAnnotations(req.Msg.UserGrants)
 	newShareRoles := shareGrantsToAnnotations(req.Msg.RoleGrants)
 
-	updated, err := h.k8s.UpdateOrganizationSharing(ctx, req.Msg.Name, newShareUsers, newShareRoles)
+	storedCreator := secrets.UserIdentity{
+		Email:   ns.Annotations[v1alpha2.AnnotationCreatorEmail],
+		Subject: ns.Annotations[v1alpha2.AnnotationCreatorSubject],
+	}
+	rbacShareUsers := secrets.RBACUserGrantsForSubjects(
+		newShareUsers,
+		storedCreator,
+		secrets.UserIdentity{Email: claims.Email, Subject: claims.Sub},
+	)
+
+	updated, err := h.k8s.UpdateOrganizationSharing(ctx, req.Msg.Name, newShareUsers, newShareRoles, rbacShareUsers)
 	if err != nil {
 		return nil, mapK8sError(err)
 	}

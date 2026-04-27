@@ -257,7 +257,7 @@ func TestCreateProject_UsesPrefixNamespace(t *testing.T) {
 	shareUsers := []secrets.AnnotationGrant{{Principal: "alice@example.com", Role: "owner"}}
 	shareRoles := []secrets.AnnotationGrant{{Principal: "engineering", Role: "editor"}}
 
-	result, err := k8s.CreateProject(context.Background(), "new-project", "New Project", "A test project", "acme", "", "", shareUsers, shareRoles, nil, nil)
+	result, err := k8s.CreateProject(context.Background(), "new-project", "New Project", "A test project", "acme", "", "", "", shareUsers, shareRoles, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -282,7 +282,7 @@ func TestCreateProject_SetsOrgLabelWhenProvided(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateProject(context.Background(), "foo", "", "", "acme", "", "", nil, nil, nil, nil)
+	result, err := k8s.CreateProject(context.Background(), "foo", "", "", "acme", "", "", "", nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -295,7 +295,7 @@ func TestCreateProject_OmitsOrgLabelWhenEmpty(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateProject(context.Background(), "foo", "", "", "", "", "", nil, nil, nil, nil)
+	result, err := k8s.CreateProject(context.Background(), "foo", "", "", "", "", "", "", nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -318,7 +318,7 @@ func TestCreateProject_ReturnsAlreadyExistsForDuplicateName(t *testing.T) {
 	fakeClient := fake.NewClientset(existing)
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	_, err := k8s.CreateProject(context.Background(), "existing", "", "", "", "", "", nil, nil, nil, nil)
+	_, err := k8s.CreateProject(context.Background(), "existing", "", "", "", "", "", "", nil, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -593,7 +593,7 @@ func TestUpdateProjectSharing_UpdatesShareAnnotations(t *testing.T) {
 		{Principal: "engineering", Role: "viewer"},
 	}
 
-	result, err := k8s.UpdateProjectSharing(context.Background(), "my-project", newUsers, newGroups)
+	result, err := k8s.UpdateProjectSharing(context.Background(), "my-project", newUsers, newGroups, newUsers)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -610,7 +610,7 @@ func TestCreateProject_StoresCreatorEmailAnnotation(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateProject(context.Background(), "my-project", "", "", "acme", "", "creator@example.com", nil, nil, nil, nil)
+	result, err := k8s.CreateProject(context.Background(), "my-project", "", "", "acme", "", "creator@example.com", "", nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -619,11 +619,24 @@ func TestCreateProject_StoresCreatorEmailAnnotation(t *testing.T) {
 	}
 }
 
+func TestCreateProject_StoresCreatorSubjectAnnotation(t *testing.T) {
+	fakeClient := fake.NewClientset()
+	k8s := NewK8sClient(fakeClient, testResolver())
+
+	result, err := k8s.CreateProject(context.Background(), "my-project", "", "", "acme", "", "", "user-123", nil, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result.Annotations[v1alpha2.AnnotationCreatorSubject] != "user-123" {
+		t.Errorf("expected creator-sub annotation %q, got %q", "user-123", result.Annotations[v1alpha2.AnnotationCreatorSubject])
+	}
+}
+
 func TestCreateProject_EmptyCreatorEmail_NoAnnotation(t *testing.T) {
 	fakeClient := fake.NewClientset()
 	k8s := NewK8sClient(fakeClient, testResolver())
 
-	result, err := k8s.CreateProject(context.Background(), "my-project", "", "", "acme", "", "", nil, nil, nil, nil)
+	result, err := k8s.CreateProject(context.Background(), "my-project", "", "", "acme", "", "", "", nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

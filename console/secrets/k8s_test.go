@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	"github.com/holos-run/holos-console/console/oidc"
 	"github.com/holos-run/holos-console/console/resolver"
 )
 
@@ -30,6 +31,57 @@ func projectNS(project string) *corev1.Namespace {
 				v1alpha2.LabelProject:      project,
 			},
 		},
+	}
+}
+
+func TestRBACUserGrantsForSubjects(t *testing.T) {
+	grants := RBACUserGrantsForSubjects([]AnnotationGrant{
+		{Principal: "alice@example.com", Role: "editor"},
+		{Principal: "admin@localhost", Role: "owner"},
+		{Principal: "product@localhost", Role: "editor"},
+		{Principal: "unresolved@example.com", Role: "viewer"},
+		{Principal: "subject-bob", Role: "viewer"},
+		{Principal: "oidc:subject-carol", Role: "owner"},
+	}, UserIdentity{Email: "alice@example.com", Subject: "subject-alice"}, UserIdentity{Email: "admin@localhost", Subject: "live-admin-sub"})
+
+	got := map[string]string{}
+	for _, grant := range grants {
+		got[grant.Principal] = grant.Role
+	}
+	if got["subject-alice"] != "editor" {
+		t.Fatalf("current user email was not resolved to subject: %v", grants)
+	}
+	if got["live-admin-sub"] != "owner" {
+		t.Fatalf("live caller subject did not override static dev persona subject: %v", grants)
+	}
+	staticAdminSubject, ok := oidc.TestUserSubjectForEmail("admin@localhost")
+	if !ok {
+		t.Fatalf("admin dev persona subject not found")
+	}
+	if _, ok := got[staticAdminSubject]; ok {
+		t.Fatalf("static dev persona subject overrode live caller subject: %v", grants)
+	}
+	if _, ok := got["alice@example.com"]; ok {
+		t.Fatalf("resolved email principal was copied into RBAC grants: %v", grants)
+	}
+	if _, ok := got["unresolved@example.com"]; ok {
+		t.Fatalf("unresolved email principal was copied into RBAC grants: %v", grants)
+	}
+	productSubject, ok := oidc.TestUserSubjectForEmail("product@localhost")
+	if !ok {
+		t.Fatalf("product dev persona subject not found")
+	}
+	if got[productSubject] != "editor" {
+		t.Fatalf("dev persona email was not resolved to subject: %v", grants)
+	}
+	if _, ok = got["product@localhost"]; ok {
+		t.Fatalf("dev persona email principal was copied into RBAC grants: %v", grants)
+	}
+	if got["subject-bob"] != "viewer" {
+		t.Fatalf("subject grant not preserved: %v", grants)
+	}
+	if got["oidc:subject-carol"] != "owner" {
+		t.Fatalf("prefixed subject grant not preserved: %v", grants)
 	}
 }
 

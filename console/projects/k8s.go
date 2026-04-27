@@ -161,7 +161,7 @@ func (c *K8sClient) BuildProjectNamespace(name, displayName, description, org, p
 // CreateProject creates a new namespace with managed-by and resource-type labels.
 // parentNs is the Kubernetes namespace name of the immediate parent (org or folder namespace).
 // When non-empty, it is stored in the v1alpha2.AnnotationParent label for hierarchy traversal.
-func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	slog.DebugContext(ctx, "creating project in kubernetes",
 		slog.String("name", name),
 		slog.String("namespace", c.Resolver.ProjectNamespace(name)),
@@ -170,6 +170,23 @@ func (c *K8sClient) CreateProject(ctx context.Context, name, displayName, descri
 	ns, err := c.BuildProjectNamespace(name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 	if err != nil {
 		return nil, err
+	}
+	if creatorSubject != "" {
+		if ns.Annotations == nil {
+			ns.Annotations = make(map[string]string)
+		}
+		ns.Annotations[v1alpha2.AnnotationCreatorSubject] = creatorSubject
+	}
+	rbacShareUsers := secrets.RBACUserGrantsForSubjects(shareUsers, secrets.UserIdentity{Email: creatorEmail, Subject: creatorSubject})
+	if len(rbacShareUsers) > 0 {
+		if ns.Annotations == nil {
+			ns.Annotations = make(map[string]string)
+		}
+		rbacUsersJSON, err := json.Marshal(rbacShareUsers)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling rbac-share-users: %w", err)
+		}
+		ns.Annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
 	}
 	return c.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
 }
@@ -356,7 +373,7 @@ func (c *K8sClient) DeleteProject(ctx context.Context, name string) error {
 }
 
 // UpdateProjectSharing updates the sharing annotations on a managed namespace.
-func (c *K8sClient) UpdateProjectSharing(ctx context.Context, name string, shareUsers, shareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
+func (c *K8sClient) UpdateProjectSharing(ctx context.Context, name string, shareUsers, shareRoles, rbacShareUsers []secrets.AnnotationGrant) (*corev1.Namespace, error) {
 	slog.DebugContext(ctx, "updating project sharing in kubernetes",
 		slog.String("name", name),
 	)
@@ -375,8 +392,13 @@ func (c *K8sClient) UpdateProjectSharing(ctx context.Context, name string, share
 	if err != nil {
 		return nil, fmt.Errorf("marshaling share-roles: %w", err)
 	}
+	rbacUsersJSON, err := json.Marshal(rbacShareUsers)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling rbac-share-users: %w", err)
+	}
 	ns.Annotations[v1alpha2.AnnotationShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
+	ns.Annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
@@ -513,8 +535,8 @@ type ProjectCreatorAdapter struct {
 // CreateProject creates a project namespace, forwarding default sharing grants
 // so that seeded default projects inherit org-level defaults, mirroring the
 // production path in projects.Handler.CreateProject.
-func (a *ProjectCreatorAdapter) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) error {
-	_, err := a.K8s.CreateProject(ctx, name, displayName, description, org, parentNs, creatorEmail, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
+func (a *ProjectCreatorAdapter) CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) error {
+	_, err := a.K8s.CreateProject(ctx, name, displayName, description, org, parentNs, creatorEmail, creatorSubject, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
 	return err
 }
 

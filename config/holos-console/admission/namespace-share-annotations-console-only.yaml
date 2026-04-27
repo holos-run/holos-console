@@ -11,28 +11,78 @@ spec:
     resourceRules:
     - apiGroups: [""]
       apiVersions: ["v1"]
-      operations: ["UPDATE"]
+      operations: ["CREATE", "UPDATE"]
       resources: ["namespaces"]
   matchConditions:
-  - name: console-managed-namespace
+  - name: console-managed-or-share-annotated-namespace
     expression: >-
       (
-        has(oldObject.metadata.labels)
-        && "app.kubernetes.io/managed-by" in oldObject.metadata.labels
-        && oldObject.metadata.labels["app.kubernetes.io/managed-by"] == "console.holos.run"
+        oldObject != null
+        && has(oldObject.metadata.labels)
+        && (
+          (
+            "app.kubernetes.io/managed-by" in oldObject.metadata.labels
+            && oldObject.metadata.labels["app.kubernetes.io/managed-by"] == "console.holos.run"
+          )
+          || "console.holos.run/resource-type" in oldObject.metadata.labels
+          || "console.holos.run/organization" in oldObject.metadata.labels
+          || "console.holos.run/folder" in oldObject.metadata.labels
+          || "console.holos.run/project" in oldObject.metadata.labels
+          || "console.holos.run/parent" in oldObject.metadata.labels
+        )
       )
       || (
         has(object.metadata.labels)
-        && "app.kubernetes.io/managed-by" in object.metadata.labels
-        && object.metadata.labels["app.kubernetes.io/managed-by"] == "console.holos.run"
+        && (
+          (
+            "app.kubernetes.io/managed-by" in object.metadata.labels
+            && object.metadata.labels["app.kubernetes.io/managed-by"] == "console.holos.run"
+          )
+          || "console.holos.run/resource-type" in object.metadata.labels
+          || "console.holos.run/organization" in object.metadata.labels
+          || "console.holos.run/folder" in object.metadata.labels
+          || "console.holos.run/project" in object.metadata.labels
+          || "console.holos.run/parent" in object.metadata.labels
+        )
+      )
+      || (
+        oldObject != null
+        && has(oldObject.metadata.annotations)
+        && (
+          "console.holos.run/share-users" in oldObject.metadata.annotations
+          || "console.holos.run/share-roles" in oldObject.metadata.annotations
+          || "console.holos.run/default-share-users" in oldObject.metadata.annotations
+          || "console.holos.run/default-share-roles" in oldObject.metadata.annotations
+          || "console.holos.run/default-folder" in oldObject.metadata.annotations
+          || "console.holos.run/rbac-share-users" in oldObject.metadata.annotations
+          || "console.holos.run/creator-email" in oldObject.metadata.annotations
+          || "console.holos.run/creator-sub" in oldObject.metadata.annotations
+        )
+      )
+      || (
+        has(object.metadata.annotations)
+        && (
+          "console.holos.run/share-users" in object.metadata.annotations
+          || "console.holos.run/share-roles" in object.metadata.annotations
+          || "console.holos.run/default-share-users" in object.metadata.annotations
+          || "console.holos.run/default-share-roles" in object.metadata.annotations
+          || "console.holos.run/default-folder" in object.metadata.annotations
+          || "console.holos.run/rbac-share-users" in object.metadata.annotations
+          || "console.holos.run/creator-email" in object.metadata.annotations
+          || "console.holos.run/creator-sub" in object.metadata.annotations
+        )
       )
   - name: excluded-holos-console
     expression: >-
       request.userInfo.username != "system:serviceaccount:holos-system:holos-console"
+  - name: excluded-cluster-admins
+    expression: >-
+      !("system:masters" in request.userInfo.groups)
   variables:
   - name: oldShareUsers
     expression: >-
-      has(oldObject.metadata.annotations)
+      oldObject != null
+      && has(oldObject.metadata.annotations)
       && "console.holos.run/share-users" in oldObject.metadata.annotations
       ? oldObject.metadata.annotations["console.holos.run/share-users"]
       : ""
@@ -44,7 +94,8 @@ spec:
       : ""
   - name: oldShareRoles
     expression: >-
-      has(oldObject.metadata.annotations)
+      oldObject != null
+      && has(oldObject.metadata.annotations)
       && "console.holos.run/share-roles" in oldObject.metadata.annotations
       ? oldObject.metadata.annotations["console.holos.run/share-roles"]
       : ""
@@ -54,11 +105,198 @@ spec:
       && "console.holos.run/share-roles" in object.metadata.annotations
       ? object.metadata.annotations["console.holos.run/share-roles"]
       : ""
+  - name: oldDefaultShareUsers
+    expression: >-
+      oldObject != null
+      && has(oldObject.metadata.annotations)
+      && "console.holos.run/default-share-users" in oldObject.metadata.annotations
+      ? oldObject.metadata.annotations["console.holos.run/default-share-users"]
+      : ""
+  - name: newDefaultShareUsers
+    expression: >-
+      has(object.metadata.annotations)
+      && "console.holos.run/default-share-users" in object.metadata.annotations
+      ? object.metadata.annotations["console.holos.run/default-share-users"]
+      : ""
+  - name: oldDefaultShareRoles
+    expression: >-
+      oldObject != null
+      && has(oldObject.metadata.annotations)
+      && "console.holos.run/default-share-roles" in oldObject.metadata.annotations
+      ? oldObject.metadata.annotations["console.holos.run/default-share-roles"]
+      : ""
+  - name: newDefaultShareRoles
+    expression: >-
+      has(object.metadata.annotations)
+      && "console.holos.run/default-share-roles" in object.metadata.annotations
+      ? object.metadata.annotations["console.holos.run/default-share-roles"]
+      : ""
+  - name: oldDefaultFolder
+    expression: >-
+      oldObject != null
+      && has(oldObject.metadata.annotations)
+      && "console.holos.run/default-folder" in oldObject.metadata.annotations
+      ? oldObject.metadata.annotations["console.holos.run/default-folder"]
+      : ""
+  - name: newDefaultFolder
+    expression: >-
+      has(object.metadata.annotations)
+      && "console.holos.run/default-folder" in object.metadata.annotations
+      ? object.metadata.annotations["console.holos.run/default-folder"]
+      : ""
+  - name: oldRBACShareUsers
+    expression: >-
+      oldObject != null
+      && has(oldObject.metadata.annotations)
+      && "console.holos.run/rbac-share-users" in oldObject.metadata.annotations
+      ? oldObject.metadata.annotations["console.holos.run/rbac-share-users"]
+      : ""
+  - name: newRBACShareUsers
+    expression: >-
+      has(object.metadata.annotations)
+      && "console.holos.run/rbac-share-users" in object.metadata.annotations
+      ? object.metadata.annotations["console.holos.run/rbac-share-users"]
+      : ""
+  - name: oldCreatorSubject
+    expression: >-
+      oldObject != null
+      && has(oldObject.metadata.annotations)
+      && "console.holos.run/creator-sub" in oldObject.metadata.annotations
+      ? oldObject.metadata.annotations["console.holos.run/creator-sub"]
+      : ""
+  - name: newCreatorSubject
+    expression: >-
+      has(object.metadata.annotations)
+      && "console.holos.run/creator-sub" in object.metadata.annotations
+      ? object.metadata.annotations["console.holos.run/creator-sub"]
+      : ""
+  - name: oldCreatorEmail
+    expression: >-
+      oldObject != null
+      && has(oldObject.metadata.annotations)
+      && "console.holos.run/creator-email" in oldObject.metadata.annotations
+      ? oldObject.metadata.annotations["console.holos.run/creator-email"]
+      : ""
+  - name: newCreatorEmail
+    expression: >-
+      has(object.metadata.annotations)
+      && "console.holos.run/creator-email" in object.metadata.annotations
+      ? object.metadata.annotations["console.holos.run/creator-email"]
+      : ""
+  - name: oldManagedBy
+    expression: >-
+      oldObject != null
+      && has(oldObject.metadata.labels)
+      && "app.kubernetes.io/managed-by" in oldObject.metadata.labels
+      ? oldObject.metadata.labels["app.kubernetes.io/managed-by"]
+      : ""
+  - name: newManagedBy
+    expression: >-
+      has(object.metadata.labels)
+      && "app.kubernetes.io/managed-by" in object.metadata.labels
+      ? object.metadata.labels["app.kubernetes.io/managed-by"]
+      : ""
+  - name: oldResourceType
+    expression: >-
+      oldObject != null
+      && has(oldObject.metadata.labels)
+      && "console.holos.run/resource-type" in oldObject.metadata.labels
+      ? oldObject.metadata.labels["console.holos.run/resource-type"]
+      : ""
+  - name: newResourceType
+    expression: >-
+      has(object.metadata.labels)
+      && "console.holos.run/resource-type" in object.metadata.labels
+      ? object.metadata.labels["console.holos.run/resource-type"]
+      : ""
+  - name: oldOrganization
+    expression: >-
+      oldObject != null
+      && has(oldObject.metadata.labels)
+      && "console.holos.run/organization" in oldObject.metadata.labels
+      ? oldObject.metadata.labels["console.holos.run/organization"]
+      : ""
+  - name: newOrganization
+    expression: >-
+      has(object.metadata.labels)
+      && "console.holos.run/organization" in object.metadata.labels
+      ? object.metadata.labels["console.holos.run/organization"]
+      : ""
+  - name: oldFolder
+    expression: >-
+      oldObject != null
+      && has(oldObject.metadata.labels)
+      && "console.holos.run/folder" in oldObject.metadata.labels
+      ? oldObject.metadata.labels["console.holos.run/folder"]
+      : ""
+  - name: newFolder
+    expression: >-
+      has(object.metadata.labels)
+      && "console.holos.run/folder" in object.metadata.labels
+      ? object.metadata.labels["console.holos.run/folder"]
+      : ""
+  - name: oldProject
+    expression: >-
+      oldObject != null
+      && has(oldObject.metadata.labels)
+      && "console.holos.run/project" in oldObject.metadata.labels
+      ? oldObject.metadata.labels["console.holos.run/project"]
+      : ""
+  - name: newProject
+    expression: >-
+      has(object.metadata.labels)
+      && "console.holos.run/project" in object.metadata.labels
+      ? object.metadata.labels["console.holos.run/project"]
+      : ""
+  - name: oldParent
+    expression: >-
+      oldObject != null
+      && has(oldObject.metadata.labels)
+      && "console.holos.run/parent" in oldObject.metadata.labels
+      ? oldObject.metadata.labels["console.holos.run/parent"]
+      : ""
+  - name: newParent
+    expression: >-
+      has(object.metadata.labels)
+      && "console.holos.run/parent" in object.metadata.labels
+      ? object.metadata.labels["console.holos.run/parent"]
+      : ""
   validations:
   - expression: >-
-      variables.oldShareUsers == variables.newShareUsers
-      && variables.oldShareRoles == variables.newShareRoles
-    message: "Namespace share annotations can only be changed through the holos-console service account."
+      request.operation == "CREATE"
+      ? (
+        variables.newShareUsers == ""
+        && variables.newShareRoles == ""
+        && variables.newDefaultShareUsers == ""
+        && variables.newDefaultShareRoles == ""
+        && variables.newDefaultFolder == ""
+        && variables.newRBACShareUsers == ""
+        && variables.newCreatorSubject == ""
+        && variables.newCreatorEmail == ""
+        && variables.newManagedBy == ""
+        && variables.newResourceType == ""
+        && variables.newOrganization == ""
+        && variables.newFolder == ""
+        && variables.newProject == ""
+        && variables.newParent == ""
+      )
+      : (
+        variables.oldShareUsers == variables.newShareUsers
+        && variables.oldShareRoles == variables.newShareRoles
+        && variables.oldDefaultShareUsers == variables.newDefaultShareUsers
+        && variables.oldDefaultShareRoles == variables.newDefaultShareRoles
+        && variables.oldDefaultFolder == variables.newDefaultFolder
+        && variables.oldRBACShareUsers == variables.newRBACShareUsers
+        && variables.oldCreatorSubject == variables.newCreatorSubject
+        && variables.oldCreatorEmail == variables.newCreatorEmail
+        && variables.oldManagedBy == variables.newManagedBy
+        && variables.oldResourceType == variables.newResourceType
+        && variables.oldOrganization == variables.newOrganization
+        && variables.oldFolder == variables.newFolder
+        && variables.oldProject == variables.newProject
+        && variables.oldParent == variables.newParent
+      )
+    message: "Namespace share annotations and console classification labels can only be changed through the holos-console service account."
     reason: Forbidden
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -73,5 +311,5 @@ spec:
     resourceRules:
     - apiGroups: [""]
       apiVersions: ["v1"]
-      operations: ["UPDATE"]
+      operations: ["CREATE", "UPDATE"]
       resources: ["namespaces"]
