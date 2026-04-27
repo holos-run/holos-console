@@ -321,6 +321,18 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 	if err := resourcerbac.SetupTemplateRequirementReconciler(mgr, rbacClientset); err != nil {
 		return nil, fmt.Errorf("controller.NewManager: registering TemplateRequirement RBAC reconciler: %w", err)
 	}
+	if err := resourcerbac.SetupOrganizationReconciler(mgr, rbacClientset); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering Organization RBAC reconciler: %w", err)
+	}
+	if err := resourcerbac.SetupFolderReconciler(mgr, rbacClientset); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering Folder RBAC reconciler: %w", err)
+	}
+	if err := resourcerbac.SetupProjectReconciler(mgr, rbacClientset); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering Project RBAC reconciler: %w", err)
+	}
+	if err := resourcerbac.SetupResourceReconciler(mgr, rbacClientset); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering Resource RBAC reconciler: %w", err)
+	}
 
 	// Prime the Namespace informer so the reconcilers (HOL-621+) can read
 	// console.holos.run/resource-type labels without round-trips. Namespace

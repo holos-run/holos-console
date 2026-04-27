@@ -1,18 +1,22 @@
-// Package resourcerbac provides per-resource RBAC helpers for
-// templates.holos.run resources.
+// Package resourcerbac provides per-resource RBAC helpers for console-owned
+// resources.
 package resourcerbac
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/rbacname"
+	"github.com/holos-run/holos-console/console/secrets"
+	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -39,14 +43,19 @@ const (
 	OIDCPrefix = "oidc:"
 )
 
-// KindConfig describes the RBAC surface for one templates.holos.run resource
-// kind.
+// KindConfig describes the RBAC surface for one console-managed resource kind.
 type KindConfig struct {
-	Kind           string
-	Resource       string
-	RolePurpose    string
-	ControllerName string
-	NewObject      func() metav1.Object
+	Kind            string
+	Resource        string
+	RolePurpose     string
+	ControllerName  string
+	NewObject       func() metav1.Object
+	APIGroup        string
+	OwnerAPIVersion string
+	OwnerKind       string
+	ObjectName      func(metav1.Object) string
+	RBACNamespace   func(metav1.Object) string
+	Matches         func(metav1.Object) bool
 }
 
 var (
@@ -92,7 +101,62 @@ var (
 		ControllerName: "template-requirement-rbac-controller",
 		NewObject:      func() metav1.Object { return &templatesv1alpha1.TemplateRequirement{} },
 	}
+	Organizations = namespaceKindConfig(
+		"Organization",
+		"organization",
+		"organization-rbac-controller",
+		v1alpha2.ResourceTypeOrganization,
+	)
+	Folders = namespaceKindConfig(
+		"Folder",
+		"folder",
+		"folder-rbac-controller",
+		v1alpha2.ResourceTypeFolder,
+	)
+	Projects = namespaceKindConfig(
+		"Project",
+		"project",
+		"project-rbac-controller",
+		v1alpha2.ResourceTypeProject,
+	)
+	Resources = KindConfig{
+		Kind:            "Resource",
+		Resource:        "namespaces",
+		RolePurpose:     "resource",
+		ControllerName:  "resource-rbac-controller",
+		NewObject:       func() metav1.Object { return &corev1.Namespace{} },
+		APIGroup:        "",
+		OwnerAPIVersion: "v1",
+		OwnerKind:       "Namespace",
+		ObjectName:      namespaceObjectName,
+		RBACNamespace:   namespaceRBACNamespace,
+		Matches: func(obj metav1.Object) bool {
+			// TODO(HOL-1061 cleanup): delete this generic Resource surface
+			// when console/resources is retired; until then it mirrors the
+			// folder/project namespaces currently listed by that handler.
+			resourceType := obj.GetLabels()[v1alpha2.LabelResourceType]
+			return isManagedNamespace(obj) && (resourceType == v1alpha2.ResourceTypeFolder || resourceType == v1alpha2.ResourceTypeProject)
+		},
+	}
 )
+
+func namespaceKindConfig(kind, rolePurpose, controllerName, resourceType string) KindConfig {
+	return KindConfig{
+		Kind:            kind,
+		Resource:        "namespaces",
+		RolePurpose:     rolePurpose,
+		ControllerName:  controllerName,
+		NewObject:       func() metav1.Object { return &corev1.Namespace{} },
+		APIGroup:        "",
+		OwnerAPIVersion: "v1",
+		OwnerKind:       "Namespace",
+		ObjectName:      namespaceObjectName,
+		RBACNamespace:   namespaceRBACNamespace,
+		Matches: func(obj metav1.Object) bool {
+			return isManagedNamespace(obj) && obj.GetLabels()[v1alpha2.LabelResourceType] == resourceType
+		},
+	}
+}
 
 // AllKindConfigs returns every templates.holos.run kind managed by this
 // package.
@@ -107,11 +171,21 @@ func AllKindConfigs() []KindConfig {
 	}
 }
 
-// EnsureResourceRBAC provisions the viewer/editor/owner Roles for obj and,
-// when obj carries console.holos.run/creator-sub, an owner RoleBinding for
-// the creating OIDC subject. Roles and RoleBindings are owner-referenced to
-// obj so Kubernetes garbage collection removes them when the resource is
-// deleted.
+// TopResourceKindConfigs returns the namespace-backed resources managed by
+// the top-level console resource handlers.
+func TopResourceKindConfigs() []KindConfig {
+	return []KindConfig{
+		Organizations,
+		Folders,
+		Projects,
+		Resources,
+	}
+}
+
+// EnsureResourceRBAC provisions the viewer/editor/owner Roles for obj and
+// reconciles RoleBindings from creator/share annotations. Roles and
+// RoleBindings are owner-referenced to obj so Kubernetes garbage collection
+// removes them when the resource is deleted.
 func EnsureResourceRBAC(ctx context.Context, client kubernetes.Interface, obj metav1.Object, cfg KindConfig) error {
 	if client == nil {
 		return fmt.Errorf("resource RBAC client is required")
@@ -119,7 +193,10 @@ func EnsureResourceRBAC(ctx context.Context, client kubernetes.Interface, obj me
 	if obj == nil {
 		return fmt.Errorf("resource object is required")
 	}
-	namespace, name := obj.GetNamespace(), obj.GetName()
+	if !matches(obj, cfg) {
+		return nil
+	}
+	namespace, name := rbacNamespace(obj, cfg), objectName(obj, cfg)
 	if namespace == "" || name == "" {
 		return fmt.Errorf("resource namespace and name are required")
 	}
@@ -129,15 +206,7 @@ func EnsureResourceRBAC(ctx context.Context, client kubernetes.Interface, obj me
 			return fmt.Errorf("applying %s role %q: %w", cfg.Kind, role.Name, err)
 		}
 	}
-	creatorSub := creatorSubject(obj)
-	if creatorSub == "" {
-		return nil
-	}
-	binding := RoleBinding(namespace, name, cfg, ShareTargetUser, creatorSub, RoleOwner, ownerRefs)
-	if err := applyRoleBinding(ctx, client, binding); err != nil {
-		return fmt.Errorf("applying %s owner role binding: %w", cfg.Kind, err)
-	}
-	return nil
+	return reconcileRoleBindings(ctx, client, obj, cfg, namespace, name, ownerRefs)
 }
 
 func creatorSubject(obj metav1.Object) string {
@@ -157,8 +226,12 @@ func ResourceRoles(namespace, name string, cfg KindConfig, ownerRefs []metav1.Ow
 }
 
 func resourceRole(namespace, name string, cfg KindConfig, role string, verbs []string, extraRules []rbacv1.PolicyRule, ownerRefs []metav1.OwnerReference) *rbacv1.Role {
+	apiGroup := cfg.APIGroup
+	if cfg.APIGroup == "" && cfg.OwnerAPIVersion == "" {
+		apiGroup = TemplatesAPIGroup
+	}
 	rules := []rbacv1.PolicyRule{{
-		APIGroups:     []string{TemplatesAPIGroup},
+		APIGroups:     []string{apiGroup},
 		Resources:     []string{cfg.Resource},
 		ResourceNames: []string{name},
 		Verbs:         verbs,
@@ -260,14 +333,55 @@ func RoleBindingName(name string, cfg KindConfig, role, target, principal string
 func OwnerReferences(obj metav1.Object, cfg KindConfig) []metav1.OwnerReference {
 	controller := true
 	blockOwnerDeletion := true
+	apiVersion := cfg.OwnerAPIVersion
+	if apiVersion == "" {
+		apiVersion = templatesv1alpha1.GroupVersion.String()
+	}
+	kind := cfg.OwnerKind
+	if kind == "" {
+		kind = cfg.Kind
+	}
 	return []metav1.OwnerReference{{
-		APIVersion:         templatesv1alpha1.GroupVersion.String(),
-		Kind:               cfg.Kind,
+		APIVersion:         apiVersion,
+		Kind:               kind,
 		Name:               obj.GetName(),
 		UID:                obj.GetUID(),
 		Controller:         &controller,
 		BlockOwnerDeletion: &blockOwnerDeletion,
 	}}
+}
+
+func matches(obj metav1.Object, cfg KindConfig) bool {
+	if cfg.Matches == nil {
+		return true
+	}
+	return cfg.Matches(obj)
+}
+
+func objectName(obj metav1.Object, cfg KindConfig) string {
+	if cfg.ObjectName != nil {
+		return cfg.ObjectName(obj)
+	}
+	return obj.GetName()
+}
+
+func rbacNamespace(obj metav1.Object, cfg KindConfig) string {
+	if cfg.RBACNamespace != nil {
+		return cfg.RBACNamespace(obj)
+	}
+	return obj.GetNamespace()
+}
+
+func namespaceObjectName(obj metav1.Object) string {
+	return obj.GetName()
+}
+
+func namespaceRBACNamespace(obj metav1.Object) string {
+	return obj.GetName()
+}
+
+func isManagedNamespace(obj metav1.Object) bool {
+	return obj.GetLabels()[v1alpha2.LabelManagedBy] == v1alpha2.ManagedByValue
 }
 
 func OIDCPrincipal(principal string) string {
@@ -298,13 +412,77 @@ func NormalizeTarget(target string) string {
 
 func RoleFromLabels(labels map[string]string) string {
 	if labels != nil {
-		for _, cfg := range AllKindConfigs() {
+		configs := append(AllKindConfigs(), TopResourceKindConfigs()...)
+		for _, cfg := range configs {
 			if value := strings.TrimPrefix(labels[LabelResourceRole], cfg.RolePurpose+"-"); value != labels[LabelResourceRole] {
 				return NormalizeRole(value)
 			}
 		}
 	}
 	return RoleViewer
+}
+
+func reconcileRoleBindings(ctx context.Context, client kubernetes.Interface, obj metav1.Object, cfg KindConfig, namespace, name string, ownerRefs []metav1.OwnerReference) error {
+	desired := make(map[string]*rbacv1.RoleBinding)
+	addDesired := func(target string, grant secrets.AnnotationGrant) {
+		if strings.TrimSpace(grant.Principal) == "" {
+			return
+		}
+		binding := RoleBinding(namespace, name, cfg, target, grant.Principal, grant.Role, ownerRefs)
+		desired[binding.Name] = binding
+	}
+	if creatorSub := creatorSubject(obj); creatorSub != "" {
+		addDesired(ShareTargetUser, secrets.AnnotationGrant{Principal: creatorSub, Role: RoleOwner})
+	}
+	users, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareUsers)
+	if err != nil {
+		return err
+	}
+	for _, grant := range secrets.DeduplicateGrants(users) {
+		addDesired(ShareTargetUser, grant)
+	}
+	groups, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareRoles)
+	if err != nil {
+		return err
+	}
+	for _, grant := range secrets.DeduplicateGrants(groups) {
+		addDesired(ShareTargetGroup, grant)
+	}
+
+	selector := labels.SelectorFromSet(labels.Set{
+		LabelRolePurpose:  cfg.RolePurpose,
+		LabelResourceName: name,
+	}).String()
+	current, err := client.RbacV1().RoleBindings(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return fmt.Errorf("listing %s role bindings: %w", cfg.Kind, err)
+	}
+	for i := range current.Items {
+		existing := current.Items[i]
+		if _, ok := desired[existing.Name]; ok {
+			continue
+		}
+		if err := client.RbacV1().RoleBindings(namespace).Delete(ctx, existing.Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("deleting stale %s role binding %q: %w", cfg.Kind, existing.Name, err)
+		}
+	}
+	for _, binding := range desired {
+		if err := applyRoleBinding(ctx, client, binding); err != nil {
+			return fmt.Errorf("applying %s annotated role binding %q: %w", cfg.Kind, binding.Name, err)
+		}
+	}
+	return nil
+}
+
+func parseShareGrants(annotations map[string]string, key string) ([]secrets.AnnotationGrant, error) {
+	if annotations == nil || annotations[key] == "" {
+		return nil, nil
+	}
+	var grants []secrets.AnnotationGrant
+	if err := json.Unmarshal([]byte(annotations[key]), &grants); err != nil {
+		return nil, fmt.Errorf("invalid %s annotation: %w", key, err)
+	}
+	return grants, nil
 }
 
 func applyRole(ctx context.Context, client kubernetes.Interface, role *rbacv1.Role) error {
