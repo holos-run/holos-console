@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 
+import { connectErrorMessage } from '@/lib/connect-toast'
 import type { Row } from './types'
 
 interface UseDeleteConfirmOptions {
@@ -28,7 +29,7 @@ export function useDeleteConfirm({ onDelete }: UseDeleteConfirmOptions) {
     } catch (err) {
       const e = err instanceof Error ? err : new Error(String(err))
       setDeleteError(e)
-      toast.error(e.message)
+      toast.error(connectErrorMessage(err))
     } finally {
       setIsDeleting(false)
     }

@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package holos.console.v1;
+
+option go_package = "github.com/holos-run/holos-console/gen/holos/console/v1;consolev1";
+
+// PermissionsService exposes Kubernetes SubjectAccessReview decisions to the
+// frontend so the UI can decide which action buttons to render before the
+// user clicks anything (the optional UI-gating contract from ADR 036).
+//
+// The backend implements ListResourcePermissions as a fan-out over
+// SelfSubjectAccessReview against the impersonating Kubernetes client for the
+// authenticated request. The API server is the single arbiter of access; this
+// RPC is purely advisory. UIs that prefer the optimistic+toast contract can
+// ignore this service.
+service PermissionsService {
+  // ListResourcePermissions performs a bulk SelfSubjectAccessReview for every
+  // (verb, resource, optional name) tuple in the request. The response keys
+  // each decision by "verb:group/resource[:namespace[:name]]" so the frontend
+  // can look up a single button's allowed status in O(1).
+  rpc ListResourcePermissions(ListResourcePermissionsRequest)
+      returns (ListResourcePermissionsResponse);
+}
+
+// ResourceAttributes describe a single SubjectAccessReview check. The shape
+// mirrors authorization.k8s.io/v1 ResourceAttributes so the backend can pass
+// the message through to client-go without an extra type conversion.
+message ResourceAttributes {
+  // verb is the Kubernetes verb to check, e.g. "get", "list", "create",
+  // "update", "patch", "delete".
+  string verb = 1;
+  // group is the API group, empty for core. Example: "templates.holos.run".
+  string group = 2;
+  // resource is the plural resource name, e.g. "templates".
+  string resource = 3;
+  // subresource is the optional subresource (e.g. "status").
+  string subresource = 4;
+  // namespace is the namespace to check; empty for cluster-scoped resources.
+  string namespace = 5;
+  // name optionally narrows the check to a specific resource instance.
+  string name = 6;
+}
+
+// ListResourcePermissionsRequest carries every SubjectAccessReview the UI
+// wants resolved in a single round-trip.
+message ListResourcePermissionsRequest {
+  // attributes is the list of (verb, resource, …) tuples to check. The
+  // backend issues one SelfSubjectAccessReview per entry against the
+  // impersonating client.
+  repeated ResourceAttributes attributes = 1;
+}
+
+// ResourcePermission is one SubjectAccessReview decision.
+message ResourcePermission {
+  // attributes echoes the input ResourceAttributes for caller-side joining.
+  ResourceAttributes attributes = 1;
+  // allowed mirrors authorization.k8s.io/v1 SubjectAccessReviewStatus.Allowed.
+  bool allowed = 2;
+  // denied mirrors authorization.k8s.io/v1 SubjectAccessReviewStatus.Denied.
+  // Either allowed or denied may be true (mutually exclusive in practice but
+  // the K8s API documents both fields).
+  bool denied = 3;
+  // reason carries the decision reason text from the API server when present.
+  string reason = 4;
+  // key is the deterministic "verb:group/resource[:namespace[:name]]" string
+  // the frontend uses to index the response.
+  string key = 5;
+}
+
+// ListResourcePermissionsResponse contains one decision per requested
+// attribute, in the same order.
+message ListResourcePermissionsResponse {
+  // permissions is parallel to the request's attributes list.
+  repeated ResourcePermission permissions = 1;
+}
