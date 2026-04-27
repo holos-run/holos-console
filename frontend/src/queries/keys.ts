@@ -50,6 +50,15 @@ export const keys = {
     get: (name: string) => keys.connect.getOrganization(name),
     raw: (name: string) => keys.connect.getOrganizationRaw(name),
   },
+  permissions: {
+    // Bulk SelfSubjectAccessReview lookup. The cache key is intentionally
+    // shaped from the same deterministic permission keys the backend
+    // returns (verb:group/resource[:namespace[:name]]), so two identical
+    // queries with attributes in different declaration order still hit
+    // the same cache entry.
+    list: (permissionKeys: string[]) =>
+      ['permissions', 'list', ...[...permissionKeys].sort()] as const,
+  },
   projectSettings: {
     get: (project: string) => ['project-settings', 'get', project] as const,
     raw: (project: string) => ['project-settings', 'raw', project] as const,
