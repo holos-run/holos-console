@@ -39,6 +39,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -50,6 +51,7 @@ import (
 	deploymentsv1alpha1 "github.com/holos-run/holos-console/api/deployments/v1alpha1"
 	v1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	"github.com/holos-run/holos-console/console/deployments"
+	"github.com/holos-run/holos-console/console/resourcerbac"
 )
 
 var controllerRuntimeLoggerMu sync.Mutex
@@ -222,6 +224,10 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 	}
 
 	m := &Manager{mgr: mgr, cacheSyncTimeout: cacheSyncTimeout, logger: logger}
+	rbacClientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("controller.NewManager: building RBAC clientset: %w", err)
+	}
 
 	// Register the three reconcilers. Each reconciler owns its own event
 	// recorder keyed by controller name so emitted events are attributable
@@ -295,6 +301,25 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 		Validator: grantCache,
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("controller.NewManager: registering TemplateRequirementReconciler: %w", err)
+	}
+
+	if err := resourcerbac.SetupTemplateReconciler(mgr, rbacClientset); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering Template RBAC reconciler: %w", err)
+	}
+	if err := resourcerbac.SetupTemplatePolicyReconciler(mgr, rbacClientset); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering TemplatePolicy RBAC reconciler: %w", err)
+	}
+	if err := resourcerbac.SetupTemplatePolicyBindingReconciler(mgr, rbacClientset); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering TemplatePolicyBinding RBAC reconciler: %w", err)
+	}
+	if err := resourcerbac.SetupTemplateGrantReconciler(mgr, rbacClientset); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering TemplateGrant RBAC reconciler: %w", err)
+	}
+	if err := resourcerbac.SetupTemplateDependencyReconciler(mgr, rbacClientset); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering TemplateDependency RBAC reconciler: %w", err)
+	}
+	if err := resourcerbac.SetupTemplateRequirementReconciler(mgr, rbacClientset); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering TemplateRequirement RBAC reconciler: %w", err)
 	}
 
 	// Prime the Namespace informer so the reconcilers (HOL-621+) can read

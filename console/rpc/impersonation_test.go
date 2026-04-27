@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	"connectrpc.com/connect"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -46,6 +47,44 @@ func TestNewImpersonatedClientsAddsOIDCImpersonationHeaders(t *testing.T) {
 	}
 	if got.Get("Impersonate-Extra-Email") != "" {
 		t.Fatalf("Impersonate-Extra-Email = %q, want empty", got.Get("Impersonate-Extra-Email"))
+	}
+}
+
+func TestImpersonationInterceptorBuildsClientsFromClaimsContext(t *testing.T) {
+	headers := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headers <- r.Header.Clone()
+		writeNamespaceList(t, w)
+	}))
+	defer server.Close()
+
+	interceptor := ImpersonationInterceptor(testRESTConfig(server.URL), nil)
+	handler := interceptor(func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		if !HasImpersonatedClients(ctx) {
+			t.Fatal("impersonated clients missing from context")
+		}
+		if _, err := ImpersonatedDynamicClientFromContext(ctx).Resource(schema.GroupVersionResource{
+			Version:  "v1",
+			Resource: "namespaces",
+		}).List(ctx, metav1.ListOptions{}); err != nil {
+			t.Fatalf("list namespaces through impersonated dynamic client: %v", err)
+		}
+		return nil, nil
+	})
+	ctx := ContextWithClaims(context.Background(), &Claims{
+		Sub:   "subject-123",
+		Roles: []string{"platform-admins"},
+	})
+
+	if _, err := handler(ctx, connect.NewRequest[any](nil)); err != nil {
+		t.Fatalf("handler failed: %v", err)
+	}
+	got := <-headers
+	if got.Get("Impersonate-User") != "oidc:subject-123" {
+		t.Fatalf("Impersonate-User = %q, want oidc:subject-123", got.Get("Impersonate-User"))
+	}
+	if got.Get("Impersonate-Group") != "oidc:platform-admins" {
+		t.Fatalf("Impersonate-Group = %q, want oidc:platform-admins", got.Get("Impersonate-Group"))
 	}
 }
 
