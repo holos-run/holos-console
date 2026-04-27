@@ -77,6 +77,7 @@ import { useGetDeployment, useGetDeploymentStatus, useGetDeploymentLogs, useUpda
 import { useGetProject } from '@/queries/projects'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { DeploymentPhase } from '@/gen/holos/console/v1/deployments_pb'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 import { DeploymentDetailPage } from './$deploymentName'
 
 const mockDeployment = {
@@ -190,6 +191,7 @@ const mockStatusWithHealthyContainers = {
 const mockLogs = '2024-01-15T10:30:01Z Starting server...\n2024-01-15T10:30:02Z Listening on :8080'
 
 function setupMocks(userRole = Role.OWNER) {
+  mockResourcePermissionsForRole(userRole)
   ;(useGetDeployment as Mock).mockReturnValue({ data: mockDeployment, isPending: false, error: null })
   ;(useGetDeploymentStatus as Mock).mockReturnValue({ data: mockStatus, isPending: false, error: null })
   ;(useGetDeploymentLogs as Mock).mockReturnValue({ data: mockLogs, isPending: false, error: null })

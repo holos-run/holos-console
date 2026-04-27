@@ -12,7 +12,7 @@
  * introduced.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 
 import { StandardPageLayout } from '@/components/page-layout'
@@ -21,6 +21,11 @@ import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
 import { useListProjects } from '@/queries/projects'
+import { useResourcePermissions } from '@/queries/permissions'
+import {
+  createNamespacePermission,
+  hasPermission,
+} from '@/lib/resource-permissions'
 
 export const Route = createFileRoute(
   '/_authenticated/organizations/$orgName/projects/',
@@ -54,6 +59,9 @@ export function OrgProjectsIndexPage({
   const navigate = useNavigate()
   const { data, isLoading, error } = useListProjects(orgName)
   const projects = data?.projects ?? []
+  const createPermission = useMemo(() => createNamespacePermission(), [])
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canCreate = hasPermission(permissionsQuery.data, createPermission)
 
   const rows: Row[] = projects.map((project) => ({
     kind: 'Project',
@@ -82,12 +90,14 @@ export function OrgProjectsIndexPage({
   ]
 
   const createProjectButton = (
-    <Link
-      to="/project/new"
-      search={{ orgName, returnTo: `/organizations/${orgName}/projects` }}
-    >
-      <Button size="sm">Create Project</Button>
-    </Link>
+    canCreate ? (
+      <Link
+        to="/project/new"
+        search={{ orgName, returnTo: `/organizations/${orgName}/projects` }}
+      >
+        <Button size="sm">Create Project</Button>
+      </Link>
+    ) : null
   )
 
   const handleSearchChange = useCallback(
@@ -113,12 +123,14 @@ export function OrgProjectsIndexPage({
       <p className="text-muted-foreground">
         No projects in this organization yet.
       </p>
-      <Link
-        to="/project/new"
-        search={{ orgName, returnTo: `/organizations/${orgName}/projects` }}
-      >
-        <Button size="sm">Create Project</Button>
-      </Link>
+      {canCreate && (
+        <Link
+          to="/project/new"
+          search={{ orgName, returnTo: `/organizations/${orgName}/projects` }}
+        >
+          <Button size="sm">Create Project</Button>
+        </Link>
+      )}
     </div>
   )
 

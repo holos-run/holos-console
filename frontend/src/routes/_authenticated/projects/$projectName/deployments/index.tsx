@@ -11,19 +11,24 @@
 
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { StandardPageLayout } from '@/components/page-layout'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
 import { useListDeployments, useDeleteDeployment } from '@/queries/deployments'
-import { useGetProject } from '@/queries/projects'
+import { useResourcePermissions } from '@/queries/permissions'
 import { PhaseBadge } from '@/components/phase-badge'
 import { PolicyDriftBadge } from '@/components/policy-drift/PolicySection'
 import { SharedDependencyBadge } from '@/components/deployments/SharedDependencyBadge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { Deployment } from '@/gen/holos/console/v1/deployments_pb'
+import { namespaceForProject } from '@/lib/scope-labels'
+import {
+  createNamespacedResourcePermission,
+  DEPLOYMENTS_API_GROUP,
+  hasPermission,
+} from '@/lib/resource-permissions'
 
 // ---------------------------------------------------------------------------
 // Route
@@ -109,12 +114,20 @@ export function DeploymentsListPage() {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
 
-  const { data: project } = useGetProject(projectName)
   const { data: deployments = [], isPending, error } = useListDeployments(projectName)
   const deleteMutation = useDeleteDeployment(projectName)
 
-  const userRole = project?.userRole ?? Role.VIEWER
-  const canCreate = userRole === Role.OWNER || userRole === Role.EDITOR
+  const namespace = namespaceForProject(projectName)
+  const createPermission = useMemo(
+    () => createNamespacedResourcePermission(
+      DEPLOYMENTS_API_GROUP,
+      'deployments',
+      namespace,
+    ),
+    [namespace],
+  )
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canCreate = hasPermission(permissionsQuery.data, createPermission)
 
   // Build name→deployment lookup for extra columns.
   const deploymentsByName = useMemo(() => {

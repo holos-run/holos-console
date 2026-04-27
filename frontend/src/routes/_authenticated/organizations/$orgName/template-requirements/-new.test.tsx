@@ -81,12 +81,14 @@ import { useCreateTemplateRequirement } from '@/queries/templateRequirements'
 import { useGetOrganization } from '@/queries/organizations'
 import { useProject } from '@/lib/project-context'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 import { CreateOrgTemplateRequirementPage } from './new'
 
 function setupMocks(
   mutateAsync = vi.fn().mockResolvedValue({}),
   userRole: Role = Role.OWNER,
 ) {
+  mockResourcePermissionsForRole(userRole)
   ;(useCreateTemplateRequirement as Mock).mockReturnValue({
     mutateAsync,
     isPending: false,

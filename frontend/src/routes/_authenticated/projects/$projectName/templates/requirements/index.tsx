@@ -6,13 +6,12 @@
  * project name still appears in the URL so the Templates collapsible group
  * stays open in the sidebar (HOL-1014).
  *
- * HOL-1023: added "New" header action gated on org OWNER/EDITOR role,
- * navigating to the org-scoped /template-requirements/new route.
+ * HOL-1023: added "New" header action navigating to the org-scoped
+ * /template-requirements/new route.
  */
 
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { StandardPageLayout } from '@/components/page-layout'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
@@ -21,9 +20,14 @@ import {
   useListTemplateRequirements,
   useDeleteTemplateRequirement,
 } from '@/queries/templateRequirements'
-import { useGetOrganization } from '@/queries/organizations'
+import { useResourcePermissions } from '@/queries/permissions'
 import { useOrg } from '@/lib/org-context'
 import { namespaceForOrg } from '@/lib/scope-labels'
+import {
+  createTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+} from '@/lib/resource-permissions'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,10 +73,12 @@ export function TemplateRequirementsIndexPage({
   const { selectedOrg } = useOrg()
   const namespace = namespaceForOrg(selectedOrg ?? '')
 
-  // Org role — used to gate the "New" button (OWNER or EDITOR can create).
-  const { data: org } = useGetOrganization(selectedOrg ?? '')
-  const userRole = org?.userRole ?? Role.VIEWER
-  const canCreate = userRole === Role.OWNER || userRole === Role.EDITOR
+  const createPermission = useMemo(
+    () => createTemplateResourcePermission(templateResources.templateRequirements, namespace),
+    [namespace],
+  )
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canCreate = hasPermission(permissionsQuery.data, createPermission)
 
   const {
     data: requirements = [],

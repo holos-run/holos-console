@@ -29,7 +29,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
 import type { Row } from '@/components/resource-grid/types'
 import type { ColumnDef } from '@tanstack/react-table'
@@ -38,8 +37,9 @@ import type { ResourceGridSearch } from '@/components/resource-grid/types'
 import { useAllTemplatesForOrg } from '@/queries/templates'
 import { useAllTemplatePoliciesForOrg } from '@/queries/templatePolicies'
 import { useAllTemplatePolicyBindingsForOrg } from '@/queries/templatePolicyBindings'
-import { useGetOrganization } from '@/queries/organizations'
+import { useResourcePermissions } from '@/queries/permissions'
 import {
+  namespaceForOrg,
   scopeLabelFromNamespace,
   scopeNameFromNamespace,
   scopeDisplayLabel,
@@ -48,6 +48,11 @@ import {
   resolveTemplateRowHref,
   parentLabelFromNamespace,
 } from '@/lib/template-row-link'
+import {
+  createTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+} from '@/lib/resource-permissions'
 
 // ---------------------------------------------------------------------------
 // Route search — extends ResourceGridSearch with the scope filter
@@ -151,14 +156,32 @@ export function OrgTemplatesIndexPage({
   const templatesResult = useAllTemplatesForOrg(orgName)
   const policiesResult = useAllTemplatePoliciesForOrg(orgName)
   const bindingsResult = useAllTemplatePolicyBindingsForOrg(orgName)
-  const { data: org } = useGetOrganization(orgName)
 
   const templates = useMemo(() => templatesResult.data ?? [], [templatesResult.data])
   const policies = useMemo(() => policiesResult.data ?? [], [policiesResult.data])
   const bindings = useMemo(() => bindingsResult.data ?? [], [bindingsResult.data])
 
-  const userRole = org?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER
+  const orgNamespace = namespaceForOrg(orgName)
+  const createTemplatePermission = useMemo(
+    () => createTemplateResourcePermission(templateResources.templates, orgNamespace),
+    [orgNamespace],
+  )
+  const createPolicyPermission = useMemo(
+    () => createTemplateResourcePermission(templateResources.templatePolicies, orgNamespace),
+    [orgNamespace],
+  )
+  const createBindingPermission = useMemo(
+    () => createTemplateResourcePermission(templateResources.templatePolicyBindings, orgNamespace),
+    [orgNamespace],
+  )
+  const permissionsQuery = useResourcePermissions([
+    createTemplatePermission,
+    createPolicyPermission,
+    createBindingPermission,
+  ])
+  const canCreateTemplate = hasPermission(permissionsQuery.data, createTemplatePermission)
+  const canCreatePolicy = hasPermission(permissionsQuery.data, createPolicyPermission)
+  const canCreateBinding = hasPermission(permissionsQuery.data, createBindingPermission)
 
   // Combine loading and error state across all three fan-outs.
   const isPending = templatesResult.isPending || policiesResult.isPending || bindingsResult.isPending
@@ -252,22 +275,22 @@ export function OrgTemplatesIndexPage({
         id: 'Template',
         label: 'Template',
         newHref: `/organizations/${orgName}/templates/new`,
-        canCreate: canWrite,
+        canCreate: canCreateTemplate,
       },
       {
         id: 'TemplatePolicy',
         label: 'Template Policy',
         newHref: `/organizations/${orgName}/template-policies/new`,
-        canCreate: canWrite,
+        canCreate: canCreatePolicy,
       },
       {
         id: 'TemplatePolicyBinding',
         label: 'Template Binding',
         newHref: `/organizations/${orgName}/template-bindings/new`,
-        canCreate: canWrite,
+        canCreate: canCreateBinding,
       },
     ],
-    [orgName, canWrite],
+    [orgName, canCreateTemplate, canCreatePolicy, canCreateBinding],
   )
 
   // ---------------------------------------------------------------------------

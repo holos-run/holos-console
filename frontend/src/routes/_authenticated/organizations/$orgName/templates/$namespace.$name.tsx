@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
@@ -20,11 +20,19 @@ import {
   useDeleteTemplate,
   useGetTemplateDefaults,
 } from '@/queries/templates'
+import { useResourcePermissions } from '@/queries/permissions'
 import type { TemplateExample, TemplateDefaults } from '@/queries/templates'
 import { CueTemplateEditor } from '@/components/cue-template-editor'
 import { TemplateExamplePicker } from '@/components/templates/template-example-picker'
 import { useProject } from '@/lib/project-context'
 import { ReverseDependents } from '@/components/templates/ReverseDependents'
+import { connectErrorMessage } from '@/lib/connect-toast'
+import {
+  deleteTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+  updateTemplateResourcePermission,
+} from '@/lib/resource-permissions'
 
 // templateDefaultsToCueInput converts a TemplateDefaults message into a CUE
 // input snippet suitable for pre-populating the Project Input textarea. Only
@@ -87,6 +95,17 @@ export function ConsolidatedTemplateEditorPage({
   const { data: templateDefaults } = useGetTemplateDefaults({ namespace, name })
   const updateMutation = useUpdateTemplate(namespace, name)
   const deleteMutation = useDeleteTemplate(namespace)
+  const updatePermission = useMemo(
+    () => updateTemplateResourcePermission(templateResources.templates, namespace, name),
+    [namespace, name],
+  )
+  const deletePermission = useMemo(
+    () => deleteTemplateResourcePermission(templateResources.templates, namespace, name),
+    [namespace, name],
+  )
+  const permissionsQuery = useResourcePermissions([updatePermission, deletePermission])
+  const canWrite = hasPermission(permissionsQuery.data, updatePermission)
+  const canDelete = hasPermission(permissionsQuery.data, deletePermission)
 
   // Resolve the selected project so the "Clone to project" CTA can build the
   // target URL without requiring additional user input. If no project is
@@ -124,7 +143,7 @@ export function ConsolidatedTemplateEditorPage({
       })
       toast.success('Saved')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      toast.error(connectErrorMessage(err))
     }
   }
 
@@ -138,8 +157,8 @@ export function ConsolidatedTemplateEditorPage({
       setDeleteOpen(false)
       toast.success('Template deleted')
       navigate({ to: '/organizations/$orgName/templates', params: { orgName } })
-    } catch {
-      /* error surfaced via deleteMutation.error inside the dialog */
+    } catch (err) {
+      toast.error(connectErrorMessage(err))
     }
   }
 
@@ -203,13 +222,15 @@ export function ConsolidatedTemplateEditorPage({
               Clone to project
             </Button>
           )}
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setDeleteOpen(true)}
-          >
-            Delete
-          </Button>
+          {canDelete && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setDeleteOpen(true)}
+            >
+              Delete
+            </Button>
+          )}
         </div>
 
         <div className="space-y-4">
@@ -238,6 +259,7 @@ export function ConsolidatedTemplateEditorPage({
             onChange={setCueTemplate}
             onSave={handleSave}
             isSaving={updateMutation.isPending}
+            readOnly={!canWrite}
             defaultProjectInput={templateDefaultsToCueInput(templateDefaults)}
             namespace={namespace}
           />
@@ -269,7 +291,7 @@ export function ConsolidatedTemplateEditorPage({
           </DialogHeader>
           {deleteMutation.error && (
             <Alert variant="destructive">
-              <AlertDescription>{deleteMutation.error.message}</AlertDescription>
+              <AlertDescription>{connectErrorMessage(deleteMutation.error)}</AlertDescription>
             </Alert>
           )}
           <DialogFooter>

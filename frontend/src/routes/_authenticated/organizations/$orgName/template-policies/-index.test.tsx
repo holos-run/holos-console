@@ -12,6 +12,7 @@ import type { Mock } from 'vitest'
 import React from 'react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { namespaceForOrg, namespaceForFolder } from '@/lib/scope-labels'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 
 // ---------------------------------------------------------------------------
 // Router mock — Route.useParams / useSearch / useNavigate / fullPath
@@ -118,6 +119,7 @@ function setup(
   userRole: Role = Role.OWNER,
   overrides: Partial<{ isPending: boolean; error: Error | null }> = {},
 ) {
+  mockResourcePermissionsForRole(userRole)
   ;(useListTemplatePolicies as Mock).mockReturnValue({
     data: overrides.isPending ? undefined : policies,
     isPending: overrides.isPending ?? false,

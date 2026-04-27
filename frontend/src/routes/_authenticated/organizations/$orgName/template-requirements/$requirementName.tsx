@@ -7,15 +7,21 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import {
   useGetTemplateRequirement,
   useUpdateTemplateRequirement,
   useDeleteTemplateRequirement,
 } from '@/queries/templateRequirements'
-import { useGetOrganization } from '@/queries/organizations'
+import { useResourcePermissions } from '@/queries/permissions'
 import { namespaceForOrg } from '@/lib/scope-labels'
 import { RequirementForm } from '@/components/template-requirements/RequirementForm'
+import { connectErrorMessage } from '@/lib/connect-toast'
+import {
+  deleteTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+  updateTemplateResourcePermission,
+} from '@/lib/resource-permissions'
 
 export const Route = createFileRoute(
   '/_authenticated/organizations/$orgName/template-requirements/$requirementName',
@@ -50,15 +56,28 @@ export function OrgTemplateRequirementDetailPage({
   const requirementName = propRequirementName ?? routeParams.requirementName ?? ''
 
   const navigate = useNavigate()
-  const { data: org } = useGetOrganization(orgName)
-
-  const userRole = org?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
-  // Delete is OWNER-only.
-  const canDelete = userRole === Role.OWNER
 
   // Namespace resolution: explicit override (for tests) > org namespace.
   const namespace = namespaceOverride ?? namespaceForOrg(orgName)
+  const updatePermission = useMemo(
+    () => updateTemplateResourcePermission(
+      templateResources.templateRequirements,
+      namespace,
+      requirementName,
+    ),
+    [namespace, requirementName],
+  )
+  const deletePermission = useMemo(
+    () => deleteTemplateResourcePermission(
+      templateResources.templateRequirements,
+      namespace,
+      requirementName,
+    ),
+    [namespace, requirementName],
+  )
+  const permissionsQuery = useResourcePermissions([updatePermission, deletePermission])
+  const canWrite = hasPermission(permissionsQuery.data, updatePermission)
+  const canDelete = hasPermission(permissionsQuery.data, deletePermission)
 
   const {
     data: requirement,
@@ -155,11 +174,15 @@ export function OrgTemplateRequirementDetailPage({
             pendingLabel="Saving..."
             isPending={updateMutation.isPending}
             onSubmit={async (values) => {
-              await updateMutation.mutateAsync({
-                requires: values.requires,
-                cascadeDelete: values.cascadeDelete,
-              })
-              toast.success('Requirement saved')
+              try {
+                await updateMutation.mutateAsync({
+                  requires: values.requires,
+                  cascadeDelete: values.cascadeDelete,
+                })
+                toast.success('Requirement saved')
+              } catch (err) {
+                toast.error(connectErrorMessage(err))
+              }
             }}
             onCancel={() => {
               void navigate({
@@ -192,7 +215,9 @@ export function OrgTemplateRequirementDetailPage({
             })
             toast.success('Requirement deleted')
           } catch (err) {
-            setDeleteError(err instanceof Error ? err : new Error(String(err)))
+            const message = connectErrorMessage(err)
+            setDeleteError(new Error(message))
+            toast.error(message)
           }
         }}
       />

@@ -37,6 +37,7 @@ import {
   useDeleteOrganization,
 } from '@/queries/organizations'
 import { useAuth } from '@/lib/auth'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 import { OrgSettingsPage } from './index'
 
 const mockOrg = {
@@ -55,6 +56,7 @@ const mockOrg = {
 
 function setupMocks(overrides: Partial<typeof mockOrg> = {}) {
   const org = { ...mockOrg, ...overrides }
+  mockResourcePermissionsForRole(org.userRole)
 
   ;(useGetOrganization as Mock).mockReturnValue({
     data: org,

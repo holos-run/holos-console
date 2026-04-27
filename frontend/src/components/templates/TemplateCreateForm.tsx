@@ -20,6 +20,7 @@ import type {
 } from '@/queries/templates'
 import { useDebouncedValue } from '@/hooks/use-debounced-value'
 import { TemplateExamplePicker } from '@/components/templates/template-example-picker'
+import { connectErrorMessage } from '@/lib/connect-toast'
 
 export type TemplateScope = 'organization' | 'folder' | 'project'
 
@@ -159,7 +160,7 @@ export function TemplateCreateForm({
         enabled: isProject ? undefined : enabled,
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(connectErrorMessage(err))
     }
   }
 

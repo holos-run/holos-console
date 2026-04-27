@@ -13,7 +13,6 @@
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { Badge } from '@/components/ui/badge'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { ResourceGrid } from '@/components/resource-grid/ResourceGrid'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
@@ -24,7 +23,7 @@ import {
   countRulesByKind,
 } from '@/queries/templatePolicies'
 import type { TemplatePolicy } from '@/queries/templatePolicies'
-import { useGetOrganization } from '@/queries/organizations'
+import { useResourcePermissions } from '@/queries/permissions'
 import {
   scopeDisplayLabel,
   scopeNameFromNamespace,
@@ -35,6 +34,11 @@ import {
   parentLabelFromNamespace,
 } from '@/lib/template-row-link'
 import type { ColumnDef } from '@tanstack/react-table'
+import {
+  createTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+} from '@/lib/resource-permissions'
 
 // ---------------------------------------------------------------------------
 // Route
@@ -153,11 +157,14 @@ export function OrgTemplatePoliciesIndexPage({
 
   const orgNamespace = namespaceForOrg(orgName)
   const { data: policies = [], isPending, error } = useListTemplatePolicies(orgNamespace)
-  const { data: org } = useGetOrganization(orgName)
   const deleteMutation = useDeleteTemplatePolicy(orgNamespace)
 
-  const userRole = org?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
+  const createPermission = useMemo(
+    () => createTemplateResourcePermission(templateResources.templatePolicies, orgNamespace),
+    [orgNamespace],
+  )
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canCreate = hasPermission(permissionsQuery.data, createPermission)
 
   // Build a lookup map for extra columns to access the original policy object.
   const policiesByName = useMemo(() => {
@@ -192,10 +199,10 @@ export function OrgTemplatePoliciesIndexPage({
         id: 'TemplatePolicy',
         label: 'Template Policy',
         newHref: `/organizations/${orgName}/template-policies/new`,
-        canCreate: canWrite,
+        canCreate,
       },
     ],
-    [orgName, canWrite],
+    [orgName, canCreate],
   )
 
   const extraColumns = usePolicyExtraColumns(policiesByName)

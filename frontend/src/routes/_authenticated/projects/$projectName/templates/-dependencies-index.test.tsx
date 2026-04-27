@@ -16,6 +16,7 @@ import { vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 
 // ---------------------------------------------------------------------------
 // Router mock
@@ -127,6 +128,7 @@ function setupMocks({
   error = null as Error | null,
   userRole = Role.OWNER,
 } = {}) {
+  mockResourcePermissionsForRole(userRole)
   ;(useGetProject as Mock).mockReturnValue({
     data: { name: 'test-project', userRole },
     isPending: false,

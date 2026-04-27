@@ -44,6 +44,11 @@ import { useGetProjectSettings, useGetProjectSettingsRaw, useUpdateProjectSettin
 import { useGetOrganization } from '@/queries/organizations'
 import { useListFolders } from '@/queries/folders'
 import { useAuth } from '@/lib/auth'
+import { namespaceForOrg } from '@/lib/scope-labels'
+import {
+  isResourcePermissionAllowedForRole,
+  mockResourcePermissions,
+} from '@/test/resource-permissions'
 import { ProjectSettingsPage } from './index'
 
 const mockProject = {
@@ -76,6 +81,11 @@ const mockFolders = [
 function setupMocks(overrides: Partial<typeof mockProject> = {}, orgOverrides: Partial<typeof mockOrg> = {}) {
   const project = { ...mockProject, ...overrides }
   const org = { ...mockOrg, ...orgOverrides }
+  mockResourcePermissions((attr) => {
+    const role =
+      attr.name === namespaceForOrg(project.organization) ? org.userRole : project.userRole
+    return isResourcePermissionAllowedForRole(role, attr)
+  })
 
   ;(useGetProject as Mock).mockReturnValue({
     data: project,

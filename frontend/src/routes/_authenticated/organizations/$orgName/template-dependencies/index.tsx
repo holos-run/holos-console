@@ -11,7 +11,6 @@
 
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { StandardPageLayout } from '@/components/page-layout'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
@@ -20,9 +19,14 @@ import {
   useListTemplateDependencies,
   useDeleteTemplateDependency,
 } from '@/queries/templateDependencies'
-import { useGetOrganization } from '@/queries/organizations'
+import { useResourcePermissions } from '@/queries/permissions'
 import { useProject } from '@/lib/project-context'
 import { namespaceForProject } from '@/lib/scope-labels'
+import {
+  createTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+} from '@/lib/resource-permissions'
 
 // ---------------------------------------------------------------------------
 // Route
@@ -68,14 +72,16 @@ export function OrgTemplateDependenciesIndexPage({
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
 
-  const { data: org } = useGetOrganization(orgName)
   const { selectedProject } = useProject()
-
-  const userRole = org?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
   // TemplateDependencies are project-scoped. Use the selected project namespace.
   const namespace = selectedProject ? namespaceForProject(selectedProject) : ''
+  const createPermission = useMemo(
+    () => createTemplateResourcePermission(templateResources.templateDependencies, namespace),
+    [namespace],
+  )
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canCreate = hasPermission(permissionsQuery.data, createPermission)
 
   const {
     data: dependencies = [],
@@ -118,10 +124,10 @@ export function OrgTemplateDependenciesIndexPage({
         id: 'TemplateDependency',
         label: 'Template Dependency',
         newHref: `/organizations/${orgName}/template-dependencies/new`,
-        canCreate: canWrite,
+        canCreate,
       },
     ],
-    [orgName, canWrite],
+    [orgName, canCreate],
   )
 
   // ---------------------------------------------------------------------------

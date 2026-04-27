@@ -1,13 +1,17 @@
+import { useMemo, useState } from 'react'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useCreateTemplateGrant } from '@/queries/templateGrants'
+import { useResourcePermissions } from '@/queries/permissions'
 import { namespaceForOrg } from '@/lib/scope-labels'
-import { useGetOrganization } from '@/queries/organizations'
 import { ScopePicker } from '@/components/scope-picker/ScopePicker'
 import type { Scope } from '@/components/scope-picker/ScopePicker'
 import { GrantForm } from '@/components/template-grants/GrantForm'
-import { useState } from 'react'
+import {
+  createTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+} from '@/lib/resource-permissions'
 
 export const Route = createFileRoute(
   '/_authenticated/organizations/$orgName/template-grants/new',
@@ -35,10 +39,6 @@ export function CreateOrgTemplateGrantPage({
   const orgName = propOrgName ?? routeOrgName ?? ''
 
   const navigate = useNavigate()
-  const { data: org } = useGetOrganization(orgName)
-
-  const userRole = org?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
   // ScopePicker controls org vs folder scope. Defaults to 'organization'.
   const [scope, setScope] = useState<Scope>('organization')
@@ -47,6 +47,12 @@ export function CreateOrgTemplateGrantPage({
   const namespace = scope === 'organization' ? namespaceForOrg(orgName) : ''
 
   const createMutation = useCreateTemplateGrant(namespace)
+  const createPermission = useMemo(
+    () => createTemplateResourcePermission(templateResources.templateGrants, namespace),
+    [namespace],
+  )
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canWrite = hasPermission(permissionsQuery.data, createPermission)
 
   return (
     <Card>

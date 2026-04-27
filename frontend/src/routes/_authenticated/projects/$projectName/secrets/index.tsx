@@ -6,15 +6,19 @@
  * Detail and new/edit flows are unchanged — only the list page is rewritten.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { StandardPageLayout } from '@/components/page-layout'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
 import { useAllSecretsForProject, useDeleteSecret } from '@/queries/secrets'
-import { useGetProject } from '@/queries/projects'
+import { useResourcePermissions } from '@/queries/permissions'
+import { namespaceForProject } from '@/lib/scope-labels'
+import {
+  createNamespacedResourcePermission,
+  hasPermission,
+} from '@/lib/resource-permissions'
 
 export const Route = createFileRoute('/_authenticated/projects/$projectName/secrets/')({
   validateSearch: parseGridSearch,
@@ -26,14 +30,17 @@ export function SecretsListPage() {
   const search = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
 
-  const { data: project } = useGetProject(projectName)
-
   const { data: secretRows = [], isPending, error } = useAllSecretsForProject(projectName)
 
   const deleteMutation = useDeleteSecret(projectName)
 
-  const userRole = project?.userRole ?? Role.VIEWER
-  const canCreate = userRole === Role.OWNER || userRole === Role.EDITOR
+  const namespace = namespaceForProject(projectName)
+  const createPermission = useMemo(
+    () => createNamespacedResourcePermission('', 'secrets', namespace),
+    [namespace],
+  )
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canCreate = hasPermission(permissionsQuery.data, createPermission)
 
   // Map SecretRow → ResourceGrid Row.
   // HOL-990 AC1.1: Resource ID is the bare metadata.name, not a composite

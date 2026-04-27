@@ -17,16 +17,20 @@
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { HelpCircle } from 'lucide-react'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { StandardPageLayout } from '@/components/page-layout'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
 import type { ResourceGridSearch } from '@/components/resource-grid/types'
 import { Button } from '@/components/ui/button'
 import { TemplatesHelpPane } from '@/components/templates/TemplatesHelpPane'
-import { useGetProject } from '@/queries/projects'
 import { useListTemplates, useDeleteTemplate } from '@/queries/templates'
+import { useResourcePermissions } from '@/queries/permissions'
 import { namespaceForProject } from '@/lib/scope-labels'
+import {
+  createTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+} from '@/lib/resource-permissions'
 
 // ---------------------------------------------------------------------------
 // Route search — extends ResourceGridSearch with the help pane state
@@ -94,10 +98,12 @@ export function ProjectTemplatesIndexPage({
 
   const namespace = namespaceForProject(projectName)
 
-  // Project data — used to determine the user's role for create permissions.
-  const { data: project } = useGetProject(projectName)
-  const userRole = project?.userRole ?? Role.VIEWER
-  const canCreate = userRole === Role.OWNER || userRole === Role.EDITOR
+  const createPermission = useMemo(
+    () => createTemplateResourcePermission(templateResources.templates, namespace),
+    [namespace],
+  )
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canCreate = hasPermission(permissionsQuery.data, createPermission)
 
   // Project-scoped templates list — key shared with detail/edit page.
   const {

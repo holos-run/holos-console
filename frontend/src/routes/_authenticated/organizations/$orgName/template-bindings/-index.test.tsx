@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { Mock } from 'vitest'
 import React from 'react'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 
 // ---------------------------------------------------------------------------
 // Router mock — Route.useParams / useSearch / useNavigate / fullPath
@@ -117,6 +118,7 @@ function setup(
   isPending = false,
   error: Error | null = null,
 ) {
+  mockResourcePermissionsForRole(userRole)
   ;(useListTemplatePolicyBindings as Mock).mockReturnValue({
     data: isPending ? undefined : bindings,
     isPending,

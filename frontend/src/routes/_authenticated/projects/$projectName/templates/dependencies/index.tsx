@@ -5,15 +5,14 @@
  * $projectName URL parameter via namespaceForProject(). The project name also
  * keeps the Templates collapsible group open in the sidebar (HOL-1014).
  *
- * HOL-1023: added "New" header action gated on project OWNER/EDITOR role,
- * navigating to the org-scoped /template-dependencies/new route.
+ * HOL-1023: added "New" header action navigating to the org-scoped
+ * /template-dependencies/new route.
  *
  * The sidebar nesting was implemented in HOL-1014.
  */
 
 import { useCallback, useMemo } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { StandardPageLayout } from '@/components/page-layout'
 import type { Row } from '@/components/resource-grid/types'
 import { parseGridSearch } from '@/components/resource-grid/url-state'
@@ -22,9 +21,14 @@ import {
   useListTemplateDependencies,
   useDeleteTemplateDependency,
 } from '@/queries/templateDependencies'
-import { useGetProject } from '@/queries/projects'
+import { useResourcePermissions } from '@/queries/permissions'
 import { namespaceForProject } from '@/lib/scope-labels'
 import { useOrg } from '@/lib/org-context'
+import {
+  createTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+} from '@/lib/resource-permissions'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -70,10 +74,12 @@ export function TemplateDependenciesIndexPage({
   // selectedOrg is used to build detailHref links and the New route URL.
   const { selectedOrg } = useOrg()
 
-  // Project role — used to gate the "New" button (OWNER or EDITOR can create).
-  const { data: project } = useGetProject(projectName)
-  const userRole = project?.userRole ?? Role.VIEWER
-  const canCreate = userRole === Role.OWNER || userRole === Role.EDITOR
+  const createPermission = useMemo(
+    () => createTemplateResourcePermission(templateResources.templateDependencies, namespace),
+    [namespace],
+  )
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canCreate = hasPermission(permissionsQuery.data, createPermission)
 
   const {
     data: dependencies = [],

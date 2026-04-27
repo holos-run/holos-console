@@ -44,7 +44,12 @@ import { useGetProjectSettings, useGetProjectSettingsRaw, useUpdateProjectSettin
 import { useGetOrganization } from '@/queries/organizations'
 import { useListFolders } from '@/queries/folders'
 import { useAuth } from '@/lib/auth'
+import { namespaceForOrg } from '@/lib/scope-labels'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import {
+  isResourcePermissionAllowedForRole,
+  mockResourcePermissions,
+} from '@/test/resource-permissions'
 import { ProjectSettingsPage } from './index'
 
 const mockProject = {
@@ -65,6 +70,12 @@ function setupMocks(overrides: {
   orgUserRole?: number
 } = {}) {
   const project = { ...mockProject, ...overrides.projectOverrides }
+  const orgUserRole = overrides.orgUserRole ?? Role.OWNER
+  mockResourcePermissions((attr) => {
+    const role =
+      attr.name === namespaceForOrg(project.organization) ? orgUserRole : project.userRole
+    return isResourcePermissionAllowedForRole(role, attr)
+  })
   ;(useGetProject as Mock).mockReturnValue({ data: project, isPending: false, error: null })
   ;(useUpdateProject as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false })
   ;(useUpdateProjectSharing as Mock).mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false })
@@ -85,7 +96,7 @@ function setupMocks(overrides: {
     isPending: false,
   })
   ;(useGetOrganization as Mock).mockReturnValue({
-    data: { name: 'my-org', userRole: overrides.orgUserRole ?? Role.OWNER },
+    data: { name: 'my-org', userRole: orgUserRole },
     isPending: false,
     error: null,
   })
@@ -139,8 +150,8 @@ describe('ProjectSettingsPage -- Features section', () => {
     })
   })
 
-  it('toggle is disabled when user is not org-level owner', () => {
-    setupMocks({ orgUserRole: Role.EDITOR })
+  it('toggle is disabled when org update permission is denied', () => {
+    setupMocks({ orgUserRole: Role.VIEWER })
     render(<ProjectSettingsPage />)
     const toggle = screen.getByRole('switch', { name: /deployments/i })
     expect(toggle).toBeDisabled()
@@ -160,11 +171,11 @@ describe('ProjectSettingsPage -- Features section', () => {
     expect(toggle).not.toBeDisabled()
   })
 
-  it('toggle is disabled when org data is not available', () => {
+  it('toggle remains enabled when org data is not available but project org is known', () => {
     setupMocks()
     ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: true, error: null })
     render(<ProjectSettingsPage />)
     const toggle = screen.getByRole('switch', { name: /deployments/i })
-    expect(toggle).toBeDisabled()
+    expect(toggle).not.toBeDisabled()
   })
 })

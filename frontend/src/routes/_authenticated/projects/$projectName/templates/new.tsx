@@ -35,6 +35,7 @@ import {
   useListLinkableTemplates,
 } from '@/queries/templates'
 import { namespaceForProject } from '@/lib/scope-labels'
+import { connectErrorMessage } from '@/lib/connect-toast'
 
 // ---------------------------------------------------------------------------
 // Route search — optional clone source pre-selection (HOL-975)
@@ -169,7 +170,7 @@ export function CloneTemplatePage({
         params: { projectName, templateName: name.trim() },
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(connectErrorMessage(err))
     }
   }
 

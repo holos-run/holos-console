@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import type { LinkedTemplateRef } from '@/queries/templateDependencies'
+import { connectErrorMessage } from '@/lib/connect-toast'
 
 /**
  * DependencyFormValues are the shape of data emitted by DependencyForm on submit.
@@ -123,7 +124,7 @@ export function DependencyForm({
         cascadeDelete,
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(connectErrorMessage(err))
     }
   }
 

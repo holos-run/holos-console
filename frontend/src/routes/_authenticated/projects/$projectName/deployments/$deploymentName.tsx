@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { StringListInput } from '@/components/string-list-input'
@@ -36,7 +36,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { ArrowLeft, CheckCircle2, ExternalLink, Info, TriangleAlert, XCircle } from 'lucide-react'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import type {
   ContainerStatus,
   DeploymentDependency,
@@ -56,13 +55,20 @@ import {
   useSetDependencyEdgeCascadeDelete,
   useUpdateDeployment,
 } from '@/queries/deployments'
-import { useGetProject } from '@/queries/projects'
+import { useResourcePermissions } from '@/queries/permissions'
 import { isSafeHttpUrl } from '@/lib/url'
 import { PolicySection } from '@/components/policy-drift/PolicySection'
 import { SharedDependencyBadge } from '@/components/deployments/SharedDependencyBadge'
 import { CascadeDeleteToggle } from '@/components/deployments/CascadeDeleteToggle'
 import { ReverseDependents } from '@/components/templates/ReverseDependents'
 import { namespaceForProject } from '@/lib/scope-labels'
+import { connectErrorMessage } from '@/lib/connect-toast'
+import {
+  deleteNamespacedResourcePermission,
+  DEPLOYMENTS_API_GROUP,
+  hasPermission,
+  updateNamespacedResourcePermission,
+} from '@/lib/resource-permissions'
 
 type DeploymentTab = 'status' | 'logs' | 'preview'
 
@@ -126,7 +132,7 @@ function DependencyEdgeCascadeRow({
       )}
       {mutation.error && (
         <Alert variant="destructive">
-          <AlertDescription>{mutation.error.message}</AlertDescription>
+          <AlertDescription>{connectErrorMessage(mutation.error)}</AlertDescription>
         </Alert>
       )}
       <CascadeDeleteToggle
@@ -345,7 +351,6 @@ export function DeploymentDetailPage({
   const navigate = useNavigate()
   const { data: deployment, isPending, error } = useGetDeployment(projectName, deploymentName)
   const { data: status } = useGetDeploymentStatus(projectName, deploymentName, { refetchInterval: 5000 })
-  const { data: project } = useGetProject(projectName)
   const { data: policyState, isPending: isPolicyPending, error: policyError } = useGetDeploymentPolicyState(projectName, deploymentName)
   const { data: renderPreview, isPending: isPreviewPending, error: previewError } = useGetDeploymentRenderPreview(projectName, deploymentName)
 
@@ -393,9 +398,28 @@ export function DeploymentDetailPage({
     }
   }, [deployment?.image, deployment?.tag, deployment?.port, deployment?.command, deployment?.args, deployment?.env])
 
-  const userRole = project?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
-  const canDelete = userRole === Role.OWNER
+  const namespace = namespaceForProject(projectName)
+  const updatePermission = useMemo(
+    () => updateNamespacedResourcePermission(
+      DEPLOYMENTS_API_GROUP,
+      'deployments',
+      namespace,
+      deploymentName,
+    ),
+    [namespace, deploymentName],
+  )
+  const deletePermission = useMemo(
+    () => deleteNamespacedResourcePermission(
+      DEPLOYMENTS_API_GROUP,
+      'deployments',
+      namespace,
+      deploymentName,
+    ),
+    [namespace, deploymentName],
+  )
+  const permissionsQuery = useResourcePermissions([updatePermission, deletePermission])
+  const canWrite = hasPermission(permissionsQuery.data, updatePermission)
+  const canDelete = hasPermission(permissionsQuery.data, deletePermission)
 
   const handleRedeployOpen = () => {
     setRedeployImage(deployment?.image ?? '')
@@ -428,7 +452,7 @@ export function DeploymentDetailPage({
       })
       toast.success('Reconcile requested')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      toast.error(connectErrorMessage(err))
     }
   }
 
@@ -447,7 +471,7 @@ export function DeploymentDetailPage({
       setRedeployOpen(false)
       toast.success('Deployment updated')
     } catch (err) {
-      setRedeployError(err instanceof Error ? err.message : String(err))
+      setRedeployError(connectErrorMessage(err))
     }
   }
 
@@ -456,7 +480,9 @@ export function DeploymentDetailPage({
       await deleteMutation.mutateAsync({ name: deploymentName })
       setDeleteOpen(false)
       navigate({ to: '/projects/$projectName/deployments', params: { projectName } })
-    } catch { /* error shown via mutation */ }
+    } catch (err) {
+      toast.error(connectErrorMessage(err))
+    }
   }
 
   if (isPending) {
@@ -1033,7 +1059,7 @@ export function DeploymentDetailPage({
           </DialogHeader>
           {deleteMutation.error && (
             <Alert variant="destructive">
-              <AlertDescription>{deleteMutation.error.message}</AlertDescription>
+              <AlertDescription>{connectErrorMessage(deleteMutation.error)}</AlertDescription>
             </Alert>
           )}
           <DialogFooter>

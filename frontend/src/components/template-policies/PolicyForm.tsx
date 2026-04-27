@@ -13,6 +13,7 @@ import {
   type RuleDraft,
 } from '@/components/template-policies/rule-draft'
 import { useListLinkableTemplates } from '@/queries/templates'
+import { connectErrorMessage } from '@/lib/connect-toast'
 
 /**
  * PolicyScope captures the allowed scope types for a template policy. The
@@ -134,7 +135,7 @@ export function PolicyForm({
         rules: rules.map(ruleDraftToProto),
       })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(connectErrorMessage(err))
     }
   }
 

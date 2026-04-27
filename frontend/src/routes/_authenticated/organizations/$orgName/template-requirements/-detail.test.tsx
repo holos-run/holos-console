@@ -70,6 +70,7 @@ import {
 } from '@/queries/templateRequirements'
 import { useGetOrganization } from '@/queries/organizations'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 import { OrgTemplateRequirementDetailPage } from './$requirementName'
 
 function makeMockRequirement() {
@@ -94,6 +95,7 @@ function setupMocks(
   userRole: Role = Role.OWNER,
   requirement: ReturnType<typeof makeMockRequirement> | undefined = makeMockRequirement(),
 ) {
+  mockResourcePermissionsForRole(userRole)
   ;(useGetTemplateRequirement as Mock).mockReturnValue({
     data: requirement,
     isPending: false,

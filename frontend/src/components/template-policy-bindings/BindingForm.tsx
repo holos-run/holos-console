@@ -25,6 +25,7 @@ import {
   scopeLabelFromNamespace,
   scopeNameFromNamespace,
 } from '@/lib/scope-labels'
+import { connectErrorMessage } from '@/lib/connect-toast'
 
 /**
  * BindingScope captures the allowed scope types for a TemplatePolicyBinding.
@@ -144,7 +145,7 @@ export function BindingForm({
     try {
       await onSubmit(draftToMutationParams(draft))
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(connectErrorMessage(err))
     }
   }
 

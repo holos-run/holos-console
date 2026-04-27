@@ -75,6 +75,7 @@ import {
 import { useGetOrganization } from '@/queries/organizations'
 import { useProject } from '@/lib/project-context'
 import { Role } from '@/gen/holos/console/v1/rbac_pb'
+import { mockResourcePermissionsForRole } from '@/test/resource-permissions'
 import { OrgTemplateDependencyDetailPage } from './$dependencyName'
 
 function makeMockDependency() {
@@ -104,6 +105,7 @@ function setupMocks(
   userRole: Role = Role.OWNER,
   dependency: ReturnType<typeof makeMockDependency> | undefined = makeMockDependency(),
 ) {
+  mockResourcePermissionsForRole(userRole)
   ;(useGetTemplateDependency as Mock).mockReturnValue({
     data: dependency,
     isPending: false,

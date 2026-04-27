@@ -8,16 +8,22 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { ConfirmDeleteDialog } from '@/components/ui/confirm-delete-dialog'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import {
   useGetTemplateDependency,
   useUpdateTemplateDependency,
   useDeleteTemplateDependency,
 } from '@/queries/templateDependencies'
-import { useGetOrganization } from '@/queries/organizations'
+import { useResourcePermissions } from '@/queries/permissions'
 import { useProject } from '@/lib/project-context'
 import { namespaceForProject } from '@/lib/scope-labels'
 import { DependencyForm } from '@/components/template-dependencies/DependencyForm'
+import { connectErrorMessage } from '@/lib/connect-toast'
+import {
+  deleteTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+  updateTemplateResourcePermission,
+} from '@/lib/resource-permissions'
 
 // The detail route accepts an optional `namespace` search param so the
 // project-scoped index can link directly to a dependency in a known namespace.
@@ -64,19 +70,32 @@ export function OrgTemplateDependencyDetailPage({
   const dependencyName = propDependencyName ?? routeParams.dependencyName ?? ''
 
   const navigate = useNavigate()
-  const { data: org } = useGetOrganization(orgName)
   const { selectedProject } = useProject()
-
-  const userRole = org?.userRole ?? Role.VIEWER
-  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
-  // Delete is OWNER-only in the RBAC cascade for template dependencies.
-  const canDelete = userRole === Role.OWNER
 
   // Namespace resolution: explicit override (for tests) > search param > selected project.
   const namespace =
     namespaceOverride ??
     searchNamespace ??
     (selectedProject ? namespaceForProject(selectedProject) : '')
+  const updatePermission = useMemo(
+    () => updateTemplateResourcePermission(
+      templateResources.templateDependencies,
+      namespace,
+      dependencyName,
+    ),
+    [namespace, dependencyName],
+  )
+  const deletePermission = useMemo(
+    () => deleteTemplateResourcePermission(
+      templateResources.templateDependencies,
+      namespace,
+      dependencyName,
+    ),
+    [namespace, dependencyName],
+  )
+  const permissionsQuery = useResourcePermissions([updatePermission, deletePermission])
+  const canWrite = hasPermission(permissionsQuery.data, updatePermission)
+  const canDelete = hasPermission(permissionsQuery.data, deletePermission)
 
   const {
     data: dependency,
@@ -190,12 +209,16 @@ export function OrgTemplateDependencyDetailPage({
             pendingLabel="Saving..."
             isPending={updateMutation.isPending}
             onSubmit={async (values) => {
-              await updateMutation.mutateAsync({
-                dependent: values.dependent,
-                requires: values.requires,
-                cascadeDelete: values.cascadeDelete,
-              })
-              toast.success('Dependency saved')
+              try {
+                await updateMutation.mutateAsync({
+                  dependent: values.dependent,
+                  requires: values.requires,
+                  cascadeDelete: values.cascadeDelete,
+                })
+                toast.success('Dependency saved')
+              } catch (err) {
+                toast.error(connectErrorMessage(err))
+              }
             }}
             onCancel={() => {
               void navigate({
@@ -228,7 +251,9 @@ export function OrgTemplateDependencyDetailPage({
             })
             toast.success('Dependency deleted')
           } catch (err) {
-            setDeleteError(err instanceof Error ? err : new Error(String(err)))
+            const message = connectErrorMessage(err)
+            setDeleteError(new Error(message))
+            toast.error(message)
           }
         }}
       />

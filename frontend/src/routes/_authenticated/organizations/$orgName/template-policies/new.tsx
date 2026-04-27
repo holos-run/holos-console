@@ -1,14 +1,18 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import { useCreateTemplatePolicy } from '@/queries/templatePolicies'
+import { useResourcePermissions } from '@/queries/permissions'
 import { namespaceForOrg, namespaceForProject } from '@/lib/scope-labels'
-import { useGetOrganization } from '@/queries/organizations'
 import { useProject } from '@/lib/project-context'
 import { ScopePicker } from '@/components/scope-picker/ScopePicker'
 import type { Scope } from '@/components/scope-picker/ScopePicker'
 import { PolicyForm } from '@/components/template-policies/PolicyForm'
+import {
+  createTemplateResourcePermission,
+  hasPermission,
+  templateResources,
+} from '@/lib/resource-permissions'
 
 export const Route = createFileRoute(
   '/_authenticated/organizations/$orgName/template-policies/new',
@@ -36,12 +40,7 @@ export function CreateOrgTemplatePolicyPage({
   const orgName = propOrgName ?? routeOrgName ?? ''
 
   const navigate = useNavigate()
-  const { data: org } = useGetOrganization(orgName)
   const { selectedProject } = useProject()
-
-  const userRole = org?.userRole ?? Role.VIEWER
-  // PERMISSION_TEMPLATE_POLICIES_WRITE cascades to editors too.
-  const canWrite = userRole === Role.OWNER || userRole === Role.EDITOR
 
   // ScopePicker controls which namespace the policy is created in.
   // Defaults to 'organization' so the existing behaviour is preserved.
@@ -53,6 +52,12 @@ export function CreateOrgTemplatePolicyPage({
       : namespaceForOrg(orgName)
 
   const createMutation = useCreateTemplatePolicy(namespace)
+  const createPermission = useMemo(
+    () => createTemplateResourcePermission(templateResources.templatePolicies, namespace),
+    [namespace],
+  )
+  const permissionsQuery = useResourcePermissions([createPermission])
+  const canWrite = hasPermission(permissionsQuery.data, createPermission)
 
   return (
     <Card>

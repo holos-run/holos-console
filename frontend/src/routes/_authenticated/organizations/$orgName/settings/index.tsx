@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
@@ -20,7 +20,6 @@ import { Check, Pencil, X, Table2, Braces } from 'lucide-react'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { RawView } from '@/components/raw-view'
-import { Role } from '@/gen/holos/console/v1/rbac_pb'
 import {
   useGetOrganization,
   useGetOrganizationRaw,
@@ -29,6 +28,14 @@ import {
   useUpdateOrganizationDefaultSharing,
   useDeleteOrganization,
 } from '@/queries/organizations'
+import { useResourcePermissions } from '@/queries/permissions'
+import { connectErrorMessage } from '@/lib/connect-toast'
+import {
+  deleteNamespacePermission,
+  hasPermission,
+  updateNamespacePermission,
+} from '@/lib/resource-permissions'
+import { namespaceForOrg } from '@/lib/scope-labels'
 
 export const Route = createFileRoute('/_authenticated/organizations/$orgName/settings/')({
   component: OrgSettingsRoute,
@@ -56,6 +63,18 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
   const updateOrganizationSharing = useUpdateOrganizationSharing()
   const updateOrganizationDefaultSharing = useUpdateOrganizationDefaultSharing()
   const deleteOrganization = useDeleteOrganization()
+  const namespace = namespaceForOrg(orgName)
+  const updatePermission = useMemo(
+    () => updateNamespacePermission(namespace),
+    [namespace],
+  )
+  const deletePermission = useMemo(
+    () => deleteNamespacePermission(namespace),
+    [namespace],
+  )
+  const permissionsQuery = useResourcePermissions([updatePermission, deletePermission])
+  const canWrite = hasPermission(permissionsQuery.data, updatePermission)
+  const canDelete = hasPermission(permissionsQuery.data, deletePermission)
 
   // View mode: data or raw
   const [viewMode, setViewMode] = useState<'data' | 'raw'>('data')
@@ -83,7 +102,7 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
       setEditingDisplayName(false)
       toast.success('Saved')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      toast.error(connectErrorMessage(err))
     }
   }
 
@@ -93,7 +112,7 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
       setEditingDescription(false)
       toast.success('Saved')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      toast.error(connectErrorMessage(err))
     }
   }
 
@@ -103,7 +122,7 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
       setEditingGatewayNamespace(false)
       toast.success('Saved')
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err))
+      toast.error(connectErrorMessage(err))
     }
   }
 
@@ -120,10 +139,12 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
       await deleteOrganization.mutateAsync({ name: orgName })
       setDeleteOpen(false)
       navigate({ to: '/' })
-    } catch { /* error shown via mutation */ }
+    } catch (err) {
+      toast.error(connectErrorMessage(err))
+    }
   }
 
-  const isOwner = org?.userRole === Role.OWNER
+  const isOwner = canDelete
 
   if (isPending) {
     return (
@@ -233,14 +254,16 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
                 ) : (
                   <>
                     <span className="flex-1 text-sm">{displayName || <span className="text-muted-foreground">No display name</span>}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="edit display name"
-                      onClick={() => { setDraftDisplayName(displayName); setEditingDisplayName(true) }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+                    {canWrite && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="edit display name"
+                        onClick={() => { setDraftDisplayName(displayName); setEditingDisplayName(true) }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
@@ -300,14 +323,16 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
                     <span className={`flex-1 text-sm ${description ? '' : 'text-muted-foreground'}`}>
                       {description || 'No description'}
                     </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="edit description"
-                      onClick={() => { setDraftDescription(description); setEditingDescription(true) }}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+                    {canWrite && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="edit description"
+                        onClick={() => { setDraftDescription(description); setEditingDescription(true) }}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
@@ -360,7 +385,7 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
                     <span className={`flex-1 text-sm ${gatewayNamespace ? 'font-mono' : 'text-muted-foreground'} pt-2`}>
                       {gatewayNamespace || 'Not set — defaults to istio-ingress'}
                     </span>
-                    {isOwner && (
+                    {canWrite && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -422,7 +447,7 @@ export function OrgSettingsPage({ orgName: propOrgName }: { orgName?: string } =
           </DialogHeader>
           {deleteOrganization.error && (
             <Alert variant="destructive">
-              <AlertDescription>{deleteOrganization.error.message}</AlertDescription>
+              <AlertDescription>{connectErrorMessage(deleteOrganization.error)}</AlertDescription>
             </Alert>
           )}
           <DialogFooter>
