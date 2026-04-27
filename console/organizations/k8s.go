@@ -350,7 +350,19 @@ func (c *K8sClient) UpdateOrganizationSharing(ctx context.Context, name string, 
 	ns.Annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
 	// Locked annotations (share-users / share-roles / rbac-share-users) — see
 	// SetDefaultFolder for why the write must use the privileged client.
-	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	updated, err := c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	// Synchronously reconcile per-resource RBAC so that newly-granted users
+	// get their ClusterRoleBindings immediately rather than waiting for the
+	// async reconciler. Without this, callers that grant viewer/editor access
+	// see a window where the granted user can authenticate but cannot list
+	// the org via the impersonated client.
+	if err := resourcerbac.EnsureResourceRBAC(ctx, c.client, updated, resourcerbac.Organizations); err != nil {
+		return nil, fmt.Errorf("reconciling organization RBAC after sharing update: %w", err)
+	}
+	return updated, nil
 }
 
 // GetShareUsers parses the share-users annotation from a namespace.

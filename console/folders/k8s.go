@@ -360,7 +360,16 @@ func (c *K8sClient) UpdateFolderSharing(ctx context.Context, name string, shareU
 	ns.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
 	ns.Annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
 	// Locked annotations — see UpdateParentLabel.
-	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	updated, err := c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, err
+	}
+	// Synchronously reconcile per-resource RBAC so newly-granted users get
+	// their ClusterRoleBindings without waiting for the async reconciler.
+	if err := resourcerbac.EnsureResourceRBAC(ctx, c.client, updated, resourcerbac.Folders); err != nil {
+		return nil, fmt.Errorf("reconciling folder RBAC after sharing update: %w", err)
+	}
+	return updated, nil
 }
 
 // UpdateFolderDefaultSharing updates the default sharing annotations on a folder.
