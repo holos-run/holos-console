@@ -315,7 +315,9 @@ func (c *K8sClient) UpdateParentLabel(ctx context.Context, name, newParentNs str
 		ns.Labels = make(map[string]string)
 	}
 	ns.Labels[v1alpha2.AnnotationParent] = newParentNs
-	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	// Locked label (parent) — namespace-share-annotations-console-only
+	// denies non-console-SA writes to console classification labels.
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // DeleteFolder deletes a managed folder namespace.
@@ -357,7 +359,8 @@ func (c *K8sClient) UpdateFolderSharing(ctx context.Context, name string, shareU
 	ns.Annotations[v1alpha2.AnnotationShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
 	ns.Annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
-	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	// Locked annotations — see UpdateParentLabel.
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // UpdateFolderDefaultSharing updates the default sharing annotations on a folder.
@@ -382,7 +385,8 @@ func (c *K8sClient) UpdateFolderDefaultSharing(ctx context.Context, name string,
 	}
 	ns.Annotations[v1alpha2.AnnotationDefaultShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationDefaultShareRoles] = string(rolesJSON)
-	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	// Locked annotations — see UpdateParentLabel.
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // ListChildFolders returns all folder namespaces whose parent label equals the given namespace.

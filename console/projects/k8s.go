@@ -426,7 +426,9 @@ func (c *K8sClient) UpdateParentLabel(ctx context.Context, name, newParentNs str
 		ns.Labels = make(map[string]string)
 	}
 	ns.Labels[v1alpha2.AnnotationParent] = newParentNs
-	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	// Locked label (parent) — namespace-share-annotations-console-only
+	// denies non-console-SA writes to console classification labels.
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // GetNamespace retrieves any namespace by its full Kubernetes name.
@@ -476,7 +478,8 @@ func (c *K8sClient) UpdateProjectSharing(ctx context.Context, name string, share
 	ns.Annotations[v1alpha2.AnnotationShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
 	ns.Annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
-	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	// Locked annotations — see UpdateParentLabel.
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // NamespaceExists returns true if a namespace with the given name exists.
@@ -600,7 +603,8 @@ func (c *K8sClient) UpdateProjectDefaultSharing(ctx context.Context, name string
 	}
 	ns.Annotations[v1alpha2.AnnotationDefaultShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationDefaultShareRoles] = string(rolesJSON)
-	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	// Locked annotations — see UpdateParentLabel.
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // ProjectCreatorAdapter adapts the projects K8sClient to satisfy the

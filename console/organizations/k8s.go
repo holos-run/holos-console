@@ -274,7 +274,13 @@ func (c *K8sClient) SetDefaultFolder(ctx context.Context, name, folderName strin
 		ns.Annotations = make(map[string]string)
 	}
 	ns.Annotations[v1alpha2.AnnotationDefaultFolder] = folderName
-	_, err = c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	// Locked annotation: the namespace-share-annotations-console-only
+	// ValidatingAdmissionPolicy denies writes to this annotation from any
+	// principal other than the holos-console service account, so the write
+	// must use the privileged client. The user-level authorization for the
+	// org-create flow that calls this method already happened upstream
+	// through the impersonated GetOrganization read above.
+	_, err = c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 	return err
 }
 
@@ -342,7 +348,9 @@ func (c *K8sClient) UpdateOrganizationSharing(ctx context.Context, name string, 
 	ns.Annotations[v1alpha2.AnnotationShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
 	ns.Annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
-	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	// Locked annotations (share-users / share-roles / rbac-share-users) — see
+	// SetDefaultFolder for why the write must use the privileged client.
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // GetShareUsers parses the share-users annotation from a namespace.
@@ -388,7 +396,8 @@ func (c *K8sClient) UpdateOrganizationDefaultRoleGrants(ctx context.Context, nam
 		return nil, fmt.Errorf("marshaling default-share-roles: %w", err)
 	}
 	ns.Annotations[v1alpha2.AnnotationDefaultShareRoles] = string(rolesJSON)
-	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	// Locked annotation (default-share-roles) — see SetDefaultFolder.
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 // UpdateOrganizationDefaultSharing updates the default sharing annotations on an organization namespace.
@@ -413,7 +422,8 @@ func (c *K8sClient) UpdateOrganizationDefaultSharing(ctx context.Context, name s
 	}
 	ns.Annotations[v1alpha2.AnnotationDefaultShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationDefaultShareRoles] = string(rolesJSON)
-	return c.clientset(ctx).CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
+	// Locked annotations (default-share-*) — see SetDefaultFolder.
+	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
 func parseGrantAnnotation(ns *corev1.Namespace, key string) ([]secrets.AnnotationGrant, error) {
