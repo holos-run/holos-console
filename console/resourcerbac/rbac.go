@@ -269,6 +269,9 @@ func resourceRules(name string, cfg KindConfig, role string) []rbacv1.PolicyRule
 	switch NormalizeRole(role) {
 	case RoleEditor:
 		verbs = editorVerbs()
+		if cfg.ClusterScoped {
+			verbs = viewerVerbs()
+		}
 	case RoleOwner:
 		verbs = ownerVerbs()
 		extraRules = ownerRules(name, cfg)
@@ -505,19 +508,23 @@ func reconcileRoleBindings(ctx context.Context, client kubernetes.Interface, obj
 	if creatorSub := creatorSubject(obj); creatorSub != "" {
 		addDesired(ShareTargetUser, secrets.AnnotationGrant{Principal: creatorSub, Role: RoleOwner})
 	}
-	users, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareUsers)
-	if err != nil {
-		return err
-	}
-	for _, grant := range activeGrants(users, now) {
-		addDesired(ShareTargetUser, grant)
-	}
-	groups, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareRoles)
-	if err != nil {
-		return err
-	}
-	for _, grant := range activeGrants(groups, now) {
-		addDesired(ShareTargetGroup, grant)
+	if cfg.ClusterScoped {
+		users, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareUsers)
+		if err != nil {
+			return err
+		}
+		for _, grant := range activeGrants(users, now) {
+			if isSubjectPrincipal(grant.Principal) {
+				addDesired(ShareTargetUser, grant)
+			}
+		}
+		groups, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareRoles)
+		if err != nil {
+			return err
+		}
+		for _, grant := range activeGrants(groups, now) {
+			addDesired(ShareTargetGroup, grant)
+		}
 	}
 
 	selector := labels.SelectorFromSet(labels.Set{
@@ -571,7 +578,9 @@ func reconcileClusterRoleBindings(ctx context.Context, client kubernetes.Interfa
 		return err
 	}
 	for _, grant := range activeGrants(users, now) {
-		addDesired(ShareTargetUser, grant)
+		if isSubjectPrincipal(grant.Principal) {
+			addDesired(ShareTargetUser, grant)
+		}
 	}
 	groups, err := parseShareGrants(obj.GetAnnotations(), v1alpha2.AnnotationShareRoles)
 	if err != nil {
@@ -619,6 +628,11 @@ func activeGrants(grants []secrets.AnnotationGrant, now time.Time) []secrets.Ann
 		filtered = append(filtered, grant)
 	}
 	return secrets.DeduplicateGrants(filtered)
+}
+
+func isSubjectPrincipal(principal string) bool {
+	principal = strings.TrimSpace(principal)
+	return principal != "" && !strings.Contains(principal, "@")
 }
 
 // NextGrantRequeueAfter returns the delay until the next share annotation
