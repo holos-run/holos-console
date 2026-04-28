@@ -203,9 +203,10 @@ func TestCreateProject_CreatesForAuthorizedUser(t *testing.T) {
 	ctx := contextWithClaims("alice@example.com")
 
 	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name:        "new-project",
-		DisplayName: "New Project",
-		Description: "A new project",
+		Name:         "new-project",
+		DisplayName:  "New Project",
+		Description:  "A new project",
+		Organization: "acme",
 	}))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -231,7 +232,8 @@ func TestCreateProject_AutoGrantsOwnerToCreator(t *testing.T) {
 
 	// Create without explicit grants
 	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name: "new-project",
+		Name:         "new-project",
+		Organization: "acme",
 	}))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -272,7 +274,8 @@ func TestCreateProject_DeriveNameFromDisplayName(t *testing.T) {
 	ctx := contextWithClaims("alice@example.com")
 
 	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		DisplayName: "My Frontend App",
+		DisplayName:  "My Frontend App",
+		Organization: "acme",
 	}))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -289,7 +292,8 @@ func TestCreateProject_DeriveNameWithCollision(t *testing.T) {
 	ctx := contextWithClaims("alice@example.com")
 
 	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		DisplayName: "Frontend",
+		DisplayName:  "Frontend",
+		Organization: "acme",
 	}))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -336,7 +340,8 @@ func TestCreateProject_RetriesOnAlreadyExistsRace(t *testing.T) {
 
 	ctx := contextWithClaims("alice@example.com")
 	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		DisplayName: "Frontend",
+		DisplayName:  "Frontend",
+		Organization: "acme",
 	}))
 	if err != nil {
 		t.Fatalf("expected retry to succeed, got %v", err)
@@ -358,7 +363,8 @@ func TestCreateProject_ExplicitNameDoesNotRetry(t *testing.T) {
 	ctx := contextWithClaims("alice@example.com")
 
 	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name: "my-project",
+		Name:         "my-project",
+		Organization: "acme",
 	}))
 	if err == nil {
 		t.Fatal("expected AlreadyExists error for explicit name collision")
@@ -549,7 +555,8 @@ func TestCreateProject_NamespacePrefixIncluded(t *testing.T) {
 
 	ctx := contextWithClaims("alice@example.com")
 	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name: "new-project",
+		Name:         "new-project",
+		Organization: "acme",
 	}))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -941,54 +948,6 @@ func TestCreateProject_RequestGrantsOverrideOrgDefaults(t *testing.T) {
 		}
 	}
 	t.Error("expected bob@example.com in share-users")
-}
-
-func TestCreateProject_WithoutOrg_BehavesAsBeforeNoDefaults(t *testing.T) {
-	existing := managedNS("existing", `[{"principal":"alice@example.com","role":"owner"}]`)
-	orgResolver := &mockOrgDefaultShareResolver{
-		users: map[string]string{"alice@example.com": "owner"},
-		defaultUsers: []secrets.AnnotationGrant{
-			{Principal: "should-not-appear@example.com", Role: "viewer"},
-		},
-	}
-
-	fakeClient := fake.NewClientset(existing)
-	k8s := NewK8sClient(fakeClient, testResolver())
-	handler := NewHandler(k8s, orgResolver)
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	ctx := contextWithClaims("alice@example.com")
-
-	// Create without organization — org defaults should NOT be applied
-	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
-		Name: "standalone-project",
-	}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-
-	if orgResolver.defaultCalled {
-		t.Error("expected org default resolver to NOT be called when no organization is specified")
-	}
-
-	ns, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-prj-standalone-project", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("expected namespace to exist, got %v", err)
-	}
-
-	// Should only have creator as owner, no org defaults
-	users, err := GetShareUsers(ns)
-	if err != nil {
-		t.Fatalf("failed to parse share-users: %v", err)
-	}
-	if len(users) != 1 || users[0].Principal != "alice@example.com" {
-		t.Errorf("expected only creator alice, got %v", users)
-	}
-
-	// Should have no default sharing annotations
-	defaultUsers, _ := GetDefaultShareUsers(ns)
-	if len(defaultUsers) != 0 {
-		t.Errorf("expected no default-share-users, got %v", defaultUsers)
-	}
 }
 
 func assertInvalidArgument(t *testing.T, err error) {
@@ -1408,6 +1367,28 @@ func TestCreateProject_DefaultsToOrgParent(t *testing.T) {
 	parentLabel := ns.Labels[v1alpha2.AnnotationParent]
 	if parentLabel != "holos-org-df-org-b" {
 		t.Errorf("expected parent label 'holos-org-df-org-b', got %q", parentLabel)
+	}
+}
+
+func TestCreateProject_RejectsEmptyOrganization(t *testing.T) {
+	handler := newHandlerWithOrg(
+		&mockOrgResolver{users: map[string]string{"erin@example.com": "owner"}},
+	)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("erin@example.com")
+
+	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+		Name: "df-prj-e",
+	}))
+	if err == nil {
+		t.Fatal("expected empty organization to be rejected, got nil")
+	}
+	connectErr, ok := err.(*connect.Error)
+	if !ok {
+		t.Fatalf("expected *connect.Error, got %T: %v", err, err)
+	}
+	if connectErr.Code() != connect.CodeInvalidArgument {
+		t.Fatalf("expected CodeInvalidArgument, got %v: %v", connectErr.Code(), err)
 	}
 }
 

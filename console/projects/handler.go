@@ -978,6 +978,9 @@ func (h *Handler) resolveParentNS(parentType consolev1.ParentType, parentName st
 }
 
 func validateOrganizationProjectParent(parentType consolev1.ParentType, parentName, organization string) error {
+	if organization == "" {
+		return fmt.Errorf("organization is required")
+	}
 	if parentType != consolev1.ParentType_PARENT_TYPE_UNSPECIFIED && parentType != consolev1.ParentType_PARENT_TYPE_ORGANIZATION {
 		return fmt.Errorf("projects can only be parented by organizations")
 	}
