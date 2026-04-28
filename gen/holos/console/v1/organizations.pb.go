@@ -987,7 +987,7 @@ var File_holos_console_v1_organizations_proto protoreflect.FileDescriptor
 
 const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"\n" +
-	"$holos/console/v1/organizations.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\xa7\x04\n" +
+	"$holos/console/v1/organizations.proto\x12\x10holos.console.v1\x1a\x1bholos/console/v1/rbac.proto\x1a\x1eholos/console/v1/secrets.proto\"\xbd\x04\n" +
 	"\fOrganization\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
@@ -1003,14 +1003,14 @@ const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\n" +
 	" \x01(\tR\tcreatedAt\x12+\n" +
-	"\x11gateway_namespace\x18\f \x01(\tR\x10gatewayNamespace\"\x1a\n" +
+	"\x11gateway_namespace\x18\f \x01(\tR\x10gatewayNamespaceJ\x04\b\v\x10\fR\x0edefault_folder\"\x1a\n" +
 	"\x18ListOrganizationsRequest\"a\n" +
 	"\x19ListOrganizationsResponse\x12D\n" +
 	"\rorganizations\x18\x01 \x03(\v2\x1e.holos.console.v1.OrganizationR\rorganizations\",\n" +
 	"\x16GetOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"]\n" +
 	"\x17GetOrganizationResponse\x12B\n" +
-	"\forganization\x18\x01 \x01(\v2\x1e.holos.console.v1.OrganizationR\forganization\"\xba\x02\n" +
+	"\forganization\x18\x01 \x01(\v2\x1e.holos.console.v1.OrganizationR\forganization\"\xd0\x02\n" +
 	"\x19CreateOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12 \n" +
@@ -1020,9 +1020,9 @@ const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"\vrole_grants\x18\x05 \x03(\v2\x1c.holos.console.v1.ShareGrantR\n" +
 	"roleGrants\x120\n" +
 	"\x11populate_defaults\x18\a \x01(\bH\x00R\x10populateDefaults\x88\x01\x01B\x14\n" +
-	"\x12_populate_defaults\"0\n" +
+	"\x12_populate_defaultsJ\x04\b\x06\x10\aR\x0edefault_folder\"0\n" +
 	"\x1aCreateOrganizationResponse\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xe7\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xfd\x01\n" +
 	"\x19UpdateOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12&\n" +
 	"\fdisplay_name\x18\x02 \x01(\tH\x00R\vdisplayName\x88\x01\x01\x12%\n" +
@@ -1030,7 +1030,7 @@ const file_holos_console_v1_organizations_proto_rawDesc = "" +
 	"\x11gateway_namespace\x18\x05 \x01(\tH\x02R\x10gatewayNamespace\x88\x01\x01B\x0f\n" +
 	"\r_display_nameB\x0e\n" +
 	"\f_descriptionB\x14\n" +
-	"\x12_gateway_namespace\"\x1c\n" +
+	"\x12_gateway_namespaceJ\x04\b\x04\x10\x05R\x0edefault_folder\"\x1c\n" +
 	"\x1aUpdateOrganizationResponse\"/\n" +
 	"\x19DeleteOrganizationRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\x1c\n" +
