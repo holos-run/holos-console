@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -278,6 +279,13 @@ func (a *Applier) DiscoverNamespaces(ctx context.Context, project, deploymentNam
 			LabelSelector: labelSelector,
 		})
 		if err != nil {
+			if apierrors.IsNotFound(err) {
+				slog.DebugContext(ctx, "discover namespaces: resource type does not exist",
+					slog.String("kind", kind),
+					slog.Any("error", err),
+				)
+				continue
+			}
 			listErrors = append(listErrors, fmt.Errorf("listing %s: %w", kind, err))
 			continue
 		}

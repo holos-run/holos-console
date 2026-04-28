@@ -40,13 +40,10 @@ func TestRoleGrantsImpersonationAndRBACReconciliation(t *testing.T) {
 		t.Fatalf("ClusterRole name = %q, want %q", role.Name, consoleClusterRoleName)
 	}
 
-	wantImpersonation := rbacv1.PolicyRule{
-		APIGroups: []string{""},
-		Resources: []string{"groups", "serviceaccounts", "users"},
-		Verbs:     []string{"impersonate"},
-	}
-	if !hasRule(role.Rules, wantImpersonation) {
-		t.Fatalf("ClusterRole missing impersonation rule %+v in rules: %+v", wantImpersonation, role.Rules)
+	for _, resource := range []string{"groups", "serviceaccounts", "users"} {
+		if !hasResourceVerbs(role.Rules, "", resource, []string{"impersonate"}) {
+			t.Fatalf("ClusterRole missing impersonate access on core/%s in rules: %+v", resource, role.Rules)
+		}
 	}
 
 	for _, forbidden := range []string{"userextras/email", "userextras/scopes"} {
@@ -179,7 +176,7 @@ func containsAll(got, want []string) bool {
 
 func hasResource(rules []rbacv1.PolicyRule, apiGroup, resource string) bool {
 	for _, rule := range rules {
-		if !reflect.DeepEqual(rule.APIGroups, []string{apiGroup}) {
+		if !containsAll(rule.APIGroups, []string{apiGroup}) {
 			continue
 		}
 		for _, got := range rule.Resources {
@@ -193,7 +190,7 @@ func hasResource(rules []rbacv1.PolicyRule, apiGroup, resource string) bool {
 
 func hasResourceVerbs(rules []rbacv1.PolicyRule, apiGroup, resource string, verbs []string) bool {
 	for _, rule := range rules {
-		if !reflect.DeepEqual(rule.APIGroups, []string{apiGroup}) {
+		if !containsAll(rule.APIGroups, []string{apiGroup}) {
 			continue
 		}
 		if !containsAll(rule.Resources, []string{resource}) {

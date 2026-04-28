@@ -231,11 +231,11 @@ func (h *Handler) WithDependencyEdgeWriter(w DependencyEdgeWriter) *Handler {
 }
 
 // WithPolicyDriftChecker wires the TemplatePolicy drift checker used by
-// Create/UpdateDeployment to persist the resolved render set, by
-// GetDeploymentPolicyState to surface the full snapshot, and by
+// GetDeploymentPolicyState to surface the full snapshot and by
 // DeploymentStatusSummary.policy_drift to flag drifted deployments on the
-// list view. A nil checker disables drift persistence and reporting so
-// local/dev wiring without a policy resolver still works.
+// list view. The DeploymentReconciler records the applied render set after
+// successful apply; a nil checker disables drift reporting so local/dev wiring
+// without a policy resolver still works.
 func (h *Handler) WithPolicyDriftChecker(c PolicyDriftChecker) *Handler {
 	h.policyDriftChecker = c
 	return h
@@ -274,12 +274,10 @@ func (h *Handler) renderResources(ctx context.Context, project, deploymentName, 
 // we fall back to a project-level render (ADR 016 Decision 8).
 //
 // The second return value is the policy-effective ref set the provider
-// reported — callers on the Create/Update write path pass it to
-// PolicyDriftChecker.RecordApplied so the applied-render-set store stays
-// aligned with what was actually rendered (HOL-569). Preview callers can
-// ignore it. It is nil when no AncestorTemplateProvider is configured or the
-// provider returned an error (the render falls back to project-only in both
-// cases, so there is no rendered set to record).
+// reported. The controller uses the same pipeline result to record the applied
+// render set after a successful apply. Preview callers can ignore it. It is nil
+// when no AncestorTemplateProvider is configured or the provider returned an
+// error (the render falls back to project-only in both cases).
 func (h *Handler) renderResourcesGrouped(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput) (*GroupedResources, []*consolev1.LinkedTemplateRef, error) {
 	return h.pipeline.Render(ctx, project, deploymentName, cueSource, platform, projectInput)
 }
@@ -510,7 +508,7 @@ func (h *Handler) CreateDeployment(
 	}
 
 	rk8s := h.requestK8s(ctx)
-	_, err = rk8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port)
+	_, err = rk8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port, creatorClaimsForPersistence(claims))
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -541,7 +539,7 @@ func (h *Handler) CreateDeployment(
 	// annotation on the ConfigMap for later listing calls.
 	if h.pipeline.CanRender() && h.pipeline.CanApply() {
 		ns := h.k8s.Resolver.ProjectNamespace(project)
-		platformIn := h.buildPlatformInput(ctx, project, ns, claims)
+		platformIn := h.renderTimePlatformInput(ctx, project, ns, claims)
 		projectIn := v1alpha2.ProjectInput{
 			Name:    name,
 			Image:   req.Msg.Image,
@@ -551,6 +549,12 @@ func (h *Handler) CreateDeployment(
 			Env:     envInputs,
 			Port:    defaultPort(int(req.Msg.Port)),
 		}
+		// HOL-1101: render+apply still runs here in addition to the
+		// DeploymentReconciler so that synchronous callers see the
+		// post-apply state (output URL, link aggregation, applied-render-set
+		// baseline) without waiting for a controller round-trip. HOL-1102
+		// strips this path once the controller is the single source of
+		// truth.
 		grouped, effectiveRefs, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed after creating deployment — rolling back",
@@ -571,21 +575,14 @@ func (h *Handler) CreateDeployment(
 			h.rollbackCreate(ctx, ns, project, name)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying deployment resources: %w", applyErr))
 		}
-		// Write-through the effective render set to the applied-render-set
-		// store so GetDeploymentPolicyState and the list-view policy_drift
-		// flag have a baseline to diff against (HOL-569). Skipped when no
-		// checker is wired (local/dev bootstrap without a cluster policy
-		// resolver). When the provider signaled a degraded render by
-		// returning nil effectiveRefs (walker failed / no walker), record
-		// a non-nil empty slice so the baseline reflects reality — zero
-		// ancestor templates actually participated in this apply. This
-		// keeps GetDeploymentPolicyState honest: a subsequent query whose
-		// resolver returns a non-empty current set will correctly report
-		// drift against the empty applied set (review round 2 P2 finding).
-		// A record failure is logged at warn level and does NOT fail the
-		// RPC — the deployment was rendered and applied successfully, and
-		// the set can be reconstructed on the next render. This mirrors
-		// the SetOutputURLAnnotation precedent immediately below.
+		// Seed the applied-render-set baseline synchronously so
+		// GetDeploymentPolicyState and the list-view policy_drift flag have
+		// data to diff against immediately after create — without waiting
+		// for the DeploymentReconciler to catch up. The controller will
+		// re-record the same (or refreshed) baseline after its own apply,
+		// so this is a no-op in steady state. A nil checker disables the
+		// write; record failures are logged and non-fatal because the
+		// deployment itself was applied successfully.
 		if h.policyDriftChecker != nil {
 			refsToRecord := effectiveRefs
 			if refsToRecord == nil {
@@ -705,7 +702,7 @@ func (h *Handler) UpdateDeployment(
 	}
 
 	rk8s := h.requestK8s(ctx)
-	updated, err := rk8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port)
+	updated, err := rk8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port, creatorClaimsForPersistence(claims))
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -734,7 +731,7 @@ func (h *Handler) UpdateDeployment(
 		}
 
 		ns := h.k8s.Resolver.ProjectNamespace(project)
-		platformIn := h.buildPlatformInput(ctx, project, ns, claims)
+		platformIn := h.renderTimePlatformInput(ctx, project, ns, claims)
 		projectIn := v1alpha2.ProjectInput{
 			Name:    name,
 			Image:   image,
@@ -744,6 +741,12 @@ func (h *Handler) UpdateDeployment(
 			Env:     envFromConfigMapAsV1alpha2(updated),
 			Port:    defaultPort(portFromConfigMap(updated)),
 		}
+		// HOL-1101: render+apply still runs here in addition to the
+		// DeploymentReconciler so that synchronous callers see the
+		// post-apply state (output URL, link aggregation, applied-render-set
+		// baseline) without waiting for a controller round-trip. HOL-1102
+		// strips this path once the controller is the single source of
+		// truth.
 		grouped, effectiveRefs, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment update",
@@ -774,15 +777,14 @@ func (h *Handler) UpdateDeployment(
 			)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("reconciling deployment resources: %w", reconcileErr))
 		}
-		// Write-through the effective render set so subsequent policy-state
-		// queries diff against what this update actually rendered (HOL-569).
-		// Same contract as the create path: nil checker is a no-op, record
-		// errors are logged but do not fail the RPC because reconcile
-		// already succeeded. A nil effectiveRefs signals a degraded render
-		// path (walker failed / no walker) — in that case overwrite the
-		// stored baseline with an empty set so any previously recorded
-		// policy-resolved set cannot mask the fact that this reconcile
-		// applied zero ancestor templates (review round 2 P2 finding).
+		// Refresh the applied-render-set baseline synchronously so
+		// GetDeploymentPolicyState and the list-view policy_drift flag have
+		// up-to-date data immediately after update — without waiting for
+		// the DeploymentReconciler to catch up. The controller will
+		// re-record the same baseline after its own apply, so this is a
+		// no-op in steady state. A nil checker disables the write; record
+		// failures are logged and non-fatal because the reconcile itself
+		// succeeded.
 		if h.policyDriftChecker != nil {
 			refsToRecord := effectiveRefs
 			if refsToRecord == nil {
@@ -1020,8 +1022,13 @@ func (h *Handler) GetDeploymentRenderPreview(
 	cueTemplate := tmplCM.Data[cueTemplateKey]
 
 	// Build platform input from authenticated claims and resolved namespace.
+	// Use the same narrowed claim set the synchronous Create/Update render
+	// paths and the controller's reconcile use, so the preview the user
+	// sees matches the manifests that will actually be applied. A preview
+	// rendered with the full RPC claims would silently surface
+	// platform.claims.sub/.groups values that the apply path never sees.
 	ns := h.k8s.Resolver.ProjectNamespace(project)
-	platformIn := h.buildPlatformInput(ctx, project, ns, claims)
+	platformIn := h.renderTimePlatformInput(ctx, project, ns, claims)
 
 	// Build project input from the deployment's stored fields.
 	projectIn := v1alpha2.ProjectInput{
@@ -1598,16 +1605,7 @@ func (h *Handler) buildPlatformInput(ctx context.Context, project, namespace str
 		GatewayNamespace: h.resolveGatewayNamespace(ctx, project),
 	}
 	if claims != nil {
-		pi.Claims = v1alpha2.Claims{
-			Iss:           claims.Iss,
-			Sub:           claims.Sub,
-			Exp:           claims.Exp,
-			Iat:           claims.Iat,
-			Email:         claims.Email,
-			EmailVerified: claims.EmailVerified,
-			Name:          claims.Name,
-			Groups:        claims.Roles,
-		}
+		pi.Claims = platformClaimsFromRPC(claims)
 	}
 	if h.ancestorWalker != nil {
 		folders, err := h.ancestorWalker.GetProjectFolders(ctx, project)
@@ -1624,6 +1622,54 @@ func (h *Handler) buildPlatformInput(ctx context.Context, project, namespace str
 			pi.Folders = folderInfos
 		}
 	}
+	return pi
+}
+
+func platformClaimsFromRPC(claims *rpc.Claims) v1alpha2.Claims {
+	if claims == nil {
+		return v1alpha2.Claims{}
+	}
+	return v1alpha2.Claims{
+		Iss:           claims.Iss,
+		Sub:           claims.Sub,
+		Exp:           claims.Exp,
+		Iat:           claims.Iat,
+		Email:         claims.Email,
+		EmailVerified: claims.EmailVerified,
+		Name:          claims.Name,
+		Groups:        claims.Roles,
+	}
+}
+
+// creatorClaimsForPersistence returns the minimal subset of OIDC claims that
+// the controller needs to replay at render time. Only Email is retained — it
+// is the single field templates reference today via platform.claims.email
+// (e.g. the "console.holos.run/deployer-email" annotation). Time-sensitive
+// fields (Exp, Iat), the issuer, the subject, group membership, and other
+// auth-flow attributes are intentionally dropped: persisting them in a
+// ConfigMap would replay stale auth state on every reconcile and let any
+// actor with edit access to the project ConfigMap spoof those attributes for
+// future controller renders.
+func creatorClaimsForPersistence(claims *rpc.Claims) v1alpha2.Claims {
+	if claims == nil {
+		return v1alpha2.Claims{}
+	}
+	return v1alpha2.Claims{
+		Email: claims.Email,
+	}
+}
+
+// renderTimePlatformInput is like buildPlatformInput but narrows the Claims
+// field to the same subset that creatorClaimsForPersistence persists. The
+// DeploymentReconciler renders from the persisted ConfigMap, so the handler
+// must render with the same narrowed view to produce identical manifests —
+// otherwise a template that referenced platform.claims.sub or .groups would
+// render one way synchronously in CreateDeployment/UpdateDeployment and a
+// different way during the controller's reconcile, producing apply churn
+// and surprising drift.
+func (h *Handler) renderTimePlatformInput(ctx context.Context, project, namespace string, claims *rpc.Claims) v1alpha2.PlatformInput {
+	pi := h.buildPlatformInput(ctx, project, namespace, claims)
+	pi.Claims = creatorClaimsForPersistence(claims)
 	return pi
 }
 

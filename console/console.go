@@ -669,6 +669,19 @@ func (s *Server) Serve(ctx context.Context) error {
 			WithDependencyEdgeProvider(appliedRenderStateClient).
 			WithOrganizationGatewayResolver(gatewayResolver)
 		if s.controllerMgr != nil {
+			controllerPipeline := deploymentrender.NewPipeline(
+				s.controllerMgr.GetClient(),
+				nsResolver,
+				&deploymentrender.CueRenderer{},
+				deploymentsApplier,
+			).WithAncestorTemplateProvider(ancestorTemplateResolver).
+				WithStrictAncestorResolution()
+			s.controllerMgr.ConfigureDeploymentReconciler(
+				controllerPipeline,
+				deploymentDriftAdapter,
+				projectFolderResolver,
+				gatewayResolver,
+			)
 			deploymentsHandler = deploymentsHandler.WithDependencyEdgeWriter(
 				deployments.NewDependencyEdgeCRDWriter(s.controllerMgr.GetClient()),
 			)

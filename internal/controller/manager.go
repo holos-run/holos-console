@@ -52,6 +52,7 @@ import (
 	v1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
 	"github.com/holos-run/holos-console/console/deployments"
 	"github.com/holos-run/holos-console/console/resourcerbac"
+	"github.com/holos-run/holos-console/internal/deploymentrender"
 )
 
 var controllerRuntimeLoggerMu sync.Mutex
@@ -148,6 +149,7 @@ type Manager struct {
 	cacheSyncTimeout time.Duration
 	logger           *slog.Logger
 	grantCache       *deployments.TemplateGrantCache
+	deployment       *DeploymentReconciler
 }
 
 // NewManager constructs a Manager from the provided rest config, scheme, and
@@ -303,13 +305,15 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 		return nil, fmt.Errorf("controller.NewManager: registering TemplateRequirementReconciler: %w", err)
 	}
 
-	if err := (&DeploymentReconciler{
+	deploymentReconciler := &DeploymentReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("deployment-controller"), //nolint:staticcheck // Controller-runtime still accepts this recorder in the pinned version.
-	}).SetupWithManager(mgr); err != nil {
+	}
+	if err := deploymentReconciler.SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("controller.NewManager: registering DeploymentReconciler: %w", err)
 	}
+	m.deployment = deploymentReconciler
 
 	if err := resourcerbac.SetupTemplateReconciler(mgr, rbacClientset); err != nil {
 		return nil, fmt.Errorf("controller.NewManager: registering Template RBAC reconciler: %w", err)
@@ -403,6 +407,23 @@ func (m *Manager) GetClient() client.Client {
 // issuing direct API server reads.
 func (m *Manager) GetGrantCache() *deployments.TemplateGrantCache {
 	return m.grantCache
+}
+
+// ConfigureDeploymentReconciler wires the render/apply collaborators that are
+// built after the manager exists. It must be called before Start.
+func (m *Manager) ConfigureDeploymentReconciler(
+	pipeline *deploymentrender.Pipeline,
+	recorder DeploymentPolicyDriftRecorder,
+	walker DeploymentAncestorWalker,
+	gatewayResolver DeploymentGatewayResolver,
+) {
+	if m == nil || m.deployment == nil {
+		return
+	}
+	m.deployment.Pipeline = pipeline
+	m.deployment.PolicyDriftRecorder = recorder
+	m.deployment.AncestorWalker = walker
+	m.deployment.GatewayResolver = gatewayResolver
 }
 
 // GetManager returns the underlying controller-runtime manager.Manager for

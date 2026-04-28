@@ -50,6 +50,7 @@ const (
 	ArgsKey     = "args"
 	EnvKey      = "env"
 	PortKey     = "port"
+	ClaimsKey   = "claims"
 )
 
 // K8sClient wraps Kubernetes client operations for deployments.
@@ -140,7 +141,7 @@ func (k *K8sClient) GetDeployment(ctx context.Context, project, name string) (*c
 // principal is plumbed through unchanged here — the Role + RoleBinding
 // provisioning lives in EnsureDeploymentRBAC, which the handler invokes after
 // CreateDeployment returns the live CR (so the OwnerReference UID is known).
-func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, tag, tmpl, displayName, description string, command, args []string, env []v1alpha2.EnvVar, port int32) (*corev1.ConfigMap, error) {
+func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, tag, tmpl, displayName, description string, command, args []string, env []v1alpha2.EnvVar, port int32, renderClaims ...v1alpha2.Claims) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "creating deployment in kubernetes",
 		slog.String("project", project),
@@ -180,6 +181,10 @@ func (k *K8sClient) CreateDeployment(ctx context.Context, project, name, image, 
 	}
 	if port > 0 {
 		cm.Data[PortKey] = strconv.Itoa(int(port))
+	}
+	if len(renderClaims) > 0 {
+		b, _ := json.Marshal(renderClaims[0])
+		cm.Data[ClaimsKey] = string(b)
 	}
 	created, err := k.client.CoreV1().ConfigMaps(ns).Create(ctx, cm, metav1.CreateOptions{})
 	if err != nil {
@@ -505,7 +510,7 @@ var _ = types.ApplyPatchType
 // Only non-nil scalar fields are updated. Non-empty command/args slices replace stored values.
 // A non-nil env slice (even if empty) replaces the stored env vars.
 // A non-nil port pointer updates the stored port value.
-func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, image, tag, displayName, description *string, command, args []string, env []v1alpha2.EnvVar, port *int32) (*corev1.ConfigMap, error) {
+func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, image, tag, displayName, description *string, command, args []string, env []v1alpha2.EnvVar, port *int32, renderClaims ...v1alpha2.Claims) (*corev1.ConfigMap, error) {
 	ns := k.Resolver.ProjectNamespace(project)
 	slog.DebugContext(ctx, "updating deployment in kubernetes",
 		slog.String("project", project),
@@ -552,6 +557,10 @@ func (k *K8sClient) UpdateDeployment(ctx context.Context, project, name string, 
 		} else {
 			delete(cm.Data, PortKey)
 		}
+	}
+	if len(renderClaims) > 0 {
+		b, _ := json.Marshal(renderClaims[0])
+		cm.Data[ClaimsKey] = string(b)
 	}
 	updated, err := k.client.CoreV1().ConfigMaps(ns).Update(ctx, cm, metav1.UpdateOptions{})
 	if err != nil {

@@ -8,8 +8,11 @@ rules:
   - ""
   resources:
   - configmaps
+  - secrets
+  - services
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
@@ -26,7 +29,6 @@ rules:
   - ""
   resources:
   - groups
-  - serviceaccounts
   - users
   verbs:
   - impersonate
@@ -39,6 +41,20 @@ rules:
   - list
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - impersonate
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
   - deployments.holos.run
   resources:
   - deployments
@@ -53,11 +69,30 @@ rules:
 - apiGroups:
   - deployments.holos.run
   resources:
+  - deployments/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - deployments.holos.run
+  resources:
   - deployments/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes
+  - referencegrants
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:

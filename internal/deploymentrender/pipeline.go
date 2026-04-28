@@ -42,6 +42,7 @@ type Pipeline struct {
 	renderer                 Renderer
 	applier                  ResourceApplier
 	ancestorTemplateProvider AncestorTemplateProvider
+	strictAncestorResolution bool
 }
 
 // NewPipeline constructs a deployment render/apply pipeline from injected
@@ -60,6 +61,14 @@ func NewPipeline(_ ctrlclient.Client, projectNamespaces ProjectNamespaceResolver
 // for organization/folder-level renders.
 func (p *Pipeline) WithAncestorTemplateProvider(provider AncestorTemplateProvider) *Pipeline {
 	p.ancestorTemplateProvider = provider
+	return p
+}
+
+// WithStrictAncestorResolution makes ancestor-template resolution errors fail
+// the render instead of falling back to a project-only render. Controllers use
+// this path so missing policy-required templates surface on Deployment status.
+func (p *Pipeline) WithStrictAncestorResolution() *Pipeline {
+	p.strictAncestorResolution = true
 	return p
 }
 
@@ -85,7 +94,9 @@ func (p *Pipeline) Render(ctx context.Context, project, deploymentName, cueSourc
 	var ancestorSources []string
 	var effectiveRefs []*consolev1.LinkedTemplateRef
 	readPlatformResources := false
-	if sources, refs, ok := p.resolveAncestorTemplateSources(ctx, project, deploymentName); ok {
+	if sources, refs, ok, err := p.resolveAncestorTemplateSources(ctx, project, deploymentName); err != nil {
+		return nil, nil, err
+	} else if ok {
 		ancestorSources = sources
 		effectiveRefs = refs
 		readPlatformResources = true
@@ -135,19 +146,22 @@ func (p *Pipeline) DiscoverNamespaces(ctx context.Context, project, deploymentNa
 	return p.applier.DiscoverNamespaces(ctx, project, deploymentName)
 }
 
-func (p *Pipeline) resolveAncestorTemplateSources(ctx context.Context, project, deploymentName string) ([]string, []*consolev1.LinkedTemplateRef, bool) {
+func (p *Pipeline) resolveAncestorTemplateSources(ctx context.Context, project, deploymentName string) ([]string, []*consolev1.LinkedTemplateRef, bool, error) {
 	if p.ancestorTemplateProvider == nil || p.projectNamespaces == nil {
-		return nil, nil, false
+		return nil, nil, false, nil
 	}
 	projectNs := p.projectNamespaces.ProjectNamespace(project)
 	sources, effectiveRefs, err := p.ancestorTemplateProvider.ListAncestorTemplateSources(ctx, projectNs, deploymentName)
 	if err != nil {
+		if p.strictAncestorResolution {
+			return nil, nil, false, fmt.Errorf("resolving ancestor templates: %w", err)
+		}
 		slog.WarnContext(ctx, "ancestor template resolution failed, skipping platform template unification",
 			slog.String("project", project),
 			slog.String("deployment", deploymentName),
 			slog.Any("error", err),
 		)
-		return nil, nil, false
+		return nil, nil, false, nil
 	}
-	return sources, effectiveRefs, true
+	return sources, effectiveRefs, true, nil
 }
