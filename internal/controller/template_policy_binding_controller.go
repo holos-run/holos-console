@@ -427,12 +427,6 @@ func (r *TemplatePolicyBindingReconciler) bindingsForTemplate(ctx context.Contex
 		return nil
 	}
 	projectName := r.projectNameForNamespace(tmpl.Namespace)
-	if projectName == "" {
-		// The Template does not live in a project-labeled namespace,
-		// so no ProjectTemplate target can reference it. We still
-		// check via a label lookup below for the future case where
-		// a binding names a non-project-namespace target.
-	}
 
 	var list v1alpha1.TemplatePolicyBindingList
 	if err := r.List(ctx, &list); err != nil {

@@ -148,10 +148,6 @@ func templateConfigMap(scope scopeKind, scopePrefix, scopeName, name, displayNam
 	}
 }
 
-func projectTemplateConfigMap(project, name, displayName, description, cueTemplate string) *corev1.ConfigMap {
-	return templateConfigMap(scopeKindProject, "prj-", project, name, displayName, description, cueTemplate)
-}
-
 // orgTemplateConfigMap builds a fixture for an org-scope template. The first
 // boolean was the pre-HOL-565 "mandatory" toggle and is ignored; the second
 // controls the enabled annotation.

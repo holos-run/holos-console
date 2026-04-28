@@ -207,7 +207,7 @@ func selectorForBinding(binding *secretsv1alpha1.SecretInjectionPolicyBinding) (
 		// namespace, refuse to build an AP whose selector would
 		// silently match same-named Pods in the binding's namespace.
 		if t.Namespace != binding.Namespace {
-			return nil, fmt.Errorf("Service target %s/%s references a namespace other than the binding's own %q — AuthorizationPolicy is namespace-scoped",
+			return nil, fmt.Errorf("service target %s/%s references a namespace other than the binding's own %q - AuthorizationPolicy is namespace-scoped",
 				t.Namespace, t.Name, binding.Namespace)
 		}
 		serviceTargets = append(serviceTargets, t.Name)

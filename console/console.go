@@ -227,7 +227,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, "ok")
+		_, _ = io.WriteString(w, "ok")
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
@@ -243,11 +243,11 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 		if s.ready.Load() && cacheReady {
 			w.WriteHeader(http.StatusOK)
-			io.WriteString(w, "ok")
+			_, _ = io.WriteString(w, "ok")
 			return
 		}
 		w.WriteHeader(http.StatusServiceUnavailable)
-		io.WriteString(w, "not ready")
+		_, _ = io.WriteString(w, "not ready")
 	})
 
 	// Configure ConnectRPC interceptors for public routes (no auth required)
@@ -1042,7 +1042,7 @@ func (h *uiHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(data)
+	_, _ = w.Write(data)
 }
 
 func (h *uiHandler) serveIfFile(w http.ResponseWriter, r *http.Request, name string) bool {
@@ -1050,7 +1050,9 @@ func (h *uiHandler) serveIfFile(w http.ResponseWriter, r *http.Request, name str
 	if err != nil {
 		return false
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	info, err := file.Stat()
 	if err != nil || info.IsDir() {
@@ -1086,7 +1088,9 @@ func handleDebugOIDC(w http.ResponseWriter, r *http.Request, issuer string, clie
 		http.Error(w, fmt.Sprintf("Failed to fetch discovery document: %v", err), http.StatusInternalServerError)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	var discovery map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&discovery); err != nil {
@@ -1107,7 +1111,9 @@ func handleDebugOIDC(w http.ResponseWriter, r *http.Request, issuer string, clie
 	w.Header().Set("Content-Type", "application/json")
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	enc.Encode(debugInfo)
+	if err := enc.Encode(debugInfo); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode debug response: %v", err), http.StatusInternalServerError)
+	}
 }
 
 // tlsConfig returns the TLS configuration for the server.

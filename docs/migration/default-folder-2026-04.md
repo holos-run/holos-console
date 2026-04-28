@@ -93,7 +93,7 @@ cluster is healthy.
 ## Related
 
 - Parent: [HOL-1091](https://linear.app/holos-run/issue/HOL-1091) — remove
-  default_folder functionality entirely.
+  the legacy implicit-folder functionality entirely.
 - This phase: [HOL-1096](https://linear.app/holos-run/issue/HOL-1096) —
   drop the annotation constant, admission policy references, and migrate live
   cluster state.

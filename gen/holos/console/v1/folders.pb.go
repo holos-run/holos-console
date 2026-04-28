@@ -604,7 +604,7 @@ type UpdateFolderRequest struct {
 	// description is the new description. When unset, preserves the existing value.
 	Description *string `protobuf:"bytes,4,opt,name=description,proto3,oneof" json:"description,omitempty"`
 	// parent_type is the new parent type for reparenting. When unset, no reparenting occurs.
-	// Requires PERMISSION_REPARENT on both source and destination parents (ADR 022 Decision 5).
+	// Requires PERMISSION_REPARENT on both source and destination parents.
 	ParentType *ParentType `protobuf:"varint,5,opt,name=parent_type,json=parentType,proto3,enum=holos.console.v1.ParentType,oneof" json:"parent_type,omitempty"`
 	// parent_name is the new parent name for reparenting. When unset, no reparenting occurs.
 	// Must be set together with parent_type.

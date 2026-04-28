@@ -4,6 +4,15 @@ All notable changes to holos-console are documented here.
 
 ## [Unreleased]
 
+### Removed — Legacy implicit folder parenting (HOL-1097)
+
+Removed the remaining legacy implicit-folder API reservations and stale documentation
+references after the project-parenting cleanup. Projects without an explicit
+folder parent now live directly under their organization. Operators upgrading
+clusters that previously carried the removed annotation should run the
+`cmd/holos-console-migrate-default-folder` cleanup documented in
+`docs/migration/default-folder-2026-04.md`.
+
 ### Changed — Cert-handling guard rails for fresh dev VMs (HOL-1089)
 
 Three coordinated updates so a fresh Debian 13 (Trixie) VM can pass

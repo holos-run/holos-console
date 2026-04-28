@@ -32,7 +32,7 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	"github.com/holos-run/holos-console/console/secretrbac"
 	"github.com/holos-run/holos-console/console/secrets"
-	"github.com/holos-run/holos-console/console/sharing/legacy"
+	"github.com/holos-run/holos-console/console/sharing/legacy" //nolint:staticcheck // The migration intentionally reads legacy annotations.
 )
 
 func main() {
@@ -58,11 +58,11 @@ func parseFlags(args []string, errOut io.Writer) (*options, error) {
 	fs := flag.NewFlagSet("holos-console-migrate-rbac", flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	fs.Usage = func() {
-		fmt.Fprintf(errOut, "Usage: %s [flags]\n\n", fs.Name())
-		fmt.Fprintln(errOut, "One-shot migration: translate legacy Secret-sharing annotations into RoleBindings.")
-		fmt.Fprintln(errOut, "Runs as the console service-account (the operator-supplied kubeconfig).")
-		fmt.Fprintln(errOut)
-		fmt.Fprintln(errOut, "Flags:")
+		_, _ = fmt.Fprintf(errOut, "Usage: %s [flags]\n\n", fs.Name())
+		_, _ = fmt.Fprintln(errOut, "One-shot migration: translate legacy Secret-sharing annotations into RoleBindings.")
+		_, _ = fmt.Fprintln(errOut, "Runs as the console service-account (the operator-supplied kubeconfig).")
+		_, _ = fmt.Fprintln(errOut)
+		_, _ = fmt.Fprintln(errOut, "Flags:")
 		fs.PrintDefaults()
 	}
 	opts := &options{}
@@ -600,13 +600,15 @@ func PrintReport(w io.Writer, report *Report, applied bool) error {
 		return err
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAMESPACE\tBINDINGS\tALREADY-PRESENT\tNS-ANNOTATIONS-STRIPPED\tSECRETS\tWARNINGS\tERROR")
+	if _, err := fmt.Fprintln(tw, "NAMESPACE\tBINDINGS\tALREADY-PRESENT\tNS-ANNOTATIONS-STRIPPED\tSECRETS\tWARNINGS\tERROR"); err != nil {
+		return err
+	}
 	for _, nr := range report.Namespaces {
 		errSummary := nr.Error
 		if errSummary == "" {
 			errSummary = "-"
 		}
-		fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%d\t%d\t%s\n",
+		if _, err := fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%d\t%d\t%s\n",
 			nr.Namespace,
 			len(nr.BindingsCreated),
 			len(nr.BindingsAlreadyPresent),
@@ -614,7 +616,9 @@ func PrintReport(w io.Writer, report *Report, applied bool) error {
 			len(nr.SecretsProcessed),
 			len(nr.Warnings),
 			errSummary,
-		)
+		); err != nil {
+			return err
+		}
 	}
 	if err := tw.Flush(); err != nil {
 		return err

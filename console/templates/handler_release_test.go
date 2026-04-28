@@ -232,34 +232,3 @@ func TestGetRelease(t *testing.T) {
 		}
 	})
 }
-
-// assertEnvRoundTripped verifies the TemplateDefaults produced by
-// CreateRelease / GetRelease preserved the three env-var variants used by
-// the HOL-693 regression guard: a literal value, a SecretKeyRef, and a
-// ConfigMapKeyRef.
-func assertEnvRoundTripped(t *testing.T, got *consolev1.TemplateDefaults) {
-	t.Helper()
-	if got == nil {
-		t.Fatal("expected non-nil defaults in response")
-	}
-	if len(got.GetEnv()) != 3 {
-		t.Fatalf("expected 3 env entries, got %d", len(got.GetEnv()))
-	}
-	if v := got.GetEnv()[0].GetValue(); v != "literal" {
-		t.Errorf("PLAIN: expected literal %q, got %q", "literal", v)
-	}
-	secretRef := got.GetEnv()[1].GetSecretKeyRef()
-	if secretRef == nil {
-		t.Fatal("DB_PASSWORD: expected SecretKeyRef source, got nil (regression: env ref dropped)")
-	}
-	if secretRef.GetName() != "db-credentials" || secretRef.GetKey() != "password" {
-		t.Errorf("DB_PASSWORD: unexpected SecretKeyRef: %+v", secretRef)
-	}
-	cmRef := got.GetEnv()[2].GetConfigMapKeyRef()
-	if cmRef == nil {
-		t.Fatal("FEATURE_FLAGS: expected ConfigMapKeyRef source, got nil (regression: env ref dropped)")
-	}
-	if cmRef.GetName() != "feature-flags" || cmRef.GetKey() != "json" {
-		t.Errorf("FEATURE_FLAGS: unexpected ConfigMapKeyRef: %+v", cmRef)
-	}
-}

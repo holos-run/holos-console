@@ -387,7 +387,7 @@ func TestWalkAncestors_OrgProject(t *testing.T) {
 		v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 		v1alpha2.AnnotationParent:  "holos-org-acme",
 	})
-	client := fake.NewSimpleClientset(&orgNS, &projNS)
+	client := fake.NewClientset(&orgNS, &projNS)
 	w := &Walker{Client: client, Resolver: defaultResolver()}
 
 	ancestors, err := w.WalkAncestors(t.Context(), "holos-prj-api")
@@ -418,7 +418,7 @@ func TestWalkAncestors_OrgFolderProject(t *testing.T) {
 		v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 		v1alpha2.AnnotationParent:  "holos-fld-payments",
 	})
-	client := fake.NewSimpleClientset(&orgNS, &folderNS, &projNS)
+	client := fake.NewClientset(&orgNS, &folderNS, &projNS)
 	w := &Walker{Client: client, Resolver: defaultResolver()}
 
 	ancestors, err := w.WalkAncestors(t.Context(), "holos-prj-api")
@@ -460,7 +460,7 @@ func TestWalkAncestors_MaxDepth(t *testing.T) {
 		v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 		v1alpha2.AnnotationParent:  "holos-fld-f3",
 	})
-	client := fake.NewSimpleClientset(&orgNS, &f1, &f2, &f3, &proj)
+	client := fake.NewClientset(&orgNS, &f1, &f2, &f3, &proj)
 	w := &Walker{Client: client, Resolver: defaultResolver()}
 
 	ancestors, err := w.WalkAncestors(t.Context(), "holos-prj-api")
@@ -494,7 +494,7 @@ func TestWalkAncestors_DepthExceeded(t *testing.T) {
 	})
 	nss = append(nss, proj)
 
-	client := fake.NewSimpleClientset(nsSliceToObjects(nss)...)
+	client := fake.NewClientset(nsSliceToObjects(nss)...)
 	w := &Walker{Client: client, Resolver: defaultResolver()}
 
 	_, err := w.WalkAncestors(t.Context(), "holos-prj-api")
@@ -517,7 +517,7 @@ func TestWalkAncestors_CycleDetected(t *testing.T) {
 		v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 		v1alpha2.AnnotationParent:  "holos-fld-f1",
 	})
-	client := fake.NewSimpleClientset(&f1, &f2, &proj)
+	client := fake.NewClientset(&f1, &f2, &proj)
 	w := &Walker{Client: client, Resolver: defaultResolver()}
 
 	_, err := w.WalkAncestors(t.Context(), "holos-prj-api")
@@ -536,7 +536,7 @@ func TestWalkAncestors_MissingParentLabel(t *testing.T) {
 		v1alpha2.LabelResourceType: v1alpha2.ResourceTypeProject,
 		v1alpha2.AnnotationParent:  "holos-fld-f1",
 	})
-	client := fake.NewSimpleClientset(&folder, &proj)
+	client := fake.NewClientset(&folder, &proj)
 	w := &Walker{Client: client, Resolver: defaultResolver()}
 
 	_, err := w.WalkAncestors(t.Context(), "holos-prj-api")

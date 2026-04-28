@@ -115,7 +115,9 @@ func HandleTokenExchange(state *DexState) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, "failed to encode token exchange response", http.StatusInternalServerError)
+		}
 	}
 }
 

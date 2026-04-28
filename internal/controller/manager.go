@@ -235,21 +235,21 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 	if err := (&TemplateReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("template-controller"),
+		Recorder: mgr.GetEventRecorderFor("template-controller"), //nolint:staticcheck // Controller-runtime still accepts this recorder in the pinned version.
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("controller.NewManager: registering TemplateReconciler: %w", err)
 	}
 	if err := (&TemplatePolicyReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("template-policy-controller"),
+		Recorder: mgr.GetEventRecorderFor("template-policy-controller"), //nolint:staticcheck // Controller-runtime still accepts this recorder in the pinned version.
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("controller.NewManager: registering TemplatePolicyReconciler: %w", err)
 	}
 	if err := (&TemplatePolicyBindingReconciler{
 		Client:             mgr.GetClient(),
 		Scheme:             mgr.GetScheme(),
-		Recorder:           mgr.GetEventRecorderFor("template-policy-binding-controller"),
+		Recorder:           mgr.GetEventRecorderFor("template-policy-binding-controller"), //nolint:staticcheck // Controller-runtime still accepts this recorder in the pinned version.
 		NamespacePrefix:    opts.NamespacePrefix,
 		OrganizationPrefix: opts.OrganizationPrefix,
 		FolderPrefix:       opts.FolderPrefix,
@@ -281,7 +281,7 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 	if err := (&TemplateDependencyReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
-		Recorder:  mgr.GetEventRecorderFor("template-dependency-controller"),
+		Recorder:  mgr.GetEventRecorderFor("template-dependency-controller"), //nolint:staticcheck // Controller-runtime still accepts this recorder in the pinned version.
 		Validator: grantCache,
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("controller.NewManager: registering TemplateDependencyReconciler: %w", err)
@@ -297,7 +297,7 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 	if err := (&TemplateRequirementReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
-		Recorder:  mgr.GetEventRecorderFor("template-requirement-controller"),
+		Recorder:  mgr.GetEventRecorderFor("template-requirement-controller"), //nolint:staticcheck // Controller-runtime still accepts this recorder in the pinned version.
 		Validator: grantCache,
 	}).SetupWithManager(mgr); err != nil {
 		return nil, fmt.Errorf("controller.NewManager: registering TemplateRequirementReconciler: %w", err)

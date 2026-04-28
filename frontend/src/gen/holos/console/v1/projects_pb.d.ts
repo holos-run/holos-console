@@ -334,7 +334,7 @@ export declare type UpdateProjectRequest = Message<"holos.console.v1.UpdateProje
   /**
    * parent_type is the new parent type for reparenting. When unset, no reparenting occurs.
    * When set, it must be PARENT_TYPE_ORGANIZATION.
-   * Requires PERMISSION_REPARENT on both source and destination parents (ADR 022 Decision 5).
+   * Requires PERMISSION_REPARENT on both source and destination parents.
    *
    * @generated from field: optional holos.console.v1.ParentType parent_type = 4;
    */

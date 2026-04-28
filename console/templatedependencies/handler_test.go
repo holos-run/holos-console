@@ -67,7 +67,7 @@ func newTestHandler(t *testing.T, shareUsers map[string]string, objs ...ctrlclie
 	r := newTestResolver()
 	projectNS := r.ProjectNamespace("checkout")
 
-	kube := fake.NewSimpleClientset()
+	kube := fake.NewClientset()
 	ns, err := kube.CoreV1().Namespaces().Create(context.Background(), &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: projectNS,

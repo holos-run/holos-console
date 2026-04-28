@@ -28,7 +28,7 @@ import (
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 )
 
-const defaultFolderAnnotation = "console.holos.run/default-folder"
+const removedAnnotationKey = "console.holos.run/default-folder"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
@@ -49,11 +49,11 @@ func parseFlags(args []string, errOut io.Writer) (*options, error) {
 	fs := flag.NewFlagSet("holos-console-migrate-default-folder", flag.ContinueOnError)
 	fs.SetOutput(errOut)
 	fs.Usage = func() {
-		fmt.Fprintf(errOut, "Usage: %s [flags]\n\n", fs.Name())
-		fmt.Fprintln(errOut, "One-shot migration: strip the removed default-folder annotation from organization namespaces.")
-		fmt.Fprintln(errOut, "Runs as the operator-supplied kubeconfig identity.")
-		fmt.Fprintln(errOut)
-		fmt.Fprintln(errOut, "Flags:")
+		_, _ = fmt.Fprintf(errOut, "Usage: %s [flags]\n\n", fs.Name())
+		_, _ = fmt.Fprintln(errOut, "One-shot migration: strip the removed default-folder annotation from organization namespaces.")
+		_, _ = fmt.Fprintln(errOut, "Runs as the operator-supplied kubeconfig identity.")
+		_, _ = fmt.Fprintln(errOut)
+		_, _ = fmt.Fprintln(errOut, "Flags:")
 		fs.PrintDefaults()
 	}
 	opts := &options{}
@@ -105,9 +105,9 @@ func buildClient(kubeconfig string) (kubernetes.Interface, error) {
 }
 
 type NamespaceReport struct {
-	Namespace             string
-	DefaultFolderFound    bool
-	DefaultFolderStripped bool
+	Namespace         string
+	AnnotationFound   bool
+	AnnotationRemoved bool
 }
 
 type Report struct {
@@ -127,20 +127,20 @@ func Migrate(ctx context.Context, client kubernetes.Interface, apply bool) (*Rep
 	for i := range nsList.Items {
 		ns := &nsList.Items[i]
 		nr := NamespaceReport{Namespace: ns.Name}
-		_, found := ns.Annotations[defaultFolderAnnotation]
-		nr.DefaultFolderFound = found
+		_, found := ns.Annotations[removedAnnotationKey]
+		nr.AnnotationFound = found
 		if found {
 			if apply {
-				if err := stripDefaultFolderAnnotation(ctx, client, ns); err != nil {
-					return nil, fmt.Errorf("stripping %s from namespace %q: %w", defaultFolderAnnotation, ns.Name, err)
+				if err := stripRemovedAnnotation(ctx, client, ns); err != nil {
+					return nil, fmt.Errorf("stripping %s from namespace %q: %w", removedAnnotationKey, ns.Name, err)
 				}
 			}
-			nr.DefaultFolderStripped = true
+			nr.AnnotationRemoved = true
 		}
 		report.Namespaces = append(report.Namespaces, nr)
 	}
 	if apply {
-		if err := assertNoDefaultFolderAnnotations(ctx, client); err != nil {
+		if err := assertNoRemovedAnnotations(ctx, client); err != nil {
 			return nil, err
 		}
 	}
@@ -164,7 +164,7 @@ func listOrganizationNamespaces(ctx context.Context, client kubernetes.Interface
 	return nsList, nil
 }
 
-func stripDefaultFolderAnnotation(ctx context.Context, client kubernetes.Interface, ns *corev1.Namespace) error {
+func stripRemovedAnnotation(ctx context.Context, client kubernetes.Interface, ns *corev1.Namespace) error {
 	live, err := client.CoreV1().Namespaces().Get(ctx, ns.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
@@ -172,15 +172,15 @@ func stripDefaultFolderAnnotation(ctx context.Context, client kubernetes.Interfa
 	if live.Annotations == nil {
 		return nil
 	}
-	if _, ok := live.Annotations[defaultFolderAnnotation]; !ok {
+	if _, ok := live.Annotations[removedAnnotationKey]; !ok {
 		return nil
 	}
-	delete(live.Annotations, defaultFolderAnnotation)
+	delete(live.Annotations, removedAnnotationKey)
 	_, err = client.CoreV1().Namespaces().Update(ctx, live, metav1.UpdateOptions{})
 	return err
 }
 
-func assertNoDefaultFolderAnnotations(ctx context.Context, client kubernetes.Interface) error {
+func assertNoRemovedAnnotations(ctx context.Context, client kubernetes.Interface) error {
 	nsList, err := listOrganizationNamespaces(ctx, client)
 	if err != nil {
 		return err
@@ -188,12 +188,12 @@ func assertNoDefaultFolderAnnotations(ctx context.Context, client kubernetes.Int
 	var remaining []string
 	for i := range nsList.Items {
 		ns := &nsList.Items[i]
-		if _, ok := ns.Annotations[defaultFolderAnnotation]; ok {
+		if _, ok := ns.Annotations[removedAnnotationKey]; ok {
 			remaining = append(remaining, ns.Name)
 		}
 	}
 	if len(remaining) > 0 {
-		return fmt.Errorf("%s still present on organization namespaces: %v", defaultFolderAnnotation, remaining)
+		return fmt.Errorf("%s still present on organization namespaces: %v", removedAnnotationKey, remaining)
 	}
 	return nil
 }
@@ -214,13 +214,17 @@ func PrintReport(w io.Writer, report *Report, applied bool) error {
 		return err
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAMESPACE\tDEFAULT-FOLDER-FOUND\tDEFAULT-FOLDER-STRIPPED")
+	if _, err := fmt.Fprintln(tw, "NAMESPACE\tDEFAULT-FOLDER-FOUND\tDEFAULT-FOLDER-STRIPPED"); err != nil {
+		return err
+	}
 	for _, nr := range report.Namespaces {
-		fmt.Fprintf(tw, "%s\t%t\t%t\n",
+		if _, err := fmt.Fprintf(tw, "%s\t%t\t%t\n",
 			nr.Namespace,
-			nr.DefaultFolderFound,
-			nr.DefaultFolderStripped,
-		)
+			nr.AnnotationFound,
+			nr.AnnotationRemoved,
+		); err != nil {
+			return err
+		}
 	}
 	return tw.Flush()
 }
