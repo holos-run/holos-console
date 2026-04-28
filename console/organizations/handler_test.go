@@ -59,7 +59,6 @@ type testHandlerOpts struct {
 	creatorUsers       []string
 	creatorRoles       []string
 	projectLister      ProjectLister
-	withFolderCreator  bool
 	withDefaultsSeeder bool
 	templateSeeder     TemplateSeeder
 	projectCreator     ProjectCreator
@@ -79,12 +78,6 @@ func newTestHandlerWithOpts(opts testHandlerOpts, namespaces ...*corev1.Namespac
 	k8s := NewK8sClient(fakeClient, r)
 	handler := NewHandler(k8s, opts.projectLister, opts.disableOrgCreation, opts.creatorUsers, opts.creatorRoles)
 
-	if opts.withFolderCreator {
-		fc := &k8sFolderCreator{client: fakeClient, resolver: r}
-		folderPrefix := r.NamespacePrefix + r.FolderPrefix
-		handler.WithFolderCreator(fc, fc, folderPrefix)
-	}
-
 	if opts.withDefaultsSeeder {
 		ts := opts.templateSeeder
 		if ts == nil {
@@ -100,84 +93,6 @@ func newTestHandlerWithOpts(opts testHandlerOpts, namespaces ...*corev1.Namespac
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	return handler
-}
-
-// k8sFolderCreator implements FolderCreator and FolderLister for tests.
-type k8sFolderCreator struct {
-	client   *fake.Clientset
-	resolver *resolver.Resolver
-	createFn func(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error)
-}
-
-func (f *k8sFolderCreator) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
-	if f.createFn != nil {
-		return f.createFn(ctx, name, displayName, description, org, parentNs, creatorEmail, creatorSubject, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
-	}
-	usersJSON, _ := json.Marshal(shareUsers)
-	rolesJSON, _ := json.Marshal(shareRoles)
-	annotations := map[string]string{
-		v1alpha2.AnnotationShareUsers: string(usersJSON),
-		v1alpha2.AnnotationShareRoles: string(rolesJSON),
-	}
-	if len(defaultShareUsers) > 0 {
-		defaultUsersJSON, _ := json.Marshal(defaultShareUsers)
-		annotations[v1alpha2.AnnotationDefaultShareUsers] = string(defaultUsersJSON)
-	}
-	if len(defaultShareRoles) > 0 {
-		defaultRolesJSON, _ := json.Marshal(defaultShareRoles)
-		annotations[v1alpha2.AnnotationDefaultShareRoles] = string(defaultRolesJSON)
-	}
-	if displayName != "" {
-		annotations[v1alpha2.AnnotationDisplayName] = displayName
-	}
-	if creatorEmail != "" {
-		annotations[v1alpha2.AnnotationCreatorEmail] = creatorEmail
-	}
-	if creatorSubject != "" {
-		annotations[v1alpha2.AnnotationCreatorSubject] = creatorSubject
-	}
-	ns := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: f.resolver.FolderNamespace(name),
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeFolder,
-				v1alpha2.LabelOrganization: org,
-				v1alpha2.LabelFolder:       name,
-				v1alpha2.AnnotationParent:  parentNs,
-			},
-			Annotations: annotations,
-		},
-	}
-	return f.client.CoreV1().Namespaces().Create(ctx, ns, metav1.CreateOptions{})
-}
-
-func (f *k8sFolderCreator) DeleteFolder(ctx context.Context, name string) error {
-	nsName := f.resolver.FolderNamespace(name)
-	return f.client.CoreV1().Namespaces().Delete(ctx, nsName, metav1.DeleteOptions{})
-}
-
-func (f *k8sFolderCreator) NamespaceExists(ctx context.Context, nsName string) (bool, error) {
-	_, err := f.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
-}
-
-func (f *k8sFolderCreator) GetFolder(ctx context.Context, name string) (*corev1.Namespace, error) {
-	nsName := f.resolver.FolderNamespace(name)
-	ns, err := f.client.CoreV1().Namespaces().Get(ctx, nsName, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
-	if ns.Labels == nil || ns.Labels[v1alpha2.LabelResourceType] != v1alpha2.ResourceTypeFolder {
-		return nil, fmt.Errorf("namespace %q is not a folder", nsName)
-	}
-	return ns, nil
 }
 
 // ---- ListOrganizations tests ----
@@ -763,159 +678,32 @@ func TestCreateOrganization_NamespacePrefixIncluded(t *testing.T) {
 	}
 }
 
-// ---- Default folder creation tests ----
+// ---- Default folder removal tests ----
 
-func TestCreateOrganization_CreatesDefaultFolder(t *testing.T) {
-	handler := newTestHandlerWithOpts(testHandlerOpts{withFolderCreator: true})
+func TestCreateOrganization_DoesNotCreateDefaultFolder(t *testing.T) {
+	handler := newTestHandler()
 	ctx := contextWithClaims("alice@example.com")
 
 	resp, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
-		Name:        "test-df-org",
+		Name:        "test-no-df-org",
 		DisplayName: "Test Org",
 	}))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if resp.Msg.Name != "test-df-org" {
-		t.Errorf("expected org name 'test-df-org', got %q", resp.Msg.Name)
+	if resp.Msg.Name != "test-no-df-org" {
+		t.Errorf("expected org name 'test-no-df-org', got %q", resp.Msg.Name)
 	}
 
-	// Verify the default folder namespace was created with slug "default".
-	fc := handler.folderCreator.(*k8sFolderCreator)
-	folderNsName := handler.k8s.resolver.NamespacePrefix + handler.k8s.resolver.FolderPrefix + "default"
-	ns, err := fc.client.CoreV1().Namespaces().Get(context.Background(), folderNsName, metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("expected default folder namespace %q to exist, got %v", folderNsName, err)
-	}
-	if ns.Labels[v1alpha2.LabelOrganization] != "test-df-org" {
-		t.Errorf("expected folder org label 'test-df-org', got %q", ns.Labels[v1alpha2.LabelOrganization])
-	}
-	if ns.Labels[v1alpha2.AnnotationParent] != "holos-org-test-df-org" {
-		t.Errorf("expected folder parent 'holos-org-test-df-org', got %q", ns.Labels[v1alpha2.AnnotationParent])
-	}
-	if ns.Annotations[v1alpha2.AnnotationDisplayName] != "Default" {
-		t.Errorf("expected folder display name 'Default', got %q", ns.Annotations[v1alpha2.AnnotationDisplayName])
-	}
-
-	// Verify default folder annotation on the org namespace.
-	orgNs, err := fc.client.CoreV1().Namespaces().Get(context.Background(), "holos-org-test-df-org", metav1.GetOptions{})
+	orgNs, err := handler.k8s.client.CoreV1().Namespaces().Get(context.Background(), "holos-org-test-no-df-org", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("expected org namespace to exist, got %v", err)
 	}
-	if orgNs.Annotations[v1alpha2.AnnotationDefaultFolder] != "default" {
-		t.Errorf("expected default-folder annotation 'default', got %q", orgNs.Annotations[v1alpha2.AnnotationDefaultFolder])
+	if len(orgNs.Annotations) == 0 {
+		return
 	}
-}
-
-func TestCreateOrganization_DefaultFolderCollisionAddsSuffix(t *testing.T) {
-	// Pre-create a namespace that would collide with the default folder slug.
-	existingFolder := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-fld-default",
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				v1alpha2.LabelResourceType: v1alpha2.ResourceTypeFolder,
-			},
-		},
-	}
-	handler := newTestHandlerWithOpts(testHandlerOpts{withFolderCreator: true}, existingFolder)
-	ctx := contextWithClaims("alice@example.com")
-
-	resp, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
-		Name: "test-collision-org",
-	}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if resp.Msg.Name != "test-collision-org" {
-		t.Errorf("expected org name 'test-collision-org', got %q", resp.Msg.Name)
-	}
-
-	// Verify the org has a default folder annotation with a suffixed identifier.
-	fc := handler.folderCreator.(*k8sFolderCreator)
-	orgNs, err := fc.client.CoreV1().Namespaces().Get(context.Background(), "holos-org-test-collision-org", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("expected org namespace to exist, got %v", err)
-	}
-	dfAnnotation := orgNs.Annotations[v1alpha2.AnnotationDefaultFolder]
-	if dfAnnotation == "" {
-		t.Fatal("expected default-folder annotation to be set")
-	}
-	if dfAnnotation == "default" {
-		t.Error("expected a suffixed folder identifier due to collision, got 'default'")
-	}
-	// Verify the suffixed folder namespace exists.
-	suffixedNsName := "holos-fld-" + dfAnnotation
-	if _, err := fc.client.CoreV1().Namespaces().Get(context.Background(), suffixedNsName, metav1.GetOptions{}); err != nil {
-		t.Fatalf("expected suffixed folder namespace %q to exist, got %v", suffixedNsName, err)
-	}
-}
-
-func TestCreateOrganization_DefaultFolderCreatorIsOwner(t *testing.T) {
-	handler := newTestHandlerWithOpts(testHandlerOpts{withFolderCreator: true})
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
-		Name: "test-owner-org",
-	}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-
-	fc := handler.folderCreator.(*k8sFolderCreator)
-	ns, err := fc.client.CoreV1().Namespaces().Get(context.Background(), "holos-fld-default", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("expected default folder to exist, got %v", err)
-	}
-
-	var grants []secrets.AnnotationGrant
-	if err := json.Unmarshal([]byte(ns.Annotations[v1alpha2.AnnotationShareUsers]), &grants); err != nil {
-		t.Fatalf("failed to parse share-users: %v", err)
-	}
-	found := false
-	for _, g := range grants {
-		if g.Principal == "alice@example.com" && g.Role == "owner" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected creator as owner in folder share-users, got %v", grants)
-	}
-}
-
-func TestCreateOrganization_RollbackOnFolderFailure(t *testing.T) {
-	objs := []runtime.Object{}
-	fakeClient := fake.NewClientset(objs...)
-	r := testResolver()
-	k8s := NewK8sClient(fakeClient, r)
-	handler := NewHandler(k8s, nil, false, nil, nil)
-
-	// Use a folder creator that always fails.
-	failFC := &k8sFolderCreator{
-		client:   fakeClient,
-		resolver: r,
-		createFn: func(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
-			return nil, fmt.Errorf("simulated folder creation failure")
-		},
-	}
-	folderPrefix := r.NamespacePrefix + r.FolderPrefix
-	handler.WithFolderCreator(failFC, failFC, folderPrefix)
-
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	ctx := contextWithClaims("alice@example.com")
-
-	_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
-		Name: "test-rollback-org",
-	}))
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-
-	// Verify the org namespace was cleaned up.
-	_, getErr := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-org-test-rollback-org", metav1.GetOptions{})
-	if !k8serrors.IsNotFound(getErr) {
-		t.Errorf("expected org namespace to be deleted after rollback, got %v", getErr)
+	if _, ok := orgNs.Annotations["console.holos.run/default-folder"]; ok {
+		t.Fatalf("expected no default-folder annotation on org namespace")
 	}
 }
 
@@ -1186,7 +974,6 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 	t.Run("true creates all expected resources", func(t *testing.T) {
 		ts := &mockTemplateSeeder{}
 		handler := newTestHandlerWithOpts(testHandlerOpts{
-			withFolderCreator:  true,
 			withDefaultsSeeder: true,
 			templateSeeder:     ts,
 		})
@@ -1225,6 +1012,9 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 		if got, want := projectNs.Annotations[v1alpha2.AnnotationCreatorSubject], "sub-alice@example.com"; got != want {
 			t.Fatalf("expected default project creator-sub annotation %q, got %q", want, got)
 		}
+		if got, want := projectNs.Labels[v1alpha2.AnnotationParent], handler.k8s.resolver.OrgNamespace("seed-org"); got != want {
+			t.Fatalf("expected default project parent %q, got %q", want, got)
+		}
 
 		// Verify the seeded project inherited the org's default role grants
 		// (Owner, Editor, Viewer) both as its active role grants and as its
@@ -1260,62 +1050,11 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 		if len(projectDefaultRoles) != 3 {
 			t.Errorf("expected 3 default role grants copied from org, got %d", len(projectDefaultRoles))
 		}
-
-		// Verify the seeded default folder inherited the org's default role
-		// grants on both share-roles and default-share-roles, analogous to
-		// the project assertions above. This guards against regressions of
-		// the bootstrap path skipping the ancestor-default-share merge.
-		fc := handler.folderCreator.(*k8sFolderCreator)
-		orgNsForFolder, err := handler.k8s.GetOrganization(context.Background(), "seed-org")
-		if err != nil {
-			t.Fatalf("failed to get org namespace: %v", err)
-		}
-		folderName := orgNsForFolder.Annotations[v1alpha2.AnnotationDefaultFolder]
-		if folderName == "" {
-			t.Fatalf("expected default folder annotation on org namespace")
-		}
-		folderNsName := fc.resolver.FolderNamespace(folderName)
-		folderNs, err := fc.client.CoreV1().Namespaces().Get(context.Background(), folderNsName, metav1.GetOptions{})
-		if err != nil {
-			t.Fatalf("expected default folder namespace %q to exist, got %v", folderNsName, err)
-		}
-
-		folderRolesAnnotation := folderNs.Annotations[v1alpha2.AnnotationShareRoles]
-		if folderRolesAnnotation == "" {
-			t.Fatalf("expected share-roles annotation on folder namespace")
-		}
-		var folderRoles []secrets.AnnotationGrant
-		if err := json.Unmarshal([]byte(folderRolesAnnotation), &folderRoles); err != nil {
-			t.Fatalf("invalid share-roles annotation on folder: %v", err)
-		}
-		wantFolderRoles := map[string]bool{"owner": false, "editor": false, "viewer": false}
-		for _, g := range folderRoles {
-			if _, ok := wantFolderRoles[g.Role]; ok && g.Principal == g.Role {
-				wantFolderRoles[g.Role] = true
-			}
-		}
-		for role, seen := range wantFolderRoles {
-			if !seen {
-				t.Errorf("expected seeded default folder to inherit org default role grant %q on share-roles", role)
-			}
-		}
-
-		// The seeded default folder must NOT carry its own default-share-*
-		// annotations. Descendants pick up the current org defaults dynamically
-		// via the ancestor walk, so persisting a snapshot on the folder would
-		// shadow later org-level changes. See issue #933.
-		if v, ok := folderNs.Annotations[v1alpha2.AnnotationDefaultShareRoles]; ok {
-			t.Errorf("expected no %q annotation on seeded default folder, got %q", v1alpha2.AnnotationDefaultShareRoles, v)
-		}
-		if v, ok := folderNs.Annotations[v1alpha2.AnnotationDefaultShareUsers]; ok {
-			t.Errorf("expected no %q annotation on seeded default folder, got %q", v1alpha2.AnnotationDefaultShareUsers, v)
-		}
 	})
 
 	t.Run("false behaves as before", func(t *testing.T) {
 		ts := &mockTemplateSeeder{}
 		handler := newTestHandlerWithOpts(testHandlerOpts{
-			withFolderCreator:  true,
 			withDefaultsSeeder: true,
 			templateSeeder:     ts,
 		})
@@ -1346,7 +1085,6 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 	t.Run("unset behaves as before", func(t *testing.T) {
 		ts := &mockTemplateSeeder{}
 		handler := newTestHandlerWithOpts(testHandlerOpts{
-			withFolderCreator:  true,
 			withDefaultsSeeder: true,
 			templateSeeder:     ts,
 		})
@@ -1375,7 +1113,6 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 	t.Run("rollback on org template seed failure", func(t *testing.T) {
 		ts := &mockTemplateSeeder{seedOrgErr: fmt.Errorf("simulated org template failure")}
 		handler := newTestHandlerWithOpts(testHandlerOpts{
-			withFolderCreator:  true,
 			withDefaultsSeeder: true,
 			templateSeeder:     ts,
 		})
@@ -1391,21 +1128,10 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 
-		fc := handler.folderCreator.(*k8sFolderCreator)
-
 		// Verify the org namespace was cleaned up.
-		_, getErr := fc.client.CoreV1().Namespaces().Get(context.Background(), "holos-org-fail-seed-org", metav1.GetOptions{})
+		_, getErr := handler.k8s.client.CoreV1().Namespaces().Get(context.Background(), "holos-org-fail-seed-org", metav1.GetOptions{})
 		if !k8serrors.IsNotFound(getErr) {
 			t.Errorf("expected org namespace to be deleted after rollback, got %v", getErr)
-		}
-
-		// Verify the folder namespace was also cleaned up (namespaces are flat,
-		// deleting the org does not cascade to the folder).
-		nsList, _ := fc.client.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
-		for _, ns := range nsList.Items {
-			if ns.Labels != nil && ns.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeFolder {
-				t.Errorf("expected folder namespace %q to be deleted after rollback", ns.Name)
-			}
 		}
 	})
 
@@ -1421,9 +1147,6 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 		r := testResolver()
 		k8s := NewK8sClient(fakeClient, r)
 		handler := NewHandler(k8s, nil, false, nil, nil)
-		fc := &k8sFolderCreator{client: fakeClient, resolver: r}
-		folderPrefix := r.NamespacePrefix + r.FolderPrefix
-		handler.WithFolderCreator(fc, fc, folderPrefix)
 		pc.client = fakeClient
 		projectPrefix := r.NamespacePrefix + r.ProjectPrefix
 		handler.WithDefaultsSeeder(ts, pc, projectPrefix)
@@ -1447,19 +1170,11 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 			t.Errorf("expected org namespace to be deleted after rollback, got %v", getErr)
 		}
 
-		// Verify the folder namespace was also cleaned up.
-		nsList, _ := fakeClient.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
-		for _, ns := range nsList.Items {
-			if ns.Labels != nil && ns.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeFolder {
-				t.Errorf("expected folder namespace %q to be deleted after rollback", ns.Name)
-			}
-		}
 	})
 
 	t.Run("rollback on project template seed failure", func(t *testing.T) {
 		ts := &mockTemplateSeeder{seedProjectErr: fmt.Errorf("simulated project template failure")}
 		handler := newTestHandlerWithOpts(testHandlerOpts{
-			withFolderCreator:  true,
 			withDefaultsSeeder: true,
 			templateSeeder:     ts,
 		})
@@ -1475,24 +1190,15 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 			t.Fatal("expected error, got nil")
 		}
 
-		fc := handler.folderCreator.(*k8sFolderCreator)
-
 		// Verify the org namespace was cleaned up.
-		_, getErr := fc.client.CoreV1().Namespaces().Get(context.Background(), "holos-org-fail-ptmpl-org", metav1.GetOptions{})
+		_, getErr := handler.k8s.client.CoreV1().Namespaces().Get(context.Background(), "holos-org-fail-ptmpl-org", metav1.GetOptions{})
 		if !k8serrors.IsNotFound(getErr) {
 			t.Errorf("expected org namespace to be deleted after rollback, got %v", getErr)
 		}
 
-		// Verify the folder namespace was cleaned up.
-		nsList, _ := fc.client.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
-		for _, ns := range nsList.Items {
-			if ns.Labels != nil && ns.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeFolder {
-				t.Errorf("expected folder namespace %q to be deleted after rollback", ns.Name)
-			}
-		}
-
 		// Verify the project namespace was cleaned up by seedDefaults'
 		// incremental rollback (project was created in step 2, then step 3 failed).
+		nsList, _ := handler.k8s.client.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
 		for _, ns := range nsList.Items {
 			if ns.Labels != nil && ns.Labels[v1alpha2.LabelResourceType] == v1alpha2.ResourceTypeProject {
 				t.Errorf("expected project namespace %q to be deleted after rollback", ns.Name)
@@ -1503,13 +1209,12 @@ func TestCreateOrganization_PopulateDefaults(t *testing.T) {
 
 // TestCreateOrganization_SeedsDefaultRoleGrants verifies the org namespace's
 // AnnotationDefaultShareRoles is populated with the three standard role
-// grants (Owner, Editor, Viewer) *before* the default folder and default
-// project are created when populate_defaults=true.
+// grants (Owner, Editor, Viewer) before the default project is created when
+// populate_defaults=true.
 func TestCreateOrganization_SeedsDefaultRoleGrants(t *testing.T) {
 	t.Run("populate_defaults=true writes Owner/Editor/Viewer default role grants", func(t *testing.T) {
 		ts := &mockTemplateSeeder{}
 		handler := newTestHandlerWithOpts(testHandlerOpts{
-			withFolderCreator:  true,
 			withDefaultsSeeder: true,
 			templateSeeder:     ts,
 		})
@@ -1572,7 +1277,6 @@ func TestCreateOrganization_SeedsDefaultRoleGrants(t *testing.T) {
 	t.Run("populate_defaults=false does not seed default role grants", func(t *testing.T) {
 		ts := &mockTemplateSeeder{}
 		handler := newTestHandlerWithOpts(testHandlerOpts{
-			withFolderCreator:  true,
 			withDefaultsSeeder: true,
 			templateSeeder:     ts,
 		})
@@ -1600,7 +1304,6 @@ func TestCreateOrganization_SeedsDefaultRoleGrants(t *testing.T) {
 	t.Run("populate_defaults unset does not seed default role grants", func(t *testing.T) {
 		ts := &mockTemplateSeeder{}
 		handler := newTestHandlerWithOpts(testHandlerOpts{
-			withFolderCreator:  true,
 			withDefaultsSeeder: true,
 			templateSeeder:     ts,
 		})
@@ -1633,7 +1336,6 @@ func TestCreateOrganization_SeedsDefaultRoleGrants(t *testing.T) {
 		// ancestor-default merge.
 		ts := &mockTemplateSeeder{}
 		handler := newTestHandlerWithOpts(testHandlerOpts{
-			withFolderCreator:  true,
 			withDefaultsSeeder: true,
 			templateSeeder:     ts,
 		})
@@ -1689,71 +1391,6 @@ func TestCreateOrganization_SeedsDefaultRoleGrants(t *testing.T) {
 			}
 		}
 	})
-
-	t.Run("default role grants are written before default folder creation", func(t *testing.T) {
-		// Use a FolderCreator that records whether the
-		// default-share-roles annotation was present on the org namespace
-		// at the moment CreateFolder was invoked. This verifies the
-		// ordering guarantee (annotation-before-folder) described in the
-		// spec: "annotations must be visible on the org namespace
-		// *before* any folder/project creation call runs".
-		ts := &mockTemplateSeeder{}
-		handler := newTestHandlerWithOpts(testHandlerOpts{
-			withFolderCreator:  true,
-			withDefaultsSeeder: true,
-			templateSeeder:     ts,
-		})
-		fc := handler.folderCreator.(*k8sFolderCreator)
-
-		orderingProbe := &orderingFolderCreator{inner: fc, k8s: handler.k8s}
-		// Swap in the probe as the FolderCreator (leaving FolderLister intact).
-		folderPrefix := handler.folderPrefix
-		handler.WithFolderCreator(orderingProbe, fc, folderPrefix)
-
-		ctx := contextWithClaims("alice@example.com")
-		populateDefaults := true
-
-		_, err := handler.CreateOrganization(ctx, connect.NewRequest(&consolev1.CreateOrganizationRequest{
-			Name:             "ordering-org",
-			DisplayName:      "Ordering Org",
-			PopulateDefaults: &populateDefaults,
-		}))
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-
-		if !orderingProbe.seenDefaultRolesAnnotation {
-			t.Errorf("expected default-share-roles annotation to be visible on the org namespace before CreateFolder was called")
-		}
-	})
-}
-
-// orderingFolderCreator wraps a FolderCreator and records, at the moment
-// CreateFolder is invoked, whether the org namespace already carries the
-// default-share-roles annotation. Used to assert the ordering invariant
-// from issue #920.
-type orderingFolderCreator struct {
-	inner                      FolderCreator
-	k8s                        *K8sClient
-	seenDefaultRolesAnnotation bool
-}
-
-func (o *orderingFolderCreator) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
-	ns, err := o.k8s.GetOrganization(ctx, org)
-	if err == nil && ns.Annotations != nil {
-		if _, ok := ns.Annotations[v1alpha2.AnnotationDefaultShareRoles]; ok {
-			o.seenDefaultRolesAnnotation = true
-		}
-	}
-	return o.inner.CreateFolder(ctx, name, displayName, description, org, parentNs, creatorEmail, creatorSubject, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
-}
-
-func (o *orderingFolderCreator) DeleteFolder(ctx context.Context, name string) error {
-	return o.inner.DeleteFolder(ctx, name)
-}
-
-func (o *orderingFolderCreator) NamespaceExists(ctx context.Context, nsName string) (bool, error) {
-	return o.inner.NamespaceExists(ctx, nsName)
 }
 
 // ---- Helpers ----

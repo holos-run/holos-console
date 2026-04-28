@@ -464,39 +464,6 @@ func GetDefaultShareRoles(ns *corev1.Namespace) ([]secrets.AnnotationGrant, erro
 	return parseGrantAnnotation(ns, v1alpha2.AnnotationDefaultShareRoles)
 }
 
-// FolderCreatorAdapter adapts the folders K8sClient to satisfy the
-// organizations.FolderCreator interface. It mirrors
-// projects.ProjectCreatorAdapter so that the organizations package can create
-// the seeded default folder through the folders package without importing the
-// folders Handler directly.
-type FolderCreatorAdapter struct {
-	K8s *K8sClient
-}
-
-// CreateFolder creates a folder namespace, forwarding both active and default
-// share grants so that the seeded default folder inherits the org's default
-// role grants and propagates them as its own default-share cascade (matching
-// the ancestor-default-share merge done by folders.Handler.CreateFolder).
-func (a *FolderCreatorAdapter) CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error) {
-	return a.K8s.CreateFolder(ctx, name, displayName, description, org, parentNs, creatorEmail, creatorSubject, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles)
-}
-
-// DeleteFolder delegates to the K8sClient.
-func (a *FolderCreatorAdapter) DeleteFolder(ctx context.Context, name string) error {
-	return a.K8s.DeleteFolder(ctx, name)
-}
-
-// NamespaceExists delegates to the K8sClient.
-func (a *FolderCreatorAdapter) NamespaceExists(ctx context.Context, nsName string) (bool, error) {
-	return a.K8s.NamespaceExists(ctx, nsName)
-}
-
-// GetFolder delegates to the K8sClient so the adapter can also satisfy
-// organizations.FolderLister in test and production wiring.
-func (a *FolderCreatorAdapter) GetFolder(ctx context.Context, name string) (*corev1.Namespace, error) {
-	return a.K8s.GetFolder(ctx, name)
-}
-
 func parseGrantAnnotation(ns *corev1.Namespace, key string) ([]secrets.AnnotationGrant, error) {
 	return legacy.ParseGrants(ns.Annotations, key)
 }

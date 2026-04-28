@@ -27,25 +27,6 @@ type ProjectLister interface {
 	ListProjects(ctx context.Context, org, parentNs string) ([]*corev1.Namespace, error)
 }
 
-// FolderCreator creates and deletes a folder namespace. Used by CreateOrganization to
-// auto-create the default folder without importing the folders package directly.
-// DeleteFolder is needed for rollback when later steps of org creation fail.
-//
-// CreateFolder accepts both active (shareUsers/shareRoles) and default
-// (defaultShareUsers/defaultShareRoles) grants so that the seeded default folder
-// inherits the org's default role grants via the same merge logic
-// folders.Handler.CreateFolder applies to user-initiated folder creates.
-type FolderCreator interface {
-	CreateFolder(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) (*corev1.Namespace, error)
-	DeleteFolder(ctx context.Context, name string) error
-	NamespaceExists(ctx context.Context, nsName string) (bool, error)
-}
-
-// FolderLister retrieves folder namespaces for validation.
-type FolderLister interface {
-	GetFolder(ctx context.Context, name string) (*corev1.Namespace, error)
-}
-
 // TemplateSeeder seeds default templates into a scope. Used by
 // CreateOrganization to seed example templates when populate_defaults is true.
 type TemplateSeeder interface {
@@ -54,9 +35,8 @@ type TemplateSeeder interface {
 }
 
 // ProjectCreator creates and deletes a project namespace. Used by CreateOrganization to
-// create a default project when populate_defaults is true, following the same
-// pattern as FolderCreator. DeleteProject is needed for rollback when later
-// seeding steps fail.
+// create a default project when populate_defaults is true. DeleteProject is
+// needed for rollback when later seeding steps fail.
 type ProjectCreator interface {
 	CreateProject(ctx context.Context, name, displayName, description, org, parentNs, creatorEmail, creatorSubject string, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles []secrets.AnnotationGrant) error
 	DeleteProject(ctx context.Context, name string) error
@@ -68,9 +48,6 @@ type Handler struct {
 	consolev1connect.UnimplementedOrganizationServiceHandler
 	k8s             *K8sClient
 	projectLister   ProjectLister
-	folderCreator   FolderCreator
-	folderLister    FolderLister
-	folderPrefix    string // namespace prefix + folder prefix (e.g. "holos-fld-")
 	templateSeeder  TemplateSeeder
 	projectCreator  ProjectCreator
 	projectPrefix   string // namespace prefix + project prefix (e.g. "holos-prj-")
@@ -85,15 +62,6 @@ type Handler struct {
 // creatorRoles are allowed to create organizations.
 func NewHandler(k8s *K8sClient, projectLister ProjectLister, disableCreation bool, creatorUsers, creatorRoles []string) *Handler {
 	return &Handler{k8s: k8s, projectLister: projectLister, disableCreation: disableCreation, creatorUsers: creatorUsers, creatorRoles: creatorRoles}
-}
-
-// WithFolderCreator sets the folder creator used to auto-create the default
-// folder when a new organization is created.
-func (h *Handler) WithFolderCreator(fc FolderCreator, fl FolderLister, folderPrefix string) *Handler {
-	h.folderCreator = fc
-	h.folderLister = fl
-	h.folderPrefix = folderPrefix
-	return h
 }
 
 // WithDefaultsSeeder sets the template seeder and project creator used to
@@ -179,8 +147,7 @@ func (h *Handler) GetOrganization(
 	}), nil
 }
 
-// CreateOrganization creates a new organization and its default folder.
-// If default folder creation fails, the org namespace is rolled back.
+// CreateOrganization creates a new organization.
 func (h *Handler) CreateOrganization(
 	ctx context.Context,
 	req *connect.Request[consolev1.CreateOrganizationRequest],
@@ -218,9 +185,9 @@ func (h *Handler) CreateOrganization(
 	}
 
 	// Seed org default role grants (Owner, Editor, Viewer) onto the org
-	// namespace *before* creating the default folder or project. This ensures
-	// the default folder and default project inherit the correct org-level
-	// default role grants via GetOrgDefaultGrants().
+	// namespace before creating the default project. This ensures the default
+	// project inherits the correct org-level default role grants via
+	// GetOrgDefaultGrants().
 	if req.Msg.GetPopulateDefaults() {
 		if err := h.seedOrgDefaultSharing(ctx, req.Msg.Name); err != nil {
 			slog.ErrorContext(ctx, "seeding org default role grants failed, rolling back org",
@@ -237,53 +204,6 @@ func (h *Handler) CreateOrganization(
 		}
 	}
 
-	// Auto-create the default folder as an immediate child of the org.
-	// folderName is hoisted so the seed-defaults rollback can also delete
-	// the folder namespace (Kubernetes namespaces are flat — deleting the
-	// org does not cascade to the folder or project namespaces).
-	var folderName string
-	if h.folderCreator != nil {
-		folderDisplayName := "Default"
-
-		var err error
-		folderName, err = h.createDefaultFolder(ctx, req.Msg.Name, folderDisplayName, claims.Email, claims.Sub, shareUsers, shareRoles)
-		if err != nil {
-			// Rollback: delete the org namespace on default folder failure.
-			// The folder namespace does not exist yet (creation failed), so
-			// only the org needs cleanup.
-			slog.ErrorContext(ctx, "default folder creation failed, rolling back org",
-				slog.String("organization", req.Msg.Name),
-				slog.Any("error", err),
-			)
-			if delErr := h.k8s.DeleteOrganization(ctx, req.Msg.Name); delErr != nil {
-				slog.ErrorContext(ctx, "org rollback failed",
-					slog.String("organization", req.Msg.Name),
-					slog.Any("error", delErr),
-				)
-			}
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("creating default folder: %w", err))
-		}
-
-		// Store the default folder identifier on the org namespace.
-		if err := h.k8s.SetDefaultFolder(ctx, req.Msg.Name, folderName); err != nil {
-			slog.ErrorContext(ctx, "failed to set default folder annotation, rolling back",
-				slog.String("organization", req.Msg.Name),
-				slog.String("folder", folderName),
-				slog.Any("error", err),
-			)
-			// Roll back folder then org: the folder was already created but the
-			// annotation write failed, so we must explicitly remove it.
-			h.rollbackFolder(ctx, folderName)
-			if delErr := h.k8s.DeleteOrganization(ctx, req.Msg.Name); delErr != nil {
-				slog.ErrorContext(ctx, "org rollback after annotation failure failed",
-					slog.String("organization", req.Msg.Name),
-					slog.Any("error", delErr),
-				)
-			}
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("setting default folder annotation: %w", err))
-		}
-	}
-
 	// Seed example resources when populate_defaults is requested.
 	if req.Msg.GetPopulateDefaults() {
 		if err := h.seedDefaults(ctx, req.Msg.Name, claims.Email, claims.Sub, shareUsers, shareRoles); err != nil {
@@ -292,9 +212,8 @@ func (h *Handler) CreateOrganization(
 				slog.Any("error", err),
 			)
 			// seedDefaults performs incremental rollback for resources it
-			// created (e.g. project namespace). Here we clean up the folder
-			// and org namespaces which were created before seeding began.
-			h.rollbackFolder(ctx, folderName)
+			// created (e.g. project namespace). Here we clean up the org
+			// namespace which was created before seeding began.
 			if delErr := h.k8s.DeleteOrganization(ctx, req.Msg.Name); delErr != nil {
 				slog.ErrorContext(ctx, "org rollback after seed failure failed",
 					slog.String("organization", req.Msg.Name),
@@ -318,73 +237,13 @@ func (h *Handler) CreateOrganization(
 	}), nil
 }
 
-// createDefaultFolder generates an identifier from the display name and creates
-// the folder namespace as a direct child of the organization. Returns the folder
-// identifier (slug).
-//
-// When the org carries default-share grants (seeded via seedOrgDefaultSharing
-// when populate_defaults=true), those grants are merged into the folder's
-// active grants only. The folder is NOT given its own default-share
-// annotations — descendants created under this folder pick up the current org
-// defaults dynamically via the ancestor walk performed by
-// folders.Handler.collectAncestorDefaultShares and
-// projects.ProjectGrantResolver.GetDefaultGrants. Persisting a snapshot on the
-// folder itself would cause later changes to org default sharing to be
-// shadowed by stale folder defaults.
-func (h *Handler) createDefaultFolder(ctx context.Context, orgName, displayName, creatorEmail, creatorSubject string, shareUsers, shareRoles []secrets.AnnotationGrant) (string, error) {
-	exists := func(ctx context.Context, nsName string) (bool, error) {
-		return h.folderCreator.NamespaceExists(ctx, nsName)
-	}
-	folderName, err := v1alpha2.GenerateIdentifier(ctx, displayName, h.folderPrefix, exists)
-	if err != nil {
-		return "", fmt.Errorf("generating folder identifier: %w", err)
-	}
-
-	// Read the org namespace so we can propagate any default-share grants
-	// (seeded earlier via seedOrgDefaultSharing when populate_defaults=true)
-	// into the default folder. When populate_defaults is false the org has
-	// no default-share annotations and these slices will be empty, which
-	// preserves the existing behaviour.
-	orgNs, err := h.k8s.GetOrganization(ctx, orgName)
-	if err != nil {
-		return "", fmt.Errorf("looking up org for default folder: %w", err)
-	}
-	orgDefaultUsers, _ := GetDefaultShareUsers(orgNs)
-	orgDefaultRoles, _ := GetDefaultShareRoles(orgNs)
-	folderShareUsers := secrets.DeduplicateGrants(append(append([]secrets.AnnotationGrant{}, shareUsers...), orgDefaultUsers...))
-	folderShareRoles := secrets.DeduplicateGrants(append(append([]secrets.AnnotationGrant{}, shareRoles...), orgDefaultRoles...))
-
-	orgNsName := h.k8s.resolver.OrgNamespace(orgName)
-	// Pass nil for the folder's own default-share grants. Descendants resolve
-	// the org defaults dynamically via the ancestor walk, so persisting a copy
-	// here would cause stale defaults to shadow future org changes.
-	if _, err := h.folderCreator.CreateFolder(ctx, folderName, displayName, "", orgName, orgNsName, creatorEmail, creatorSubject, folderShareUsers, folderShareRoles, nil, nil); err != nil {
-		return "", fmt.Errorf("creating folder namespace: %w", err)
-	}
-	return folderName, nil
-}
-
-// rollbackFolder deletes the folder namespace as part of org creation rollback.
-// Errors are logged but not propagated since this is best-effort cleanup.
-func (h *Handler) rollbackFolder(ctx context.Context, folderName string) {
-	if folderName == "" || h.folderCreator == nil {
-		return
-	}
-	if delErr := h.folderCreator.DeleteFolder(ctx, folderName); delErr != nil {
-		slog.ErrorContext(ctx, "folder rollback failed",
-			slog.String("folder", folderName),
-			slog.Any("error", delErr),
-		)
-	}
-}
-
 // defaultOrgRoleGrants returns the standard three-role default grant list
 // (Owner, Editor, Viewer) with no start restriction and no expiration. The
 // principal for each grant is the lowercase role name (e.g. "owner") — role
 // grants treat the role string as both the principal and the role. These are
 // seeded onto new organizations when populate_defaults=true so that the
-// default folder and default project inherit sensible org-level defaults via
-// GetOrgDefaultGrants() in projects/resolver.go.
+// default project inherits sensible org-level defaults via GetOrgDefaultGrants()
+// in projects/resolver.go.
 func defaultOrgRoleGrants() []secrets.AnnotationGrant {
 	return []secrets.AnnotationGrant{
 		{Principal: roleAnnotationString(rbac.RoleOwner), Role: roleAnnotationString(rbac.RoleOwner)},
@@ -412,11 +271,11 @@ func roleAnnotationString(r rbac.Role) string {
 
 // seedDefaults creates example resources for the new organization:
 //  1. An org-level platform template (HTTPRoute, enabled)
-//  2. A default project in the default folder
+//  2. A default project under the organization
 //  3. An example project-level deployment template in the new project
 //
 // Each step performs incremental rollback of resources it created on failure.
-// The caller is responsible for rolling back the org and folder namespaces.
+// The caller is responsible for rolling back the org namespace.
 func (h *Handler) seedDefaults(ctx context.Context, orgName, creatorEmail, creatorSubject string, shareUsers, shareRoles []secrets.AnnotationGrant) error {
 	if h.templateSeeder == nil || h.projectCreator == nil {
 		return fmt.Errorf("defaults seeder not configured")
@@ -427,19 +286,12 @@ func (h *Handler) seedDefaults(ctx context.Context, orgName, creatorEmail, creat
 		return fmt.Errorf("seeding org template: %w", err)
 	}
 
-	// Step 2: Create default project in the default folder.
-	// Resolve the default folder namespace from the org's annotation.
+	// Step 2: Create default project under the organization.
 	orgNs, err := h.k8s.GetOrganization(ctx, orgName)
 	if err != nil {
-		return fmt.Errorf("looking up org for default folder: %w", err)
+		return fmt.Errorf("looking up org for default project: %w", err)
 	}
-	defaultFolder := orgNs.Annotations[v1alpha2.AnnotationDefaultFolder]
-	if defaultFolder == "" {
-		return fmt.Errorf("organization %q has no default folder set", orgName)
-	}
-
-	// Derive the parent namespace from the default folder.
-	parentNs := h.k8s.resolver.FolderNamespace(defaultFolder)
+	parentNs := h.k8s.resolver.OrgNamespace(orgName)
 
 	projectDisplayName := "Default"
 	exists := func(ctx context.Context, nsName string) (bool, error) {

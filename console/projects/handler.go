@@ -238,8 +238,7 @@ func (h *Handler) CreateProject(
 	}
 
 	// Resolve the immediate parent namespace.
-	// When no explicit parent is specified, check the org's default folder.
-	// Falls back to org root if no default folder is configured or the folder is missing.
+	// When no explicit parent is specified, default to the organization.
 	parentName := req.Msg.ParentName
 	parentType := req.Msg.ParentType
 	if parentName == "" {
@@ -972,53 +971,9 @@ func (h *Handler) buildProject(ns *corev1.Namespace, shareUsers, shareRoles []se
 }
 
 // resolveDefaultParent determines the default parent for a new project when
-// no explicit parent is specified. It reads the org's default-folder annotation
-// and, if the referenced folder exists, returns it as the parent. Otherwise
-// it falls back to the organization as the parent (legacy behavior).
+// no explicit parent is specified.
 func (h *Handler) resolveDefaultParent(ctx context.Context, org string) (string, consolev1.ParentType) {
-	if org == "" {
-		return org, consolev1.ParentType_PARENT_TYPE_ORGANIZATION
-	}
-
-	// Look up the org namespace to read the default-folder annotation.
-	orgNsName := h.k8s.Resolver.OrgNamespace(org)
-	orgNs, err := h.k8s.GetNamespace(ctx, orgNsName)
-	if err != nil {
-		slog.WarnContext(ctx, "failed to read org namespace for default folder resolution, falling back to org root",
-			slog.String("organization", org),
-			slog.Any("error", err),
-		)
-		return org, consolev1.ParentType_PARENT_TYPE_ORGANIZATION
-	}
-
-	defaultFolder := orgNs.Annotations[v1alpha2.AnnotationDefaultFolder]
-	if defaultFolder == "" {
-		// No default-folder annotation — legacy org, fall back to org root.
-		return org, consolev1.ParentType_PARENT_TYPE_ORGANIZATION
-	}
-
-	// Check that the referenced folder namespace actually exists.
-	folderNsName := h.k8s.Resolver.FolderNamespace(defaultFolder)
-	exists, err := h.k8s.NamespaceExists(ctx, folderNsName)
-	if err != nil {
-		slog.WarnContext(ctx, "error checking default folder existence, falling back to org root",
-			slog.String("action", "default_folder_not_found"),
-			slog.String("organization", org),
-			slog.String("default_folder", defaultFolder),
-			slog.Any("error", err),
-		)
-		return org, consolev1.ParentType_PARENT_TYPE_ORGANIZATION
-	}
-	if !exists {
-		slog.WarnContext(ctx, "default folder referenced by org does not exist, falling back to org root",
-			slog.String("action", "default_folder_not_found"),
-			slog.String("organization", org),
-			slog.String("default_folder", defaultFolder),
-		)
-		return org, consolev1.ParentType_PARENT_TYPE_ORGANIZATION
-	}
-
-	return defaultFolder, consolev1.ParentType_PARENT_TYPE_FOLDER
+	return org, consolev1.ParentType_PARENT_TYPE_ORGANIZATION
 }
 
 // resolveParentNS converts a ParentType+ParentName pair to a Kubernetes namespace name.
