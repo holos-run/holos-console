@@ -1022,8 +1022,13 @@ func (h *Handler) GetDeploymentRenderPreview(
 	cueTemplate := tmplCM.Data[cueTemplateKey]
 
 	// Build platform input from authenticated claims and resolved namespace.
+	// Use the same narrowed claim set the synchronous Create/Update render
+	// paths and the controller's reconcile use, so the preview the user
+	// sees matches the manifests that will actually be applied. A preview
+	// rendered with the full RPC claims would silently surface
+	// platform.claims.sub/.groups values that the apply path never sees.
 	ns := h.k8s.Resolver.ProjectNamespace(project)
-	platformIn := h.buildPlatformInput(ctx, project, ns, claims)
+	platformIn := h.renderTimePlatformInput(ctx, project, ns, claims)
 
 	// Build project input from the deployment's stored fields.
 	projectIn := v1alpha2.ProjectInput{
