@@ -20,6 +20,34 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Deployment condition types.
+const (
+	// ConditionTypeAccepted tracks whether the reconciler parsed .spec and
+	// accepted it, or rejected it with a typed reason.
+	ConditionTypeAccepted = "Accepted"
+	// ConditionTypeResolvedRefs tracks whether every referenced object needed
+	// for reconciliation resolved to an existing, compatible object.
+	ConditionTypeResolvedRefs = "ResolvedRefs"
+	// ConditionTypeRendered tracks whether CUE evaluation completed and
+	// produced the desired Kubernetes object set for the Deployment.
+	ConditionTypeRendered = "Rendered"
+	// ConditionTypeApplied tracks whether the rendered Kubernetes object set
+	// was reconciled to the cluster with server-side apply.
+	ConditionTypeApplied = "Applied"
+	// ConditionTypeReady is the aggregate: Accepted, ResolvedRefs, Rendered,
+	// and Applied are all True.
+	ConditionTypeReady = "Ready"
+)
+
+// Deployment condition reasons.
+const (
+	ReasonRenderSucceeded         = "RenderSucceeded"
+	ReasonRenderFailed            = "RenderFailed"
+	ReasonAncestorTemplateMissing = "AncestorTemplateMissing"
+	ReasonApplySucceeded          = "ApplySucceeded"
+	ReasonApplyFailed             = "ApplyFailed"
+)
+
 // DeploymentTemplateRef identifies the Template used to render this
 // Deployment. Namespace is the namespace that owns the Template; Name is the
 // Template's DNS label slug.
@@ -76,7 +104,7 @@ type DeploymentStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// Conditions represent the latest available observations of this
 	// Deployment's state. Known condition types are Accepted, ResolvedRefs,
-	// and Ready.
+	// Rendered, Applied, and Ready.
 	// +listType=map
 	// +listMapKey=type
 	// +patchStrategy=merge
