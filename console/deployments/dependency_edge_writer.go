@@ -131,11 +131,3 @@ func cascadeDeleteWithDefault(p *bool) bool {
 	}
 	return *p
 }
-
-// IsNotFound reports whether the error from a DependencyEdgeWriter call is a
-// 404. The deployments handler maps this to connect.CodeNotFound so the
-// frontend can show a clear "edge no longer exists" message instead of an
-// internal-server error.
-func IsNotFound(err error) bool {
-	return k8serrors.IsNotFound(err)
-}

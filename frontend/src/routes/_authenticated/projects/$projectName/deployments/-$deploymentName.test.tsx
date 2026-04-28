@@ -202,7 +202,7 @@ function setupMocks(userRole = Role.OWNER) {
   ;(useListNamespaceConfigMaps as Mock).mockReturnValue({ data: [], isLoading: false })
   ;(useGetDeploymentPolicyState as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
   ;(useGetDeploymentRenderPreview as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
-  ;(useGetDependencyEdgeCascadeDelete as Mock).mockReturnValue({ data: true, isPending: false, error: null })
+  ;(useGetDependencyEdgeCascadeDelete as Mock).mockReturnValue({ data: true, isPending: false, isFetching: false, error: null })
   ;(useSetDependencyEdgeCascadeDelete as Mock).mockReturnValue({ mutate: vi.fn(), isPending: false, error: null })
 }
 
@@ -1541,6 +1541,24 @@ describe('DeploymentDetailPage', () => {
       render(<DeploymentDetailPage />)
       await user.click(screen.getByTestId('cascade-delete-TemplateDependency-prj-test-edge-1'))
       expect(mutate).not.toHaveBeenCalled()
+    })
+
+    it('disables the switch while a background refetch is in flight', () => {
+      setupMocks()
+      ;(useGetDeployment as Mock).mockReturnValue({
+        data: { ...mockDeployment, dependencies: [edgeOne] },
+        isPending: false,
+        error: null,
+      })
+      ;(useGetDependencyEdgeCascadeDelete as Mock).mockReturnValue({
+        data: true,
+        isPending: false,
+        isFetching: true,
+        error: null,
+      })
+      render(<DeploymentDetailPage />)
+      const sw = screen.getByTestId('cascade-delete-TemplateDependency-prj-test-edge-1') as HTMLButtonElement
+      expect(sw.disabled).toBe(true)
     })
 
     it('surfaces the mutation error', () => {
