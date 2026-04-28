@@ -140,7 +140,7 @@ spec:
                 description: |-
                   Conditions represent the latest available observations of this
                   Deployment's state. Known condition types are Accepted, ResolvedRefs,
-                  and Ready.
+                  Rendered, Applied, and Ready.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

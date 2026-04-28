@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
@@ -209,5 +210,119 @@ func assertDeploymentEqual(t *testing.T, want, got v1alpha1.Deployment) {
 	if got.Status.ObservedGeneration != want.Status.ObservedGeneration {
 		t.Errorf("Status.ObservedGeneration: got %d want %d",
 			got.Status.ObservedGeneration, want.Status.ObservedGeneration)
+	}
+}
+
+func TestDeploymentConditionConstants(t *testing.T) {
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{name: "accepted", got: v1alpha1.ConditionTypeAccepted, want: "Accepted"},
+		{name: "resolved-refs", got: v1alpha1.ConditionTypeResolvedRefs, want: "ResolvedRefs"},
+		{name: "rendered", got: v1alpha1.ConditionTypeRendered, want: "Rendered"},
+		{name: "applied", got: v1alpha1.ConditionTypeApplied, want: "Applied"},
+		{name: "ready", got: v1alpha1.ConditionTypeReady, want: "Ready"},
+		{name: "deployment-render-succeeded", got: v1alpha1.DeploymentReasonRenderSucceeded, want: "RenderSucceeded"},
+		{name: "deployment-render-failed", got: v1alpha1.DeploymentReasonRenderFailed, want: "RenderFailed"},
+		{name: "deployment-ancestor-template-missing", got: v1alpha1.DeploymentReasonAncestorTemplateMissing, want: "AncestorTemplateMissing"},
+		{name: "deployment-apply-succeeded", got: v1alpha1.DeploymentReasonApplySucceeded, want: "ApplySucceeded"},
+		{name: "deployment-apply-failed", got: v1alpha1.DeploymentReasonApplyFailed, want: "ApplyFailed"},
+		{name: "render-succeeded", got: v1alpha1.ReasonRenderSucceeded, want: "RenderSucceeded"},
+		{name: "render-failed", got: v1alpha1.ReasonRenderFailed, want: "RenderFailed"},
+		{name: "ancestor-template-missing", got: v1alpha1.ReasonAncestorTemplateMissing, want: "AncestorTemplateMissing"},
+		{name: "apply-succeeded", got: v1alpha1.ReasonApplySucceeded, want: "ApplySucceeded"},
+		{name: "apply-failed", got: v1alpha1.ReasonApplyFailed, want: "ApplyFailed"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.got != tc.want {
+				t.Fatalf("constant value = %q, want %q", tc.got, tc.want)
+			}
+		})
+	}
+}
+
+func TestDeploymentConditions_RoundTripThroughMeta(t *testing.T) {
+	tests := []struct {
+		name      string
+		condType  string
+		status    metav1.ConditionStatus
+		reason    string
+		message   string
+		wantCount int
+	}{
+		{
+			name:      "rendered-success",
+			condType:  v1alpha1.ConditionTypeRendered,
+			status:    metav1.ConditionTrue,
+			reason:    v1alpha1.ReasonRenderSucceeded,
+			message:   "rendered Kubernetes object set",
+			wantCount: 1,
+		},
+		{
+			name:      "rendered-failed-missing-ancestor-template",
+			condType:  v1alpha1.ConditionTypeRendered,
+			status:    metav1.ConditionFalse,
+			reason:    v1alpha1.ReasonAncestorTemplateMissing,
+			message:   "ancestor template was not found",
+			wantCount: 1,
+		},
+		{
+			name:      "applied-success",
+			condType:  v1alpha1.ConditionTypeApplied,
+			status:    metav1.ConditionTrue,
+			reason:    v1alpha1.ReasonApplySucceeded,
+			message:   "applied rendered Kubernetes object set",
+			wantCount: 1,
+		},
+		{
+			name:      "applied-failed",
+			condType:  v1alpha1.ConditionTypeApplied,
+			status:    metav1.ConditionFalse,
+			reason:    v1alpha1.ReasonApplyFailed,
+			message:   "server-side apply failed",
+			wantCount: 1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			status := v1alpha1.DeploymentStatus{}
+			condition := metav1.Condition{
+				Type:               tc.condType,
+				Status:             tc.status,
+				Reason:             tc.reason,
+				Message:            tc.message,
+				ObservedGeneration: 7,
+				LastTransitionTime: metav1.NewTime(time.Date(2026, 4, 28, 1, 2, 3, 0, time.UTC)),
+			}
+
+			meta.SetStatusCondition(&status.Conditions, condition)
+			got := meta.FindStatusCondition(status.Conditions, tc.condType)
+			if got == nil {
+				t.Fatalf("condition %q was not found", tc.condType)
+			}
+			if got.Type != tc.condType {
+				t.Errorf("Type = %q, want %q", got.Type, tc.condType)
+			}
+			if got.Status != tc.status {
+				t.Errorf("Status = %q, want %q", got.Status, tc.status)
+			}
+			if got.Reason != tc.reason {
+				t.Errorf("Reason = %q, want %q", got.Reason, tc.reason)
+			}
+			if got.Message != tc.message {
+				t.Errorf("Message = %q, want %q", got.Message, tc.message)
+			}
+			if got.ObservedGeneration != 7 {
+				t.Errorf("ObservedGeneration = %d, want 7", got.ObservedGeneration)
+			}
+			if len(status.Conditions) != tc.wantCount {
+				t.Errorf("condition count = %d, want %d", len(status.Conditions), tc.wantCount)
+			}
+		})
 	}
 }
