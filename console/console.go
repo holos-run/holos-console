@@ -44,7 +44,6 @@ import (
 	"github.com/holos-run/holos-console/console/projects/projectapply"
 	"github.com/holos-run/holos-console/console/projects/projectnspipeline"
 	"github.com/holos-run/holos-console/console/resolver"
-	"github.com/holos-run/holos-console/console/resources"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
 	"github.com/holos-run/holos-console/console/settings"
@@ -504,19 +503,6 @@ func (s *Server) Serve(ctx context.Context) error {
 
 		projectsPath, projectsHTTPHandler := consolev1connect.NewProjectServiceHandler(projectsHandler, protectedInterceptors)
 		mux.Handle(projectsPath, projectsHTTPHandler)
-
-		// ResourceService — cross-kind listing of folders + projects with
-		// each entry's root→leaf ancestor path. Powers the Linear-style
-		// navigation (HOL-553); wired in HOL-602. Composes the existing
-		// folders / projects / organizations K8s clients so RBAC and label
-		// semantics stay defined in exactly one place per kind.
-		resourcesHandler := resources.NewHandler(
-			resources.NewK8sClient(foldersK8s, projectsK8s, orgsK8s),
-			nsResolver,
-			nsWalker,
-		)
-		resourcesPath, resourcesHTTPHandler := consolev1connect.NewResourceServiceHandler(resourcesHandler, protectedInterceptors)
-		mux.Handle(resourcesPath, resourcesHTTPHandler)
 
 		// PermissionsService — bulk SelfSubjectAccessReview fan-out for the
 		// frontend's UI gating contract (ADR 036). Handler is stateless;

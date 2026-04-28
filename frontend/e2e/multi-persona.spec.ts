@@ -22,17 +22,27 @@ import {
  *     rendering — the cases that used to make up the "Persona Switching"
  *     describe block)
  *
+ * After HOL-1066, every assertion in this spec exercises real Kubernetes
+ * RoleBindings provisioned by the per-resource RBAC reconcilers from
+ * HOL-1062 / HOL-1063. UpdateOrganizationSharing now writes the sharing
+ * annotation and synchronously reconciles the matching ClusterRoleBindings
+ * before returning, so a granted user's impersonated client can list/get the
+ * resource on the very next call. The legacy "claims.role decides" gating
+ * is gone — these tests assert behavior the K8s API server (acting as the
+ * sole arbiter per ADR 036) attributes to the persona's OIDC subject via
+ * its bindings.
+ *
  * The tests below verify that:
  * 1. A non-admin owner (platform engineer) can create an org and grant
  *    viewer/editor access to other personas.
- * 2. A viewer (SRE) can list the org they were granted access to.
+ * 2. A viewer (SRE) can list the org they were granted access to via their
+ *    real RoleBinding.
  * 3. An editor (product engineer) can list the org they were granted access
- *    to.
+ *    to via their real RoleBinding.
  *
- * These require a real K8s cluster because org creation writes a namespace
- * and the RBAC grants are persisted as namespace annotations; they are the
- * legitimate multi-persona use case for E2E (the audit doc lists them as
- * Keep). Run with: make test-e2e
+ * These require a real K8s cluster because the impersonated apiserver call
+ * is what gates visibility; nothing in the in-process Go code answers
+ * "can this user see this org?" anymore. Run with: make test-e2e
  */
 
 test.describe('Multi-Persona RBAC', () => {
@@ -93,16 +103,13 @@ test.describe('Multi-Persona RBAC', () => {
     ).toBeVisible({ timeout: 5000 })
   })
 
-  // SKIPPED (HOL-1070): Under the new impersonation/RoleBinding RBAC model
-  // (HOL-1062 / HOL-1063 / HOL-1064), the product-engineer persona can no
-  // longer rely on the legacy organization-sharing annotation written by
-  // apiGrantOrgAccess to gain visibility on the org's namespace; access now
-  // requires a real RoleBinding for the OIDC subject. This test fails 3
-  // retries on chromium (passes on mobile-chrome, hence "flaky") because no
-  // such RoleBinding is provisioned for the editor persona by the legacy
-  // grant path. Re-enable as part of HOL-1070, which rewrites the multi-
-  // persona suite against real RoleBindings.
-  test.skip('product engineer can access the org with editor privileges', async ({
+  // Re-enabled in HOL-1066. apiGrantOrgAccess now drives
+  // UpdateOrganizationSharing, which (after HOL-1064 and the synchronous
+  // EnsureResourceRBAC follow-up in commit a162225) reconciles a real
+  // ClusterRoleBinding for the editor persona before returning. The
+  // impersonated apiserver call from the editor's session can therefore
+  // see the org on the next request without polling.
+  test('product engineer can access the org with editor privileges', async ({
     page,
   }) => {
     // Login as product engineer (who was granted EDITOR on the org)

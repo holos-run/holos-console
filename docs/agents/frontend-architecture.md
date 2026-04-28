@@ -166,6 +166,25 @@ route is active. The relevant route files are:
 - `frontend/src/routes/_authenticated/projects/$projectName/templates/requirements/index.tsx` (HOL-1013)
 - `frontend/src/routes/_authenticated/projects/$projectName/templates/grants/index.tsx` (HOL-1013)
 
+## Permissions UI Gating
+
+UI affordances (buttons, action menus, edit forms) are gated by Kubernetes
+SelfSubjectAccessReview results, not by client-side role inference. The
+contract per [ADR 036](../adrs/036-rbac-and-oidc-impersonation.md):
+
+- Frontend hooks consume `useResourcePermissions(...)` (HOL-1065) to fetch
+  per-resource verb permissions in a single batched SSAR fan-out via the
+  ConnectRPC `PermissionsService`.
+- The legacy `claims.role`-based gating that used to live in components has
+  been retired. Do not infer "viewer / editor / owner" from the JWT to
+  decide whether to render an action — query the `PermissionsService`
+  instead. A user's access is whatever the apiserver says it is.
+- The `userRole` field still returned in `Organization` / `Folder` /
+  `Project` proto responses is a UI hint for grant lists (e.g. "your role is
+  editor") and must not be used as an access gate. The hint is derived from
+  the resource's sharing annotation; the apiserver enforces the actual
+  decision.
+
 ## Tables and Data Grids
 
 New flat resource list pages should use `ResourceGrid` when the page is a named

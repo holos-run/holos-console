@@ -9,9 +9,10 @@
 //   - Stores policies as ConfigMaps in the folder or organization namespace
 //     with the console.holos.run/resource-type=template-policy label and a
 //     JSON-serialized rules annotation.
-//   - Enforces RBAC through the TemplatePolicyPerms table using the
-//     PERMISSION_TEMPLATE_POLICIES_* permissions, so WRITE/DELETE/ADMIN can
-//     only be granted at organization or folder scope.
+//   - Enforces RBAC via the Kubernetes apiserver using the request-scoped
+//     impersonated client (per ADR 036). Project-scope storage is rejected
+//     up front by the handler, so write access can only land in organization
+//     or folder namespaces where the corresponding RoleBindings live.
 //
 // # Storage-isolation guardrail (HOL-554)
 //

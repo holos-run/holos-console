@@ -495,6 +495,26 @@ Phase 1 closes every open question in the parent issue.
   pinned in Phase 6
   ([HOL-1034](https://linear.app/holos-run/issue/HOL-1034/refactorconsole-switch-remaining-connectrpc-handlers-to-impersonated)).
 
+## Open Questions Resolved
+
+- **Fate of `console/resources/handler.go`** — resolved by
+  [HOL-1066](https://linear.app/holos-run/issue/HOL-1066/teste2e-rewrite-persona-e2e-tests-against-real-rolebindings):
+  **deleted.** The generic kubectl-get fronting handler is gone. Every concrete
+  resource kind has a typed handler that already routes through the
+  impersonated client, the frontend route that consumed the cross-kind list
+  was removed in HOL-938, and the `Resource` KindConfig in
+  `console/resourcerbac` retired with the handler. The proto definition
+  (`proto/holos/console/v1/resources.proto`) and its generated Go and
+  TypeScript stubs are deleted.
+- **Fate of `console/rbac`** — resolved by HOL-1066: **trimmed, not deleted.**
+  `console/settings` is the last in-process RBAC call site
+  (`CheckAccessGrants` and `CheckCascadeAccess`). The package was reduced to
+  the surface those two calls need plus the Role enum + `BestRoleFromGrants`
+  used by `console/{organizations,folders,projects}` to derive the
+  `userRole` field returned in proto responses (UI hint, not access gate).
+  Migrating settings to impersonation is tracked as a follow-up; `rbac` is
+  expected to disappear when settings follows.
+
 ## Consequences
 
 ### Positive
