@@ -813,9 +813,9 @@ func stringContains(haystack, needle string) bool {
 //
 // This closes the loop on the HOL-554 storage-isolation guardrail: storage is
 // restricted to folder / org namespaces by construction (project scope is
-// rejected up front), and write access to those namespaces is gated by the
-// TemplatePolicyPerms table which never awards WRITE / DELETE to a
-// project-scoped grant. The test asserts both halves.
+// rejected up front), and write access to those namespaces is gated by
+// Kubernetes RBAC via impersonation — a project-scoped grant never produces
+// a RoleBinding in a folder or org namespace. The test asserts both halves.
 // TestMapK8sError pins the taxonomy translation from the Kubernetes
 // apimachinery error types to ConnectRPC codes. HOL-662 added IsInvalid
 // handling so CEL ValidatingAdmissionPolicy rejections and CRD schema

@@ -89,7 +89,9 @@ enum Permission {
 
   // Collapsed template permissions (v1alpha2, ADR 021 Decision 2).
   // Uniform across every scope level (organization, folder, project).
-  // The cascade table (TemplateCascadePerms) distinguishes scope; the enum does not.
+  // Scope is distinguished by the namespace of the underlying Kubernetes
+  // resource and enforced by the apiserver via impersonation; the enum does
+  // not encode scope.
 
   // PERMISSION_TEMPLATES_LIST allows listing template names.
   PERMISSION_TEMPLATES_LIST = 39;
