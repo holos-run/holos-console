@@ -38,7 +38,6 @@ type ProjectNamespaceResolver interface {
 // Pipeline owns the render/apply path used by deployment RPCs today and the
 // DeploymentReconciler in later phases.
 type Pipeline struct {
-	client                   ctrlclient.Client
 	projectNamespaces        ProjectNamespaceResolver
 	renderer                 Renderer
 	applier                  ResourceApplier
@@ -46,12 +45,11 @@ type Pipeline struct {
 }
 
 // NewPipeline constructs a deployment render/apply pipeline from injected
-// clients and collaborators. The controller-runtime client is stored for the
-// controller integration path; current RPC behavior still delegates Kubernetes
+// clients and collaborators. The controller-runtime client parameter reserves
+// the controller integration seam; current RPC behavior delegates Kubernetes
 // object apply operations to the injected ResourceApplier.
-func NewPipeline(client ctrlclient.Client, projectNamespaces ProjectNamespaceResolver, renderer Renderer, applier ResourceApplier) *Pipeline {
+func NewPipeline(_ ctrlclient.Client, projectNamespaces ProjectNamespaceResolver, renderer Renderer, applier ResourceApplier) *Pipeline {
 	return &Pipeline{
-		client:            client,
 		projectNamespaces: projectNamespaces,
 		renderer:          renderer,
 		applier:           applier,

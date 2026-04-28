@@ -33,8 +33,14 @@ var allowedKinds = map[string]schema.GroupVersionResource{
 	"Secret":         {Group: "", Version: "v1", Resource: "secrets"},
 }
 
-// AllowedKinds maps supported rendered resource kinds to their GVR.
-var AllowedKinds = allowedKinds
+// AllowedKindGVRs returns a copy of the supported rendered resource kind map.
+func AllowedKindGVRs() map[string]schema.GroupVersionResource {
+	result := make(map[string]schema.GroupVersionResource, len(allowedKinds))
+	for kind, gvr := range allowedKinds {
+		result[kind] = gvr
+	}
+	return result
+}
 
 // Applier creates/updates/deletes K8s resources produced by CUE templates.
 type Applier struct {

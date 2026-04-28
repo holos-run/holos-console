@@ -20,4 +20,4 @@ func NewApplier(client dynamic.Interface) *Applier {
 // Deprecated: use internal/deploymentrender.ResourceNamespaces.
 var ResourceNamespaces = deploymentrender.ResourceNamespaces
 
-var allowedKinds = deploymentrender.AllowedKinds
+var allowedKinds = deploymentrender.AllowedKindGVRs()
