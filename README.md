@@ -16,7 +16,10 @@ running server with a handful of commands.
   (installs DNS, k3d, and a local mkcert CA). Alternatively, point `kubectl` at
   any existing cluster.
 - `kubectl` context set to that cluster.
-- `mkcert` for local TLS certificates.
+- `mkcert` for local TLS certificates, plus `libnss3-tools` (Debian/Ubuntu)
+  or `nss-tools` (Fedora/RHEL) so `mkcert -install` can register the local
+  CA with the Chromium and Firefox NSS trust stores. Without the NSS tools
+  Playwright-driven E2E tests will fail at the TLS handshake.
 - Go 1.25+ and Node 18+ / npm for building the server and frontend.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full toolchain setup instructions,
