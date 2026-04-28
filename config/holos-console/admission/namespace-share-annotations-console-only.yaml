@@ -53,7 +53,6 @@ spec:
           || "console.holos.run/share-roles" in oldObject.metadata.annotations
           || "console.holos.run/default-share-users" in oldObject.metadata.annotations
           || "console.holos.run/default-share-roles" in oldObject.metadata.annotations
-          || "console.holos.run/default-folder" in oldObject.metadata.annotations
           || "console.holos.run/rbac-share-users" in oldObject.metadata.annotations
           || "console.holos.run/creator-email" in oldObject.metadata.annotations
           || "console.holos.run/creator-sub" in oldObject.metadata.annotations
@@ -66,7 +65,6 @@ spec:
           || "console.holos.run/share-roles" in object.metadata.annotations
           || "console.holos.run/default-share-users" in object.metadata.annotations
           || "console.holos.run/default-share-roles" in object.metadata.annotations
-          || "console.holos.run/default-folder" in object.metadata.annotations
           || "console.holos.run/rbac-share-users" in object.metadata.annotations
           || "console.holos.run/creator-email" in object.metadata.annotations
           || "console.holos.run/creator-sub" in object.metadata.annotations
@@ -130,19 +128,6 @@ spec:
       has(object.metadata.annotations)
       && "console.holos.run/default-share-roles" in object.metadata.annotations
       ? object.metadata.annotations["console.holos.run/default-share-roles"]
-      : ""
-  - name: oldDefaultFolder
-    expression: >-
-      oldObject != null
-      && has(oldObject.metadata.annotations)
-      && "console.holos.run/default-folder" in oldObject.metadata.annotations
-      ? oldObject.metadata.annotations["console.holos.run/default-folder"]
-      : ""
-  - name: newDefaultFolder
-    expression: >-
-      has(object.metadata.annotations)
-      && "console.holos.run/default-folder" in object.metadata.annotations
-      ? object.metadata.annotations["console.holos.run/default-folder"]
       : ""
   - name: oldRBACShareUsers
     expression: >-
@@ -269,7 +254,6 @@ spec:
         && variables.newShareRoles == ""
         && variables.newDefaultShareUsers == ""
         && variables.newDefaultShareRoles == ""
-        && variables.newDefaultFolder == ""
         && variables.newRBACShareUsers == ""
         && variables.newCreatorSubject == ""
         && variables.newCreatorEmail == ""
@@ -285,7 +269,6 @@ spec:
         && variables.oldShareRoles == variables.newShareRoles
         && variables.oldDefaultShareUsers == variables.newDefaultShareUsers
         && variables.oldDefaultShareRoles == variables.newDefaultShareRoles
-        && variables.oldDefaultFolder == variables.newDefaultFolder
         && variables.oldRBACShareUsers == variables.newRBACShareUsers
         && variables.oldCreatorSubject == variables.newCreatorSubject
         && variables.oldCreatorEmail == variables.newCreatorEmail
