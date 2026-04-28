@@ -22,11 +22,29 @@ sudo apt-get update
 sudo apt-get install -y build-essential
 ```
 
-### 2. Install mkcert for TLS Certificates
+### 2. Install mkcert and Trust the Local CA
+
+`mkcert` provides the leaf certificates used by the dev server, and its
+root CA must be installed into the system, Chromium, and Firefox trust
+stores so Playwright-driven E2E tests do not fail with TLS errors.
+Chromium and Firefox use NSS, which `mkcert -install` drives via
+`certutil` from the `libnss3-tools` package. Without `libnss3-tools`,
+`mkcert -install` silently skips the browser trust stores.
 
 ```bash
-sudo apt-get install -y mkcert
+sudo apt-get install -y mkcert libnss3-tools
+mkcert -install
 ```
+
+After `mkcert -install` you should see:
+
+```
+The local CA is already installed in the system trust store! 👍
+The local CA is already installed in the Firefox and/or Chrome/Chromium trust store! 👍
+```
+
+This mirrors the `Trust mkcert CA` step in `.github/workflows/ci.yaml`,
+which is what unblocks `make test-e2e` in CI.
 
 ### 3. Generate TLS Certificates
 

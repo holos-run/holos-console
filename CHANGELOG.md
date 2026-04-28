@@ -4,6 +4,15 @@ All notable changes to holos-console are documented here.
 
 ## [Unreleased]
 
+### Docs — Debian 13 setup now installs `libnss3-tools` and runs `mkcert -install` (HOL-1089)
+
+`CONTRIBUTING.md` step 2 now installs `libnss3-tools` alongside `mkcert` and
+runs `mkcert -install` so the local mkcert root CA is registered with the
+system, Chromium, and Firefox NSS trust stores. Without this, Playwright-driven
+E2E tests on a fresh Debian 13 VM fail with TLS certificate errors against
+`https://localhost:5173/`. The new step mirrors the `Trust mkcert CA` step in
+`.github/workflows/ci.yaml`.
+
 ### Added — TemplateDependency, TemplateRequirement, TemplateGrant new/edit/detail pages and ScopePicker (HOL-1017)
 
 Full CRUD UI for the three template-dependency resource families introduced in HOL-954.
