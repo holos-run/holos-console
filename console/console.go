@@ -55,6 +55,7 @@ import (
 	"github.com/holos-run/holos-console/console/templates"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
 	controllermgr "github.com/holos-run/holos-console/internal/controller"
+	"github.com/holos-run/holos-console/internal/deploymentrender"
 )
 
 //go:embed all:dist
@@ -620,9 +621,9 @@ func (s *Server) Serve(ctx context.Context) error {
 		// AncestorTemplateProvider for full ancestor-chain template resolution
 		// (org + folders) at render time (ADR 019, issue #874).
 		deploymentsK8s := deployments.NewK8sClient(k8sClientset, nsResolver)
-		var deploymentsApplier deployments.ResourceApplier
+		var deploymentsApplier deploymentrender.ResourceApplier
 		if dynamicClient != nil {
-			deploymentsApplier = deployments.NewApplier(dynamicClient)
+			deploymentsApplier = deploymentrender.NewApplier(dynamicClient)
 			// Wire the same dynamic client onto the K8sClient so the
 			// link aggregator (HOL-574) can scan owned resources
 			// across every kind apply.go writes.
@@ -660,7 +661,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		// Organization service in HOL-643) rather than the historical
 		// hard-coded "istio-ingress". gatewayResolver is constructed above
 		// (shared with the templates handler, HOL-828).
-		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templates.NewProjectScopedResolver(templatesK8s), &deployments.CueRenderer{}, deploymentsApplier).
+		deploymentsHandler := deployments.NewHandler(deploymentsK8s, projectResolver, settingsK8s, templates.NewProjectScopedResolver(templatesK8s), &deploymentrender.CueRenderer{}, deploymentsApplier).
 			WithAncestorWalker(projectFolderResolver).
 			WithAncestorTemplateProvider(ancestorTemplateResolver).
 			WithStatusCache(deploymentStatusCache).
