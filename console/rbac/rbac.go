@@ -1,11 +1,26 @@
-// Package rbac provides role-based access control for the console.
+// Package rbac is the residue of the legacy in-process RBAC layer.
 //
-// Deprecated: This package implements in-process RBAC that is superseded by
-// Kubernetes RBAC with OIDC impersonation per ADR 036
-// (docs/adrs/036-rbac-and-oidc-impersonation.md). It is being removed
-// incrementally as each handler is migrated to use the impersonated
-// client (rpc.ImpersonatedClientsetFromContext). New code must not import
-// this package; use the Kubernetes API server as the single arbiter of access.
+// Per ADR 036, the Kubernetes API server is the single arbiter of access; the
+// per-handler permission checks that used to live here have been migrated to
+// rpc.ImpersonatedClientsetFromContext and per-resource RoleBindings
+// reconciled by console/resourcerbac (HOL-1062 / HOL-1063 / HOL-1064).
+//
+// What remains is intentionally small and load-bearing for two narrow uses:
+//
+//  1. console/settings still gates ProjectSettings reads/writes via
+//     in-process grant evaluation. Migrating it to impersonation is tracked
+//     as a follow-up; until then it imports CheckAccessGrants and
+//     CheckCascadeAccess plus the two Permission constants those calls take.
+//
+//  2. console/{organizations,folders,projects} use the Role enum and
+//     BestRoleFromGrants / RoleLevel / RoleFromString to derive the
+//     userRole field returned in list/get responses for UI hints. This
+//     derivation does not gate access — the apiserver already did that —
+//     but the proto field is part of the public API contract.
+//
+// New code MUST NOT import this package. Add new gating via Kubernetes RBAC
+// + impersonation. The settings handler is expected to follow when its
+// migration lands.
 package rbac
 
 import (
@@ -16,13 +31,12 @@ import (
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 )
 
-// Role type alias for the proto-generated Role enum.
+// Role is the proto-generated Role enum.
 type Role = consolev1.Role
 
-// Permission type alias for the proto-generated Permission enum.
+// Permission is the proto-generated Permission enum.
 type Permission = consolev1.Permission
 
-// Role constants aliasing proto enum values.
 const (
 	RoleUnspecified = consolev1.Role_ROLE_UNSPECIFIED
 	RoleViewer      = consolev1.Role_ROLE_VIEWER
@@ -30,153 +44,29 @@ const (
 	RoleOwner       = consolev1.Role_ROLE_OWNER
 )
 
-// Permission constants aliasing proto enum values.
+// Permission constants used by the surviving call sites.
+//
+// PermissionProjectSettingsRead is the permission CheckAccessGrants resolves
+// for project-grant evaluation in console/settings.
+//
+// PermissionProjectDeploymentsEnable is the permission CheckCascadeAccess
+// resolves for the org→project cascade in OrgCascadeProjectSettingsPerms.
 const (
-	PermissionUnspecified         = consolev1.Permission_PERMISSION_UNSPECIFIED
-	PermissionSecretsRead         = consolev1.Permission_PERMISSION_SECRETS_READ
-	PermissionSecretsList         = consolev1.Permission_PERMISSION_SECRETS_LIST
-	PermissionSecretsWrite        = consolev1.Permission_PERMISSION_SECRETS_WRITE
-	PermissionSecretsDelete       = consolev1.Permission_PERMISSION_SECRETS_DELETE
-	PermissionSecretsAdmin        = consolev1.Permission_PERMISSION_SECRETS_ADMIN
-	PermissionProjectsRead        = consolev1.Permission_PERMISSION_PROJECTS_READ
-	PermissionProjectsList        = consolev1.Permission_PERMISSION_PROJECTS_LIST
-	PermissionProjectsWrite       = consolev1.Permission_PERMISSION_PROJECTS_WRITE
-	PermissionProjectsDelete      = consolev1.Permission_PERMISSION_PROJECTS_DELETE
-	PermissionProjectsAdmin       = consolev1.Permission_PERMISSION_PROJECTS_ADMIN
-	PermissionProjectsCreate      = consolev1.Permission_PERMISSION_PROJECTS_CREATE
-	PermissionOrganizationsRead   = consolev1.Permission_PERMISSION_ORGANIZATIONS_READ
-	PermissionOrganizationsList   = consolev1.Permission_PERMISSION_ORGANIZATIONS_LIST
-	PermissionOrganizationsWrite  = consolev1.Permission_PERMISSION_ORGANIZATIONS_WRITE
-	PermissionOrganizationsDelete = consolev1.Permission_PERMISSION_ORGANIZATIONS_DELETE
-	PermissionOrganizationsAdmin  = consolev1.Permission_PERMISSION_ORGANIZATIONS_ADMIN
-	PermissionOrganizationsCreate = consolev1.Permission_PERMISSION_ORGANIZATIONS_CREATE
-
-	PermissionDeploymentsList   = consolev1.Permission_PERMISSION_DEPLOYMENTS_LIST
-	PermissionDeploymentsRead   = consolev1.Permission_PERMISSION_DEPLOYMENTS_READ
-	PermissionDeploymentsWrite  = consolev1.Permission_PERMISSION_DEPLOYMENTS_WRITE
-	PermissionDeploymentsDelete = consolev1.Permission_PERMISSION_DEPLOYMENTS_DELETE
-	PermissionDeploymentsAdmin  = consolev1.Permission_PERMISSION_DEPLOYMENTS_ADMIN
-	PermissionDeploymentsLogs   = consolev1.Permission_PERMISSION_DEPLOYMENTS_LOGS
-
-	PermissionFoldersList   = consolev1.Permission_PERMISSION_FOLDERS_LIST
-	PermissionFoldersRead   = consolev1.Permission_PERMISSION_FOLDERS_READ
-	PermissionFoldersWrite  = consolev1.Permission_PERMISSION_FOLDERS_WRITE
-	PermissionFoldersDelete = consolev1.Permission_PERMISSION_FOLDERS_DELETE
-	PermissionFoldersAdmin  = consolev1.Permission_PERMISSION_FOLDERS_ADMIN
-	PermissionFoldersCreate = consolev1.Permission_PERMISSION_FOLDERS_CREATE
-
-	PermissionTemplatesList   = consolev1.Permission_PERMISSION_TEMPLATES_LIST
-	PermissionTemplatesRead   = consolev1.Permission_PERMISSION_TEMPLATES_READ
-	PermissionTemplatesWrite  = consolev1.Permission_PERMISSION_TEMPLATES_WRITE
-	PermissionTemplatesDelete = consolev1.Permission_PERMISSION_TEMPLATES_DELETE
-	PermissionTemplatesAdmin  = consolev1.Permission_PERMISSION_TEMPLATES_ADMIN
-
-	PermissionProjectSettingsRead  = consolev1.Permission_PERMISSION_PROJECT_SETTINGS_READ
-	PermissionProjectSettingsWrite = consolev1.Permission_PERMISSION_PROJECT_SETTINGS_WRITE
-
+	PermissionProjectSettingsRead      = consolev1.Permission_PERMISSION_PROJECT_SETTINGS_READ
 	PermissionProjectDeploymentsEnable = consolev1.Permission_PERMISSION_PROJECT_DEPLOYMENTS_ENABLE
-
-	PermissionReparent = consolev1.Permission_PERMISSION_REPARENT
-
-	PermissionTemplatesLinkOrgWrite    = consolev1.Permission_PERMISSION_TEMPLATES_LINK_ORG_WRITE
-	PermissionTemplatesLinkFolderWrite = consolev1.Permission_PERMISSION_TEMPLATES_LINK_FOLDER_WRITE
 )
 
-// rolePermissions defines which permissions each role has.
-// Higher-level roles inherit all permissions from lower-level roles.
+// rolePermissions enumerates the per-role grants CheckAccessGrants consults.
+// Trimmed to the only Permission still consumed by an in-process check
+// (PermissionProjectSettingsRead in console/settings).
 var rolePermissions = map[Role]map[Permission]bool{
-	RoleViewer: {
-		PermissionSecretsRead:          true,
-		PermissionSecretsList:          true,
-		PermissionProjectsRead:         true,
-		PermissionProjectsList:         true,
-		PermissionOrganizationsRead:    true,
-		PermissionOrganizationsList:    true,
-		PermissionFoldersList:          true,
-		PermissionFoldersRead:          true,
-		PermissionDeploymentsList:      true,
-		PermissionDeploymentsRead:      true,
-		PermissionDeploymentsLogs:      true,
-		PermissionTemplatesList:        true,
-		PermissionTemplatesRead:        true,
-		PermissionTemplatePoliciesList: true,
-		PermissionTemplatePoliciesRead: true,
-		PermissionProjectSettingsRead:  true,
-	},
-	RoleEditor: {
-		PermissionSecretsRead:           true,
-		PermissionSecretsList:           true,
-		PermissionSecretsWrite:          true,
-		PermissionProjectsRead:          true,
-		PermissionProjectsList:          true,
-		PermissionProjectsWrite:         true,
-		PermissionOrganizationsRead:     true,
-		PermissionOrganizationsList:     true,
-		PermissionOrganizationsWrite:    true,
-		PermissionFoldersList:           true,
-		PermissionFoldersRead:           true,
-		PermissionFoldersWrite:          true,
-		PermissionDeploymentsList:       true,
-		PermissionDeploymentsRead:       true,
-		PermissionDeploymentsWrite:      true,
-		PermissionDeploymentsLogs:       true,
-		PermissionTemplatesList:         true,
-		PermissionTemplatesRead:         true,
-		PermissionTemplatesWrite:        true,
-		PermissionTemplatePoliciesList:  true,
-		PermissionTemplatePoliciesRead:  true,
-		PermissionTemplatePoliciesWrite: true,
-		PermissionProjectSettingsRead:   true,
-	},
-	RoleOwner: {
-		PermissionSecretsRead:              true,
-		PermissionSecretsList:              true,
-		PermissionSecretsWrite:             true,
-		PermissionSecretsDelete:            true,
-		PermissionSecretsAdmin:             true,
-		PermissionProjectsRead:             true,
-		PermissionProjectsList:             true,
-		PermissionProjectsWrite:            true,
-		PermissionProjectsDelete:           true,
-		PermissionProjectsAdmin:            true,
-		PermissionProjectsCreate:           true,
-		PermissionOrganizationsRead:        true,
-		PermissionOrganizationsList:        true,
-		PermissionOrganizationsWrite:       true,
-		PermissionOrganizationsDelete:      true,
-		PermissionOrganizationsAdmin:       true,
-		PermissionOrganizationsCreate:      true,
-		PermissionFoldersList:              true,
-		PermissionFoldersRead:              true,
-		PermissionFoldersWrite:             true,
-		PermissionFoldersDelete:            true,
-		PermissionFoldersAdmin:             true,
-		PermissionFoldersCreate:            true,
-		PermissionDeploymentsList:          true,
-		PermissionDeploymentsRead:          true,
-		PermissionDeploymentsWrite:         true,
-		PermissionDeploymentsDelete:        true,
-		PermissionDeploymentsAdmin:         true,
-		PermissionDeploymentsLogs:          true,
-		PermissionTemplatesList:            true,
-		PermissionTemplatesRead:            true,
-		PermissionTemplatesWrite:           true,
-		PermissionTemplatesDelete:          true,
-		PermissionTemplatesAdmin:           true,
-		PermissionTemplatePoliciesList:     true,
-		PermissionTemplatePoliciesRead:     true,
-		PermissionTemplatePoliciesWrite:    true,
-		PermissionTemplatePoliciesDelete:   true,
-		PermissionTemplatePoliciesAdmin:    true,
-		PermissionProjectSettingsRead:      true,
-		PermissionProjectSettingsWrite:     true,
-		PermissionReparent:                 true,
-		PermissionTemplatesLinkOrgWrite:    true,
-		PermissionTemplatesLinkFolderWrite: true,
-	},
+	RoleViewer: {PermissionProjectSettingsRead: true},
+	RoleEditor: {PermissionProjectSettingsRead: true},
+	RoleOwner:  {PermissionProjectSettingsRead: true},
 }
 
-// HasPermission returns true if the given role has the specified permission.
+// HasPermission returns true if role has been granted permission in the
+// rolePermissions table.
 func HasPermission(role Role, permission Permission) bool {
 	perms, ok := rolePermissions[role]
 	if !ok {
@@ -185,7 +75,7 @@ func HasPermission(role Role, permission Permission) bool {
 	return perms[permission]
 }
 
-// RoleFromString converts a role name string to a Role constant using case-insensitive matching.
+// RoleFromString converts a role-name string (case-insensitive) to a Role.
 // Returns RoleUnspecified for unknown or empty strings.
 func RoleFromString(s string) Role {
 	switch strings.ToLower(s) {
@@ -200,8 +90,8 @@ func RoleFromString(s string) Role {
 	}
 }
 
-// CheckAccessGrants verifies access using per-user and per-role sharing grants.
-// Returns nil if access is granted, or a PermissionDenied error.
+// CheckAccessGrants verifies access using per-user and per-role sharing
+// grants. Returns nil if granted, or a PermissionDenied error otherwise.
 func CheckAccessGrants(
 	userEmail string,
 	userRoles []string,
@@ -211,7 +101,6 @@ func CheckAccessGrants(
 ) error {
 	bestLevel := -1
 
-	// Check per-user sharing grants
 	if shareUsers != nil {
 		emailLower := strings.ToLower(userEmail)
 		for email, roleName := range shareUsers {
@@ -224,7 +113,6 @@ func CheckAccessGrants(
 		}
 	}
 
-	// Check per-role sharing grants
 	if shareRoles != nil {
 		for _, ur := range userRoles {
 			urLower := strings.ToLower(ur)
@@ -239,7 +127,6 @@ func CheckAccessGrants(
 		}
 	}
 
-	// Evaluate best role from grant sources only
 	if bestLevel > 0 {
 		for role, level := range roleLevel {
 			if level == bestLevel {
@@ -256,8 +143,8 @@ func CheckAccessGrants(
 	)
 }
 
-// BestRoleFromGrants returns the highest role a user has from grants.
-// Returns RoleUnspecified if no grants match.
+// BestRoleFromGrants returns the highest role the user holds via grants, or
+// RoleUnspecified if none match.
 func BestRoleFromGrants(
 	userEmail string,
 	userRoles []string,
@@ -300,107 +187,26 @@ func BestRoleFromGrants(
 	return RoleUnspecified
 }
 
-// RoleLevel returns the hierarchy level of a role for comparison.
-// Higher values indicate more privileged roles.
+// RoleLevel returns the hierarchy level of role for comparison.
 func RoleLevel(role Role) int {
 	return roleLevel[role]
 }
 
-// CascadeTable defines which child-resource permissions each role grants when
-// applied as a parent-resource grant. This is the Option B approach from #77:
-// role-per-scope permission tables that make cascade policy explicit and
-// readable at a glance.
+// CascadeTable maps roles to permissions when a parent-resource grant
+// cascades to a child resource. Only one cascade table remains
+// (OrgCascadeProjectSettingsPerms) — the others retired with the handlers
+// that consumed them.
 type CascadeTable map[Role]map[Permission]bool
 
-// ProjectCascadeSecretPerms defines what secret permissions each project role
-// grants via cascade. Reading secret data (SecretsRead) is never cascaded —
-// it always requires a direct per-secret grant.
-var ProjectCascadeSecretPerms = CascadeTable{
-	RoleViewer: {
-		PermissionSecretsList: true,
-	},
-	RoleEditor: {
-		PermissionSecretsList:  true,
-		PermissionSecretsWrite: true,
-	},
-	RoleOwner: {
-		PermissionSecretsList:   true,
-		PermissionSecretsWrite:  true,
-		PermissionSecretsDelete: true,
-		PermissionSecretsAdmin:  true,
-	},
-}
-
-// ProjectCascadeDeploymentPerms defines what deployment permissions each
-// project role grants via cascade.
-var ProjectCascadeDeploymentPerms = CascadeTable{
-	RoleViewer: {
-		PermissionDeploymentsList: true,
-		PermissionDeploymentsRead: true,
-		PermissionDeploymentsLogs: true,
-	},
-	RoleEditor: {
-		PermissionDeploymentsList:  true,
-		PermissionDeploymentsRead:  true,
-		PermissionDeploymentsWrite: true,
-		PermissionDeploymentsLogs:  true,
-	},
-	RoleOwner: {
-		PermissionDeploymentsList:   true,
-		PermissionDeploymentsRead:   true,
-		PermissionDeploymentsWrite:  true,
-		PermissionDeploymentsDelete: true,
-		PermissionDeploymentsAdmin:  true,
-		PermissionDeploymentsLogs:   true,
-	},
-}
-
-// TemplateCascadePerms defines what template permissions each role grants via
-// cascade. The same table applies uniformly at every scope level (organization,
-// folder, project) per ADR 017 Decision 5 and ADR 021 Decision 2. This replaces
-// the former per-scope tables (ProjectCascadeTemplatePerms, FolderCascadeTemplatePerms,
-// OrgCascadeTemplatePerms).
-var TemplateCascadePerms = CascadeTable{
-	RoleViewer: {
-		PermissionTemplatesList: true,
-		PermissionTemplatesRead: true,
-	},
-	RoleEditor: {
-		PermissionTemplatesList:  true,
-		PermissionTemplatesRead:  true,
-		PermissionTemplatesWrite: true,
-	},
-	RoleOwner: {
-		PermissionTemplatesList:            true,
-		PermissionTemplatesRead:            true,
-		PermissionTemplatesWrite:           true,
-		PermissionTemplatesDelete:          true,
-		PermissionTemplatesAdmin:           true,
-		PermissionTemplatesLinkOrgWrite:    true,
-		PermissionTemplatesLinkFolderWrite: true,
-	},
-}
-
-// ReparentCascadePerms defines what reparent permissions each role grants via
-// cascade. Org-level OWNERs can reparent folders and projects within the org.
-// Reparenting is OWNER-only because it changes RBAC inheritance chains
-// (ADR 022 Decision 4).
-var ReparentCascadePerms = CascadeTable{
-	RoleOwner: {
-		PermissionReparent: true,
-	},
-}
-
-// OrgCascadeProjectSettingsPerms defines what project settings permissions
-// each org role grants via cascade. Only org-level OWNERs can toggle deployments.
+// OrgCascadeProjectSettingsPerms grants org-level OWNERs the right to toggle
+// project deployments in console/settings.
 var OrgCascadeProjectSettingsPerms = CascadeTable{
 	RoleOwner: {
 		PermissionProjectDeploymentsEnable: true,
 	},
 }
 
-// HasCascadePermission returns true if the given role has the specified
-// permission in the provided cascade table.
+// HasCascadePermission returns true if role has permission in table.
 func HasCascadePermission(role Role, perm Permission, table CascadeTable) bool {
 	perms, ok := table[role]
 	if !ok {
@@ -409,10 +215,9 @@ func HasCascadePermission(role Role, perm Permission, table CascadeTable) bool {
 	return perms[perm]
 }
 
-// CheckCascadeAccess verifies access using cascade permission tables. It
-// resolves the best role from grants, then checks if that role has the
-// requested permission in the cascade table.
-// Returns nil if access is granted, or a PermissionDenied error.
+// CheckCascadeAccess resolves the best role from grants and checks whether
+// that role has permission in table. Returns nil on grant or a
+// PermissionDenied error otherwise.
 func CheckCascadeAccess(
 	userEmail string,
 	userRoles []string,
@@ -431,7 +236,6 @@ func CheckCascadeAccess(
 	)
 }
 
-// roleLevel defines the hierarchy level of each role for comparison.
 var roleLevel = map[Role]int{
 	RoleUnspecified: 0,
 	RoleViewer:      1,

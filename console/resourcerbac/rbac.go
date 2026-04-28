@@ -121,26 +121,6 @@ var (
 		"project-rbac-controller",
 		v1alpha2.ResourceTypeProject,
 	)
-	Resources = KindConfig{
-		Kind:            "Resource",
-		Resource:        "namespaces",
-		RolePurpose:     "resource",
-		ControllerName:  "resource-rbac-controller",
-		NewObject:       func() metav1.Object { return &corev1.Namespace{} },
-		APIGroup:        "",
-		OwnerAPIVersion: "v1",
-		OwnerKind:       "Namespace",
-		ObjectName:      namespaceObjectName,
-		RBACNamespace:   namespaceRBACNamespace,
-		ClusterScoped:   true,
-		Matches: func(obj metav1.Object) bool {
-			// TODO(HOL-1061 cleanup): delete this generic Resource surface
-			// when console/resources is retired; until then it mirrors the
-			// folder/project namespaces currently listed by that handler.
-			resourceType := obj.GetLabels()[v1alpha2.LabelResourceType]
-			return isManagedNamespace(obj) && (resourceType == v1alpha2.ResourceTypeFolder || resourceType == v1alpha2.ResourceTypeProject)
-		},
-	}
 )
 
 func namespaceKindConfig(kind, rolePurpose, controllerName, resourceType string) KindConfig {
@@ -182,7 +162,6 @@ func TopResourceKindConfigs() []KindConfig {
 		Organizations,
 		Folders,
 		Projects,
-		Resources,
 	}
 }
 

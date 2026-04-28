@@ -25,8 +25,6 @@ func TestEnsureTopResourceRBACProvisioningForEveryKind(t *testing.T) {
 		{name: "Organization", cfg: Organizations, resourceType: v1alpha2.ResourceTypeOrganization, namespace: "holos-org-platform"},
 		{name: "Folder", cfg: Folders, resourceType: v1alpha2.ResourceTypeFolder, namespace: "holos-fld-default"},
 		{name: "Project", cfg: Projects, resourceType: v1alpha2.ResourceTypeProject, namespace: "holos-prj-demo"},
-		{name: "ResourceFolder", cfg: Resources, resourceType: v1alpha2.ResourceTypeFolder, namespace: "holos-fld-default"},
-		{name: "ResourceProject", cfg: Resources, resourceType: v1alpha2.ResourceTypeProject, namespace: "holos-prj-demo"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			obj := managedNamespace(t, tc.namespace, tc.resourceType, nil, nil)
