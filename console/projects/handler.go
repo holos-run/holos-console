@@ -511,6 +511,9 @@ func (h *Handler) UpdateProject(
 
 	// Handle reparenting if parent_type and parent_name are set.
 	if req.Msg.ParentType != nil && req.Msg.ParentName != nil {
+		if err := validateOrganizationProjectParent(*req.Msg.ParentType, *req.Msg.ParentName, org); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
 		if err := h.reparentProject(ctx, ns, claims, *req.Msg.ParentType, *req.Msg.ParentName); err != nil {
 			return nil, err
 		}

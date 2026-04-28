@@ -1296,6 +1296,37 @@ func TestUpdateProject_Reparent_MoveFromFolderToOrg(t *testing.T) {
 	}
 }
 
+func TestUpdateProject_ReparentRejectsDifferentOrganization(t *testing.T) {
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	otherOrgNs := orgNSWithGrants("other", `[{"principal":"alice@example.com","role":"owner"}]`)
+	prj := projectNSWithParent("rp-prj-cross-org", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+
+	handler := newHandlerWithOrg(
+		&mockOrgResolver{users: map[string]string{"alice@example.com": "owner"}},
+		orgNs, otherOrgNs, prj,
+	)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	newParentType := consolev1.ParentType_PARENT_TYPE_ORGANIZATION
+	newParentName := "other"
+	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
+		Name:       "rp-prj-cross-org",
+		ParentType: &newParentType,
+		ParentName: &newParentName,
+	}))
+	if err == nil {
+		t.Fatal("expected cross-organization reparent to be rejected, got nil")
+	}
+	connectErr, ok := err.(*connect.Error)
+	if !ok {
+		t.Fatalf("expected *connect.Error, got %T: %v", err, err)
+	}
+	if connectErr.Code() != connect.CodeInvalidArgument {
+		t.Fatalf("expected CodeInvalidArgument, got %v: %v", connectErr.Code(), err)
+	}
+}
+
 // ---- Default Parent Resolution Tests ----
 
 func TestCreateProject_DefaultsToOrgParent(t *testing.T) {
@@ -1342,11 +1373,9 @@ func TestCreateProject_ExplicitFolderParentRejected(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	ctx := contextWithClaims("dave@example.com")
 
-	folderParentType := consolev1.ParentType(2)
 	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
 		Name:         "df-prj-d",
 		Organization: "df-org-d",
-		ParentType:   folderParentType,
 		ParentName:   "df-explicit-d",
 	}))
 	if err == nil {
