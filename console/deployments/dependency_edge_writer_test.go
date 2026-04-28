@@ -415,10 +415,10 @@ func TestDependencyEdgeCRDWriter_RoundTrip(t *testing.T) {
 		t.Error("expected error for unsupported kind")
 	}
 
-	// NotFound surfaces through IsNotFound.
+	// Missing object surfaces as a k8s NotFound error.
 	_, err = w.GetCascadeDelete(ctx, KindTemplateDependency, "prj-alpha", "missing")
-	if !IsNotFound(err) {
-		t.Errorf("missing object: IsNotFound(err)=false, err=%v", err)
+	if !k8serrors.IsNotFound(err) {
+		t.Errorf("missing object: k8serrors.IsNotFound(err)=false, err=%v", err)
 	}
 }
 
@@ -473,17 +473,4 @@ func TestDependencyEdgeCRDWriter_SetRetriesOnConflict(t *testing.T) {
 			t.Fatalf("err = %v, want IsConflict=true", err)
 		}
 	})
-}
-
-func TestIsNotFound(t *testing.T) {
-	if IsNotFound(nil) {
-		t.Error("nil should not be NotFound")
-	}
-	if IsNotFound(errors.New("boom")) {
-		t.Error("generic error should not be NotFound")
-	}
-	notFoundErr := k8serrors.NewNotFound(schema.GroupResource{Group: "x", Resource: "y"}, "z")
-	if !IsNotFound(notFoundErr) {
-		t.Error("k8s NotFound should be reported as NotFound")
-	}
 }
