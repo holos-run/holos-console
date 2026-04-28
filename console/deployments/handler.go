@@ -22,6 +22,7 @@ import (
 	"github.com/holos-run/holos-console/console/rpc"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	"github.com/holos-run/holos-console/gen/holos/console/v1/consolev1connect"
+	"github.com/holos-run/holos-console/internal/deploymentrender"
 )
 
 const (
@@ -64,20 +65,10 @@ type TemplateResolver interface {
 // wires the resolver). It is intentionally NOT the only supported value —
 // platform engineers pin a cluster-specific gateway namespace (e.g.
 // "ci-private-apps-gateway") via the org annotation.
-const DefaultGatewayNamespace = "istio-ingress"
+const DefaultGatewayNamespace = deploymentrender.DefaultGatewayNamespace
 
 // Renderer evaluates CUE templates with deployment parameters.
-type Renderer interface {
-	// Render evaluates the deployment template unified with zero or more
-	// ancestor template CUE sources and the provided inputs, returning
-	// resources grouped by origin (platform vs project). The render level is
-	// controlled by inputs.ReadPlatformResources (project-level: false;
-	// organization/folder-level: true); ancestorSources may be empty at
-	// either level and carries additional template CUE sources unified with
-	// the deployment template but does not select the render level (ADR 016
-	// Decision 8).
-	Render(ctx context.Context, cueSource string, ancestorSources []string, inputs RenderInputs) (*GroupedResources, error)
-}
+type Renderer = deploymentrender.Renderer
 
 // AncestorWalker resolves the folder ancestry for a project namespace.
 // It returns the list of folder user-facing names from the organization down
@@ -89,43 +80,11 @@ type AncestorWalker interface {
 }
 
 // AncestorTemplateProvider resolves platform template CUE sources from the
-// full ancestor chain (org + folders) for render. The projectNs is the
-// starting namespace for the ancestor walk; deploymentName identifies the
-// render target so the underlying PolicyResolver can key REQUIRE/EXCLUDE
-// evaluation off it (HOL-566 Phase 4).
-//
-// The second return value is the policy-effective ref set
-// (REQUIRE-injected − EXCLUDE-removed) that produced the sources.
-// Exposing it here lets the
-// deployments Create/Update happy paths write-through the same set to the
-// applied-render-set store via PolicyDriftChecker.RecordApplied without
-// invoking the resolver a second time (HOL-569). A second invocation would
-// open a race with concurrent policy edits in which the stored set drifts
-// from the rendered set and GetDeploymentPolicyState reports false drift.
-// Callers that only need the sources can ignore the second return.
-type AncestorTemplateProvider interface {
-	ListAncestorTemplateSources(ctx context.Context, projectNs, deploymentName string) ([]string, []*consolev1.LinkedTemplateRef, error)
-}
+// full ancestor chain (org + folders) for render.
+type AncestorTemplateProvider = deploymentrender.AncestorTemplateProvider
 
 // ResourceApplier applies and cleans up K8s resources for a deployment.
-// Each resource carries its own metadata.namespace; Apply and Reconcile use
-// per-resource namespaces rather than a single namespace parameter.
-// All methods accept a project identifier to scope ownership labels and
-// prevent cross-project collisions in shared namespaces.
-type ResourceApplier interface {
-	Apply(ctx context.Context, project, deploymentName string, resources []unstructured.Unstructured) error
-	// Reconcile applies desired resources via SSA then deletes owned resources
-	// that are no longer in the desired set (orphan cleanup). previousNamespaces
-	// lists namespaces that previously held resources for this deployment so
-	// orphans from namespace moves are cleaned up.
-	Reconcile(ctx context.Context, project, deploymentName string, resources []unstructured.Unstructured, previousNamespaces ...string) error
-	// Cleanup deletes all owned resources across the given namespaces.
-	Cleanup(ctx context.Context, namespaces []string, project, deploymentName string) error
-	// DiscoverNamespaces scans the cluster for all namespaces that contain
-	// resources owned by the given project and deployment. Returns an error
-	// if discovery is incomplete (some resource kinds could not be listed).
-	DiscoverNamespaces(ctx context.Context, project, deploymentName string) ([]string, error)
-}
+type ResourceApplier = deploymentrender.ResourceApplier
 
 // OrganizationGatewayResolver resolves the configured ingress-gateway
 // namespace for the organization that owns a given project. Implementations
@@ -144,20 +103,18 @@ type OrganizationGatewayResolver interface {
 // Handler implements the DeploymentService.
 type Handler struct {
 	consolev1connect.UnimplementedDeploymentServiceHandler
-	k8s                      *K8sClient
-	projectResolver          ProjectResolver
-	settingsResolver         SettingsResolver
-	templateResolver         TemplateResolver
-	renderer                 Renderer
-	applier                  ResourceApplier
-	logReader                LogReader
-	ancestorWalker           AncestorWalker
-	ancestorTemplateProvider AncestorTemplateProvider
-	statusCache              statuscache.Cache
-	policyDriftChecker       PolicyDriftChecker
-	dependencyEdgeProvider   DependencyEdgeProvider
-	dependencyEdgeWriter     DependencyEdgeWriter
-	gatewayResolver          OrganizationGatewayResolver
+	k8s                    *K8sClient
+	projectResolver        ProjectResolver
+	settingsResolver       SettingsResolver
+	templateResolver       TemplateResolver
+	pipeline               *deploymentrender.Pipeline
+	logReader              LogReader
+	ancestorWalker         AncestorWalker
+	statusCache            statuscache.Cache
+	policyDriftChecker     PolicyDriftChecker
+	dependencyEdgeProvider DependencyEdgeProvider
+	dependencyEdgeWriter   DependencyEdgeWriter
+	gatewayResolver        OrganizationGatewayResolver
 }
 
 // DependencyEdgeProvider exposes the resolved dependency edges that
@@ -211,8 +168,7 @@ func NewHandler(k8s *K8sClient, projectResolver ProjectResolver, settingsResolve
 		projectResolver:  projectResolver,
 		settingsResolver: settingsResolver,
 		templateResolver: templateResolver,
-		renderer:         renderer,
-		applier:          applier,
+		pipeline:         deploymentrender.NewPipeline(nil, k8s.Resolver, renderer, applier),
 	}
 }
 
@@ -228,7 +184,7 @@ func (h *Handler) WithAncestorWalker(aw AncestorWalker) *Handler {
 // AncestorTemplateProvider for resolving platform template CUE sources from
 // the full ancestor chain (org + folders) at render time.
 func (h *Handler) WithAncestorTemplateProvider(atp AncestorTemplateProvider) *Handler {
-	h.ancestorTemplateProvider = atp
+	h.pipeline.WithAncestorTemplateProvider(atp)
 	return h
 }
 
@@ -285,35 +241,6 @@ func (h *Handler) WithPolicyDriftChecker(c PolicyDriftChecker) *Handler {
 	return h
 }
 
-// resolveAncestorTemplateSources resolves platform template CUE sources from
-// the full ancestor chain when an AncestorTemplateProvider is configured.
-// deploymentName identifies the render target so the underlying
-// PolicyResolver can key REQUIRE/EXCLUDE evaluation off it.
-//
-// Returns (sources, effectiveRefs, true) on success — the effectiveRefs
-// slice carries the policy-resolved ref set that produced the sources so
-// the deployments handler can write-through the same set to the applied-
-// render-set store after a successful apply/reconcile without a second
-// resolver invocation (HOL-569). Returns (nil, nil, false) when no
-// provider is configured or the walk fails; the caller should fall back to
-// a project-only render in that case.
-func (h *Handler) resolveAncestorTemplateSources(ctx context.Context, project, deploymentName string) ([]string, []*consolev1.LinkedTemplateRef, bool) {
-	if h.ancestorTemplateProvider == nil {
-		return nil, nil, false
-	}
-	projectNs := h.k8s.Resolver.ProjectNamespace(project)
-	sources, effectiveRefs, err := h.ancestorTemplateProvider.ListAncestorTemplateSources(ctx, projectNs, deploymentName)
-	if err != nil {
-		slog.WarnContext(ctx, "ancestor template resolution failed, skipping platform template unification",
-			slog.String("project", project),
-			slog.String("deployment", deploymentName),
-			slog.Any("error", err),
-		)
-		return nil, nil, false
-	}
-	return sources, effectiveRefs, true
-}
-
 // renderResources renders deployment resources, unifying with platform
 // templates from the full ancestor chain (org + folders) when an
 // AncestorTemplateProvider is configured. The effective template set is
@@ -354,23 +281,7 @@ func (h *Handler) renderResources(ctx context.Context, project, deploymentName, 
 // provider returned an error (the render falls back to project-only in both
 // cases, so there is no rendered set to record).
 func (h *Handler) renderResourcesGrouped(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput) (*GroupedResources, []*consolev1.LinkedTemplateRef, error) {
-	var ancestorSources []string
-	var effectiveRefs []*consolev1.LinkedTemplateRef
-	readPlatformResources := false
-	if sources, refs, ok := h.resolveAncestorTemplateSources(ctx, project, deploymentName); ok {
-		ancestorSources = sources
-		effectiveRefs = refs
-		readPlatformResources = true
-	}
-	grouped, err := h.renderer.Render(ctx, cueSource, ancestorSources, RenderInputs{
-		Platform:              platform,
-		Project:               projectInput,
-		ReadPlatformResources: readPlatformResources,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	return grouped, effectiveRefs, nil
+	return h.pipeline.Render(ctx, project, deploymentName, cueSource, platform, projectInput)
 }
 
 // ListDeployments returns all deployments in a project.
@@ -628,7 +539,7 @@ func (h *Handler) CreateDeployment(
 	// the operation is all-or-nothing. Uses RenderGrouped to capture the
 	// evaluated `output` section so a non-empty URL can be cached as an
 	// annotation on the ConfigMap for later listing calls.
-	if h.renderer != nil && h.applier != nil {
+	if h.pipeline.CanRender() && h.pipeline.CanApply() {
 		ns := h.k8s.Resolver.ProjectNamespace(project)
 		platformIn := h.buildPlatformInput(ctx, project, ns, claims)
 		projectIn := v1alpha2.ProjectInput{
@@ -651,7 +562,7 @@ func (h *Handler) CreateDeployment(
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("rendering deployment resources: %w", renderErr))
 		}
 		resources := append(grouped.Platform, grouped.Project...)
-		if applyErr := h.applier.Apply(ctx, project, name, resources); applyErr != nil {
+		if applyErr := h.pipeline.Apply(ctx, project, name, resources); applyErr != nil {
 			slog.WarnContext(ctx, "apply failed after creating deployment — rolling back",
 				slog.String("project", project),
 				slog.String("name", name),
@@ -733,7 +644,7 @@ func (h *Handler) rollbackCreate(ctx context.Context, ns, project, name string) 
 	// Discover all namespaces with owned resources. Include the project
 	// namespace as a fallback in case label discovery misses partially-applied
 	// resources. During rollback, proceed even if discovery is incomplete.
-	namespaces, discoverErr := h.applier.DiscoverNamespaces(ctx, project, name)
+	namespaces, discoverErr := h.pipeline.DiscoverNamespaces(ctx, project, name)
 	if discoverErr != nil {
 		slog.WarnContext(ctx, "rollback: namespace discovery incomplete, proceeding with partial set + project namespace",
 			slog.String("project", project),
@@ -750,7 +661,7 @@ func (h *Handler) rollbackCreate(ctx context.Context, ns, project, name string) 
 	for n := range nsSet {
 		allNS = append(allNS, n)
 	}
-	if cleanupErr := h.applier.Cleanup(ctx, allNS, project, name); cleanupErr != nil {
+	if cleanupErr := h.pipeline.Cleanup(ctx, allNS, project, name); cleanupErr != nil {
 		slog.WarnContext(ctx, "rollback: cleanup failed",
 			slog.String("project", project),
 			slog.String("name", name),
@@ -802,7 +713,7 @@ func (h *Handler) UpdateDeployment(
 	// Re-render and reconcile deployment resources with updated parameters.
 	// Reconcile applies the new desired set via SSA then deletes any previously
 	// owned resources that are no longer in the desired set (orphan cleanup).
-	if h.renderer != nil && h.applier != nil && updated != nil {
+	if h.pipeline.CanRender() && h.pipeline.CanApply() && updated != nil {
 		templateName := updated.Data[TemplateKey]
 		image := updated.Data[ImageKey]
 		tag := updated.Data[TagKey]
@@ -847,7 +758,7 @@ func (h *Handler) UpdateDeployment(
 		// changes (e.g. a removed HTTPRoute) are cleaned up after a successful
 		// apply. Pass previously-owned namespaces so orphans from namespace
 		// moves are cleaned up.
-		prevNS, discoverErr := h.applier.DiscoverNamespaces(ctx, project, name)
+		prevNS, discoverErr := h.pipeline.DiscoverNamespaces(ctx, project, name)
 		if discoverErr != nil {
 			slog.WarnContext(ctx, "namespace discovery incomplete during update, proceeding with partial set",
 				slog.String("project", project),
@@ -855,7 +766,7 @@ func (h *Handler) UpdateDeployment(
 				slog.Any("error", discoverErr),
 			)
 		}
-		if reconcileErr := h.applier.Reconcile(ctx, project, name, resources, prevNS...); reconcileErr != nil {
+		if reconcileErr := h.pipeline.Reconcile(ctx, project, name, resources, prevNS...); reconcileErr != nil {
 			slog.WarnContext(ctx, "reconcile failed during deployment update",
 				slog.String("project", project),
 				slog.String("name", name),
@@ -942,9 +853,9 @@ func (h *Handler) DeleteDeployment(
 	// (e.g. optional CRDs not installed), include the project namespace as a
 	// fallback and proceed — best-effort cleanup is preferable to blocking
 	// deletion entirely.
-	if h.applier != nil {
+	if h.pipeline.CanApply() {
 		ns := h.k8s.Resolver.ProjectNamespace(project)
-		namespaces, discoverErr := h.applier.DiscoverNamespaces(ctx, project, name)
+		namespaces, discoverErr := h.pipeline.DiscoverNamespaces(ctx, project, name)
 		if discoverErr != nil {
 			slog.WarnContext(ctx, "namespace discovery incomplete during delete, proceeding with partial set + project namespace",
 				slog.String("project", project),
@@ -962,7 +873,7 @@ func (h *Handler) DeleteDeployment(
 		for n := range nsSet {
 			allNS = append(allNS, n)
 		}
-		if cleanupErr := h.applier.Cleanup(ctx, allNS, project, name); cleanupErr != nil {
+		if cleanupErr := h.pipeline.Cleanup(ctx, allNS, project, name); cleanupErr != nil {
 			slog.WarnContext(ctx, "cleanup failed during deployment delete",
 				slog.String("project", project),
 				slog.String("name", name),
@@ -1143,7 +1054,7 @@ func (h *Handler) GetDeploymentRenderPreview(
 	var platformResourcesYAML, platformResourcesJSON string
 	var projectResourcesYAML, projectResourcesJSON string
 	var grouped *GroupedResources
-	if h.renderer != nil {
+	if h.pipeline.CanRender() {
 		var renderErr error
 		// Preview path: discard the effective-ref set (second return) — only
 		// the write-through paths on Create/Update consume it (HOL-569).
