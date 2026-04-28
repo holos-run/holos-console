@@ -41,11 +41,20 @@ const (
 
 // Deployment condition reasons.
 const (
-	ReasonRenderSucceeded         = "RenderSucceeded"
-	ReasonRenderFailed            = "RenderFailed"
-	ReasonAncestorTemplateMissing = "AncestorTemplateMissing"
-	ReasonApplySucceeded          = "ApplySucceeded"
-	ReasonApplyFailed             = "ApplyFailed"
+	DeploymentReasonRenderSucceeded         = "RenderSucceeded"
+	DeploymentReasonRenderFailed            = "RenderFailed"
+	DeploymentReasonAncestorTemplateMissing = "AncestorTemplateMissing"
+	DeploymentReasonApplySucceeded          = "ApplySucceeded"
+	DeploymentReasonApplyFailed             = "ApplyFailed"
+)
+
+// Deployment condition reason aliases kept for the HOL-1098 API contract.
+const (
+	ReasonRenderSucceeded         = DeploymentReasonRenderSucceeded
+	ReasonRenderFailed            = DeploymentReasonRenderFailed
+	ReasonAncestorTemplateMissing = DeploymentReasonAncestorTemplateMissing
+	ReasonApplySucceeded          = DeploymentReasonApplySucceeded
+	ReasonApplyFailed             = DeploymentReasonApplyFailed
 )
 
 // DeploymentTemplateRef identifies the Template used to render this
