@@ -4,17 +4,24 @@ kind: ClusterRole
 metadata:
   name: holos-console-templates
 rules:
+# Metadata stores and rendered core resources: ConfigMaps hold legacy
+# deployment/template metadata; Secrets and Services are emitted by the
+# deployment apply pipeline and need SSA patch plus cleanup delete.
 - apiGroups:
   - ""
   resources:
   - configmaps
+  - secrets
+  - services
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
   - update
   - watch
+# Controller Events are emitted for reconcile diagnostics.
 - apiGroups:
   - ""
   resources:
@@ -22,14 +29,16 @@ rules:
   verbs:
   - create
   - patch
+# ADR 036 impersonation for user/group access checks. ServiceAccounts are split
+# into the rule below because they also need rendered-resource CRUD verbs.
 - apiGroups:
   - ""
   resources:
   - groups
-  - serviceaccounts
   - users
   verbs:
   - impersonate
+# Namespace reads power hierarchy resolution and selected resource context.
 - apiGroups:
   - ""
   resources:
@@ -38,7 +47,25 @@ rules:
   - get
   - list
   - watch
+# ServiceAccounts are both impersonation subjects and rendered resources; SSA
+# apply/cleanup requires create/get/list/watch/patch/update/delete.
 - apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - create
+  - delete
+  - get
+  - impersonate
+  - list
+  - patch
+  - update
+  - watch
+# apps/v1 Deployments are rendered resources; deployments.holos.run Deployments
+# are the source CRs. Both need CRUD/watch for SSA apply and reconciliation.
+- apiGroups:
+  - apps
   - deployments.holos.run
   resources:
   - deployments
@@ -50,6 +77,7 @@ rules:
   - patch
   - update
   - watch
+# Deployment status updates publish Accepted, Rendered, and Applied conditions.
 - apiGroups:
   - deployments.holos.run
   resources:
@@ -58,6 +86,23 @@ rules:
   - get
   - patch
   - update
+# Gateway API HTTPRoutes and ReferenceGrants are rendered resources managed by
+# server-side apply and cleanup.
+- apiGroups:
+  - gateway.networking.k8s.io
+  resources:
+  - httproutes
+  - referencegrants
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# RoleBindings are reconciled for resource RBAC and may also be rendered; list
+# and delete support cleanup of stale owned bindings.
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
@@ -71,6 +116,8 @@ rules:
   - patch
   - update
   - watch
+# Roles are reconciled for resource RBAC and may also be rendered. bind/escalate
+# are required for the existing console-owned RBAC bootstrap flow.
 - apiGroups:
   - rbac.authorization.k8s.io
   resources:
@@ -86,6 +133,8 @@ rules:
   - patch
   - update
   - watch
+# Template-family CRDs are reconciled by the embedded controller and read by the
+# render-time policy resolver.
 - apiGroups:
   - templates.holos.run
   resources:
@@ -104,6 +153,7 @@ rules:
   - patch
   - update
   - watch
+# Finalizer updates are scoped to controller-owned template-family CRDs.
 - apiGroups:
   - templates.holos.run
   resources:
@@ -116,6 +166,7 @@ rules:
   - templates/finalizers
   verbs:
   - update
+# Status writes publish Gateway-style conditions on template-family CRDs.
 - apiGroups:
   - templates.holos.run
   resources:
@@ -131,6 +182,8 @@ rules:
   - get
   - patch
   - update
+# TemplateGrant specs are read-only to the controller; writes stay behind the
+# TemplateGrant RPC surface.
 - apiGroups:
   - templates.holos.run
   resources:

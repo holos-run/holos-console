@@ -231,11 +231,11 @@ func (h *Handler) WithDependencyEdgeWriter(w DependencyEdgeWriter) *Handler {
 }
 
 // WithPolicyDriftChecker wires the TemplatePolicy drift checker used by
-// Create/UpdateDeployment to persist the resolved render set, by
-// GetDeploymentPolicyState to surface the full snapshot, and by
+// GetDeploymentPolicyState to surface the full snapshot and by
 // DeploymentStatusSummary.policy_drift to flag drifted deployments on the
-// list view. A nil checker disables drift persistence and reporting so
-// local/dev wiring without a policy resolver still works.
+// list view. The DeploymentReconciler records the applied render set after
+// successful apply; a nil checker disables drift reporting so local/dev wiring
+// without a policy resolver still works.
 func (h *Handler) WithPolicyDriftChecker(c PolicyDriftChecker) *Handler {
 	h.policyDriftChecker = c
 	return h
@@ -274,12 +274,10 @@ func (h *Handler) renderResources(ctx context.Context, project, deploymentName, 
 // we fall back to a project-level render (ADR 016 Decision 8).
 //
 // The second return value is the policy-effective ref set the provider
-// reported — callers on the Create/Update write path pass it to
-// PolicyDriftChecker.RecordApplied so the applied-render-set store stays
-// aligned with what was actually rendered (HOL-569). Preview callers can
-// ignore it. It is nil when no AncestorTemplateProvider is configured or the
-// provider returned an error (the render falls back to project-only in both
-// cases, so there is no rendered set to record).
+// reported. The controller uses the same pipeline result to record the applied
+// render set after a successful apply. Preview callers can ignore it. It is nil
+// when no AncestorTemplateProvider is configured or the provider returned an
+// error (the render falls back to project-only in both cases).
 func (h *Handler) renderResourcesGrouped(ctx context.Context, project, deploymentName, cueSource string, platform v1alpha2.PlatformInput, projectInput v1alpha2.ProjectInput) (*GroupedResources, []*consolev1.LinkedTemplateRef, error) {
 	return h.pipeline.Render(ctx, project, deploymentName, cueSource, platform, projectInput)
 }
@@ -551,7 +549,7 @@ func (h *Handler) CreateDeployment(
 			Env:     envInputs,
 			Port:    defaultPort(int(req.Msg.Port)),
 		}
-		grouped, effectiveRefs, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn)
+		grouped, _, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed after creating deployment — rolling back",
 				slog.String("project", project),
@@ -570,34 +568,6 @@ func (h *Handler) CreateDeployment(
 			)
 			h.rollbackCreate(ctx, ns, project, name)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying deployment resources: %w", applyErr))
-		}
-		// Write-through the effective render set to the applied-render-set
-		// store so GetDeploymentPolicyState and the list-view policy_drift
-		// flag have a baseline to diff against (HOL-569). Skipped when no
-		// checker is wired (local/dev bootstrap without a cluster policy
-		// resolver). When the provider signaled a degraded render by
-		// returning nil effectiveRefs (walker failed / no walker), record
-		// a non-nil empty slice so the baseline reflects reality — zero
-		// ancestor templates actually participated in this apply. This
-		// keeps GetDeploymentPolicyState honest: a subsequent query whose
-		// resolver returns a non-empty current set will correctly report
-		// drift against the empty applied set (review round 2 P2 finding).
-		// A record failure is logged at warn level and does NOT fail the
-		// RPC — the deployment was rendered and applied successfully, and
-		// the set can be reconstructed on the next render. This mirrors
-		// the SetOutputURLAnnotation precedent immediately below.
-		if h.policyDriftChecker != nil {
-			refsToRecord := effectiveRefs
-			if refsToRecord == nil {
-				refsToRecord = []*consolev1.LinkedTemplateRef{}
-			}
-			if recordErr := h.policyDriftChecker.RecordApplied(ctx, project, name, refsToRecord); recordErr != nil {
-				slog.WarnContext(ctx, "failed to record applied render set after create",
-					slog.String("project", project),
-					slog.String("name", name),
-					slog.Any("error", recordErr),
-				)
-			}
 		}
 		// Cache the evaluated output.url on the ConfigMap annotation so
 		// later ListDeployments/GetDeployment calls can surface it without
@@ -744,7 +714,7 @@ func (h *Handler) UpdateDeployment(
 			Env:     envFromConfigMapAsV1alpha2(updated),
 			Port:    defaultPort(portFromConfigMap(updated)),
 		}
-		grouped, effectiveRefs, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn)
+		grouped, _, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment update",
 				slog.String("project", project),
@@ -773,28 +743,6 @@ func (h *Handler) UpdateDeployment(
 				slog.Any("error", reconcileErr),
 			)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("reconciling deployment resources: %w", reconcileErr))
-		}
-		// Write-through the effective render set so subsequent policy-state
-		// queries diff against what this update actually rendered (HOL-569).
-		// Same contract as the create path: nil checker is a no-op, record
-		// errors are logged but do not fail the RPC because reconcile
-		// already succeeded. A nil effectiveRefs signals a degraded render
-		// path (walker failed / no walker) — in that case overwrite the
-		// stored baseline with an empty set so any previously recorded
-		// policy-resolved set cannot mask the fact that this reconcile
-		// applied zero ancestor templates (review round 2 P2 finding).
-		if h.policyDriftChecker != nil {
-			refsToRecord := effectiveRefs
-			if refsToRecord == nil {
-				refsToRecord = []*consolev1.LinkedTemplateRef{}
-			}
-			if recordErr := h.policyDriftChecker.RecordApplied(ctx, project, name, refsToRecord); recordErr != nil {
-				slog.WarnContext(ctx, "failed to record applied render set after update",
-					slog.String("project", project),
-					slog.String("name", name),
-					slog.Any("error", recordErr),
-				)
-			}
 		}
 		// Refresh the cached output URL annotation. Unlike create, update
 		// always sets or clears so a template edit that drops the output
