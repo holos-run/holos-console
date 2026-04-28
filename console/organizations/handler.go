@@ -10,7 +10,6 @@ import (
 
 	"connectrpc.com/connect"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/validation"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
@@ -245,9 +244,6 @@ func (h *Handler) CreateOrganization(
 	var folderName string
 	if h.folderCreator != nil {
 		folderDisplayName := "Default"
-		if req.Msg.DefaultFolder != nil && *req.Msg.DefaultFolder != "" {
-			folderDisplayName = *req.Msg.DefaultFolder
-		}
 
 		var err error
 		folderName, err = h.createDefaultFolder(ctx, req.Msg.Name, folderDisplayName, claims.Email, claims.Sub, shareUsers, shareRoles)
@@ -504,20 +500,6 @@ func (h *Handler) UpdateOrganization(
 		return nil, mapK8sError(err)
 	}
 
-	// Validate and update default folder if requested.
-	if req.Msg.DefaultFolder != nil {
-		newFolder := *req.Msg.DefaultFolder
-		if newFolder == "" {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("default_folder must not be empty"))
-		}
-		if err := h.validateDefaultFolder(ctx, req.Msg.Name, newFolder); err != nil {
-			return nil, err
-		}
-		if err := h.k8s.SetDefaultFolder(ctx, req.Msg.Name, newFolder); err != nil {
-			return nil, mapK8sError(err)
-		}
-	}
-
 	// Validate gateway_namespace before forwarding to k8s. Empty string is
 	// accepted as "clear the annotation"; non-empty values must conform to
 	// the Kubernetes DNS-1123 label rule (the same rule k8s applies to
@@ -543,29 +525,6 @@ func (h *Handler) UpdateOrganization(
 	)
 
 	return connect.NewResponse(&consolev1.UpdateOrganizationResponse{}), nil
-}
-
-// validateDefaultFolder checks that the referenced folder exists and is an
-// immediate child of the organization (parent label matches org namespace).
-func (h *Handler) validateDefaultFolder(ctx context.Context, orgName, folderName string) error {
-	if h.folderLister == nil {
-		return connect.NewError(connect.CodeInternal, fmt.Errorf("folder lister not configured"))
-	}
-	folderNs, err := h.folderLister.GetFolder(ctx, folderName)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			return connect.NewError(connect.CodeNotFound, fmt.Errorf("folder %q not found", folderName))
-		}
-		return connect.NewError(connect.CodeInternal, fmt.Errorf("looking up folder %q: %w", folderName, err))
-	}
-	// Verify the folder is a direct child of the org.
-	orgNsName := h.k8s.resolver.OrgNamespace(orgName)
-	parentNs := folderNs.Labels[v1alpha2.AnnotationParent]
-	if parentNs != orgNsName {
-		return connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("folder %q is not an immediate child of organization %q", folderName, orgName))
-	}
-	return nil
 }
 
 // DeleteOrganization deletes a managed organization.
@@ -863,7 +822,6 @@ func buildOrganization(k8s *K8sClient, ns interface{ GetName() string }, shareUs
 			org.DisplayName = annotations[v1alpha2.AnnotationDisplayName]
 			org.Description = annotations[v1alpha2.AnnotationDescription]
 			org.CreatorEmail = annotations[v1alpha2.AnnotationCreatorEmail]
-			org.DefaultFolder = annotations[v1alpha2.AnnotationDefaultFolder]
 			org.GatewayNamespace = annotations[v1alpha2.AnnotationGatewayNamespace]
 		}
 		// Populate default sharing grants and creation timestamp from typed namespace

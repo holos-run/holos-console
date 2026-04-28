@@ -90,7 +90,6 @@ export function useUpdateOrganization() {
       name: string
       displayName?: string
       description?: string
-      defaultFolder?: string
       gatewayNamespace?: string
     }) => client.updateOrganization(params),
     onSuccess: () => {
