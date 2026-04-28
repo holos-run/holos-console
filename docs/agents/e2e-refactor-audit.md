@@ -178,7 +178,7 @@ Every test in this spec creates real Kubernetes namespaces (folder-backed orgs),
 | Test | Verdict | Notes |
 | --- | --- | --- |
 | `Folder list page > shows folders under an org and navigates to folder detail` | **Keep** | K8s namespace create + list. |
-| `Folder list page > new org has default folder` | **Keep** | Verifies server-side default-folder creation in Kubernetes. |
+| `Folder list page > new org appears without an implicit folder` | **Keep** | Verifies organization creation without an auto-created folder in Kubernetes. |
 | `Folder detail page > shows folder name and organization` | **Keep** | GET-on-folder CRUD path. |
 | `Nested folder workflow > creates org → parent folder → child folder, both visible in list` | **Keep** | Parent-child K8s hierarchy. |
 | `Nested folder workflow > project under folder shows in folder breadcrumb context` | **Keep** | Cross-resource K8s relationship. |
@@ -398,4 +398,3 @@ HOL-658 finalizes the E2E refactor that ran across HOL-651 through HOL-657. The 
 `E2E Tests` CI job: **~11m 23s -> ~7m 43s (-32%)**. Playwright per-test seconds: **495.1s -> 275.5s (-44%)**. Spec file count: **11 -> 6**. Remaining E2E coverage is focused on OIDC auth (`auth.spec.ts`) and real Kubernetes round-trips (`folders.spec.ts`, `folder-rbac.spec.ts`, `folder-templates.spec.ts`, `secrets.spec.ts`, `multi-persona.spec.ts`).
 
 This repo does not maintain a `CHANGELOG.md`; this Release Notes section in the audit doc is the canonical record of the in-sourced test strategy and E2E refactor per the HOL-658 acceptance criteria.
-

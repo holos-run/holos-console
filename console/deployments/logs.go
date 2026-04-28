@@ -112,8 +112,13 @@ func (h *Handler) GetDeploymentLogs(
 				slog.Any("error", copyErr),
 			)
 		}
-		rc.Close()
-		fmt.Fprintln(&buf)
+		if closeErr := rc.Close(); closeErr != nil {
+			slog.WarnContext(ctx, "failed to close pod logs",
+				slog.String("pod", pod.Name),
+				slog.Any("error", closeErr),
+			)
+		}
+		_, _ = fmt.Fprintln(&buf)
 	}
 
 	slog.InfoContext(ctx, "deployment logs read",

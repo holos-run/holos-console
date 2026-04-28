@@ -57,7 +57,7 @@ func TestLoadCACertPool_ValidPEM(t *testing.T) {
 func TestHTTPClientWithCA_RejectsUnknownCA(t *testing.T) {
 	// Create a TLS server with a self-signed cert (not trusted by any CA pool)
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer srv.Close()
 
@@ -74,7 +74,7 @@ func TestHTTPClientWithCA_RejectsUnknownCA(t *testing.T) {
 func TestHTTPClientWithCA_AcceptsKnownCA(t *testing.T) {
 	// Create a TLS server with a self-signed cert
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer srv.Close()
 
@@ -102,7 +102,9 @@ func TestHTTPClientWithCA_AcceptsKnownCA(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected successful connection with known CA, got: %v", err)
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("close response body: %v", err)
+	}
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -134,7 +136,7 @@ func TestHTTPClientWithCA_MkcertCerts(t *testing.T) {
 	}
 
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	srv.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
 	srv.StartTLS()
@@ -153,7 +155,9 @@ func TestHTTPClientWithCA_MkcertCerts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected successful connection with mkcert CA, got: %v", err)
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("close response body: %v", err)
+	}
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}

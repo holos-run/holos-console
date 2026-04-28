@@ -588,20 +588,6 @@ func assertUnauthenticated(t *testing.T, err error) {
 	}
 }
 
-func assertPermissionDenied(t *testing.T, err error) {
-	t.Helper()
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	connectErr, ok := err.(*connect.Error)
-	if !ok {
-		t.Fatalf("expected *connect.Error, got %T", err)
-	}
-	if connectErr.Code() != connect.CodePermissionDenied {
-		t.Errorf("expected CodePermissionDenied, got %v", connectErr.Code())
-	}
-}
-
 // ---- GetProjectRaw tests ----
 
 func TestGetProjectRaw_ReturnsNamespaceJSON(t *testing.T) {

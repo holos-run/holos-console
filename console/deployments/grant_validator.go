@@ -223,9 +223,8 @@ func fromPermitsDependentNamespace(from v1alpha1.TemplateGrantFromRef, dependent
 	// Determine whether the dependent namespace is within scope of the
 	// From.Namespace field.
 	namespaceInScope := false
-	if from.Namespace == "*" {
-		namespaceInScope = true
-	} else if from.Namespace == dependentNs {
+	switch from.Namespace {
+	case "*", dependentNs:
 		namespaceInScope = true
 	}
 

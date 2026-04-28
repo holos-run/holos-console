@@ -3,7 +3,6 @@ package oidc_test
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"testing"
 
@@ -34,9 +33,6 @@ func TestNewHandler_Success(t *testing.T) {
 	if state == nil {
 		t.Error("NewHandler() returned nil state")
 	}
-
-	// Verify handler implements http.Handler
-	var _ http.Handler = handler
 }
 
 func TestNewHandler_RegistersSingleAutoConnector(t *testing.T) {

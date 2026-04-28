@@ -421,10 +421,7 @@ func RoleBindingName(name string, cfg KindConfig, role, target, principal string
 
 func OwnerReferences(obj metav1.Object, cfg KindConfig) []metav1.OwnerReference {
 	controller := true
-	blockOwnerDeletion := true
-	if cfg.ClusterScoped {
-		blockOwnerDeletion = false
-	}
+	blockOwnerDeletion := !cfg.ClusterScoped
 	apiVersion := cfg.OwnerAPIVersion
 	if apiVersion == "" {
 		apiVersion = templatesv1alpha1.GroupVersion.String()

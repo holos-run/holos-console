@@ -58,7 +58,7 @@ func TestPermissionKey(t *testing.T) {
 }
 
 func TestListResourcePermissions_Allowed(t *testing.T) {
-	clientset := fake.NewSimpleClientset()
+	clientset := fake.NewClientset()
 	clientset.PrependReactor("create", "selfsubjectaccessreviews", func(action clienttesting.Action) (bool, runtime.Object, error) {
 		create, ok := action.(clienttesting.CreateAction)
 		if !ok {
@@ -105,7 +105,7 @@ func TestListResourcePermissions_Allowed(t *testing.T) {
 }
 
 func TestListResourcePermissions_Denied(t *testing.T) {
-	clientset := fake.NewSimpleClientset()
+	clientset := fake.NewClientset()
 	clientset.PrependReactor("create", "selfsubjectaccessreviews", func(action clienttesting.Action) (bool, runtime.Object, error) {
 		ssar := action.(clienttesting.CreateAction).GetObject().(*authzv1.SelfSubjectAccessReview)
 		ssar.Status = authzv1.SubjectAccessReviewStatus{Allowed: false, Denied: true, Reason: "no rolebinding"}

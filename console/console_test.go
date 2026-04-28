@@ -202,7 +202,7 @@ func TestAPIDevToken_ReturnsJSON404WhenDexDisabled(t *testing.T) {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("<html></html>"))
+		_, _ = w.Write([]byte("<html></html>"))
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/dev/token", nil)
@@ -229,7 +229,7 @@ func TestAPIDebugOIDC_ReturnsJSON404WhenDexDisabled(t *testing.T) {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("<html></html>"))
+		_, _ = w.Write([]byte("<html></html>"))
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/debug/oidc", nil)

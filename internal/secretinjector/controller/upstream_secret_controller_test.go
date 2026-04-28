@@ -385,7 +385,7 @@ func TestUpstreamSecret_NotFound_ReturnsNoError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile on missing: %v", err)
 	}
-	if res.Requeue || res.RequeueAfter != 0 {
+	if res != (ctrl.Result{}) {
 		t.Fatalf("Reconcile on missing: want no requeue, got %+v", res)
 	}
 }

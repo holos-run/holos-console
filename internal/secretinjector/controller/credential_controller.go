@@ -232,7 +232,7 @@ func (r *CredentialReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// was. Publish Phase=Expired + Expired=True and skip materialisation
 	// so a reconciler restart cannot accidentally re-mint a hash Secret
 	// for an expired credential.
-	if cred.Spec.ExpiresAt != nil && !cred.Spec.ExpiresAt.Time.After(now) {
+	if cred.Spec.ExpiresAt != nil && !cred.Spec.ExpiresAt.After(now) {
 		target := cred.DeepCopy()
 		target.Status.Phase = secretsv1alpha1.PhaseExpired
 		expired := metav1.Condition{
@@ -377,7 +377,7 @@ func (r *CredentialReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// retry side; the floor keeps an already-imminent deadline from
 	// scheduling a zero requeue that would hot-loop.
 	if cred.Spec.ExpiresAt != nil {
-		until := cred.Spec.ExpiresAt.Time.Sub(now)
+		until := cred.Spec.ExpiresAt.Sub(now)
 		if until < credentialExpiryRequeueFloor {
 			until = credentialExpiryRequeueFloor
 		}

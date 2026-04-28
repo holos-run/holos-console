@@ -98,7 +98,7 @@ func makeOrgNamespace(orgName string) *corev1.Namespace {
 // It accepts a gatewayResolver and optional objects for the fake clientset.
 func newRenderHandler(t *testing.T, gatewayRes OrganizationGatewayResolver, objs ...runtime.Object) *Handler {
 	t.Helper()
-	cs := kfake.NewSimpleClientset(objs...)
+	cs := kfake.NewClientset(objs...)
 	k8sClient := newTestK8sClient(t, cs, testResolver)
 	renderer := NewCueRendererAdapter()
 	h := NewHandler(k8sClient, testResolver, renderer, nil)

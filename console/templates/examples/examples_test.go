@@ -258,7 +258,7 @@ func TestExamplePreviewRender_KnownExamples(t *testing.T) {
 			t.Errorf("httproute-v1: platform_resources_yaml must reference gatewayNamespace %q, got:\n%s",
 				deployments.DefaultGatewayNamespace, yaml)
 		}
-		if grouped.Project != nil && len(grouped.Project) > 0 {
+		if len(grouped.Project) > 0 {
 			t.Errorf("httproute-v1: expected empty project resources for platform-only template, got %d", len(grouped.Project))
 		}
 	})
@@ -434,7 +434,7 @@ func TestExamplePreviewRender_KnownExamples(t *testing.T) {
 		if !strings.Contains(yaml, "remote-project") {
 			t.Errorf("httproute-with-grant-v1: must annotate dependency-scope 'remote-project', got:\n%s", yaml)
 		}
-		if grouped.Project != nil && len(grouped.Project) > 0 {
+		if len(grouped.Project) > 0 {
 			t.Errorf("httproute-with-grant-v1: expected empty project resources for platform-only template, got %d", len(grouped.Project))
 		}
 	})

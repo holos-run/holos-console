@@ -37,9 +37,6 @@ func TestParseVersion(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if v.Original() != tt.input {
-				// Compare the normalized version string.
-			}
 			if v.String() != tt.wantStr {
 				t.Errorf("expected version %q, got %q", tt.wantStr, v.String())
 			}

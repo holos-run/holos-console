@@ -134,7 +134,7 @@ func TestHandler_ForbiddenFromAPIServerMapsToPermissionDenied(t *testing.T) {
 		Data: map[string][]byte{"key": []byte("value")},
 	}
 	impersonatedClient := fake.NewClientset(testProjectNS(), secret)
-	impersonatedClient.Fake.PrependReactor("update", "secrets", func(k8stesting.Action) (bool, runtime.Object, error) {
+	impersonatedClient.PrependReactor("update", "secrets", func(k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, k8serrors.NewForbidden(schema.GroupResource{Resource: "secrets"}, "my-secret", nil)
 	})
 	handler := NewProjectScopedHandler(NewK8sClient(fake.NewClientset(testProjectNS(), secret), testResolver()), nil)

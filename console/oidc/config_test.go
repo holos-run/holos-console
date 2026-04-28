@@ -9,14 +9,20 @@ import (
 
 func TestGetUsername(t *testing.T) {
 	// Test default username
-	os.Unsetenv("HOLOS_DEX_INITIAL_ADMIN_USERNAME")
+	if err := os.Unsetenv("HOLOS_DEX_INITIAL_ADMIN_USERNAME"); err != nil {
+		t.Fatalf("unset env: %v", err)
+	}
 	if got := oidc.GetUsername(); got != oidc.DefaultUsername {
 		t.Errorf("GetUsername() = %q, want %q", got, oidc.DefaultUsername)
 	}
 
 	// Test environment variable override
-	os.Setenv("HOLOS_DEX_INITIAL_ADMIN_USERNAME", "custom-user")
-	defer os.Unsetenv("HOLOS_DEX_INITIAL_ADMIN_USERNAME")
+	if err := os.Setenv("HOLOS_DEX_INITIAL_ADMIN_USERNAME", "custom-user"); err != nil {
+		t.Fatalf("set env: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Unsetenv("HOLOS_DEX_INITIAL_ADMIN_USERNAME")
+	})
 	if got := oidc.GetUsername(); got != "custom-user" {
 		t.Errorf("GetUsername() = %q, want %q", got, "custom-user")
 	}

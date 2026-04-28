@@ -53,7 +53,7 @@ func newFakeOIDCServer(t *testing.T) *fakeOIDCServer {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"issuer":                 serverURL,
 			"jwks_uri":               serverURL + "/keys",
 			"authorization_endpoint": serverURL + "/auth",
@@ -70,7 +70,7 @@ func newFakeOIDCServer(t *testing.T) *fakeOIDCServer {
 		}
 		jwks := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(jwks)
+		_ = json.NewEncoder(w).Encode(jwks)
 	})
 
 	srv := httptest.NewServer(mux)

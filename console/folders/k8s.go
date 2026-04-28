@@ -12,7 +12,7 @@ import (
 	"github.com/holos-run/holos-console/console/resourcerbac"
 	"github.com/holos-run/holos-console/console/rpc"
 	"github.com/holos-run/holos-console/console/secrets"
-	"github.com/holos-run/holos-console/console/sharing/legacy"
+	"github.com/holos-run/holos-console/console/sharing/legacy" //nolint:staticcheck // Folders still expose legacy grant-derived role hints.
 	authv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"

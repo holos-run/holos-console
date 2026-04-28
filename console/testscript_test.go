@@ -202,7 +202,9 @@ func freeAddr() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer listener.Close()
+	defer func() {
+		_ = listener.Close()
+	}()
 	return listener.Addr().String(), nil
 }
 
@@ -212,7 +214,7 @@ func waitForTCP(addr string, timeout time.Duration) error {
 	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil
 		}
 		lastErr = err

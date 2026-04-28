@@ -41,7 +41,7 @@ func projectNamespaceFixture(name string, annotations map[string]string) *corev1
 
 func TestMigrate_DryRunReportsDefaultFolderWithoutStripping(t *testing.T) {
 	withAnnotation := organizationNamespaceFixture("holos-org-acme", map[string]string{
-		defaultFolderAnnotation:        "holos-fld-acme-default",
+		removedAnnotationKey:           "holos-fld-acme-default",
 		v1alpha2.AnnotationDisplayName: "Acme",
 	})
 	withoutAnnotation := organizationNamespaceFixture("holos-org-beta", nil)
@@ -58,22 +58,22 @@ func TestMigrate_DryRunReportsDefaultFolderWithoutStripping(t *testing.T) {
 	if first.Namespace != withAnnotation.Name {
 		t.Fatalf("expected sorted first namespace %q, got %q", withAnnotation.Name, first.Namespace)
 	}
-	if !first.DefaultFolderFound || !first.DefaultFolderStripped {
+	if !first.AnnotationFound || !first.AnnotationRemoved {
 		t.Fatalf("expected dry-run to report planned strip, got %+v", first)
 	}
 	live, _ := client.CoreV1().Namespaces().Get(context.Background(), withAnnotation.Name, metav1.GetOptions{})
-	if _, ok := live.Annotations[defaultFolderAnnotation]; !ok {
+	if _, ok := live.Annotations[removedAnnotationKey]; !ok {
 		t.Fatal("dry-run stripped default-folder annotation")
 	}
 }
 
 func TestMigrate_ApplyStripsDefaultFolderFromOrganizationNamespacesOnly(t *testing.T) {
 	org := organizationNamespaceFixture("holos-org-acme", map[string]string{
-		defaultFolderAnnotation:        "holos-fld-acme-default",
+		removedAnnotationKey:           "holos-fld-acme-default",
 		v1alpha2.AnnotationDisplayName: "Acme",
 	})
 	project := projectNamespaceFixture("holos-prj-acme-app", map[string]string{
-		defaultFolderAnnotation: "stale-but-not-an-org",
+		removedAnnotationKey: "stale-but-not-an-org",
 	})
 	client := fake.NewClientset(org, project)
 
@@ -84,25 +84,25 @@ func TestMigrate_ApplyStripsDefaultFolderFromOrganizationNamespacesOnly(t *testi
 	if len(report.Namespaces) != 1 {
 		t.Fatalf("expected only organization namespace report, got %d", len(report.Namespaces))
 	}
-	if !report.Namespaces[0].DefaultFolderStripped {
+	if !report.Namespaces[0].AnnotationRemoved {
 		t.Fatalf("expected organization annotation strip, got %+v", report.Namespaces[0])
 	}
 	liveOrg, _ := client.CoreV1().Namespaces().Get(context.Background(), org.Name, metav1.GetOptions{})
-	if _, ok := liveOrg.Annotations[defaultFolderAnnotation]; ok {
+	if _, ok := liveOrg.Annotations[removedAnnotationKey]; ok {
 		t.Fatal("default-folder annotation still present on organization namespace")
 	}
 	if got := liveOrg.Annotations[v1alpha2.AnnotationDisplayName]; got != "Acme" {
 		t.Fatalf("non-target annotation changed: %q", got)
 	}
 	liveProject, _ := client.CoreV1().Namespaces().Get(context.Background(), project.Name, metav1.GetOptions{})
-	if _, ok := liveProject.Annotations[defaultFolderAnnotation]; !ok {
+	if _, ok := liveProject.Annotations[removedAnnotationKey]; !ok {
 		t.Fatal("project namespace should not be part of the organization cleanup")
 	}
 }
 
 func TestMigrate_ApplyIsIdempotent(t *testing.T) {
 	org := organizationNamespaceFixture("holos-org-acme", map[string]string{
-		defaultFolderAnnotation: "holos-fld-acme-default",
+		removedAnnotationKey: "holos-fld-acme-default",
 	})
 	client := fake.NewClientset(org)
 
@@ -113,7 +113,7 @@ func TestMigrate_ApplyIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Migrate returned error: %v", err)
 	}
-	if second.Namespaces[0].DefaultFolderFound {
+	if second.Namespaces[0].AnnotationFound {
 		t.Fatalf("expected second run to find no annotation, got %+v", second.Namespaces[0])
 	}
 }
@@ -121,9 +121,9 @@ func TestMigrate_ApplyIsIdempotent(t *testing.T) {
 func TestPrintReport_ApplyAndDryRunHeaders(t *testing.T) {
 	report := &Report{
 		Namespaces: []NamespaceReport{{
-			Namespace:             "holos-org-acme",
-			DefaultFolderFound:    true,
-			DefaultFolderStripped: true,
+			Namespace:         "holos-org-acme",
+			AnnotationFound:   true,
+			AnnotationRemoved: true,
 		}},
 	}
 	var dry, applied bytes.Buffer
