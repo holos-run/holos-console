@@ -415,10 +415,12 @@ func (h *Handler) ListTemplates(
 //     organization. Combines with namespace when both are set.
 //
 // RBAC is enforced by the Kubernetes apiserver via the request-scoped
-// impersonated client (per ADR 036): a caller without list access on a given
-// namespace's ConfigMaps simply doesn't see that scope's templates. Per-scope
-// permission checks are batched through SelfSubjectAccessReview so a folder
-// with 100 templates pays one SSAR per scope, not one per template.
+// impersonated client (per ADR 036): authorizedTemplates issues a per-template
+// impersonated Get and silently drops Forbidden / NotFound entries, so a
+// caller without read access to a given template simply doesn't see it.
+// Namespace classification and org-filter membership are memoized for the
+// duration of one request so a folder with 100 templates pays one folder
+// classification, not 100.
 func (h *Handler) SearchTemplates(
 	ctx context.Context,
 	req *connect.Request[consolev1.SearchTemplatesRequest],
