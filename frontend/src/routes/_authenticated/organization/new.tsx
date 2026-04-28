@@ -160,7 +160,7 @@ export function OrganizationNewPage({ returnTo }: { returnTo?: string }) {
                     <Info className="h-4 w-4 text-muted-foreground cursor-default" />
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Creates a default folder and project structure with example templates at each level, including an org-level HTTPRoute platform template and a project-level deployment template.</p>
+                    <p>Creates an org-level HTTPRoute platform template, a default project under the organization, and a project-level deployment template.</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

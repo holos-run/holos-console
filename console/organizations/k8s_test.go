@@ -688,62 +688,6 @@ func TestUpdateOrgDefaultSharing_RejectsNonOrg(t *testing.T) {
 	}
 }
 
-// ---- Default folder K8s tests ----
-
-func TestSetDefaultFolder_WritesAnnotation(t *testing.T) {
-	ns := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-org-acme",
-			Labels: map[string]string{
-				v1alpha2.LabelManagedBy:    v1alpha2.ManagedByValue,
-				resolver.ResourceTypeLabel: resolver.ResourceTypeOrganization,
-			},
-			Annotations: map[string]string{
-				v1alpha2.AnnotationShareUsers: `[{"principal":"alice@example.com","role":"owner"}]`,
-			},
-		},
-	}
-	fakeClient := fake.NewClientset(ns)
-	k8s := NewK8sClient(fakeClient, testResolver())
-
-	if err := k8s.SetDefaultFolder(context.Background(), "acme", "my-folder"); err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-
-	updated, err := fakeClient.CoreV1().Namespaces().Get(context.Background(), "holos-org-acme", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("expected namespace to exist, got %v", err)
-	}
-	if updated.Annotations[v1alpha2.AnnotationDefaultFolder] != "my-folder" {
-		t.Errorf("expected default-folder 'my-folder', got %q", updated.Annotations[v1alpha2.AnnotationDefaultFolder])
-	}
-}
-
-func TestGetDefaultFolder_ReadsAnnotation(t *testing.T) {
-	ns := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-org-acme",
-			Annotations: map[string]string{
-				v1alpha2.AnnotationDefaultFolder: "engineering",
-			},
-		},
-	}
-	if got := GetDefaultFolder(ns); got != "engineering" {
-		t.Errorf("expected 'engineering', got %q", got)
-	}
-}
-
-func TestGetDefaultFolder_ReturnsEmptyWhenAbsent(t *testing.T) {
-	ns := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "holos-org-acme",
-		},
-	}
-	if got := GetDefaultFolder(ns); got != "" {
-		t.Errorf("expected empty string, got %q", got)
-	}
-}
-
 func TestUpdateOrgSharing_RejectsNonOrg(t *testing.T) {
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{

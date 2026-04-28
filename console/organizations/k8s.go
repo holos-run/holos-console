@@ -264,35 +264,6 @@ func (c *K8sClient) DeleteOrganization(ctx context.Context, name string) error {
 	return c.clientset(ctx).CoreV1().Namespaces().Delete(ctx, ns.Name, metav1.DeleteOptions{})
 }
 
-// SetDefaultFolder sets the default-folder annotation on the org namespace.
-func (c *K8sClient) SetDefaultFolder(ctx context.Context, name, folderName string) error {
-	ns, err := c.GetOrganization(ctx, name)
-	if err != nil {
-		return err
-	}
-	if ns.Annotations == nil {
-		ns.Annotations = make(map[string]string)
-	}
-	ns.Annotations[v1alpha2.AnnotationDefaultFolder] = folderName
-	// Locked annotation: the namespace-share-annotations-console-only
-	// ValidatingAdmissionPolicy denies writes to this annotation from any
-	// principal other than the holos-console service account, so the write
-	// must use the privileged client. The user-level authorization for the
-	// org-create flow that calls this method already happened upstream
-	// through the impersonated GetOrganization read above.
-	_, err = c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
-	return err
-}
-
-// GetDefaultFolder reads the default-folder annotation from an org namespace.
-// Returns empty string if not set.
-func GetDefaultFolder(ns *corev1.Namespace) string {
-	if ns.Annotations == nil {
-		return ""
-	}
-	return ns.Annotations[v1alpha2.AnnotationDefaultFolder]
-}
-
 // GetGatewayNamespace reads the gateway-namespace annotation from an org
 // namespace. Returns empty string if not set.
 func GetGatewayNamespace(ns *corev1.Namespace) string {
@@ -348,8 +319,8 @@ func (c *K8sClient) UpdateOrganizationSharing(ctx context.Context, name string, 
 	ns.Annotations[v1alpha2.AnnotationShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationShareRoles] = string(rolesJSON)
 	ns.Annotations[v1alpha2.AnnotationRBACShareUsers] = string(rbacUsersJSON)
-	// Locked annotations (share-users / share-roles / rbac-share-users) — see
-	// SetDefaultFolder for why the write must use the privileged client.
+	// Locked annotations (share-users / share-roles / rbac-share-users) must
+	// use the privileged client because admission denies user writes.
 	updated, err := c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
@@ -408,7 +379,8 @@ func (c *K8sClient) UpdateOrganizationDefaultRoleGrants(ctx context.Context, nam
 		return nil, fmt.Errorf("marshaling default-share-roles: %w", err)
 	}
 	ns.Annotations[v1alpha2.AnnotationDefaultShareRoles] = string(rolesJSON)
-	// Locked annotation (default-share-roles) — see SetDefaultFolder.
+	// Locked annotation (default-share-roles) must use the privileged client
+	// because admission denies user writes.
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
@@ -434,7 +406,8 @@ func (c *K8sClient) UpdateOrganizationDefaultSharing(ctx context.Context, name s
 	}
 	ns.Annotations[v1alpha2.AnnotationDefaultShareUsers] = string(usersJSON)
 	ns.Annotations[v1alpha2.AnnotationDefaultShareRoles] = string(rolesJSON)
-	// Locked annotations (default-share-*) — see SetDefaultFolder.
+	// Locked annotations (default-share-*) must use the privileged client
+	// because admission denies user writes.
 	return c.client.CoreV1().Namespaces().Update(ctx, ns, metav1.UpdateOptions{})
 }
 
