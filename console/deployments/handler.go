@@ -539,7 +539,7 @@ func (h *Handler) CreateDeployment(
 	// annotation on the ConfigMap for later listing calls.
 	if h.pipeline.CanRender() && h.pipeline.CanApply() {
 		ns := h.k8s.Resolver.ProjectNamespace(project)
-		platformIn := h.buildPlatformInput(ctx, project, ns, claims)
+		platformIn := h.renderTimePlatformInput(ctx, project, ns, claims)
 		projectIn := v1alpha2.ProjectInput{
 			Name:    name,
 			Image:   req.Msg.Image,
@@ -731,7 +731,7 @@ func (h *Handler) UpdateDeployment(
 		}
 
 		ns := h.k8s.Resolver.ProjectNamespace(project)
-		platformIn := h.buildPlatformInput(ctx, project, ns, claims)
+		platformIn := h.renderTimePlatformInput(ctx, project, ns, claims)
 		projectIn := v1alpha2.ProjectInput{
 			Name:    name,
 			Image:   image,
@@ -1652,6 +1652,20 @@ func creatorClaimsForPersistence(claims *rpc.Claims) v1alpha2.Claims {
 	return v1alpha2.Claims{
 		Email: claims.Email,
 	}
+}
+
+// renderTimePlatformInput is like buildPlatformInput but narrows the Claims
+// field to the same subset that creatorClaimsForPersistence persists. The
+// DeploymentReconciler renders from the persisted ConfigMap, so the handler
+// must render with the same narrowed view to produce identical manifests —
+// otherwise a template that referenced platform.claims.sub or .groups would
+// render one way synchronously in CreateDeployment/UpdateDeployment and a
+// different way during the controller's reconcile, producing apply churn
+// and surprising drift.
+func (h *Handler) renderTimePlatformInput(ctx context.Context, project, namespace string, claims *rpc.Claims) v1alpha2.PlatformInput {
+	pi := h.buildPlatformInput(ctx, project, namespace, claims)
+	pi.Claims = creatorClaimsForPersistence(claims)
+	return pi
 }
 
 // stringSliceFromConfigMap decodes a JSON string slice from the given ConfigMap data key.

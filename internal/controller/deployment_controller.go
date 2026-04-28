@@ -398,7 +398,14 @@ func (r *DeploymentReconciler) renderInputs(ctx context.Context, dep *deployment
 		if err := json.Unmarshal([]byte(raw), &claims); err != nil {
 			return platform, project, fmt.Errorf("decode deployment claims: %w", err)
 		}
-		platform.Claims = claims
+		// Defense in depth: trust only the replay-safe subset (Email)
+		// even if an older or tampered ConfigMap contains additional
+		// fields. Anyone with edit access to the project ConfigMap could
+		// otherwise spoof Sub/Groups/EmailVerified/Iss into render
+		// inputs while the controller applies as its own service
+		// account. Keep the persisted set in handler
+		// creatorClaimsForPersistence aligned with this allow-list.
+		platform.Claims = v1alpha2.Claims{Email: claims.Email}
 	}
 	return platform, project, nil
 }
