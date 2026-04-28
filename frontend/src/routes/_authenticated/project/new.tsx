@@ -3,7 +3,6 @@
  *
  * Accepts parent context via search params:
  *   - orgName    (required) — the organization that owns the project
- *   - folderName (optional) — the folder under which the project is nested
  *   - returnTo   (optional) — post-create redirect (validated by resolveReturnTo)
  *
  * On success navigates to `resolveReturnTo(search.returnTo, '/projects/$name')`.
@@ -21,7 +20,6 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useCreateProject } from '@/queries/projects'
-import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 import { toSlug } from '@/lib/slug'
 import { resolveReturnTo } from '@/lib/return-to'
 import { useOrg } from '@/lib/org-context'
@@ -32,11 +30,9 @@ export const Route = createFileRoute('/_authenticated/project/new')({
     search: Record<string, unknown>,
   ): {
     orgName?: string
-    folderName?: string
     returnTo?: string
   } => ({
     orgName: typeof search.orgName === 'string' ? search.orgName : undefined,
-    folderName: typeof search.folderName === 'string' ? search.folderName : undefined,
     returnTo: typeof search.returnTo === 'string' ? search.returnTo : undefined,
   }),
   component: ProjectNewRoute,
@@ -51,7 +47,6 @@ function ProjectNewRoute() {
   return (
     <ProjectNewPage
       orgName={orgName}
-      folderName={search.folderName}
       returnTo={search.returnTo}
     />
   )
@@ -59,16 +54,11 @@ function ProjectNewRoute() {
 
 export interface ProjectNewPageProps {
   orgName?: string
-  folderName?: string
   returnTo?: string
 }
 
-export function ProjectNewPage({ orgName, folderName, returnTo }: ProjectNewPageProps) {
+export function ProjectNewPage({ orgName, returnTo }: ProjectNewPageProps) {
   const navigate = useNavigate()
-
-  // Parent context: folder takes precedence over org root.
-  const parentType = folderName ? ParentType.FOLDER : ParentType.ORGANIZATION
-  const parentName = folderName ?? orgName ?? ''
 
   // Cancel destination: honour returnTo, fall back to /organizations.
   const cancelTarget = resolveReturnTo(returnTo, '/organizations')
@@ -109,8 +99,6 @@ export function ProjectNewPage({ orgName, folderName, returnTo }: ProjectNewPage
         displayName,
         description,
         organization: orgName,
-        parentType,
-        parentName,
       })
       // Default fallback: navigate to the newly created project's home page.
       const fallback = `/projects/${response.name}`
@@ -203,11 +191,6 @@ export function ProjectNewPage({ orgName, folderName, returnTo }: ProjectNewPage
               <p>
                 Organization: <span className="font-medium text-foreground">{orgName}</span>
               </p>
-              {folderName && (
-                <p>
-                  Folder: <span className="font-medium text-foreground">{folderName}</span>
-                </p>
-              )}
             </div>
           </div>
           <div className="flex items-center gap-3 pt-4">

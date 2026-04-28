@@ -63,7 +63,6 @@ export declare type Project = Message<"holos.console.v1.Project"> & {
 
   /**
    * organization is the root organization this project belongs to.
-   * Retained for convenience — use parent_type + parent_name for the immediate parent.
    *
    * @generated from field: string organization = 7;
    */
@@ -98,7 +97,8 @@ export declare type Project = Message<"holos.console.v1.Project"> & {
   createdAt: string;
 
   /**
-   * parent_type identifies whether the immediate parent is an org or folder (v1alpha2).
+   * parent_type identifies the immediate parent scope. Projects are always
+   * parented by their organization.
    *
    * @generated from field: holos.console.v1.ParentType parent_type = 12;
    */
@@ -106,8 +106,7 @@ export declare type Project = Message<"holos.console.v1.Project"> & {
 
   /**
    * parent_name is the name of the immediate parent scope (v1alpha2).
-   * For a project directly under an org this is the org name.
-   * For a project under a folder this is the folder name.
+   * For projects this is the organization name.
    *
    * @generated from field: string parent_name = 13;
    */
@@ -263,16 +262,16 @@ export declare type CreateProjectRequest = Message<"holos.console.v1.CreateProje
   organization: string;
 
   /**
-   * parent_type identifies whether the immediate parent is an org or folder (v1alpha2).
-   * Defaults to PARENT_TYPE_ORGANIZATION when unset.
+   * parent_type is retained only for legacy clients. When set, it must be
+   * PARENT_TYPE_ORGANIZATION.
    *
    * @generated from field: holos.console.v1.ParentType parent_type = 7;
    */
   parentType: ParentType;
 
   /**
-   * parent_name is the name of the immediate parent (org name or folder name) (v1alpha2).
-   * When unset, defaults to the organization.
+   * parent_name is retained only for legacy clients. When set, it must match
+   * organization.
    *
    * @generated from field: string parent_name = 8;
    */
@@ -334,6 +333,7 @@ export declare type UpdateProjectRequest = Message<"holos.console.v1.UpdateProje
 
   /**
    * parent_type is the new parent type for reparenting. When unset, no reparenting occurs.
+   * When set, it must be PARENT_TYPE_ORGANIZATION.
    * Requires PERMISSION_REPARENT on both source and destination parents (ADR 022 Decision 5).
    *
    * @generated from field: optional holos.console.v1.ParentType parent_type = 4;
@@ -342,7 +342,7 @@ export declare type UpdateProjectRequest = Message<"holos.console.v1.UpdateProje
 
   /**
    * parent_name is the new parent name for reparenting. When unset, no reparenting occurs.
-   * Must be set together with parent_type.
+   * Must be set together with parent_type and must name the organization.
    *
    * @generated from field: optional string parent_name = 5;
    */

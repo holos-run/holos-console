@@ -37,7 +37,6 @@ type Project struct {
 	// user_role is the calling user's effective role on this project.
 	UserRole Role `protobuf:"varint,6,opt,name=user_role,json=userRole,proto3,enum=holos.console.v1.Role" json:"user_role,omitempty"`
 	// organization is the root organization this project belongs to.
-	// Retained for convenience — use parent_type + parent_name for the immediate parent.
 	Organization string `protobuf:"bytes,7,opt,name=organization,proto3" json:"organization,omitempty"`
 	// default_user_grants are the per-user sharing grants applied by default to new secrets in this project.
 	DefaultUserGrants []*ShareGrant `protobuf:"bytes,8,rep,name=default_user_grants,json=defaultUserGrants,proto3" json:"default_user_grants,omitempty"`
@@ -47,11 +46,11 @@ type Project struct {
 	CreatorEmail string `protobuf:"bytes,10,opt,name=creator_email,json=creatorEmail,proto3" json:"creator_email,omitempty"`
 	// created_at is the RFC3339-formatted timestamp when this project was created.
 	CreatedAt string `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	// parent_type identifies whether the immediate parent is an org or folder (v1alpha2).
+	// parent_type identifies the immediate parent scope. Projects are always
+	// parented by their organization.
 	ParentType ParentType `protobuf:"varint,12,opt,name=parent_type,json=parentType,proto3,enum=holos.console.v1.ParentType" json:"parent_type,omitempty"`
 	// parent_name is the name of the immediate parent scope (v1alpha2).
-	// For a project directly under an org this is the org name.
-	// For a project under a folder this is the folder name.
+	// For projects this is the organization name.
 	ParentName    string `protobuf:"bytes,13,opt,name=parent_name,json=parentName,proto3" json:"parent_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -396,11 +395,11 @@ type CreateProjectRequest struct {
 	RoleGrants []*ShareGrant `protobuf:"bytes,5,rep,name=role_grants,json=roleGrants,proto3" json:"role_grants,omitempty"`
 	// organization is the root organization to create this project in.
 	Organization string `protobuf:"bytes,6,opt,name=organization,proto3" json:"organization,omitempty"`
-	// parent_type identifies whether the immediate parent is an org or folder (v1alpha2).
-	// Defaults to PARENT_TYPE_ORGANIZATION when unset.
+	// parent_type is retained only for legacy clients. When set, it must be
+	// PARENT_TYPE_ORGANIZATION.
 	ParentType ParentType `protobuf:"varint,7,opt,name=parent_type,json=parentType,proto3,enum=holos.console.v1.ParentType" json:"parent_type,omitempty"`
-	// parent_name is the name of the immediate parent (org name or folder name) (v1alpha2).
-	// When unset, defaults to the organization.
+	// parent_name is retained only for legacy clients. When set, it must match
+	// organization.
 	ParentName    string `protobuf:"bytes,8,opt,name=parent_name,json=parentName,proto3" json:"parent_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -548,10 +547,11 @@ type UpdateProjectRequest struct {
 	// description is the new description. When unset, preserves the existing value.
 	Description *string `protobuf:"bytes,3,opt,name=description,proto3,oneof" json:"description,omitempty"`
 	// parent_type is the new parent type for reparenting. When unset, no reparenting occurs.
+	// When set, it must be PARENT_TYPE_ORGANIZATION.
 	// Requires PERMISSION_REPARENT on both source and destination parents (ADR 022 Decision 5).
 	ParentType *ParentType `protobuf:"varint,4,opt,name=parent_type,json=parentType,proto3,enum=holos.console.v1.ParentType,oneof" json:"parent_type,omitempty"`
 	// parent_name is the new parent name for reparenting. When unset, no reparenting occurs.
-	// Must be set together with parent_type.
+	// Must be set together with parent_type and must name the organization.
 	ParentName    *string `protobuf:"bytes,5,opt,name=parent_name,json=parentName,proto3,oneof" json:"parent_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

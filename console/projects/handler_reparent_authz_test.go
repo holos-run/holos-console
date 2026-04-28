@@ -89,18 +89,17 @@ func TestUpdateProject_Reparent_ImpersonatedOwnerAuthorization(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
 			srcFolder := folderNSWithGrants("rp-authz-src", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-			destFolder := folderNSWithGrants("rp-authz-dest", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
 			prj := projectNSWithParent("rp-authz-prj", "acme", "holos-fld-rp-authz-src", `[{"principal":"alice@example.com","role":"editor"}]`)
 
 			handler, ctx := newReparentAuthzHandler(t,
-				"holos-fld-rp-authz-src",  // source parent ns
-				"holos-fld-rp-authz-dest", // destination parent ns
+				"holos-fld-rp-authz-src", // source parent ns
+				"holos-org-acme",         // destination parent ns
 				tc.allowSrc, tc.allowDest,
-				orgNs, srcFolder, destFolder, prj,
+				orgNs, srcFolder, prj,
 			)
 
-			newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
-			newParentName := "rp-authz-dest"
+			newParentType := consolev1.ParentType_PARENT_TYPE_ORGANIZATION
+			newParentName := "acme"
 			_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
 				Name:       "rp-authz-prj",
 				ParentType: &newParentType,

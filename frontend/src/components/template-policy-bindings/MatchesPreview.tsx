@@ -14,9 +14,8 @@ import {
 } from '@/components/ui/collapsible'
 import { TemplatePolicyBindingTargetKind } from '@/queries/templatePolicyBindings'
 import { useListDeployments } from '@/queries/deployments'
-import { useListProjects, useListProjectsByParent } from '@/queries/projects'
+import { useListProjects } from '@/queries/projects'
 import { useListTemplates } from '@/queries/templates'
-import { ParentType } from '@/gen/holos/console/v1/folders_pb.js'
 import { namespaceForProject, scopeLabelFromNamespace } from '@/lib/scope-labels'
 import { WILDCARD, type TargetRefDraft } from './binding-draft'
 
@@ -199,17 +198,9 @@ export function MatchesPreview({
   parentScope,
   targets,
 }: MatchesPreviewProps) {
-  // Organization-wide and folder-scoped project enumerations are hoisted to
-  // the top of the component so hook order is invariant across renders.
-  // Both hooks are passed empty strings when not applicable which short-
-  // circuits via `enabled: !!organization` inside the hooks themselves.
-  //
-  // Folder-scoped bindings must *always* enumerate the folder's projects —
-  // not just when a wildcard row is present — because literal project
-  // names still need to be filtered through the scope ceiling. Otherwise
-  // the preview would happily probe an out-of-folder project and claim
-  // matches the backend will reject with "project ... does not exist
-  // under binding scope ..." (codex review on PR #1084).
+  // Organization-wide project enumeration is hoisted so hook order is
+  // invariant across renders. Folder-scoped bindings no longer enumerate
+  // projects because projects are always parented by their organization.
   const needsScopeProjectList =
     parentScope.kind === 'folder' ||
     targets.some((t) => t.projectName === WILDCARD)
@@ -218,18 +209,13 @@ export function MatchesPreview({
       ? organization
       : '',
   )
-  const folderProjectsQuery = useListProjectsByParent(
-    parentScope.kind === 'folder' && needsScopeProjectList ? organization : '',
-    parentScope.kind === 'folder' ? ParentType.FOLDER : undefined,
-    parentScope.kind === 'folder' ? parentScope.folderName : undefined,
-  )
 
   const enumeratedProjects: string[] = useMemo(() => {
     if (parentScope.kind === 'organization') {
       return (orgProjectsQuery.data?.projects ?? []).map((p) => p.name)
     }
-    return (folderProjectsQuery.data ?? []).map((p) => p.name)
-  }, [parentScope.kind, orgProjectsQuery.data, folderProjectsQuery.data])
+    return []
+  }, [parentScope.kind, orgProjectsQuery.data])
 
   // Folder scope is the only kind that hard-limits literal project names.
   // Org scope lets a binding reach every project the caller can see, so
@@ -240,8 +226,8 @@ export function MatchesPreview({
 
   const enumeratedProjectsPending =
     needsScopeProjectList &&
-    ((parentScope.kind === 'organization' && orgProjectsQuery.isLoading) ||
-      (parentScope.kind === 'folder' && folderProjectsQuery.isLoading))
+    parentScope.kind === 'organization' &&
+    orgProjectsQuery.isLoading
 
   // Resolve per-row plans to a flat set of probes. Each probe is a (kind,
   // projectName) pair that a per-project probe component owns one hook
@@ -297,12 +283,12 @@ export function MatchesPreview({
   const store = useProbeStore()
   const probeData = useProbeSnapshot(store)
 
-  // Aggregate parent-scope project enumeration error too — if the org or
-  // folder listing itself fails, we cannot honestly render anything.
+  // Aggregate parent-scope project enumeration error too — if the org listing
+  // itself fails, we cannot honestly render anything.
   const scopeEnumerationError =
     parentScope.kind === 'organization'
       ? orgProjectsQuery.error
-      : folderProjectsQuery.error
+      : null
 
   // Reduce row plans + live probe data to a dedup'd list of matches.
   // `errorCount` counts probes that failed so the UI can surface an

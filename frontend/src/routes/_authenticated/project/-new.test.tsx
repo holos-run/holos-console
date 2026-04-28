@@ -163,35 +163,8 @@ describe('ProjectNewPage', () => {
           organization: 'my-org',
         }),
       )
-    })
-  })
-
-  it('passes ORGANIZATION parentType when no folderName', async () => {
-    const mutateAsync = vi.fn().mockResolvedValue({ name: 'my-project' })
-    setupMocks(mutateAsync)
-    render(<ProjectNewPage orgName="my-org" />)
-
-    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My Project' } })
-    fireEvent.click(screen.getByRole('button', { name: /create project/i }))
-
-    await waitFor(() => {
-      const call = mutateAsync.mock.calls[0][0]
-      // ParentType.ORGANIZATION = 1
-      expect(call.parentName).toBe('my-org')
-    })
-  })
-
-  it('passes FOLDER parentType and folderName when folderName is provided', async () => {
-    const mutateAsync = vi.fn().mockResolvedValue({ name: 'my-project' })
-    setupMocks(mutateAsync)
-    render(<ProjectNewPage orgName="my-org" folderName="payments" />)
-
-    fireEvent.change(screen.getByLabelText(/display name/i), { target: { value: 'My Project' } })
-    fireEvent.click(screen.getByRole('button', { name: /create project/i }))
-
-    await waitFor(() => {
-      const call = mutateAsync.mock.calls[0][0]
-      expect(call.parentName).toBe('payments')
+      expect(mutateAsync.mock.calls[0][0]).not.toHaveProperty('parentType')
+      expect(mutateAsync.mock.calls[0][0]).not.toHaveProperty('parentName')
     })
   })
 
@@ -267,12 +240,7 @@ describe('ProjectNewPage', () => {
     expect(screen.getByText('my-org')).toBeInTheDocument()
   })
 
-  it('displays folder context when folderName is provided', () => {
-    render(<ProjectNewPage orgName="my-org" folderName="payments" />)
-    expect(screen.getByText('payments')).toBeInTheDocument()
-  })
-
-  it('does not display folder context when no folderName', () => {
+  it('does not display folder context', () => {
     render(<ProjectNewPage orgName="my-org" />)
     expect(screen.queryByText(/folder/i)).not.toBeInTheDocument()
   })

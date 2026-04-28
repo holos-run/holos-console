@@ -6,10 +6,9 @@
  * `creatorEmail` as a hidden searchable field via `extraSearch` so operators
  * can find projects by their creator without crowding the visible columns.
  *
- * The Parent column is supplied via `parentLabel` (the immediate parent's
- * name). Projects directly under an org all share the same parent, so the
- * column is hidden by ResourceGrid until folder-scoped projects are
- * introduced.
+ * The Parent column is supplied via `parentLabel` (the organization name).
+ * Projects all share the organization as their parent, so the column is hidden
+ * by ResourceGrid for the usual organization-scoped listing.
  */
 
 import { useCallback, useMemo } from 'react'

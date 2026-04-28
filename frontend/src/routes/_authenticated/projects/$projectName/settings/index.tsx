@@ -18,26 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { Combobox, type ComboboxItem } from '@/components/ui/combobox'
 import { Check, Pencil, X, Table2, Braces } from 'lucide-react'
 import { SharingPanel, type Grant } from '@/components/sharing-panel'
 import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { RawView } from '@/components/raw-view'
-import { ParentType } from '@/gen/holos/console/v1/folders_pb'
 import { useGetProject, useUpdateProject, useUpdateProjectSharing, useUpdateProjectDefaultSharing, useDeleteProject } from '@/queries/projects'
 import { useGetProjectSettings, useGetProjectSettingsRaw, useUpdateProjectSettings } from '@/queries/project-settings'
 import { useGetOrganization } from '@/queries/organizations'
-import { useListFolders } from '@/queries/folders'
 import { useResourcePermissions } from '@/queries/permissions'
 import { connectErrorMessage } from '@/lib/connect-toast'
 import {
@@ -76,7 +63,7 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
   const { data: projectSettings } = useGetProjectSettings(projectName)
   const updateProjectSettings = useUpdateProjectSettings(projectName)
 
-  // Fetch org data for display and parent picker context.
+  // Fetch org data for display.
   const { data: org } = useGetOrganization(project?.organization ?? '')
   const projectNamespace = namespaceForProject(projectName)
   const orgNamespace = project?.organization ? namespaceForOrg(project.organization) : ''
@@ -101,9 +88,6 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
   const canDelete = hasPermission(permissionsQuery.data, deleteProjectPermission)
   const canUpdateProjectSettings = hasPermission(permissionsQuery.data, updateOrgPermission)
 
-  // Fetch all folders in the org for the parent picker
-  const { data: allFolders } = useListFolders(project?.organization ?? '')
-
   // View mode: data or raw
   const [viewMode, setViewMode] = useState<'data' | 'raw'>('data')
   const { data: rawJson } = useGetProjectSettingsRaw(projectName)
@@ -120,65 +104,11 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
   // Delete dialog
   const [deleteOpen, setDeleteOpen] = useState(false)
 
-  // Parent picker
-  const [parentPickerOpen, setParentPickerOpen] = useState(false)
-  const [pendingParent, setPendingParent] = useState<{ type: ParentType; name: string; displayLabel: string } | null>(null)
-  const [reparentDialogOpen, setReparentDialogOpen] = useState(false)
-
-  // Build parent picker options: org root + all folders in the org
-  const parentOptions: ComboboxItem[] = [
-    { value: `org:${project?.organization ?? ''}`, label: `${org?.displayName || project?.organization || ''} (organization root)` },
-    ...(allFolders ?? []).map((f) => ({ value: `folder:${f.name}`, label: f.displayName || f.name })),
-  ]
-
   // Resolve the current parent display text
   const currentParentDisplay = (() => {
     if (!project) return ''
-    if (project.parentType === ParentType.ORGANIZATION) {
-      return `Organization: ${org?.displayName || project.parentName}`
-    }
-    if (project.parentType === ParentType.FOLDER) {
-      const parentFolder = allFolders?.find((f) => f.name === project.parentName)
-      return `Folder: ${parentFolder?.displayName || project.parentName}`
-    }
-    return project.parentName
+    return `Organization: ${org?.displayName || project.parentName || project.organization}`
   })()
-
-  const handleParentSelect = (comboValue: string) => {
-    let type: ParentType
-    let name: string
-    let displayLabel: string
-    if (comboValue.startsWith('org:')) {
-      type = ParentType.ORGANIZATION
-      name = comboValue.slice(4)
-      displayLabel = org?.displayName || name
-    } else {
-      type = ParentType.FOLDER
-      name = comboValue.slice(7)
-      const f = allFolders?.find((fld) => fld.name === name)
-      displayLabel = f?.displayName || name
-    }
-    // Only show confirmation if the parent is actually changing
-    if (type === project?.parentType && name === project?.parentName) {
-      setParentPickerOpen(false)
-      return
-    }
-    setPendingParent({ type, name, displayLabel })
-    setReparentDialogOpen(true)
-  }
-
-  const handleConfirmReparent = async () => {
-    if (!pendingParent) return
-    try {
-      await updateProject.mutateAsync({ name: projectName, parentType: pendingParent.type, parentName: pendingParent.name })
-      setReparentDialogOpen(false)
-      setParentPickerOpen(false)
-      setPendingParent(null)
-      toast.success('Parent changed')
-    } catch (err) {
-      toast.error(connectErrorMessage(err))
-    }
-  }
 
   const handleSaveDisplayName = async () => {
     try {
@@ -339,45 +269,7 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
               {/* Parent */}
               <div className="flex items-center gap-2">
                 <span className="w-32 text-sm text-muted-foreground shrink-0">Parent</span>
-                {parentPickerOpen ? (
-                  <div className="flex-1 flex items-center gap-2">
-                    <Combobox
-                      items={parentOptions}
-                      value={
-                        project?.parentType === ParentType.ORGANIZATION
-                          ? `org:${project.parentName}`
-                          : `folder:${project?.parentName ?? ''}`
-                      }
-                      onValueChange={handleParentSelect}
-                      placeholder="Select parent..."
-                      searchPlaceholder="Search folders..."
-                      aria-label="parent picker"
-                      className="flex-1"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="cancel parent change"
-                      onClick={() => setParentPickerOpen(false)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <span className="flex-1 text-sm">{currentParentDisplay}</span>
-                    {canWrite && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label="change parent"
-                        onClick={() => setParentPickerOpen(true)}
-                      >
-                        Change Parent
-                      </Button>
-                    )}
-                  </>
-                )}
+                <span className="flex-1 text-sm">{currentParentDisplay}</span>
               </div>
 
               {/* Name (slug) - read-only */}
@@ -535,24 +427,6 @@ export function ProjectSettingsPage({ projectName: propProjectName }: { projectN
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={reparentDialogOpen} onOpenChange={setReparentDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Move project?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Moving this project to {pendingParent?.displayLabel} will change permission inheritance for it. This cannot be undone automatically.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => { setReparentDialogOpen(false); setPendingParent(null) }}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmReparent} disabled={updateProject.isPending}>
-              Move
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </Card>
   )
 }

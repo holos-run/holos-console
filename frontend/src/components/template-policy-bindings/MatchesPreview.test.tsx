@@ -15,7 +15,6 @@ if (!Element.prototype.releasePointerCapture) {
 
 vi.mock('@/queries/projects', () => ({
   useListProjects: vi.fn(),
-  useListProjectsByParent: vi.fn(),
 }))
 
 vi.mock('@/queries/deployments', () => ({
@@ -33,7 +32,7 @@ vi.mock('@/queries/templates', async () => {
 })
 
 import { MatchesPreview } from './MatchesPreview'
-import { useListProjects, useListProjectsByParent } from '@/queries/projects'
+import { useListProjects } from '@/queries/projects'
 import { useListDeployments } from '@/queries/deployments'
 import { useListTemplates } from '@/queries/templates'
 import { namespaceForProject } from '@/lib/scope-labels'
@@ -64,15 +63,6 @@ function stubLists({
     isPending: false,
     error: org ? listProjectsError : null,
   }))
-  ;(useListProjectsByParent as Mock).mockImplementation(
-    (org: string, _pt: unknown, parent: string | undefined) => ({
-      data:
-        org && parent && !listProjectsError ? projects : undefined,
-      isLoading: false,
-      isPending: false,
-      error: org && parent ? listProjectsError : null,
-    }),
-  )
   ;(useListTemplates as Mock).mockImplementation((namespace: string) => {
     if (!namespace) return { data: [], isLoading: false, error: null }
     const entry = Object.entries(perProjectTemplates).find(
@@ -255,12 +245,10 @@ describe('MatchesPreview', () => {
     )
   })
 
-  it('folder-scoped binding: literal out-of-folder project is excluded from preview', async () => {
-    // HOL-773 codex follow-up on PR #1084: under folder scope, only
-    // projects inside the folder are reachable. A target that points at
-    // a literal project outside the folder must NOT show matches (the
-    // backend rejects it with "project ... does not exist under binding
-    // scope ...").
+  it('folder-scoped binding: literal project is excluded from preview', async () => {
+    // Projects are organization-parented only. Folder-scoped bindings no
+    // longer enumerate projects by folder, so project targets under folder
+    // scope should preview as empty even if a same-named project exists.
     stubLists({
       projects: [{ name: 'in-folder', displayName: 'In Folder' }],
       perProjectTemplates: {
@@ -302,7 +290,7 @@ describe('MatchesPreview', () => {
     })
   })
 
-  it('folder-scoped binding: literal in-folder project still reports a match', async () => {
+  it('folder-scoped binding: literal formerly in-folder project is empty', async () => {
     stubLists({
       projects: [{ name: 'in-folder', displayName: 'In Folder' }],
       perProjectTemplates: {
@@ -329,9 +317,9 @@ describe('MatchesPreview', () => {
       />,
     )
     await waitFor(() => {
-      expect(screen.getByTestId('matches-preview-toggle')).toHaveTextContent(
-        /Matches 1 target/i,
-      )
+      expect(
+        screen.getByTestId('matches-preview-empty'),
+      ).toBeInTheDocument()
     })
   })
 
@@ -470,7 +458,7 @@ describe('MatchesPreview', () => {
     })
   })
 
-  it('folder-scoped preview enumerates via useListProjectsByParent', async () => {
+  it('folder-scoped wildcard project preview is empty', async () => {
     stubLists({
       projects: [{ name: 'proj-folder-a', displayName: 'Project A' }],
       perProjectTemplates: {
@@ -497,10 +485,9 @@ describe('MatchesPreview', () => {
       />,
     )
     await waitFor(() => {
-      expect(useListProjectsByParent).toHaveBeenCalled()
-      expect(screen.getByTestId('matches-preview-toggle')).toHaveTextContent(
-        /Matches 1 target/i,
-      )
+      expect(
+        screen.getByTestId('matches-preview-empty'),
+      ).toBeInTheDocument()
     })
   })
 })
