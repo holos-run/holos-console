@@ -272,8 +272,7 @@ export declare type CreateProjectRequest = Message<"holos.console.v1.CreateProje
 
   /**
    * parent_name is the name of the immediate parent (org name or folder name) (v1alpha2).
-   * When unset, defaults to the organization's default folder (ADR 022 Decision 5).
-   * Falls back to the organization if no default folder is configured.
+   * When unset, defaults to the organization.
    *
    * @generated from field: string parent_name = 8;
    */
