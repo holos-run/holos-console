@@ -39,7 +39,6 @@ func TestNamespaceShareAnnotationsPolicyProtectsLabelsAndShares(t *testing.T) {
 		`console.holos.run/share-roles`,
 		`console.holos.run/default-share-users`,
 		`console.holos.run/default-share-roles`,
-		`console.holos.run/default-folder`,
 		`console.holos.run/rbac-share-users`,
 		`console.holos.run/creator-email`,
 		`console.holos.run/creator-sub`,
@@ -63,8 +62,6 @@ func TestNamespaceShareAnnotationsPolicyProtectsLabelsAndShares(t *testing.T) {
 		"newDefaultShareUsers",
 		"oldDefaultShareRoles",
 		"newDefaultShareRoles",
-		"oldDefaultFolder",
-		"newDefaultFolder",
 		"oldRBACShareUsers",
 		"newRBACShareUsers",
 		"oldCreatorEmail",
@@ -96,7 +93,6 @@ func TestNamespaceShareAnnotationsPolicyProtectsLabelsAndShares(t *testing.T) {
 		`variables.oldShareRoles == variables.newShareRoles`,
 		`variables.oldDefaultShareUsers == variables.newDefaultShareUsers`,
 		`variables.oldDefaultShareRoles == variables.newDefaultShareRoles`,
-		`variables.oldDefaultFolder == variables.newDefaultFolder`,
 		`variables.oldRBACShareUsers == variables.newRBACShareUsers`,
 		`variables.oldCreatorEmail == variables.newCreatorEmail`,
 		`variables.oldCreatorSubject == variables.newCreatorSubject`,
@@ -116,6 +112,12 @@ func TestNamespaceShareAnnotationsPolicyProtectsLabelsAndShares(t *testing.T) {
 		if !hasMatchCondition(policy, name) {
 			t.Fatalf("missing match condition %q", name)
 		}
+	}
+	if strings.Contains(matchExpression, "console.holos.run/default-folder") {
+		t.Fatalf("match condition still references default-folder: %s", matchExpression)
+	}
+	if strings.Contains(validation, "DefaultFolder") || strings.Contains(validation, "default-folder") {
+		t.Fatalf("validation still references default-folder: %s", validation)
 	}
 }
 

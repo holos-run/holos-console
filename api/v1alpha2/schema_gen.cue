@@ -73,11 +73,6 @@
 #AnnotationEnabled:           "console.holos.run/enabled"
 #AnnotationSettings:          "console.holos.run/project-settings"
 
-// AnnotationDefaultFolder is a legacy organization annotation retained for
-// admission and migration cleanup. Console handlers no longer write or read
-// it when creating organizations or projects.
-#AnnotationDefaultFolder: "console.holos.run/default-folder"
-
 // AnnotationGatewayNamespace stores the Kubernetes namespace that hosts
 // the platform Gateway referenced by templates rendered for an
 // organization. Lives on the organization namespace; surfaced to template
