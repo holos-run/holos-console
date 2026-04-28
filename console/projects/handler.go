@@ -242,7 +242,8 @@ func (h *Handler) CreateProject(
 	parentName := req.Msg.ParentName
 	parentType := req.Msg.ParentType
 	if parentName == "" {
-		parentName, parentType = h.resolveDefaultParent(ctx, req.Msg.Organization)
+		parentName = req.Msg.Organization
+		parentType = consolev1.ParentType_PARENT_TYPE_ORGANIZATION
 	}
 	if parentType == consolev1.ParentType_PARENT_TYPE_UNSPECIFIED {
 		parentType = consolev1.ParentType_PARENT_TYPE_ORGANIZATION
@@ -968,12 +969,6 @@ func (h *Handler) buildProject(ns *corev1.Namespace, shareUsers, shareRoles []se
 	p.CreatedAt = ns.CreationTimestamp.UTC().Format(time.RFC3339)
 
 	return p
-}
-
-// resolveDefaultParent determines the default parent for a new project when
-// no explicit parent is specified.
-func (h *Handler) resolveDefaultParent(ctx context.Context, org string) (string, consolev1.ParentType) {
-	return org, consolev1.ParentType_PARENT_TYPE_ORGANIZATION
 }
 
 // resolveParentNS converts a ParentType+ParentName pair to a Kubernetes namespace name.

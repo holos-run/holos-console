@@ -66,10 +66,9 @@ const (
 	AnnotationURL               = "console.holos.run/url"
 	AnnotationEnabled           = "console.holos.run/enabled"
 	AnnotationSettings          = "console.holos.run/project-settings"
-	// AnnotationDefaultFolder stores the identifier (slug) of the default folder
-	// for an organization. Written when the org is created and updatable via
-	// UpdateOrganization. New projects without an explicit parent are placed in
-	// this folder (ADR 022 Decision 3).
+	// AnnotationDefaultFolder is a legacy organization annotation retained for
+	// admission and migration cleanup. Console handlers no longer write or read
+	// it when creating organizations or projects.
 	AnnotationDefaultFolder = "console.holos.run/default-folder"
 	// AnnotationGatewayNamespace stores the Kubernetes namespace that hosts
 	// the platform Gateway referenced by templates rendered for an
