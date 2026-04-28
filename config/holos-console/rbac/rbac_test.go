@@ -92,6 +92,21 @@ func TestRoleGrantsImpersonationAndRBACReconciliation(t *testing.T) {
 	}
 }
 
+func TestRoleGrantsDeploymentControllerAccess(t *testing.T) {
+	var role rbacv1.ClusterRole
+	mustReadYAML(t, "role.yaml", &role)
+
+	if !hasResourceVerbs(role.Rules, "deployments.holos.run", "deployments", []string{"get", "list", "watch", "update"}) {
+		t.Fatalf("ClusterRole missing Deployment controller access to deployments.holos.run/deployments")
+	}
+	if !hasResourceVerbs(role.Rules, "deployments.holos.run", "deployments/status", []string{"get", "patch", "update"}) {
+		t.Fatalf("ClusterRole missing Deployment status update access")
+	}
+	if !hasResourceVerbs(role.Rules, "templates.holos.run", "templates", []string{"get", "list", "watch"}) {
+		t.Fatalf("ClusterRole missing read access to templates.holos.run/templates")
+	}
+}
+
 func TestClusterRoleBindingTargetsConsoleServiceAccount(t *testing.T) {
 	var serviceAccount corev1.ServiceAccount
 	mustReadYAML(t, "namespace/service_account.yaml", &serviceAccount)
@@ -171,6 +186,21 @@ func hasResource(rules []rbacv1.PolicyRule, apiGroup, resource string) bool {
 			if got == resource {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func hasResourceVerbs(rules []rbacv1.PolicyRule, apiGroup, resource string, verbs []string) bool {
+	for _, rule := range rules {
+		if !reflect.DeepEqual(rule.APIGroups, []string{apiGroup}) {
+			continue
+		}
+		if !containsAll(rule.Resources, []string{resource}) {
+			continue
+		}
+		if containsAll(rule.Verbs, verbs) {
+			return true
 		}
 	}
 	return false
