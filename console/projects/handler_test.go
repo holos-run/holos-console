@@ -1271,93 +1271,6 @@ func folderNSWithGrants(name, org, parentNs, shareUsersJSON string) *corev1.Name
 	}
 }
 
-func TestUpdateProject_Reparent_SuccessOrgOwner(t *testing.T) {
-	// Alice is org owner, so she can reparent projects within the org via cascade.
-	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
-	srcFolder := folderNSWithGrants("rp-prj-src", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	destFolder := folderNSWithGrants("rp-prj-dest", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	prj := projectNSWithParent("rp-prj-test", "acme", "holos-fld-rp-prj-src", `[{"principal":"alice@example.com","role":"editor"}]`)
-
-	handler := newHandlerWithOrg(
-		&mockOrgResolver{users: map[string]string{"alice@example.com": "owner"}},
-		orgNs, srcFolder, destFolder, prj,
-	)
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	ctx := contextWithClaims("alice@example.com")
-
-	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
-	newParentName := "rp-prj-dest"
-	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
-		Name:       "rp-prj-test",
-		ParentType: &newParentType,
-		ParentName: &newParentName,
-	}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-}
-
-func TestUpdateProject_Reparent_SameParentIsNoop(t *testing.T) {
-	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
-	folder := folderNSWithGrants("rp-prj-noop", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	prj := projectNSWithParent("rp-prj-noop-test", "acme", "holos-fld-rp-prj-noop", `[{"principal":"alice@example.com","role":"editor"}]`)
-
-	handler := newHandlerWithOrg(
-		&mockOrgResolver{users: map[string]string{"alice@example.com": "owner"}},
-		orgNs, folder, prj,
-	)
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	ctx := contextWithClaims("alice@example.com")
-
-	// Move to same parent (folder rp-prj-noop).
-	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
-	newParentName := "rp-prj-noop"
-	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
-		Name:       "rp-prj-noop-test",
-		ParentType: &newParentType,
-		ParentName: &newParentName,
-	}))
-	if err != nil {
-		t.Fatalf("expected no error (no-op), got %v", err)
-	}
-}
-
-func TestUpdateProject_Reparent_SameParentSkipsK8sWrite(t *testing.T) {
-	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
-	folder := folderNSWithGrants("rp-prj-noop2", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"editor"}]`)
-	prj := projectNSWithParent("rp-prj-noop2-test", "acme", "holos-fld-rp-prj-noop2", `[{"principal":"alice@example.com","role":"editor"}]`)
-
-	handler, fakeClient := newHandlerWithOrgAndClient(
-		&mockOrgResolver{users: map[string]string{"alice@example.com": "owner"}},
-		orgNs, folder, prj,
-	)
-	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	ctx := contextWithClaims("alice@example.com")
-
-	// Record action count before the call.
-	beforeActions := len(fakeClient.Actions())
-
-	// Move to same parent with no metadata changes.
-	newParentType := consolev1.ParentType_PARENT_TYPE_FOLDER
-	newParentName := "rp-prj-noop2"
-	_, err := handler.UpdateProject(ctx, connect.NewRequest(&consolev1.UpdateProjectRequest{
-		Name:       "rp-prj-noop2-test",
-		ParentType: &newParentType,
-		ParentName: &newParentName,
-	}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-
-	// Verify no update actions were issued after the initial get.
-	afterActions := fakeClient.Actions()
-	for _, action := range afterActions[beforeActions:] {
-		if action.GetVerb() == "update" {
-			t.Fatalf("expected no K8s update for same-parent reparent with no metadata changes, but got update action on %s", action.GetResource().Resource)
-		}
-	}
-}
-
 func TestUpdateProject_Reparent_MoveFromFolderToOrg(t *testing.T) {
 	// Move a project from a folder to the org root.
 	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
@@ -1417,7 +1330,7 @@ func TestCreateProject_DefaultsToOrgParent(t *testing.T) {
 	}
 }
 
-func TestCreateProject_ExplicitFolderParentStillSupported(t *testing.T) {
+func TestCreateProject_ExplicitFolderParentRejected(t *testing.T) {
 	orgNs := orgNSWithGrants("df-org-d", `[{"principal":"dave@example.com","role":"owner"}]`)
 
 	explicitFolder := folderNSWithGrants("df-explicit-d", "df-org-d", "holos-org-df-org-d", `[{"principal":"dave@example.com","role":"editor"}]`)
@@ -1429,26 +1342,21 @@ func TestCreateProject_ExplicitFolderParentStillSupported(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	ctx := contextWithClaims("dave@example.com")
 
-	resp, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
+	folderParentType := consolev1.ParentType(2)
+	_, err := handler.CreateProject(ctx, connect.NewRequest(&consolev1.CreateProjectRequest{
 		Name:         "df-prj-d",
 		Organization: "df-org-d",
-		ParentType:   consolev1.ParentType_PARENT_TYPE_FOLDER,
+		ParentType:   folderParentType,
 		ParentName:   "df-explicit-d",
 	}))
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+	if err == nil {
+		t.Fatal("expected explicit folder parent to be rejected, got nil")
 	}
-	if resp.Msg.Name != "df-prj-d" {
-		t.Errorf("expected name 'df-prj-d', got %q", resp.Msg.Name)
+	connectErr, ok := err.(*connect.Error)
+	if !ok {
+		t.Fatalf("expected *connect.Error, got %T: %v", err, err)
 	}
-
-	// Verify the project's parent label points to the explicitly specified folder.
-	ns, err := handler.k8s.GetProject(ctx, "df-prj-d")
-	if err != nil {
-		t.Fatalf("expected project to exist, got %v", err)
-	}
-	parentLabel := ns.Labels[v1alpha2.AnnotationParent]
-	if parentLabel != "holos-fld-df-explicit-d" {
-		t.Errorf("expected parent label 'holos-fld-df-explicit-d', got %q", parentLabel)
+	if connectErr.Code() != connect.CodeInvalidArgument {
+		t.Fatalf("expected CodeInvalidArgument, got %v: %v", connectErr.Code(), err)
 	}
 }

@@ -22,10 +22,6 @@ vi.mock('@/queries/projects', () => ({
   useDeleteProject: vi.fn(),
 }))
 
-vi.mock('@/queries/folders', () => ({
-  useListFolders: vi.fn(),
-}))
-
 vi.mock('@/queries/project-settings', () => ({
   useGetProjectSettings: vi.fn(),
   useGetProjectSettingsRaw: vi.fn(),
@@ -42,7 +38,6 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 import { useGetProject, useUpdateProject, useUpdateProjectSharing, useUpdateProjectDefaultSharing, useDeleteProject } from '@/queries/projects'
 import { useGetProjectSettings, useGetProjectSettingsRaw, useUpdateProjectSettings } from '@/queries/project-settings'
 import { useGetOrganization } from '@/queries/organizations'
-import { useListFolders } from '@/queries/folders'
 import { useAuth } from '@/lib/auth'
 import { namespaceForOrg } from '@/lib/scope-labels'
 import {
@@ -72,11 +67,6 @@ const mockOrg = {
   displayName: 'My Org',
   userRole: 3, // OWNER
 }
-
-const mockFolders = [
-  { name: 'default', displayName: 'Default', parentType: 1, parentName: 'my-org' },
-  { name: 'engineering', displayName: 'Engineering', parentType: 1, parentName: 'my-org' },
-]
 
 function setupMocks(overrides: Partial<typeof mockProject> = {}, orgOverrides: Partial<typeof mockOrg> = {}) {
   const project = { ...mockProject, ...overrides }
@@ -133,11 +123,6 @@ function setupMocks(overrides: Partial<typeof mockProject> = {}, orgOverrides: P
     isLoading: false,
     user: { profile: { email: 'alice@example.com', groups: [] } },
   })
-  ;(useListFolders as Mock).mockReturnValue({
-    data: mockFolders,
-    isPending: false,
-    error: null,
-  })
 }
 
 describe('ProjectSettingsPage', () => {
@@ -169,7 +154,6 @@ describe('ProjectSettingsPage', () => {
     ;(useUpdateProjectSettings as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
     ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true, isLoading: false, user: null })
-    ;(useListFolders as Mock).mockReturnValue({ data: [], isPending: false, error: null })
 
     render(<ProjectSettingsPage />)
     const skeletons = document.querySelectorAll('[data-slot="skeleton"]')
@@ -187,7 +171,6 @@ describe('ProjectSettingsPage', () => {
     ;(useUpdateProjectSettings as Mock).mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     ;(useGetOrganization as Mock).mockReturnValue({ data: undefined, isPending: false, error: null })
     ;(useAuth as Mock).mockReturnValue({ isAuthenticated: true, isLoading: false, user: null })
-    ;(useListFolders as Mock).mockReturnValue({ data: [], isPending: false, error: null })
 
     render(<ProjectSettingsPage />)
     expect(screen.getByText('Not found')).toBeInTheDocument()
@@ -407,76 +390,29 @@ describe('ProjectSettingsPage', () => {
   })
 
   describe('Parent section', () => {
-    it('displays current parent as Organization when parentType is ORGANIZATION', () => {
+    it('displays the project organization as the parent', () => {
       setupMocks({ parentType: 1, parentName: 'my-org' })
       render(<ProjectSettingsPage />)
       expect(screen.getByText('Parent')).toBeInTheDocument()
       expect(screen.getByText(/Organization: My Org/)).toBeInTheDocument()
     })
 
-    it('displays current parent as Folder when parentType is FOLDER', () => {
-      setupMocks({ parentType: 2, parentName: 'engineering' })
+    it('falls back to the organization name when display name is unavailable', () => {
+      setupMocks({ parentName: 'my-org' }, { displayName: '' })
       render(<ProjectSettingsPage />)
-      expect(screen.getByText(/Folder: Engineering/)).toBeInTheDocument()
+      expect(screen.getByText(/Organization: my-org/)).toBeInTheDocument()
     })
 
-    it('renders Change Parent button for OWNERs', () => {
+    it('does not render Change Parent button for owners', () => {
       setupMocks({ userRole: 3 })
-      render(<ProjectSettingsPage />)
-      expect(screen.getByRole('button', { name: /change parent/i })).toBeInTheDocument()
-    })
-
-    it('does not render Change Parent button for non-OWNERs', () => {
-      setupMocks({ userRole: 1 }) // VIEWER
       render(<ProjectSettingsPage />)
       expect(screen.queryByRole('button', { name: /change parent/i })).not.toBeInTheDocument()
     })
 
-    it('shows confirmation dialog when selecting a new parent', async () => {
-      setupMocks()
+    it('does not render Change Parent button for non-owners', () => {
+      setupMocks({ userRole: 1 }) // VIEWER
       render(<ProjectSettingsPage />)
-      fireEvent.click(screen.getByRole('button', { name: /change parent/i }))
-      // Open the combobox popover
-      fireEvent.click(screen.getByRole('combobox', { name: /parent picker/i }))
-      // Select "Engineering" folder from the combobox list
-      await waitFor(() => {
-        expect(screen.getByText('Engineering')).toBeInTheDocument()
-      })
-      fireEvent.click(screen.getByText('Engineering'))
-      await waitFor(() => {
-        expect(screen.getByText(/Move project/i)).toBeInTheDocument()
-      })
-    })
-
-    it('calls updateProject with parentType and parentName on confirmation', async () => {
-      setupMocks()
-      render(<ProjectSettingsPage />)
-      fireEvent.click(screen.getByRole('button', { name: /change parent/i }))
-      fireEvent.click(screen.getByRole('combobox', { name: /parent picker/i }))
-      await waitFor(() => {
-        expect(screen.getByText('Engineering')).toBeInTheDocument()
-      })
-      fireEvent.click(screen.getByText('Engineering'))
-      await waitFor(() => {
-        expect(screen.getByText(/Move project/i)).toBeInTheDocument()
-      })
-      fireEvent.click(screen.getByRole('button', { name: /^move$/i }))
-      const mutateAsync = (useUpdateProject as Mock).mock.results[0].value.mutateAsync
-      await waitFor(() => {
-        expect(mutateAsync).toHaveBeenCalledWith(
-          expect.objectContaining({ name: 'test-project', parentType: 2, parentName: 'engineering' }),
-        )
-      })
-    })
-
-    it('shows org root option in parent picker', async () => {
-      setupMocks({ parentType: 2, parentName: 'default' })
-      render(<ProjectSettingsPage />)
-      fireEvent.click(screen.getByRole('button', { name: /change parent/i }))
-      fireEvent.click(screen.getByRole('combobox', { name: /parent picker/i }))
-      await waitFor(() => {
-        expect(screen.getByText(/My Org \(organization root\)/i)).toBeInTheDocument()
-      })
+      expect(screen.queryByRole('button', { name: /change parent/i })).not.toBeInTheDocument()
     })
   })
 

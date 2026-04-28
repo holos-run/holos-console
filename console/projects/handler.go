@@ -237,21 +237,10 @@ func (h *Handler) CreateProject(
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("authentication required"))
 	}
 
-	// Resolve the immediate parent namespace.
-	// When no explicit parent is specified, default to the organization.
-	parentName := req.Msg.ParentName
-	parentType := req.Msg.ParentType
-	if parentName == "" {
-		parentName = req.Msg.Organization
-		parentType = consolev1.ParentType_PARENT_TYPE_ORGANIZATION
+	if err := validateOrganizationProjectParent(req.Msg.ParentType, req.Msg.ParentName, req.Msg.Organization); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if parentType == consolev1.ParentType_PARENT_TYPE_UNSPECIFIED {
-		parentType = consolev1.ParentType_PARENT_TYPE_ORGANIZATION
-	}
-	parentNs, err := h.resolveParentNS(parentType, parentName)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("resolving parent: %w", err))
-	}
+	parentNs := h.k8s.Resolver.OrgNamespace(req.Msg.Organization)
 	if rpc.HasImpersonatedClients(ctx) {
 		parentNamespace, err := h.k8s.GetNamespace(ctx, parentNs)
 		if err != nil {
@@ -305,6 +294,7 @@ func (h *Handler) CreateProject(
 	// covers both paths (existing typed Create and SSA-via-applier) with a
 	// single branch.
 	const maxCreateRetries = 3
+	var err error
 	for attempt := range maxCreateRetries + 1 {
 		err = h.createProjectOnce(ctx, name, req.Msg, parentNs, claims.Email, claims.Sub, shareUsers, shareRoles, defaultShareUsers, defaultShareRoles, rbacShareUsers, topResourceRBACUsers)
 		if err == nil {
@@ -919,18 +909,18 @@ func (h *Handler) buildProject(ns *corev1.Namespace, shareUsers, shareRoles []se
 	if ns.Labels != nil {
 		p.Organization = ns.Labels[v1alpha2.LabelOrganization]
 		p.Name = ns.Labels[v1alpha2.LabelProject]
+		p.ParentType = consolev1.ParentType_PARENT_TYPE_ORGANIZATION
+		p.ParentName = p.Organization
 
 		// Derive parent info from the parent label.
 		parentNs := ns.Labels[v1alpha2.AnnotationParent]
 		if parentNs != "" {
 			kind, name, err := h.k8s.Resolver.ResourceTypeFromNamespace(parentNs)
 			if err == nil {
-				p.ParentName = name
 				switch kind {
 				case v1alpha2.ResourceTypeOrganization:
+					p.ParentName = name
 					p.ParentType = consolev1.ParentType_PARENT_TYPE_ORGANIZATION
-				case v1alpha2.ResourceTypeFolder:
-					p.ParentType = consolev1.ParentType_PARENT_TYPE_FOLDER
 				}
 			}
 		}
@@ -971,16 +961,24 @@ func (h *Handler) buildProject(ns *corev1.Namespace, shareUsers, shareRoles []se
 	return p
 }
 
-// resolveParentNS converts a ParentType+ParentName pair to a Kubernetes namespace name.
+// resolveParentNS converts a project ParentType+ParentName pair to a Kubernetes namespace name.
 func (h *Handler) resolveParentNS(parentType consolev1.ParentType, parentName string) (string, error) {
 	switch parentType {
 	case consolev1.ParentType_PARENT_TYPE_ORGANIZATION:
 		return h.k8s.Resolver.OrgNamespace(parentName), nil
-	case consolev1.ParentType_PARENT_TYPE_FOLDER:
-		return h.k8s.Resolver.FolderNamespace(parentName), nil
 	default:
-		return "", fmt.Errorf("unknown parent_type %v", parentType)
+		return "", fmt.Errorf("projects can only be parented by organizations")
 	}
+}
+
+func validateOrganizationProjectParent(parentType consolev1.ParentType, parentName, organization string) error {
+	if parentType != consolev1.ParentType_PARENT_TYPE_UNSPECIFIED && parentType != consolev1.ParentType_PARENT_TYPE_ORGANIZATION {
+		return fmt.Errorf("projects can only be parented by organizations")
+	}
+	if parentName != "" && parentName != organization {
+		return fmt.Errorf("project parent_name must match organization")
+	}
+	return nil
 }
 
 // shareGrantsToAnnotations converts proto ShareGrant slices to annotation grants.
