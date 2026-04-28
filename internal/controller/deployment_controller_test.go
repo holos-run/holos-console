@@ -18,11 +18,13 @@ package controller_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,53 +34,79 @@ import (
 
 	deploymentsv1alpha1 "github.com/holos-run/holos-console/api/deployments/v1alpha1"
 	templatesv1alpha1 "github.com/holos-run/holos-console/api/templates/v1alpha1"
+	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
 	consolev1 "github.com/holos-run/holos-console/gen/holos/console/v1"
 	controllerpkg "github.com/holos-run/holos-console/internal/controller"
 	"github.com/holos-run/holos-console/internal/deploymentrender"
 )
 
 const deploymentControllerTemplate = `
-input: {
-	name:  string
-	image: string
-	tag:   string
-}
+	input: {
+		name:  string
+		image: string
+		tag:   string
+		env: [...#EnvVar] | *[]
+	}
 
-platform: {
-	project:   string
-	namespace: string
-}
+	platform: {
+		project:   string
+		namespace: string
+		claims: email: string
+	}
 
 _labels: {
 	"app.kubernetes.io/name":       input.name
 	"app.kubernetes.io/managed-by": "console.holos.run"
 }
 
+_envSpec: [for e in input.env {
+	name: e.name
+	if e.value != _|_ {
+		value: e.value
+	}
+	if e.secretKeyRef != _|_ {
+		valueFrom: secretKeyRef: {
+			name: e.secretKeyRef.name
+			key:  e.secretKeyRef.key
+		}
+	}
+	if e.configMapKeyRef != _|_ {
+		valueFrom: configMapKeyRef: {
+			name: e.configMapKeyRef.name
+			key:  e.configMapKeyRef.key
+		}
+	}
+}]
+
 projectResources: {
 	namespacedResources: (platform.namespace): {
 		Deployment: (input.name): {
 			apiVersion: "apps/v1"
 			kind:       "Deployment"
-			metadata: {
-				name:      input.name
-				namespace: platform.namespace
-				labels:    _labels
-			}
-			spec: {
-				selector: matchLabels: "app.kubernetes.io/name": input.name
-				template: {
-					metadata: labels: _labels
-					spec: containers: [{
-						name:  input.name
-						image: input.image + ":" + input.tag
-					}]
+				metadata: {
+					name:      input.name
+					namespace: platform.namespace
+					labels:    _labels
+					annotations: "console.holos.run/deployer-email": platform.claims.email
 				}
-			}
+				spec: {
+					selector: matchLabels: "app.kubernetes.io/name": input.name
+					template: {
+						metadata: labels: _labels
+						spec: containers: [{
+							name:  input.name
+							image: input.image + ":" + input.tag
+							if len(input.env) > 0 {
+								env: _envSpec
+							}
+						}]
+					}
+				}
 		}
 	}
 	clusterResources: {}
-}
-`
+	}
+	`
 
 type recordingDriftRecorder struct {
 	calls int
@@ -103,6 +131,23 @@ type staticAncestorProvider struct {
 
 func (p staticAncestorProvider) ListAncestorTemplateSources(context.Context, string, string) ([]string, []*consolev1.LinkedTemplateRef, error) {
 	return nil, p.refs, nil
+}
+
+func waitForObjectAbsent(t *testing.T, c client.Client, key types.NamespacedName, obj client.Object) {
+	t.Helper()
+
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		err := c.Get(context.Background(), key, obj)
+		if apierrors.IsNotFound(err) {
+			return
+		}
+		if err != nil {
+			t.Fatalf("get %T %s: %v", obj, key, err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("%T %s still exists", obj, key)
 }
 
 func waitForDeploymentCondition(
@@ -206,6 +251,31 @@ func createDeploymentTemplate(t *testing.T, c client.Client, ns, name string) {
 	}
 }
 
+func createDeploymentConfigMap(t *testing.T, c client.Client, ns, name string, env []v1alpha2.EnvVar, claims v1alpha2.Claims) {
+	t.Helper()
+	envJSON, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal env: %v", err)
+	}
+	claimsJSON, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("marshal claims: %v", err)
+	}
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: ns,
+			Name:      name,
+		},
+		Data: map[string]string{
+			"env":    string(envJSON),
+			"claims": string(claimsJSON),
+		},
+	}
+	if err := c.Create(context.Background(), cm); err != nil {
+		t.Fatalf("create deployment ConfigMap inputs: %v", err)
+	}
+}
+
 func TestDeploymentReconciler_RenderApplyHappyPath(t *testing.T) {
 	e := startEnv(t)
 	recorder := &recordingDriftRecorder{}
@@ -217,6 +287,29 @@ func TestDeploymentReconciler_RenderApplyHappyPath(t *testing.T) {
 	ns := "holos-prj-deployment-reconcile"
 	mustCreateNamespace(t, e.client, ns, "project")
 	createDeploymentTemplate(t, e.client, ns, "httpbin")
+	createDeploymentConfigMap(t, e.client, ns, "web",
+		[]v1alpha2.EnvVar{
+			{Name: "PLAIN", Value: "kept"},
+			{Name: "FROM_SECRET", SecretKeyRef: &v1alpha2.KeyRef{Name: "app-secret", Key: "token"}},
+		},
+		v1alpha2.Claims{Sub: "user-1", Email: "alice@example.com"},
+	)
+	stale := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: ns,
+			Name:      "web-stale",
+			Labels: map[string]string{
+				v1alpha2.LabelProject:         "deployment-reconcile",
+				v1alpha2.AnnotationDeployment: "web",
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{{Port: 80}},
+		},
+	}
+	if err := e.client.Create(context.Background(), stale); err != nil {
+		t.Fatalf("create stale service: %v", err)
+	}
 
 	dep := &deploymentsv1alpha1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -262,6 +355,23 @@ func TestDeploymentReconciler_RenderApplyHappyPath(t *testing.T) {
 	if err := e.client.Get(context.Background(), types.NamespacedName{Namespace: ns, Name: "web"}, &rendered); err != nil {
 		t.Fatalf("get rendered apps/v1 Deployment: %v", err)
 	}
+	if got := rendered.Annotations["console.holos.run/deployer-email"]; got != "alice@example.com" {
+		t.Fatalf("deployer annotation=%q want alice@example.com", got)
+	}
+	containers := rendered.Spec.Template.Spec.Containers
+	if len(containers) != 1 {
+		t.Fatalf("containers=%d want 1", len(containers))
+	}
+	if got := containers[0].Env; len(got) != 2 || got[0].Name != "PLAIN" || got[0].Value != "kept" || got[1].ValueFrom == nil || got[1].ValueFrom.SecretKeyRef == nil {
+		t.Fatalf("rendered env=%+v, want literal and secret refs from ConfigMap input", got)
+	}
+	waitForObjectAbsent(t, e.client, types.NamespacedName{Namespace: ns, Name: "web-stale"}, &corev1.Service{})
+
+	if err := e.client.Delete(context.Background(), got); err != nil {
+		t.Fatalf("delete Deployment CR: %v", err)
+	}
+	waitForObjectAbsent(t, e.client, client.ObjectKeyFromObject(dep), &deploymentsv1alpha1.Deployment{})
+	waitForObjectAbsent(t, e.client, types.NamespacedName{Namespace: ns, Name: "web"}, &appsv1.Deployment{})
 }
 
 func TestDeploymentReconciler_MissingAncestorTemplateSetsRenderedFalse(t *testing.T) {

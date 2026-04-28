@@ -23,10 +23,12 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,6 +36,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	deploymentsv1alpha1 "github.com/holos-run/holos-console/api/deployments/v1alpha1"
@@ -46,6 +49,11 @@ import (
 const (
 	deploymentReasonAccepted   = "Accepted"
 	deploymentReasonReconciled = "Reconciled"
+
+	deploymentFinalizer = "deployments.holos.run/rendered-resource-cleanup"
+
+	deploymentConfigMapEnvKey    = "env"
+	deploymentConfigMapClaimsKey = "claims"
 )
 
 // DeploymentPolicyDriftRecorder exposes the write side of the applied render
@@ -104,6 +112,18 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err := r.Get(ctx, req.NamespacedName, &dep); err != nil {
 		if err := client.IgnoreNotFound(err); err != nil {
 			return ctrl.Result{}, fmt.Errorf("get Deployment: %w", err)
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if !dep.DeletionTimestamp.IsZero() {
+		return r.reconcileDeploymentDelete(ctx, &dep)
+	}
+
+	if !controllerutil.ContainsFinalizer(&dep, deploymentFinalizer) {
+		controllerutil.AddFinalizer(&dep, deploymentFinalizer)
+		if err := r.Update(ctx, &dep); err != nil {
+			return ctrl.Result{}, fmt.Errorf("add Deployment finalizer: %w", err)
 		}
 		return ctrl.Result{}, nil
 	}
@@ -167,7 +187,29 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	project := dep.Spec.ProjectName
 	name := dep.Name
-	grouped, effectiveRefs, renderErr := r.Pipeline.Render(ctx, project, name, template.Spec.CueTemplate, r.buildPlatformInput(ctx, &dep), deploymentProjectInput(&dep))
+	platformInput, projectInput, inputErr := r.renderInputs(ctx, &dep)
+	if inputErr != nil {
+		meta.SetStatusCondition(&conds, metav1.Condition{
+			Type:               deploymentsv1alpha1.ConditionTypeRendered,
+			Status:             metav1.ConditionFalse,
+			Reason:             deploymentsv1alpha1.DeploymentReasonRenderFailed,
+			Message:            fmt.Sprintf("render input resolution failed: %v", inputErr),
+			ObservedGeneration: gen,
+		})
+		meta.SetStatusCondition(&conds, metav1.Condition{
+			Type:               deploymentsv1alpha1.ConditionTypeApplied,
+			Status:             metav1.ConditionFalse,
+			Reason:             deploymentsv1alpha1.DeploymentReasonRenderFailed,
+			Message:            "apply skipped because render inputs could not be resolved",
+			ObservedGeneration: gen,
+		})
+		if statusErr := r.updateDeploymentStatus(ctx, &dep, gen, conds); statusErr != nil {
+			return ctrl.Result{}, statusErr
+		}
+		return ctrl.Result{}, fmt.Errorf("resolve Deployment render inputs: %w", inputErr)
+	}
+
+	grouped, effectiveRefs, renderErr := r.Pipeline.Render(ctx, project, name, template.Spec.CueTemplate, platformInput, projectInput)
 	if renderErr != nil {
 		reason := deploymentsv1alpha1.DeploymentReasonRenderFailed
 		if isAncestorTemplateMissing(renderErr) {
@@ -202,7 +244,22 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		ObservedGeneration: gen,
 	})
 
-	if applyErr := r.Pipeline.Apply(ctx, project, name, resources); applyErr != nil {
+	previousNamespaces, discoverErr := r.Pipeline.DiscoverNamespaces(ctx, project, name)
+	if discoverErr != nil {
+		meta.SetStatusCondition(&conds, metav1.Condition{
+			Type:               deploymentsv1alpha1.ConditionTypeApplied,
+			Status:             metav1.ConditionFalse,
+			Reason:             deploymentsv1alpha1.DeploymentReasonApplyFailed,
+			Message:            fmt.Sprintf("resource discovery failed before apply: %v", discoverErr),
+			ObservedGeneration: gen,
+		})
+		if statusErr := r.updateDeploymentStatus(ctx, &dep, gen, conds); statusErr != nil {
+			return ctrl.Result{}, statusErr
+		}
+		return ctrl.Result{}, fmt.Errorf("discover previous Deployment resources: %w", discoverErr)
+	}
+
+	if applyErr := r.Pipeline.Reconcile(ctx, project, name, resources, previousNamespaces...); applyErr != nil {
 		meta.SetStatusCondition(&conds, metav1.Condition{
 			Type:               deploymentsv1alpha1.ConditionTypeApplied,
 			Status:             metav1.ConditionFalse,
@@ -240,6 +297,27 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 	r.Recorder.Eventf(&dep, "Normal", deploymentReasonReconciled, "Deployment rendered and applied")
+	return ctrl.Result{}, nil
+}
+
+func (r *DeploymentReconciler) reconcileDeploymentDelete(ctx context.Context, dep *deploymentsv1alpha1.Deployment) (ctrl.Result, error) {
+	if !controllerutil.ContainsFinalizer(dep, deploymentFinalizer) {
+		return ctrl.Result{}, nil
+	}
+	if r.Pipeline.CanApply() {
+		project := dep.Spec.ProjectName
+		namespaces, err := r.Pipeline.DiscoverNamespaces(ctx, project, dep.Name)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("discover Deployment resources for cleanup: %w", err)
+		}
+		if err := r.Pipeline.Cleanup(ctx, namespaces, project, dep.Name); err != nil {
+			return ctrl.Result{}, fmt.Errorf("cleanup Deployment resources: %w", err)
+		}
+	}
+	controllerutil.RemoveFinalizer(dep, deploymentFinalizer)
+	if err := r.Update(ctx, dep); err != nil {
+		return ctrl.Result{}, fmt.Errorf("remove Deployment finalizer: %w", err)
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -294,6 +372,35 @@ func (r *DeploymentReconciler) buildPlatformInput(ctx context.Context, dep *depl
 		}
 	}
 	return pi
+}
+
+func (r *DeploymentReconciler) renderInputs(ctx context.Context, dep *deploymentsv1alpha1.Deployment) (v1alpha2.PlatformInput, v1alpha2.ProjectInput, error) {
+	platform := r.buildPlatformInput(ctx, dep)
+	project := deploymentProjectInput(dep)
+
+	var cm corev1.ConfigMap
+	err := r.Get(ctx, client.ObjectKey{Namespace: dep.Namespace, Name: dep.Name}, &cm)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return platform, project, nil
+		}
+		return platform, project, fmt.Errorf("get deployment ConfigMap %s/%s: %w", dep.Namespace, dep.Name, err)
+	}
+	if raw := cm.Data[deploymentConfigMapEnvKey]; raw != "" {
+		var env []v1alpha2.EnvVar
+		if err := json.Unmarshal([]byte(raw), &env); err != nil {
+			return platform, project, fmt.Errorf("decode deployment env: %w", err)
+		}
+		project.Env = env
+	}
+	if raw := cm.Data[deploymentConfigMapClaimsKey]; raw != "" {
+		var claims v1alpha2.Claims
+		if err := json.Unmarshal([]byte(raw), &claims); err != nil {
+			return platform, project, fmt.Errorf("decode deployment claims: %w", err)
+		}
+		platform.Claims = claims
+	}
+	return platform, project, nil
 }
 
 func deploymentProjectInput(dep *deploymentsv1alpha1.Deployment) v1alpha2.ProjectInput {

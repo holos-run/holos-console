@@ -29,12 +29,12 @@ rules:
   verbs:
   - create
   - patch
-# ADR 036 impersonation for user/group access checks. ServiceAccounts are split
-# into the rule below because they also need rendered-resource CRUD verbs.
+# ADR 036 impersonation for user/group/serviceaccount access checks.
 - apiGroups:
   - ""
   resources:
   - groups
+  - serviceaccounts
   - users
   verbs:
   - impersonate
@@ -62,10 +62,21 @@ rules:
   - patch
   - update
   - watch
-# apps/v1 Deployments are rendered resources; deployments.holos.run Deployments
-# are the source CRs. Both need CRUD/watch for SSA apply and reconciliation.
+# apps/v1 Deployments are rendered resources managed by SSA apply and cleanup.
 - apiGroups:
   - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# deployments.holos.run Deployments are the source CRs.
+- apiGroups:
   - deployments.holos.run
   resources:
   - deployments
@@ -85,6 +96,14 @@ rules:
   verbs:
   - get
   - patch
+  - update
+# Finalizer updates let the Deployment controller clean up rendered resources
+# before direct CR deletion completes.
+- apiGroups:
+  - deployments.holos.run
+  resources:
+  - deployments/finalizers
+  verbs:
   - update
 # Gateway API HTTPRoutes and ReferenceGrants are rendered resources managed by
 # server-side apply and cleanup.

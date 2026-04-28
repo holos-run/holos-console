@@ -508,7 +508,7 @@ func (h *Handler) CreateDeployment(
 	}
 
 	rk8s := h.requestK8s(ctx)
-	_, err = rk8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port)
+	_, err = rk8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port, platformClaimsFromRPC(claims))
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -675,7 +675,7 @@ func (h *Handler) UpdateDeployment(
 	}
 
 	rk8s := h.requestK8s(ctx)
-	updated, err := rk8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port)
+	updated, err := rk8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port, platformClaimsFromRPC(claims))
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -1546,16 +1546,7 @@ func (h *Handler) buildPlatformInput(ctx context.Context, project, namespace str
 		GatewayNamespace: h.resolveGatewayNamespace(ctx, project),
 	}
 	if claims != nil {
-		pi.Claims = v1alpha2.Claims{
-			Iss:           claims.Iss,
-			Sub:           claims.Sub,
-			Exp:           claims.Exp,
-			Iat:           claims.Iat,
-			Email:         claims.Email,
-			EmailVerified: claims.EmailVerified,
-			Name:          claims.Name,
-			Groups:        claims.Roles,
-		}
+		pi.Claims = platformClaimsFromRPC(claims)
 	}
 	if h.ancestorWalker != nil {
 		folders, err := h.ancestorWalker.GetProjectFolders(ctx, project)
@@ -1573,6 +1564,22 @@ func (h *Handler) buildPlatformInput(ctx context.Context, project, namespace str
 		}
 	}
 	return pi
+}
+
+func platformClaimsFromRPC(claims *rpc.Claims) v1alpha2.Claims {
+	if claims == nil {
+		return v1alpha2.Claims{}
+	}
+	return v1alpha2.Claims{
+		Iss:           claims.Iss,
+		Sub:           claims.Sub,
+		Exp:           claims.Exp,
+		Iat:           claims.Iat,
+		Email:         claims.Email,
+		EmailVerified: claims.EmailVerified,
+		Name:          claims.Name,
+		Groups:        claims.Roles,
+	}
 }
 
 // stringSliceFromConfigMap decodes a JSON string slice from the given ConfigMap data key.
