@@ -24,27 +24,40 @@ sudo apt-get install -y build-essential
 
 ### 2. Install mkcert and Trust the Local CA
 
-`mkcert` provides the leaf certificates used by the dev server, and its
-root CA must be installed into the system, Chromium, and Firefox trust
-stores so Playwright-driven E2E tests do not fail with TLS errors.
-Chromium and Firefox use NSS, which `mkcert -install` drives via
-`certutil` from the `libnss3-tools` package. Without `libnss3-tools`,
-`mkcert -install` silently skips the browser trust stores.
+`mkcert` provides the leaf TLS certificates used by the local Vite dev
+server (`https://localhost:5173/`) and the Go backend
+(`https://localhost:8443/`). Independently of leaf-cert generation, its
+root CA must be registered with the system, Chromium, and Firefox trust
+stores or Playwright-driven E2E tests fail at the TLS handshake before
+any test logic runs. Chromium and Firefox use NSS, which `mkcert
+-install` drives via `certutil` from the `libnss3-tools` package; if
+`certutil` is missing, `mkcert -install` prints a warning and skips the
+browser trust stores even though it still updates the system store.
 
 ```bash
 sudo apt-get install -y mkcert libnss3-tools
 mkcert -install
 ```
 
-After `mkcert -install` you should see:
+On the first run (fresh VM) you should see:
+
+```
+Created a new local CA at "<CAROOT>" 💥
+The local CA is now installed in the system trust store! 👍
+The local CA is now installed in the Firefox and/or Chrome/Chromium trust store! 👍
+```
+
+On subsequent runs the messages flip to `already installed`:
 
 ```
 The local CA is already installed in the system trust store! 👍
 The local CA is already installed in the Firefox and/or Chrome/Chromium trust store! 👍
 ```
 
-This mirrors the `Trust mkcert CA` step in `.github/workflows/ci.yaml`,
-which is what unblocks `make test-e2e` in CI.
+If the Firefox/Chromium line is missing or replaced by a `certutil` warning,
+re-check that `libnss3-tools` is installed. This matches the `Trust mkcert
+CA` step in `.github/workflows/ci.yaml` (the recipe CI relies on for E2E
+tests on Debian-based runners).
 
 ### 3. Generate TLS Certificates
 

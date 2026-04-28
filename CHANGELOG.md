@@ -4,14 +4,21 @@ All notable changes to holos-console are documented here.
 
 ## [Unreleased]
 
-### Docs — Debian 13 setup now installs `libnss3-tools` and runs `mkcert -install` (HOL-1089)
+### Changed — Cert-handling guard rails for fresh dev VMs (HOL-1089)
 
-`CONTRIBUTING.md` step 2 now installs `libnss3-tools` alongside `mkcert` and
-runs `mkcert -install` so the local mkcert root CA is registered with the
-system, Chromium, and Firefox NSS trust stores. Without this, Playwright-driven
-E2E tests on a fresh Debian 13 VM fail with TLS certificate errors against
-`https://localhost:5173/`. The new step mirrors the `Trust mkcert CA` step in
-`.github/workflows/ci.yaml`.
+Three coordinated updates so a fresh Debian 13 (Trixie) VM can pass
+Playwright-driven E2E tests without TLS certificate errors:
+
+- `CONTRIBUTING.md` step 2 now installs `libnss3-tools` alongside `mkcert`
+  and runs `mkcert -install` so the local mkcert root CA is registered
+  with the system, Chromium, and Firefox NSS trust stores. The recipe
+  mirrors the `Trust mkcert CA` step in `.github/workflows/ci.yaml`.
+- `README.md` prerequisites now call out `libnss3-tools` (Debian/Ubuntu)
+  or `nss-tools` (Fedora/RHEL) alongside `mkcert`, so readers who follow
+  only the README hit the same guard rail.
+- `scripts/local-ca` now fails fast with a pointer to `CONTRIBUTING.md`
+  when `certutil` is missing, instead of letting `mkcert -install`
+  silently skip the browser trust stores.
 
 ### Added — TemplateDependency, TemplateRequirement, TemplateGrant new/edit/detail pages and ScopePicker (HOL-1017)
 

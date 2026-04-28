@@ -7,6 +7,20 @@
 
 set -euo pipefail
 
+# Guard rail: mkcert -install only registers the CA with the Chromium and
+# Firefox NSS trust stores when certutil is on PATH (provided by
+# libnss3-tools on Debian/Ubuntu, nss-tools on Fedora/RHEL). Without it,
+# mkcert prints a warning and skips the browser trust stores, which then
+# breaks Playwright-driven E2E tests in subtle ways. Fail fast with a
+# pointer to CONTRIBUTING.md instead of silently degrading.
+if ! command -v certutil >/dev/null 2>&1; then
+  echo "error: certutil not found on PATH" >&2
+  echo "       install libnss3-tools (Debian/Ubuntu) or nss-tools (Fedora/RHEL)" >&2
+  echo "       so 'mkcert -install' can register the CA with Chromium and Firefox." >&2
+  echo "       See CONTRIBUTING.md, 'Setting Up a Debian 13 (Trixie) VM', step 2." >&2
+  exit 1
+fi
+
 mkcert --install
 
 tmpdir="$(mktemp -d)"
