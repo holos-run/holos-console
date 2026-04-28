@@ -303,6 +303,14 @@ func NewManager(cfg *rest.Config, scheme *runtime.Scheme, opts Options) (*Manage
 		return nil, fmt.Errorf("controller.NewManager: registering TemplateRequirementReconciler: %w", err)
 	}
 
+	if err := (&DeploymentReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("deployment-controller"), //nolint:staticcheck // Controller-runtime still accepts this recorder in the pinned version.
+	}).SetupWithManager(mgr); err != nil {
+		return nil, fmt.Errorf("controller.NewManager: registering DeploymentReconciler: %w", err)
+	}
+
 	if err := resourcerbac.SetupTemplateReconciler(mgr, rbacClientset); err != nil {
 		return nil, fmt.Errorf("controller.NewManager: registering Template RBAC reconciler: %w", err)
 	}
