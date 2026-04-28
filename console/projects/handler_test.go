@@ -1327,6 +1327,56 @@ func TestUpdateProject_ReparentRejectsDifferentOrganization(t *testing.T) {
 	}
 }
 
+func TestUpdateProject_ReparentRejectsPartialParentInput(t *testing.T) {
+	orgNs := orgNSWithGrants("acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+	prj := projectNSWithParent("rp-prj-partial", "acme", "holos-org-acme", `[{"principal":"alice@example.com","role":"owner"}]`)
+
+	handler := newHandlerWithOrg(
+		&mockOrgResolver{users: map[string]string{"alice@example.com": "owner"}},
+		orgNs, prj,
+	)
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := contextWithClaims("alice@example.com")
+
+	parentType := consolev1.ParentType_PARENT_TYPE_ORGANIZATION
+	parentName := "acme"
+	cases := []struct {
+		name string
+		req  *consolev1.UpdateProjectRequest
+	}{
+		{
+			name: "parent_type only",
+			req: &consolev1.UpdateProjectRequest{
+				Name:       "rp-prj-partial",
+				ParentType: &parentType,
+			},
+		},
+		{
+			name: "parent_name only",
+			req: &consolev1.UpdateProjectRequest{
+				Name:       "rp-prj-partial",
+				ParentName: &parentName,
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := handler.UpdateProject(ctx, connect.NewRequest(tc.req))
+			if err == nil {
+				t.Fatal("expected partial parent input to be rejected, got nil")
+			}
+			connectErr, ok := err.(*connect.Error)
+			if !ok {
+				t.Fatalf("expected *connect.Error, got %T: %v", err, err)
+			}
+			if connectErr.Code() != connect.CodeInvalidArgument {
+				t.Fatalf("expected CodeInvalidArgument, got %v: %v", connectErr.Code(), err)
+			}
+		})
+	}
+}
+
 // ---- Default Parent Resolution Tests ----
 
 func TestCreateProject_DefaultsToOrgParent(t *testing.T) {

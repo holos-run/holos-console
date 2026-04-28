@@ -198,17 +198,9 @@ export function MatchesPreview({
   parentScope,
   targets,
 }: MatchesPreviewProps) {
-  // Organization-wide and folder-scoped project enumerations are hoisted to
-  // the top of the component so hook order is invariant across renders.
-  // Both hooks are passed empty strings when not applicable which short-
-  // circuits via `enabled: !!organization` inside the hooks themselves.
-  //
-  // Folder-scoped bindings must *always* enumerate the folder's projects —
-  // not just when a wildcard row is present — because literal project
-  // names still need to be filtered through the scope ceiling. Otherwise
-  // the preview would happily probe an out-of-folder project and claim
-  // matches the backend will reject with "project ... does not exist
-  // under binding scope ..." (codex review on PR #1084).
+  // Organization-wide project enumeration is hoisted so hook order is
+  // invariant across renders. Folder-scoped bindings no longer enumerate
+  // projects because projects are always parented by their organization.
   const needsScopeProjectList =
     parentScope.kind === 'folder' ||
     targets.some((t) => t.projectName === WILDCARD)

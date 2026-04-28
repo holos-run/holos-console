@@ -510,6 +510,9 @@ func (h *Handler) UpdateProject(
 	org := GetOrganization(ns)
 
 	// Handle reparenting if parent_type and parent_name are set.
+	if (req.Msg.ParentType == nil) != (req.Msg.ParentName == nil) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("parent_type and parent_name must be set together"))
+	}
 	if req.Msg.ParentType != nil && req.Msg.ParentName != nil {
 		if err := validateOrganizationProjectParent(*req.Msg.ParentType, *req.Msg.ParentName, org); err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
