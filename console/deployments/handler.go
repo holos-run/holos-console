@@ -508,7 +508,7 @@ func (h *Handler) CreateDeployment(
 	}
 
 	rk8s := h.requestK8s(ctx)
-	_, err = rk8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port, platformClaimsFromRPC(claims))
+	_, err = rk8s.CreateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.Template, displayName, description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port, creatorClaimsForPersistence(claims))
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -549,7 +549,13 @@ func (h *Handler) CreateDeployment(
 			Env:     envInputs,
 			Port:    defaultPort(int(req.Msg.Port)),
 		}
-		grouped, _, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn)
+		// HOL-1101: render+apply still runs here in addition to the
+		// DeploymentReconciler so that synchronous callers see the
+		// post-apply state (output URL, link aggregation, applied-render-set
+		// baseline) without waiting for a controller round-trip. HOL-1102
+		// strips this path once the controller is the single source of
+		// truth.
+		grouped, effectiveRefs, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed after creating deployment — rolling back",
 				slog.String("project", project),
@@ -568,6 +574,27 @@ func (h *Handler) CreateDeployment(
 			)
 			h.rollbackCreate(ctx, ns, project, name)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("applying deployment resources: %w", applyErr))
+		}
+		// Seed the applied-render-set baseline synchronously so
+		// GetDeploymentPolicyState and the list-view policy_drift flag have
+		// data to diff against immediately after create — without waiting
+		// for the DeploymentReconciler to catch up. The controller will
+		// re-record the same (or refreshed) baseline after its own apply,
+		// so this is a no-op in steady state. A nil checker disables the
+		// write; record failures are logged and non-fatal because the
+		// deployment itself was applied successfully.
+		if h.policyDriftChecker != nil {
+			refsToRecord := effectiveRefs
+			if refsToRecord == nil {
+				refsToRecord = []*consolev1.LinkedTemplateRef{}
+			}
+			if recordErr := h.policyDriftChecker.RecordApplied(ctx, project, name, refsToRecord); recordErr != nil {
+				slog.WarnContext(ctx, "failed to record applied render set after create",
+					slog.String("project", project),
+					slog.String("name", name),
+					slog.Any("error", recordErr),
+				)
+			}
 		}
 		// Cache the evaluated output.url on the ConfigMap annotation so
 		// later ListDeployments/GetDeployment calls can surface it without
@@ -675,7 +702,7 @@ func (h *Handler) UpdateDeployment(
 	}
 
 	rk8s := h.requestK8s(ctx)
-	updated, err := rk8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port, platformClaimsFromRPC(claims))
+	updated, err := rk8s.UpdateDeployment(ctx, project, name, req.Msg.Image, req.Msg.Tag, req.Msg.DisplayName, req.Msg.Description, req.Msg.Command, req.Msg.Args, envInputs, req.Msg.Port, creatorClaimsForPersistence(claims))
 	if err != nil {
 		return nil, mapK8sError(err)
 	}
@@ -714,7 +741,13 @@ func (h *Handler) UpdateDeployment(
 			Env:     envFromConfigMapAsV1alpha2(updated),
 			Port:    defaultPort(portFromConfigMap(updated)),
 		}
-		grouped, _, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn)
+		// HOL-1101: render+apply still runs here in addition to the
+		// DeploymentReconciler so that synchronous callers see the
+		// post-apply state (output URL, link aggregation, applied-render-set
+		// baseline) without waiting for a controller round-trip. HOL-1102
+		// strips this path once the controller is the single source of
+		// truth.
+		grouped, effectiveRefs, renderErr := h.renderResourcesGrouped(ctx, project, name, cueSource, platformIn, projectIn)
 		if renderErr != nil {
 			slog.WarnContext(ctx, "render failed during deployment update",
 				slog.String("project", project),
@@ -743,6 +776,27 @@ func (h *Handler) UpdateDeployment(
 				slog.Any("error", reconcileErr),
 			)
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("reconciling deployment resources: %w", reconcileErr))
+		}
+		// Refresh the applied-render-set baseline synchronously so
+		// GetDeploymentPolicyState and the list-view policy_drift flag have
+		// up-to-date data immediately after update — without waiting for
+		// the DeploymentReconciler to catch up. The controller will
+		// re-record the same baseline after its own apply, so this is a
+		// no-op in steady state. A nil checker disables the write; record
+		// failures are logged and non-fatal because the reconcile itself
+		// succeeded.
+		if h.policyDriftChecker != nil {
+			refsToRecord := effectiveRefs
+			if refsToRecord == nil {
+				refsToRecord = []*consolev1.LinkedTemplateRef{}
+			}
+			if recordErr := h.policyDriftChecker.RecordApplied(ctx, project, name, refsToRecord); recordErr != nil {
+				slog.WarnContext(ctx, "failed to record applied render set after update",
+					slog.String("project", project),
+					slog.String("name", name),
+					slog.Any("error", recordErr),
+				)
+			}
 		}
 		// Refresh the cached output URL annotation. Unlike create, update
 		// always sets or clears so a template edit that drops the output
@@ -1579,6 +1633,24 @@ func platformClaimsFromRPC(claims *rpc.Claims) v1alpha2.Claims {
 		EmailVerified: claims.EmailVerified,
 		Name:          claims.Name,
 		Groups:        claims.Roles,
+	}
+}
+
+// creatorClaimsForPersistence returns the minimal subset of OIDC claims that
+// the controller needs to replay at render time. Only Email is retained — it
+// is the single field templates reference today via platform.claims.email
+// (e.g. the "console.holos.run/deployer-email" annotation). Time-sensitive
+// fields (Exp, Iat), the issuer, the subject, group membership, and other
+// auth-flow attributes are intentionally dropped: persisting them in a
+// ConfigMap would replay stale auth state on every reconcile and let any
+// actor with edit access to the project ConfigMap spoof those attributes for
+// future controller renders.
+func creatorClaimsForPersistence(claims *rpc.Claims) v1alpha2.Claims {
+	if claims == nil {
+		return v1alpha2.Claims{}
+	}
+	return v1alpha2.Claims{
+		Email: claims.Email,
 	}
 }
 
