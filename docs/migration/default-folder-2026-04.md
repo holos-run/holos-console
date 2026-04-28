@@ -23,7 +23,7 @@ console-managed organization namespaces.
      -l console.holos.run/resource-type=organization -o name); do
      name="${ns#namespace/}"
      kubectl get namespace "$name" \
-       -o jsonpath='{.metadata.annotations}' \
+       -o json | jq '.metadata.annotations // {}' \
        > "/tmp/backup-${name}-annotations.json"
    done
    ```
@@ -33,7 +33,7 @@ console-managed organization namespaces.
 1. Dry-run the cleanup:
 
    ```bash
-   holos-console-migrate-default-folder
+   go run ./cmd/holos-console-migrate-default-folder
    ```
 
    The tool prints one row per console-managed organization namespace:
@@ -48,7 +48,7 @@ console-managed organization namespaces.
 2. Apply the cleanup:
 
    ```bash
-   holos-console-migrate-default-folder --apply
+   go run ./cmd/holos-console-migrate-default-folder --apply
    ```
 
 3. Validate manually:
@@ -81,8 +81,9 @@ organization namespaces:
 ```bash
 for f in /tmp/backup-*-annotations.json; do
   name="$(basename "$f" -annotations.json | sed 's/^backup-//')"
-  kubectl annotate --overwrite namespace "$name" \
-    "$(jq -r 'to_entries | map("\(.key)=\(.value)") | .[]' "$f")"
+  annotations="$(jq -c . "$f")"
+  kubectl patch namespace "$name" --type merge \
+    -p "{\"metadata\":{\"annotations\":${annotations}}}"
 done
 ```
 

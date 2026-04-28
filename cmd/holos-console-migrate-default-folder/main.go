@@ -22,6 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
 	v1alpha2 "github.com/holos-run/holos-console/api/v1alpha2"
@@ -92,7 +93,13 @@ func buildClient(kubeconfig string) (kubernetes.Interface, error) {
 	)
 	cfg, err := loader.ClientConfig()
 	if err != nil {
-		return nil, err
+		if kubeconfig != "" {
+			return nil, err
+		}
+		cfg, err = rest.InClusterConfig()
+		if err != nil {
+			return nil, err
+		}
 	}
 	return kubernetes.NewForConfig(cfg)
 }
