@@ -547,7 +547,9 @@ func (h *Handler) UpdateProject(
 }
 
 // reparentProject validates and executes a project reparent operation.
-// Checks PERMISSION_REPARENT on both source and destination parents.
+// Checks Owner-level permission on both source and destination parents
+// when the impersonated client is present (ADR 036), so the API server
+// — not in-process Go code — gates moves between namespaces.
 // Projects have no children so no depth or cycle checks are needed.
 func (h *Handler) reparentProject(
 	ctx context.Context,
@@ -575,13 +577,26 @@ func (h *Handler) reparentProject(
 		return nil
 	}
 
-	// Verify new parent namespace exists.
-	if _, err := h.k8s.GetNamespace(ctx, newParentNs); err != nil {
+	// Fetch destination parent namespace and enforce owner-level access on
+	// the impersonated path. Required so a caller cannot move a child into
+	// a parent they do not control (ADR 036 + HOL-1067).
+	destParent, err := h.k8s.GetNamespace(ctx, newParentNs)
+	if err != nil {
 		return mapK8sError(err)
 	}
+	if err := h.requireReparentOwner(ctx, claims, destParent, "reparent into destination"); err != nil {
+		return err
+	}
 
-	if _, err := h.k8s.GetNamespace(ctx, currentParentNs); err != nil {
+	// Fetch source parent namespace and enforce owner-level access on the
+	// impersonated path. Required so a caller cannot evict a child from a
+	// parent they do not control.
+	srcParent, err := h.k8s.GetNamespace(ctx, currentParentNs)
+	if err != nil {
 		return mapK8sError(err)
+	}
+	if err := h.requireReparentOwner(ctx, claims, srcParent, "reparent from source"); err != nil {
+		return err
 	}
 
 	// Execute the reparent: update the parent label.
@@ -856,6 +871,24 @@ func (h *Handler) effectiveRoleForNamespace(ctx context.Context, claims *rpc.Cla
 		secrets.ActiveGrantsMap(shareUsers, time.Now()),
 		secrets.ActiveGrantsMap(shareRoles, time.Now()),
 	)
+}
+
+// requireReparentOwner enforces Owner-level permission on a parent namespace
+// for re-parent operations (HOL-1067). Owner is proven via SSAR for `delete`
+// on the namespace, consistent with requireNamespaceOwner.
+//
+// Enforcement is gated on the presence of an impersonated client because the
+// legacy in-process cascade (claims-based) is being phased out per ADR 036.
+// Wiring impersonation into a request automatically arms parent-side owner
+// gating; bootstrap and tests that have not migrated yet retain pre-HOL-1067
+// behavior.
+func (h *Handler) requireReparentOwner(ctx context.Context, claims *rpc.Claims, parent *corev1.Namespace, action string) error {
+	if !rpc.HasImpersonatedClients(ctx) {
+		return nil
+	}
+	parentShareUsers, _ := GetShareUsers(parent)
+	parentShareRoles, _ := GetShareRoles(parent)
+	return h.requireNamespaceOwner(ctx, claims, parent, parentShareUsers, parentShareRoles, action)
 }
 
 func (h *Handler) requireNamespaceOwner(ctx context.Context, claims *rpc.Claims, ns *corev1.Namespace, shareUsers, shareRoles []secrets.AnnotationGrant, action string) error {
