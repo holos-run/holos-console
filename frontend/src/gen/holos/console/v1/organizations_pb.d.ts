@@ -89,14 +89,6 @@ export declare type Organization = Message<"holos.console.v1.Organization"> & {
   createdAt: string;
 
   /**
-   * default_folder is the name of the default folder for this organization.
-   * New projects without an explicit parent are created in this folder (ADR 022 Decision 3).
-   *
-   * @generated from field: string default_folder = 11;
-   */
-  defaultFolder: string;
-
-  /**
    * gateway_namespace is the Kubernetes namespace hosting the platform Gateway
    * referenced by templates rendered for this organization. Persisted as the
    * `console.holos.run/gateway-namespace` annotation on the org namespace and
@@ -229,14 +221,6 @@ export declare type CreateOrganizationRequest = Message<"holos.console.v1.Create
   roleGrants: ShareGrant[];
 
   /**
-   * default_folder is the name for the default folder created with the organization.
-   * When unset, defaults to "default" (ADR 022 Decision 1).
-   *
-   * @generated from field: optional string default_folder = 6;
-   */
-  defaultFolder?: string;
-
-  /**
    * populate_defaults indicates whether the backend should seed example resources
    * when creating the organization. When true, the backend creates example
    * templates and a default project.
@@ -298,14 +282,6 @@ export declare type UpdateOrganizationRequest = Message<"holos.console.v1.Update
    * @generated from field: optional string description = 3;
    */
   description?: string;
-
-  /**
-   * default_folder is the new default folder name. When unset, preserves the existing value.
-   * The referenced folder must exist and be an immediate child of the organization (ADR 022 Decision 2).
-   *
-   * @generated from field: optional string default_folder = 4;
-   */
-  defaultFolder?: string;
 
   /**
    * gateway_namespace is the new gateway namespace for the platform Gateway
