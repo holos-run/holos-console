@@ -54,6 +54,10 @@ type DeploymentReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+
+	// Pipeline is intentionally optional in this skeleton phase. Later phases
+	// wire render/apply here; nil means this reconciler only acknowledges spec
+	// acceptance and observedGeneration.
 	Pipeline *deploymentrender.Pipeline
 }
 
@@ -91,8 +95,9 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	})
 	target.Status.Conditions = conds
 
-	if dep.Status.ObservedGeneration != gen ||
-		!conditionsEqualIgnoringTransitionTime(dep.Status.Conditions, target.Status.Conditions) {
+	statusChanged := dep.Status.ObservedGeneration != gen ||
+		!conditionsEqualIgnoringTransitionTime(dep.Status.Conditions, target.Status.Conditions)
+	if statusChanged {
 		if err := r.Status().Update(ctx, target); err != nil {
 			if apierrors.IsConflict(err) {
 				return ctrl.Result{Requeue: true}, nil
@@ -103,6 +108,8 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		logger.V(1).Info("Deployment status unchanged; skipping update", "generation", gen)
 	}
 
-	r.Recorder.Eventf(target, "Normal", deploymentReasonReconciled, "Deployment reconciled")
+	if statusChanged {
+		r.Recorder.Eventf(target, "Normal", deploymentReasonReconciled, "Deployment reconciled")
+	}
 	return ctrl.Result{}, nil
 }
